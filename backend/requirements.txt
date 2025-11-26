@@ -1,0 +1,27 @@
+# --- FastAPI + Server ---
+fastapi
+uvicorn[standard]
+
+# --- Mission System Dependencies ---
+redis>=4.5.0
+pydantic>=2.0.0
+pydantic-settings>=2.1.0
+
+# --- Optional: WebSockets für Live-Updating ---
+websockets
+starlette
+
+# --- Optional: LLM/Agent Integration ---
+httpx
+python-dotenv
+
+# --- Agent Manager ---
+# (falls dein AgentManager im Backend schon eingebunden ist)
+# du nutzt keine speziellen Pakete hier, nur FastAPI, httpx, pydantic,
+# deshalb sind keine Extra-Einträge nötig.
+
+# --- Logging / Utils ---
+loguru
+
+# --- Future compatibility (SupervisorAgent / AgentRouter) ---
+# orjson

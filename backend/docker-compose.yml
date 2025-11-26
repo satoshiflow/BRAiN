@@ -1,0 +1,44 @@
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: brain-backend
+    ports:
+      - "8000:8000"
+    environment:
+      # Mission System Queue
+      REDIS_URL: redis://redis:6379/0
+
+      # LLM-Anbindung (aktuell: Ollama Desktop auf deinem Windows-Host)
+      # Unter Docker auf Windows/WSL erreicht man den Host mit "host.docker.internal"
+      OLLAMA_HOST: http://host.docker.internal:11434
+
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: brain-redis
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  # Wenn du Ollama später auch im Container laufen lassen willst,
+  # kannst du diesen Service aktivieren und OLLAMA_HOST oben auf "http://ollama:11434" setzen.
+  #ollama:
+  #  image: ollama/ollama:latest
+  #  container_name: brain-ollama
+  #  ports:
+  #    - "11434:11434"
+  #  volumes:
+  #    - ollama_models:/root/.ollama
+  #  restart: unless-stopped
+
+volumes:
+  redis_data:
+  #ollama_models:
