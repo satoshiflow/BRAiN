@@ -12,8 +12,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repo
-      - uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -26,12 +26,12 @@ jobs:
           pip install -r requirements.txt
           pip install pytest ruff
 
-      - name: Run Python Linter (ruff)
+      - name: Lint backend with ruff
         working-directory: backend
         run: |
           ruff check .
 
-      - name: Run Python Tests
+      - name: Run backend tests
         working-directory: backend
         run: |
           pytest
@@ -41,15 +41,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repo
+      - name: Checkout repo
         uses: actions/checkout@v4
 
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: 20
 
-      - name: Install dependencies
+      - name: Install frontend dependencies
         working-directory: frontend/brain_control_ui
         run: npm install
 

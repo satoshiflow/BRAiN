@@ -1,4 +1,4 @@
-name: Release & Docker Build
+name: Create Release
 
 on:
   push:
@@ -6,38 +6,49 @@ on:
       - "v*.*.*"
 
 jobs:
-  build-and-publish:
+  create-release:
+    name: Create GitHub Release
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Generate changelog (simple)
+        id: changelog
+        run: |
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "Changes in $GITHUB_REF_NAME:" >> $GITHUB_OUTPUT
+          git log --oneline --no-merges $(git describe --tags --abbrev=0 --tags --match "v*.*.*" --always HEAD^)..HEAD >> $GITHUB_OUTPUT || true
+          echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          body: ${{ steps.changelog.outputs.changelog }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  upload-release-asset:
+    name: Upload Release Asset
+    runs-on: ubuntu-latest
+    needs: create-release
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-      - name: Build & Push Backend image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./backend
-          file: ./backend/Dockerfile
-          push: true
-          tags: |
-            satoshiflow/brain-backend:${{ github.ref_name }}
-            satoshiflow/brain-backend:latest
+      - name: Build release asset
+        run: |
+          mkdir -p release
+          echo "This is a placeholder for the release asset." > release/asset.txt
 
-      - name: Build & Push Frontend image
-        uses: docker/build-push-action@v5
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v2
         with:
-          context: ./frontend/brain_control_ui
-          file: ./frontend/brain_control_ui/Dockerfile
-          push: true
-          tags: |
-            satoshiflow/brain-frontend:${{ github.ref_name }}
-            satoshiflow/brain-frontend:latest
+          tag_name: ${{ github.ref_name }}
+          files: release/asset.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   
+
+            

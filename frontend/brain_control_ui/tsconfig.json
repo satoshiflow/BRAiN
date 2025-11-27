@@ -33,7 +33,7 @@
     "src/**/*.ts",
     "src/**/*.tsx",
     ".next/types/**/*.ts"
-  ],
+, "src/app/(control-center)/settings/page.tsx_backup"  ],
   "exclude": [
     "node_modules"
   ]

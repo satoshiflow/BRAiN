@@ -1,4 +1,4 @@
-# Dockerfile (Root) – baut das Backend-Image für BRAiN
+# Dockerfile – BRAIN Backend Image (Root)
 
 FROM python:3.11-slim
 
@@ -16,9 +16,9 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # ---------------------------
-# Python-Dependencies
+# Python Dependencies
 # ---------------------------
-# Wir gehen davon aus, dass requirements.txt im Root liegt
+# requirements.txt liegt im Root (für Backend)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -44,6 +44,5 @@ ENV PYTHONUNBUFFERED=1 \
 # ---------------------------
 # Start Command
 # ---------------------------
-# Wichtig: Pfad muss zu deinem main.py passen
-# → hier: backend/main.py mit "app = FastAPI()"
+# backend/main.py enthält: app = FastAPI()
 CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
