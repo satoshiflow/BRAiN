@@ -1,0 +1,82 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [ "dev" ]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+  pull_request:
+    branches: [ "dev", "main" ]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+
+jobs:
+  backend-ci:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: brain
+          POSTGRES_PASSWORD: brain
+          POSTGRES_DB: brain
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U brain"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+
+      qdrant:
+        image: qdrant/qdrant:latest
+        ports:
+          - 6333:6333
+
+    env:
+      DATABASE_URL: postgresql+psycopg2://brain:brain@localhost:5432/brain
+      REDIS_URL: redis://localhost:6379/0
+      QDRANT_URL: http://localhost:6333
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          pip install -r requirements.txt
+          pip install black ruff mypy
+
+      - name: Ruff (lint)
+        working-directory: backend
+        run: ruff check .
+
+      - name: Black (format check)
+        working-directory: backend
+        run: black --check .
+
+      - name: MyPy (type check)
+        working-directory: backend
+        run: mypy . || true  # not blocking am Anfang, später kannst du das '|| true' entfernen
+
+      - name: Run tests
+        working-directory: backend
+        run: pytest -q
+
+      - name: Docker build check (backend)
+        run: |
+          docker build -t brain-backend-ci ./backend

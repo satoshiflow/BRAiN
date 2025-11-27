@@ -1,74 +1,124 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
+############################################################
+# B R A i N  –  PROJECT WIDE IGNORE RULES
+# Backend (Python/FastAPI) + Frontend (Next.js) + Docker
+############################################################
 
-# Node / Next.js / Frontend
+#############################
+# PYTHON / FASTAPI BACKEND #
+#############################
+
+# Bytecode cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local environment configs (keep example)
+.env
+.env.*
+!.env.example
+
+# Python build artifacts
+build/
+dist/
+*.egg-info/
+
+
+################################
+# RUNTIME DATA & LOCAL STORAGE #
+################################
+
+# Mission system, event logs, caches
+_data/
+data/
+storage/
+cache/
+tmp/
+temp/
+
+# Worker logs
+logs/
+*.log
+
+# Qdrant local storage (if ever created locally)
+qdrant_data/
+qdrant_storage/
+
+# Postgres dumps
+*.sql
+*.sqlite
+*.db
+
+
+###########################
+# NEXT.JS / FRONTEND      #
+###########################
+
+# Dependencies
 node_modules/
+.npm/
+.pnpm-store/
+
+# Next.js build output
 .next/
 out/
 dist/
+build/
+
+# Temp / cache
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-lerc-debug.log*
-.cache/
+*.tsbuildinfo
 
-# Virtual Environment
-venv/
-ENV/
-env/
+# Vercel
+.vercel/
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
 
-# Environment
-.env
-.env.local
-.env.*.local
+############################
+# DOCKER / DEPLOYMENT      #
+############################
 
-# Docker
-*.log
-data/
-logs/
+# Docker artifacts
+docker-data/
+docker-volume/
+docker-temp/
 
-# OS
+# If docker-compose env files are used
+docker.env
+docker-compose.override.yml
+
+
+############################
+# OS / IDE / EDITOR FILES #
+############################
+
+# macOS
 .DS_Store
+
+# Windows
 Thumbs.db
 
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
+# VSCode
+.vscode/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
 
-# Temp
-*.tmp
-*.bak
+# JetBrains
+.idea/
+
+# Other editors
 *.swp
-# Local data / secrets
-.env.*
-logs/
-data/
-storage/
+*.swo
+
+
+############################################################
+# END OF FILE
+############################################################

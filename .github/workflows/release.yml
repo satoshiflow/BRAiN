@@ -1,0 +1,43 @@
+name: Release & Docker Build
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build & Push Backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: |
+            satoshiflow/brain-backend:${{ github.ref_name }}
+            satoshiflow/brain-backend:latest
+
+      - name: Build & Push Frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend/brain_control_ui
+          file: ./frontend/brain_control_ui/Dockerfile
+          push: true
+          tags: |
+            satoshiflow/brain-frontend:${{ github.ref_name }}
+            satoshiflow/brain-frontend:latest

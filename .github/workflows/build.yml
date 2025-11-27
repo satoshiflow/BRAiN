@@ -1,0 +1,36 @@
+name: Docker Build Test
+
+on:
+  push:
+    branches: ["dev"]
+  workflow_dispatch:
+
+jobs:
+  docker-build:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Backend Image
+        run: |
+          docker build \
+            -t brain-backend-test \
+            -f backend/Dockerfile \
+            backend
+
+      - name: Build Frontend Image
+        run: |
+          docker build \
+            -t brain-frontend-test \
+            -f frontend/brain_control_ui/Dockerfile \
+            frontend/brain_control_ui
+
+      - name: Validate docker-compose build
+        run: |
+          docker compose build

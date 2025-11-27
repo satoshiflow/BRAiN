@@ -1,0 +1,33 @@
+name: Deploy to Hetzner
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout (nur für Konsistenz, wird lokal nicht benutzt)
+        uses: actions/checkout@v4
+
+      - name: Start SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.HETZNER_SSH_KEY }}
+
+      - name: Add known hosts
+        run: |
+          ssh-keyscan -H brain.falklabs.de >> ~/.ssh/known_hosts
+
+      - name: Deploy via SSH
+        run: |
+          ssh ${{ secrets.HETZNER_SSH_USER }}@brain.falklabs.de << 'EOF'
+          set -e
+          cd ~/brain   # <--- ggf. anpassen, wenn dein Projektordner woanders liegt
+          git pull origin main
+          docker compose pull || true
+          docker compose up -d --build
+          EOF
