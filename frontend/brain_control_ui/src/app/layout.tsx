@@ -1,19 +1,22 @@
 // frontend/brain_control_ui/src/app/layout.tsx
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import "./globals.css";
-import { ReactNode } from "react";
 import { ReactQueryProvider } from "@/components/providers/react-query-provider";
-// ggf. Font-Imports etc. bleiben wie sie sind
 
 export const metadata: Metadata = {
-  title: "BRAIN Control Center",
-  description: "Admin & Monitoring UI for BRAiN",
+  title: "BRAiN Control Deck",
+  description: "Cluster · Missions · Agents · LLM · Settings",
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: ReactNode;
+}) {
   return (
-    <html lang="en">
-      <body>
+    <html lang="de" className="dark">
+      <body className="min-h-screen bg-background text-foreground">
         <ReactQueryProvider>{children}</ReactQueryProvider>
       </body>
     </html>

@@ -1,61 +1,116 @@
-// frontend/brain_control_ui/src/hooks/useLLMConfig.ts
-"use client";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import brainApi from "@/lib/brainApi";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiGet, apiPut, apiPost } from "@/lib/api";
-
-export type LLMConfig = {
+export interface LLMConfig {
   provider: string;
-  host: string;
   model: string;
+  host: string;
   temperature: number;
   max_tokens: number;
   enabled: boolean;
+}
+
+const DEFAULT_LLM_CONFIG: LLMConfig = {
+  provider: "openai",
+  model: "phi3",
+  host: "",
+  temperature: 0.7,
+  max_tokens: 4097,
+  enabled: true,
 };
 
-export type LLMConfigUpdate = Partial<LLMConfig>;
-
-export type LLMTestResponse = {
-  ok: boolean;
-  model: string;
-  prompt: string;
-  raw_response: any;
-};
-
-const CONFIG_KEY = ["llm", "config"] as const;
-
+// ------------------------------------------------------
+// GET LLM Config
+// ------------------------------------------------------
 export function useLLMConfig() {
   return useQuery({
-    queryKey: CONFIG_KEY,
-    queryFn: () => apiGet<LLMConfig>("/api/llm/config"),
+    queryKey: ["llm-config"],
+    queryFn: async () => {
+      // Aktuell holen wir die Config über den Debug-Pfad.
+      // Das Backend kann z.B. folgendes liefern:
+      // { ok, model, prompt, raw_response: { config: {...} } }
+      const raw = await brainApi.debug.llmPing({ prompt: "get-config" });
+
+      if (!raw || typeof raw !== "object") {
+        return DEFAULT_LLM_CONFIG;
+      }
+
+      const inner =
+        (raw as any).raw_response?.config ??
+        (raw as any).config ??
+        (raw as any);
+
+      const cfg: LLMConfig = {
+        provider:
+          typeof inner.provider === "string"
+            ? inner.provider
+            : DEFAULT_LLM_CONFIG.provider,
+        model:
+          typeof inner.model === "string"
+            ? inner.model
+            : DEFAULT_LLM_CONFIG.model,
+        host:
+          typeof inner.host === "string" ? inner.host : DEFAULT_LLM_CONFIG.host,
+        temperature:
+          typeof inner.temperature === "number"
+            ? inner.temperature
+            : DEFAULT_LLM_CONFIG.temperature,
+        max_tokens:
+          typeof inner.max_tokens === "number"
+            ? inner.max_tokens
+            : DEFAULT_LLM_CONFIG.max_tokens,
+        enabled:
+          typeof inner.enabled === "boolean"
+            ? inner.enabled
+            : DEFAULT_LLM_CONFIG.enabled,
+      };
+
+      return cfg;
+    },
+    refetchInterval: false,
   });
 }
 
+// ------------------------------------------------------
+// UPDATE LLM Config
+// ------------------------------------------------------
 export function useUpdateLLMConfig() {
   const qc = useQueryClient();
 
   return useMutation({
-    mutationFn: (body: LLMConfigUpdate) => apiPut<LLMConfig>("/api/llm/config", body),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: CONFIG_KEY });
+    mutationKey: ["llm-config", "update"],
+    mutationFn: async (payload: LLMConfig) => {
+      return brainApi.debug.llmPing({
+        prompt: "update-config",
+        ...payload,
+      });
     },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["llm-config"] }),
   });
 }
 
+// ------------------------------------------------------
+// RESET LLM Config
+// ------------------------------------------------------
 export function useResetLLMConfig() {
   const qc = useQueryClient();
 
   return useMutation({
-    mutationFn: () => apiPost<LLMConfig>("/api/llm/config/reset"),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: CONFIG_KEY });
+    mutationKey: ["llm-config", "reset"],
+    mutationFn: async () => {
+      return brainApi.debug.llmPing({ prompt: "reset-config" });
     },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["llm-config"] }),
   });
 }
 
+// ------------------------------------------------------
+// TEST / Debug LLM – wichtig: immer JSON-Body { prompt }
+// ------------------------------------------------------
 export function useLLMTest() {
   return useMutation({
-    mutationFn: (prompt: string) =>
-      apiPost<LLMTestResponse>("/api/debug/llm-ping", { prompt }),
+    mutationKey: ["llm-config", "test"],
+    mutationFn: (payload: { prompt: string }) =>
+      brainApi.debug.llmPing(payload),
   });
 }

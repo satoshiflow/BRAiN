@@ -1,22 +1,19 @@
 "use client";
 
-import { useState } from "react";
-
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
-import { Slider } from "@/components/ui/slider";
-import { Badge } from "@/components/ui/badge";
-
+import { useEffect, useState } from "react";
 import {
   useLLMConfig,
   useUpdateLLMConfig,
   useResetLLMConfig,
   useLLMTest,
+  LLMConfig,
 } from "@/hooks/useLLMConfig";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 export default function LLMSettingsPage() {
   const { data: config, isLoading, error } = useLLMConfig();
@@ -24,254 +21,289 @@ export default function LLMSettingsPage() {
   const resetMutation = useResetLLMConfig();
   const testMutation = useLLMTest();
 
-  const [testPrompt, setTestPrompt] = useState("Sag kurz Hallo. Du bist BRAiN im Dev-Modus.");
+  const [form, setForm] = useState<LLMConfig>({
+    provider: "openai",
+    model: "phi3",
+    host: "",
+    temperature: 0.7,
+    max_tokens: 4097,
+    enabled: true,
+  });
 
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [testPrompt, setTestPrompt] = useState(
+    "Sag kurz Hallo. Du bist BRAiN im Dev-Modus."
+  );
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
-  const saving = updateMutation.isPending;
-  const resetting = resetMutation.isPending;
-  const testing = testMutation.isPending;
+  // Wenn Config geladen → Form befüllen
+  useEffect(() => {
+    if (config) {
+      setForm({
+        provider: config.provider ?? "openai",
+        model: config.model ?? "phi3",
+        host: config.host ?? "",
+        temperature:
+          typeof config.temperature === "number" ? config.temperature : 0.7,
+        max_tokens:
+          typeof config.max_tokens === "number" ? config.max_tokens : 4097,
+        enabled:
+          typeof config.enabled === "boolean" ? config.enabled : true,
+      });
+    }
+  }, [config]);
+
+  const handleChange = (patch: Partial<LLMConfig>) => {
+    setForm((prev) => ({ ...prev, ...patch }));
+  };
 
   const handleSave = () => {
-    if (!config) return;
-    setSuccessMessage(null);
-    updateMutation.mutate(
-      {
-        provider: config.provider,
-        host: config.host,
-        model: config.model,
-        temperature: config.temperature,
-        max_tokens: config.max_tokens,
-        enabled: config.enabled,
+    setStatusMessage(null);
+    updateMutation.mutate(form, {
+      onSuccess: () => {
+        setStatusMessage("LLM-Konfiguration gespeichert.");
       },
-      {
-        onSuccess: () => setSuccessMessage("LLM-Konfiguration erfolgreich gespeichert."),
+      onError: (err) => {
+        setStatusMessage(
+          "Fehler beim Speichern: " + (err as Error).message
+        );
       },
-    );
+    });
   };
 
   const handleReset = () => {
-    setSuccessMessage(null);
+    setStatusMessage(null);
     resetMutation.mutate(undefined, {
-      onSuccess: () => setSuccessMessage("LLM-Konfiguration auf Defaults zurückgesetzt."),
+      onSuccess: () => {
+        setStatusMessage("LLM-Konfiguration auf Defaults zurückgesetzt.");
+      },
+      onError: (err) => {
+        setStatusMessage(
+          "Fehler beim Zurücksetzen: " + (err as Error).message
+        );
+      },
     });
   };
 
   const handleTest = () => {
-    testMutation.mutate(testPrompt);
+    setStatusMessage(null);
+    testMutation.mutate(
+      { prompt: testPrompt }, // <— WICHTIG: JSON-Objekt, kein nackter String
+      {
+        onSuccess: (res: any) => {
+          setStatusMessage(
+            "LLM-Test erfolgreich: " + JSON.stringify(res, null, 2)
+          );
+        },
+        onError: (err: any) => {
+          setStatusMessage(
+            "LLM-Test fehlgeschlagen: " + (err?.message ?? String(err))
+          );
+        },
+      }
+    );
   };
 
-  const updateField = <K extends keyof typeof config>(key: K, value: (typeof config)[K]) => {
-    if (!config) return;
-    // Wir nutzen ein lokales "shadow" Objekt, das nur in diesem render gültig ist
-    (config as any)[key] = value;
-  };
+  const disabled = !form.enabled;
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between flex-wrap gap-2">
+    <div className="flex flex-col gap-8 w-full">
+      {/* Header */}
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">LLM Settings</h1>
-          <p className="text-sm text-muted-foreground">
-            Konfiguration des zentralen BRAiN LLM-Clients (Ollama / Host / Model / Limits).
+          <h1 className="brain-shell-title">Settings</h1>
+          <p className="brain-shell-subtitle">
+            Zentrale Konfiguration von BRAiN (LLM, Agents, System).
           </p>
         </div>
-        {config && (
-          <Badge variant={config.enabled ? "default" : "destructive"}>
-            {config.enabled ? "LLM enabled" : "LLM disabled"}
-          </Badge>
-        )}
+        <div className="text-xs text-muted-foreground">
+          {disabled ? "LLM disabled" : "LLM enabled"}
+        </div>
       </div>
 
-      {isLoading && <p className="text-sm text-muted-foreground">Lade LLM-Konfiguration…</p>}
-
-      {error && (
-        <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {(error as Error).message}
+      {/* Status-Banner */}
+      {statusMessage && (
+        <div className="brain-card border-emerald-700/60 bg-emerald-900/30 text-emerald-200 text-sm">
+          {statusMessage}
         </div>
       )}
 
-      {updateMutation.error && (
-        <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {(updateMutation.error as Error).message}
-        </div>
-      )}
+      {/* Grid: Konfiguration + Test */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Grundkonfiguration */}
+        <div className="brain-card">
+          <div className="brain-card-header">
+            <h2 className="brain-card-title">LLM Settings</h2>
+          </div>
 
-      {resetMutation.error && (
-        <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {(resetMutation.error as Error).message}
-        </div>
-      )}
-
-      {successMessage && (
-        <div className="rounded-md border border-emerald-500/50 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-500">
-          {successMessage}
-        </div>
-      )}
-
-      {config && (
-        <div className="grid gap-6 lg:grid-cols-[1.2fr,1fr]">
-          {/* Konfiguration */}
-          <Card className="h-fit">
-            <CardHeader>
-              <CardTitle>Grundkonfiguration</CardTitle>
-              <CardDescription>
-                Provider, Host, Model und Limits für den zentralen LLM-Client von BRAiN.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="provider">Provider</Label>
-                  <Input
-                    id="provider"
-                    defaultValue={config.provider}
-                    onChange={(e) => updateField("provider", e.target.value)}
-                  />
-                  <p className="text-[0.75rem] text-muted-foreground">z.B. ollama, openai, lmstudio</p>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="model">Model</Label>
-                  <Input
-                    id="model"
-                    defaultValue={config.model}
-                    onChange={(e) => updateField("model", e.target.value)}
-                  />
-                  <p className="text-[0.75rem] text-muted-foreground">z.B. phi3, llama3 etc.</p>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="host">Host</Label>
-                <Input
-                  id="host"
-                  defaultValue={config.host}
-                  onChange={(e) => updateField("host", e.target.value)}
-                />
-                <p className="text-[0.75rem] text-muted-foreground">
-                  Basis-URL des LLM-Backends (Ollama, LM Studio, Gateway…).
-                </p>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label>Temperatur</Label>
-                    <span className="text-xs text-muted-foreground">{config.temperature.toFixed(2)}</span>
+          {isLoading ? (
+            <p className="text-sm text-muted-foreground">
+              LLM-Konfiguration wird geladen…
+            </p>
+          ) : error ? (
+            <p className="text-sm text-destructive">
+              Fehler beim Laden: {(error as Error).message}
+            </p>
+          ) : (
+            <div className="flex flex-col gap-6 text-sm">
+              <div>
+                <h3 className="font-medium mb-2">Grundkonfiguration</h3>
+                <div className="grid gap-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>Provider</Label>
+                      <Input
+                        value={form.provider}
+                        onChange={(e) =>
+                          handleChange({ provider: e.target.value })
+                        }
+                        placeholder="openai"
+                      />
+                    </div>
+                    <div>
+                      <Label>Model</Label>
+                      <Input
+                        value={form.model}
+                        onChange={(e) =>
+                          handleChange({ model: e.target.value })
+                        }
+                        placeholder="phi3"
+                      />
+                    </div>
                   </div>
-                  <Slider
-                    min={0}
-                    max={2}
-                    step={0.05}
-                    value={[config.temperature]}
-                    onValueChange={([v]) => updateField("temperature", v)}
-                  />
-                  <p className="text-[0.75rem] text-muted-foreground">0 = deterministisch, 1+ = kreativer.</p>
-                </div>
 
-                <div className="space-y-1.5">
-                  <Label htmlFor="max_tokens">Max Tokens</Label>
-                  <Input
-                    id="max_tokens"
-                    type="number"
-                    defaultValue={config.max_tokens}
-                    onChange={(e) => updateField("max_tokens", Number(e.target.value) || 0)}
-                  />
-                  <p className="text-[0.75rem] text-muted-foreground">
-                    Obergrenze der Antwortlänge (zu klein = abgeschnittene Antworten).
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between rounded-md border px-3 py-2">
-                <div className="space-y-0.5">
-                  <Label>LLM global aktiviert</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Wenn deaktiviert, blockiert der LLM-Client alle Anfragen (AXE, Debug, Missionen).
-                  </p>
-                </div>
-                <Switch
-                  checked={config.enabled}
-                  onCheckedChange={(value) => updateField("enabled", value)}
-                />
-              </div>
-            </CardContent>
-            <CardFooter className="flex flex-wrap gap-2 justify-between">
-              <Button
-                variant="outline"
-                type="button"
-                onClick={handleReset}
-                disabled={resetting || saving}
-              >
-                {resetting ? "Zurücksetzen…" : "Auf Defaults zurücksetzen"}
-              </Button>
-              <Button type="button" onClick={handleSave} disabled={saving}>
-                {saving ? "Speichern…" : "Speichern"}
-              </Button>
-            </CardFooter>
-          </Card>
-
-          {/* Test Card */}
-          <Card className="h-fit">
-            <CardHeader>
-              <CardTitle>LLM-Test</CardTitle>
-              <CardDescription>
-                Testet die komplette Pipeline: Control Deck → Backend → LLMClient → LLM.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="testPrompt">Test-Prompt</Label>
-                <Textarea
-                  id="testPrompt"
-                  rows={4}
-                  value={testPrompt}
-                  onChange={(e) => setTestPrompt(e.target.value)}
-                />
-              </div>
-
-              {testMutation.error && (
-                <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                  {(testMutation.error as Error).message}
-                </div>
-              )}
-
-              {testMutation.data && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium">Antwort-Modell:</span>
-                    <Badge variant={testMutation.data.ok ? "default" : "destructive"}>
-                      {testMutation.data.model || "unbekannt"}
-                    </Badge>
+                  <div>
+                    <Label>Host</Label>
+                    <Input
+                      value={form.host}
+                      onChange={(e) =>
+                        handleChange({ host: e.target.value })
+                      }
+                      placeholder="Basis-URL des LLM-Backends (z.B. http://localhost:11434)"
+                    />
                   </div>
-                  <div className="space-y-1">
-                    <span className="text-xs font-medium">Prompt:</span>
-                    <p className="text-xs break-words text-muted-foreground">
-                      {testMutation.data.prompt}
-                    </p>
+
+                  <div className="grid grid-cols-2 gap-4 items-center">
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <Label>Temperatur</Label>
+                        <span className="text-xs text-muted-foreground">
+                          {form.temperature.toFixed(2)}
+                        </span>
+                      </div>
+                      <Slider
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={[form.temperature]}
+                        onValueChange={(vals) =>
+                          handleChange({ temperature: vals[0] ?? 0.7 })
+                        }
+                      />
+                      <p className="mt-1 text-[0.7rem] text-muted-foreground">
+                        0 = deterministisch, 1+ = kreativer.
+                      </p>
+                    </div>
+                    <div>
+                      <Label>Max Tokens</Label>
+                      <Input
+                        type="number"
+                        value={form.max_tokens}
+                        onChange={(e) =>
+                          handleChange({
+                            max_tokens: Number(e.target.value) || 0,
+                          })
+                        }
+                      />
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    <span className="text-xs font-medium">Raw-Response (Auszug):</span>
-                    <pre className="max-h-40 overflow-auto rounded-md bg-muted p-2 text-[0.7rem]">
-                      {JSON.stringify(testMutation.data.raw_response, null, 2)}
-                    </pre>
+
+                  <div className="flex items-center justify-between border rounded-2xl px-4 py-3">
+                    <div>
+                      <p className="text-sm font-medium">
+                        LLM global aktiviert
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Wenn deaktiviert, blockiert der LLM-Client alle
+                        Anfragen (AXE, Debug, Missionen).
+                      </p>
+                    </div>
+                    <Switch
+                      checked={form.enabled}
+                      onCheckedChange={(val) =>
+                        handleChange({ enabled: val })
+                      }
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3">
+                    <Button
+                      variant="outline"
+                      type="button"
+                      onClick={handleReset}
+                      disabled={resetMutation.isPending}
+                    >
+                      Auf Defaults zurücksetzen
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={handleSave}
+                      disabled={updateMutation.isPending}
+                    >
+                      Speichern
+                    </Button>
                   </div>
                 </div>
-              )}
-            </CardContent>
-            <CardFooter>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={handleTest}
-                disabled={testing}
-              >
-                {testing ? "Test läuft…" : "LLM testen"}
-              </Button>
-            </CardFooter>
-          </Card>
+              </div>
+            </div>
+          )}
         </div>
-      )}
+
+        {/* LLM-Test */}
+        <div className="brain-card">
+          <div className="brain-card-header">
+            <h2 className="brain-card-title">LLM-Test</h2>
+          </div>
+
+          <div className="flex flex-col gap-4 text-sm">
+            <p className="text-muted-foreground">
+              Testet die komplette Pipeline: Control Deck → Backend → LLMClient
+              → LLM.
+            </p>
+
+            <div>
+              <Label>Test-Prompt</Label>
+              <Textarea
+                rows={6}
+                value={testPrompt}
+                onChange={(e) => setTestPrompt(e.target.value)}
+              />
+            </div>
+
+            {testMutation.isError && (
+              <div className="text-xs text-destructive whitespace-pre-wrap break-words">
+                {String(
+                  (testMutation.error as any)?.message ??
+                    testMutation.error
+                )}
+              </div>
+            )}
+
+            {testMutation.isSuccess && (
+              <div className="text-xs text-muted-foreground whitespace-pre-wrap break-words">
+                {JSON.stringify(testMutation.data, null, 2)}
+              </div>
+            )}
+
+            <Button
+              type="button"
+              onClick={handleTest}
+              disabled={testMutation.isPending || disabled}
+            >
+              LLM testen
+            </Button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
