@@ -1,0 +1,8 @@
+{
+  "/dashboard/page": "app/dashboard/page.js",
+  "/core/agents/page": "app/core/agents/page.js",
+  "/core/modules/page": "app/core/modules/page.js",
+  "/core/agents/[agentId]/page": "app/core/agents/[agentId]/page.js",
+  "/immune/page": "app/immune/page.js",
+  "/missions/page": "app/missions/page.js"
+}

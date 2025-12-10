@@ -1,0 +1,55 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: brain-backend
+    env_file:
+      - ./backend/.env
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+
+  control_deck:
+    build:
+      context: ./frontend/control_deck
+    container_name: brain-control-deck
+    environment:
+      - NEXT_PUBLIC_BRAIN_API_BASE=http://backend:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+  axe_ui:
+    build:
+      context: ./frontend/axe_ui
+    container_name: brain-axe-ui
+    environment:
+      - NEXT_PUBLIC_BRAIN_API_BASE=http://backend:8000
+    ports:
+      - "3001:3000"
+    depends_on:
+      - backend
+
+  postgres:
+    image: postgres:16
+    container_name: brain-postgres
+    environment:
+      POSTGRES_DB: brain
+      POSTGRES_USER: brain
+      POSTGRES_PASSWORD: brain
+    ports:
+      - "5432:5432"
+    volumes:
+      - brain_pg_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: brain-redis
+    ports:
+      - "6379:6379"
+
+volumes:
+  brain_pg_data:
