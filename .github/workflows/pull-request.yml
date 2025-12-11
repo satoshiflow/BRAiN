@@ -1,0 +1,243 @@
+name: Pull Request Management
+
+on:
+  pull_request:
+    types: [ opened, edited, synchronize ]
+    branches: [ main, v2, develop ]
+
+jobs:
+  validate-pr:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Validate PR title
+        run: |
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          
+          # Check for conventional commit format
+          if [[ $PR_TITLE =~ ^(feat|fix|docs|style|refactor|test|chore|ci|perf)(\(.+\))?!?:\ .+ ]]; then
+            echo "✅ PR title follows conventional commits"
+          else
+            echo "⚠️  PR title should follow conventional commits format:"
+            echo "   feat: Add new feature"
+            echo "   fix: Fix bug"
+            echo "   docs: Update documentation"
+            echo "   etc."
+          fi
+      
+      - name: Check PR description
+        run: |
+          PR_BODY="${{ github.event.pull_request.body }}"
+          
+          if [ -z "$PR_BODY" ] || [ ${#PR_BODY} -lt 10 ]; then
+            echo "⚠️  PR description is empty or too short"
+            echo "Please provide a meaningful description"
+          else
+            echo "✅ PR has description"
+          fi
+      
+      - name: Check for breaking changes
+        run: |
+          PR_BODY="${{ github.event.pull_request.body }}"
+          
+          if [[ $PR_BODY =~ BREAKING\ CHANGE ]]; then
+            echo "⚠️  This PR contains breaking changes"
+            echo "Ensure:"
+            echo "  - Changelog is updated"
+            echo "  - Migration guide is provided"
+            echo "  - Version bump is planned"
+          fi
+
+  label-pr:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Auto-label PR based on files changed
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: changedFiles } = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+            
+            const labels = [];
+            const fileNames = changedFiles.map(f => f.filename);
+            
+            // Check file patterns
+            if (fileNames.some(f => f.startsWith('backend/'))) {
+              labels.push('backend');
+            }
+            if (fileNames.some(f => f.startsWith('frontend/'))) {
+              labels.push('frontend');
+            }
+            if (fileNames.some(f => f.includes('docker') || f.includes('compose'))) {
+              labels.push('docker');
+            }
+            if (fileNames.some(f => f.startsWith('.github/workflows'))) {
+              labels.push('ci-cd');
+            }
+            if (fileNames.some(f => f.includes('README') || f.includes('CHANGELOG'))) {
+              labels.push('documentation');
+            }
+            if (fileNames.some(f => f.startsWith('nginx/'))) {
+              labels.push('infrastructure');
+            }
+            
+            // Add size label
+            const addedLines = changedFiles.reduce((sum, f) => sum + (f.additions || 0), 0);
+            if (addedLines > 500) {
+              labels.push('large-change');
+            } else if (addedLines > 100) {
+              labels.push('medium-change');
+            }
+            
+            // Apply labels
+            if (labels.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                labels: [...new Set(labels)]  // Remove duplicates
+              });
+              console.log(`Added labels: ${[...new Set(labels)].join(', ')}`);
+            }
+
+  request-reviewers:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Request reviewers based on changes
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: changedFiles } = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+            
+            const reviewers = [];
+            const fileNames = changedFiles.map(f => f.filename);
+            
+            // Request backend reviewers
+            if (fileNames.some(f => f.startsWith('backend/'))) {
+              reviewers.push('backend-team');  // Configure in CODEOWNERS
+            }
+            
+            // Request frontend reviewers
+            if (fileNames.some(f => f.startsWith('frontend/'))) {
+              reviewers.push('frontend-team');  // Configure in CODEOWNERS
+            }
+            
+            if (reviewers.length > 0) {
+              console.log(`Reviewers would be requested: ${reviewers.join(', ')}`);
+              // Note: CODEOWNERS file automatically requests reviewers
+            }
+
+  changelog-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Check if CHANGELOG.md was updated
+        run: |
+          # Check if CHANGELOG.md was modified in this PR
+          if git diff origin/main HEAD --name-only | grep -q "CHANGELOG.md"; then
+            echo "✅ CHANGELOG.md was updated"
+          else
+            # Check if it's a documentation-only PR
+            FILES=$(git diff origin/main HEAD --name-only | grep -v "\.md$" | wc -l)
+            if [ $FILES -gt 0 ]; then
+              echo "⚠️  CHANGELOG.md should be updated for feature/fix PRs"
+              echo "Please add an entry under the 'Unreleased' section"
+            fi
+          fi
+
+  commit-lint:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Validate commit messages
+        run: |
+          # Get commits from this PR
+          COMMITS=$(git log origin/main..HEAD --format=%s)
+          
+          echo "📋 Validating commit messages..."
+          while IFS= read -r commit; do
+            if [[ $commit =~ ^(feat|fix|docs|style|refactor|test|chore|ci|perf|build|revert)(\(.+\))?!?:\ .+ ]]; then
+              echo "✅ $commit"
+            else
+              echo "⚠️  $commit"
+              echo "   Should follow: <type>(<scope>): <description>"
+            fi
+          done <<< "$COMMITS"
+
+  code-review-assistant:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Provide review suggestions
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: changedFiles } = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+            
+            let suggestions = "## 🔍 Code Review Checklist\n\n";
+            
+            const hasPythonChanges = changedFiles.some(f => f.filename.endsWith('.py'));
+            const hasJsChanges = changedFiles.some(f => f.filename.match(/\.(tsx?|jsx?)$/));
+            const hasTests = changedFiles.some(f => f.filename.includes('test'));
+            
+            if (hasPythonChanges && !hasTests) {
+              suggestions += "- ⚠️ Backend changes without tests - please add tests\n";
+            }
+            if (hasJsChanges && !hasTests) {
+              suggestions += "- ⚠️ Frontend changes without tests - please add tests\n";
+            }
+            if (hasTests) {
+              suggestions += "- ✅ Tests included\n";
+            }
+            
+            suggestions += "\n### Reviewer Focus Areas\n";
+            if (hasPythonChanges) {
+              suggestions += "- [ ] Code follows PEP 8 style guide\n";
+              suggestions += "- [ ] Type hints are complete\n";
+              suggestions += "- [ ] Error handling is appropriate\n";
+            }
+            if (hasJsChanges) {
+              suggestions += "- [ ] Code follows ESLint rules\n";
+              suggestions += "- [ ] TypeScript types are correct\n";
+              suggestions += "- [ ] No console.log statements\n";
+            }
+            suggestions += "- [ ] CHANGELOG.md updated\n";
+            suggestions += "- [ ] Documentation updated if needed\n";
+            
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: suggestions
+            });

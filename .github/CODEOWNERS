@@ -1,0 +1,39 @@
+# CODEOWNERS file - Automatically requests reviews from code owners
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything in the repo
+* @satoshiflow
+
+# Backend ownership
+/backend/ @satoshiflow
+/backend/app/ @satoshiflow
+/backend/app/modules/ @satoshiflow
+/backend/tests/ @satoshiflow
+
+# Frontend ownership
+/frontend/ @satoshiflow
+/frontend/control_deck/ @satoshiflow
+/frontend/axe_ui/ @satoshiflow
+
+# Infrastructure
+/docker-compose.yml @satoshiflow
+/Dockerfile* @satoshiflow
+/nginx/ @satoshiflow
+/.dockerignore @satoshiflow
+
+# CI/CD
+/.github/ @satoshiflow
+/.github/workflows/ @satoshiflow
+/.github/WORKFLOWS.md @satoshiflow
+
+# Documentation
+/docs/ @satoshiflow
+/README.md @satoshiflow
+/CHANGELOG.md @satoshiflow
+/DEVELOPMENT.md @satoshiflow
+
+# Configuration
+/.gitignore @satoshiflow
+/docker-compose.yml @satoshiflow
+/.env.example @satoshiflow
+/backend/.env.example @satoshiflow

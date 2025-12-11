@@ -1,0 +1,16 @@
+{
+  "name": "brain.supervisor",
+  "version": "1.0.0",
+  "router_prefix": "/api/supervisor",
+  "status": "stable",
+  "security": {
+    "required_roles": []
+  },
+  "governance": {
+    "level": 0
+  },
+  "ui": {
+    "group": "Core",
+    "icon": "Shield"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "brain.threats",
+  "version": "1.0.0",
+  "router_prefix": "/api/threats",
+  "status": "stable",
+  "security": {
+    "required_roles": []
+  },
+  "governance": {
+    "level": 0
+  },
+  "ui": {
+    "group": "Immune",
+    "icon": "ShieldAlert"
+  }
+}
