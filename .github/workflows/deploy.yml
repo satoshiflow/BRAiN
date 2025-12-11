@@ -49,11 +49,17 @@ jobs:
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H ${{ env.SSH_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+          echo "✅ SSH Key setup complete"
+          echo "Secret length: $(wc -c < ~/.ssh/deploy_key)"
+      
+      - name: Test SSH connection
+        run: |
+          ssh -i ~/.ssh/deploy_key -v ${{ env.SSH_USER }}@${{ env.SSH_HOST }} "whoami; pwd" 2>&1 | head -20
       
       - name: Create target directory
         run: |
           ssh -i ~/.ssh/deploy_key ${{ env.SSH_USER }}@${{ env.SSH_HOST }} \
-            "mkdir -p ${{ needs.determine-environment.outputs.target-path }}"
+            "mkdir -p ${{ needs.determine-environment.outputs.target-path }} && ls -la /srv/"
       
       - name: Deploy application
         run: |
