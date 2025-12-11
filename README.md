@@ -12,25 +12,44 @@ Dieses Repository ist ein produktionsreifes Skeleton für BRAiN Core v1.0:
 - ControlDeck: http://localhost:3000
 - AXE UI: http://localhost:3001
 
-## Quickstart
+## Quickstart mit Docker (empfohlen)
 
 ```bash
-# Backend lokal
+# Alle Services starten (Backend, Datenbanken, Frontends)
+docker-compose up --build
+
+# Im Hintergrund laufen lassen
+docker-compose up -d --build
+
+# Logs ansehen
+docker-compose logs -f backend
+docker-compose logs -f control_deck
+
+# Herunterfahren
+docker-compose down
+```
+
+## Lokale Entwicklung (ohne Docker)
+
+**Voraussetzung:** PostgreSQL 16 und Redis 7 müssen lokal laufen.
+
+```bash
+# Backend
 cd backend
-python -m venv .venv
-source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload
 
-# ControlDeck
+# ControlDeck (neues Terminal)
 cd frontend/control_deck
 npm install
 npm run dev
 
-# AXE UI
+# AXE UI (neues Terminal)
 cd frontend/axe_ui
 npm install
 npm run dev
 ```
 
-Für Docker siehe `docker-compose.yml`.
+## Entwicklungsumgebung
+
+Das Projekt verwendet **ausschließlich Docker und Docker Compose** für konsistente Umgebungen. Virtuelle Umgebungen (`.venv`) werden nicht in das Repository eingecheckt und sollten nicht lokal gepflegt werden.

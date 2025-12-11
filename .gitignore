@@ -1,6 +1,8 @@
 ﻿############################################################
 # B R A i N  –  PROJECT WIDE IGNORE RULES
 # Backend (Python/FastAPI) + Frontend (Next.js) + Docker
+# NOTE: Virtual environments (.venv/) should never be in git
+# Use Docker & Docker Compose for all environments
 ############################################################
 
 #############################
@@ -14,12 +16,26 @@ backend/.venv/
 .venv/
 venv/
 env/
+ENV/
 .env
 .env.*
 !.env.example
 build/
 dist/
 *.egg-info/
+
+#############################
+# TESTING & CODE QUALITY   #
+#############################
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.hypothesis/
+.tox/
+.mypy_cache/
+.dmypy.json
+.pyre/
 
 ################################
 # RUNTIME DATA & LOCAL STORAGE #
