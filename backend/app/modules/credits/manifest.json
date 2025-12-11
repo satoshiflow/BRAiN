@@ -1,0 +1,16 @@
+{
+  "name": "brain.credits",
+  "version": "1.0.0",
+  "router_prefix": "/api/credits",
+  "status": "stable",
+  "security": {
+    "required_roles": []
+  },
+  "governance": {
+    "level": 0
+  },
+  "ui": {
+    "group": "Core",
+    "icon": "Activity"
+  }
+}

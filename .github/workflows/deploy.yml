@@ -1,33 +1,120 @@
-name: Deploy to Hetzner
+name: Deploy to Server
 
 on:
   push:
-    branches: [ "main" ]
-  workflow_dispatch: {}
+    branches: [ dev, stage, main ]
+  workflow_dispatch:
+
+env:
+  SSH_HOST: 46.224.37.114
+  SSH_USER: root
 
 jobs:
-  deploy:
+  determine-environment:
     runs-on: ubuntu-latest
-
+    outputs:
+      target-path: ${{ steps.set-env.outputs.target-path }}
+      environment-name: ${{ steps.set-env.outputs.environment-name }}
     steps:
-      - name: Checkout (nur für Konsistenz, wird lokal nicht benutzt)
-        uses: actions/checkout@v4
-
-      - name: Start SSH agent
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.HETZNER_SSH_KEY }}
-
-      - name: Add known hosts
+      - name: Set environment based on branch
+        id: set-env
         run: |
-          ssh-keyscan -H brain.falklabs.de >> ~/.ssh/known_hosts
+          case "${{ github.ref_name }}" in
+            dev)
+              echo "target-path=/srv/dev" >> $GITHUB_OUTPUT
+              echo "environment-name=development" >> $GITHUB_OUTPUT
+              ;;
+            stage)
+              echo "target-path=/srv/stage" >> $GITHUB_OUTPUT
+              echo "environment-name=staging" >> $GITHUB_OUTPUT
+              ;;
+            main)
+              echo "target-path=/srv/prod" >> $GITHUB_OUTPUT
+              echo "environment-name=production" >> $GITHUB_OUTPUT
+              ;;
+          esac
 
-      - name: Deploy via SSH
+  deploy:
+    needs: determine-environment
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ needs.determine-environment.outputs.environment-name }}
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup SSH
         run: |
-          ssh ${{ secrets.HETZNER_SSH_USER }}@brain.falklabs.de << 'EOF'
-          set -e
-          cd ~/brain   # <--- ggf. anpassen, wenn dein Projektordner woanders liegt
-          git pull origin main
-          docker compose pull || true
-          docker compose up -d --build
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ env.SSH_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+      
+      - name: Create target directory
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ env.SSH_USER }}@${{ env.SSH_HOST }} \
+            "mkdir -p ${{ needs.determine-environment.outputs.target-path }}"
+      
+      - name: Deploy application
+        run: |
+          # Sync repository to server
+          rsync -avz --delete \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='__pycache__' \
+            --exclude='.env' \
+            --exclude='.DS_Store' \
+            . ${{ env.SSH_USER }}@${{ env.SSH_HOST }}:${{ needs.determine-environment.outputs.target-path }}/
+      
+      - name: Pull docker images and restart services
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ env.SSH_USER }}@${{ env.SSH_HOST }} << 'EOF'
+            cd ${{ needs.determine-environment.outputs.target-path }}
+            
+            # Create .env if not exists
+            if [ ! -f backend/.env ]; then
+              echo "⚠️  backend/.env not found, using .env.example"
+              cp backend/.env.example backend/.env 2>/dev/null || echo "No .env.example found"
+            fi
+            
+            # Pull latest images
+            docker pull ghcr.io/${{ github.repository }}/backend:${{ github.ref_name }} 2>/dev/null || echo "Backend image not found"
+            
+            # Restart services
+            if [ -f docker-compose.yml ]; then
+              docker-compose down --remove-orphans
+              docker-compose up -d
+              echo "✅ Services restarted"
+            else
+              echo "⚠️  docker-compose.yml not found"
+            fi
           EOF
+      
+      - name: Health check
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ env.SSH_USER }}@${{ env.SSH_HOST }} << 'EOF'
+            sleep 10
+            echo "🔍 Checking service health..."
+            # Check if backend is responding
+            if curl -f http://localhost:8000/health 2>/dev/null; then
+              echo "✅ Backend is healthy"
+            else
+              echo "⚠️  Backend health check failed (service may still be starting)"
+            fi
+          EOF
+      
+      - name: Cleanup SSH key
+        if: always()
+        run: |
+          rm -f ~/.ssh/deploy_key
+      
+      - name: Notify deployment
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const status = context.payload.pull_request ? '🚀 Deployment updated' : '✅ Deployment completed';
+            const branch = '${{ github.ref_name }}';
+            const path = '${{ needs.determine-environment.outputs.target-path }}';
+            console.log(`${status} to ${path} (branch: ${branch})`)

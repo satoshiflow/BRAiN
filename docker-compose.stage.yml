@@ -1,22 +1,22 @@
 services:
   backend:
     ports:
-      - "8001:8000"
+      - "8002:8000"
     environment:
-      - LOG_LEVEL=DEBUG
+      - LOG_LEVEL=INFO
 
   control_deck:
     ports:
-      - "3001:3000"
+      - "3003:3000"
 
   axe_ui:
     ports:
-      - "3002:3000"
+      - "3004:3000"
 
   postgres:
     ports:
-      - "5433:5432"
+      - "5434:5432"
 
   redis:
     ports:
-      - "6380:6379"
+      - "6381:6379"
