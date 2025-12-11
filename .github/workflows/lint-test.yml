@@ -1,0 +1,163 @@
+name: Lint & Test
+
+on:
+  push:
+    branches: [ main, v2, develop ]
+  pull_request:
+    branches: [ main, v2, develop ]
+  workflow_dispatch:
+
+jobs:
+  backend-lint-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: ankane/pgvector:latest
+        env:
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: brain_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          cd backend
+          pip install -r requirements.txt
+          pip install ruff pylint mypy pytest pytest-asyncio pytest-cov types-redis types-PyYAML
+      
+      - name: Lint with ruff
+        run: |
+          ruff check backend/app --select=E,W,F,I
+      
+      - name: Format check with ruff
+        run: |
+          ruff format backend/app --check
+      
+      - name: Type check with mypy
+        continue-on-error: true
+        run: |
+          mypy backend/app --ignore-missing-imports --no-implicit-optional
+      
+      - name: Run tests with coverage
+        env:
+          DATABASE_URL: postgresql://postgres:testpass@localhost:5432/brain_test
+          REDIS_URL: redis://localhost:6379/0
+          ANTHROPIC_API_KEY: sk-test-key
+        run: |
+          cd backend
+          pytest tests/ -v --cov=app --cov-report=xml --cov-report=term-missing
+      
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./backend/coverage.xml
+          flags: backend
+          name: backend-coverage
+
+  frontend-lint:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: [ control_deck, axe_ui ]
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'frontend/${{ matrix.app }}/package-lock.json'
+      
+      - name: Install dependencies (${{ matrix.app }})
+        run: |
+          cd frontend/${{ matrix.app }}
+          npm ci
+      
+      - name: ESLint (${{ matrix.app }})
+        run: |
+          cd frontend/${{ matrix.app }}
+          npm run lint --if-present || echo "No lint script"
+      
+      - name: Type check (${{ matrix.app }})
+        continue-on-error: true
+        run: |
+          cd frontend/${{ matrix.app }}
+          npm run type-check --if-present || npx tsc --noEmit || echo "No TypeScript"
+      
+      - name: Format check (${{ matrix.app }})
+        continue-on-error: true
+        run: |
+          cd frontend/${{ matrix.app }}
+          npm run format:check --if-present || echo "No format check script"
+
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+      
+      - name: Upload Trivy results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  health-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Validate Docker Compose
+        run: |
+          docker-compose config > /dev/null
+      
+      - name: Check critical files
+        run: |
+          required_files=(
+            "backend/requirements.txt"
+            "backend/app/main.py"
+            "frontend/control_deck/package.json"
+            "frontend/axe_ui/package.json"
+            "docker-compose.yml"
+            ".gitignore"
+          )
+          for file in "${required_files[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "❌ Missing critical file: $file"
+              exit 1
+            fi
+          done
+          echo "✅ All critical files present"

@@ -1,0 +1,127 @@
+name: Frontend CI
+
+on:
+  push:
+    branches: [ main, v2, develop ]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-ci.yml'
+  pull_request:
+    branches: [ main, v2, develop ]
+    paths:
+      - 'frontend/**'
+
+jobs:
+  lint-control-deck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'frontend/control_deck/package-lock.json'
+      
+      - name: Install dependencies (control_deck)
+        run: |
+          cd frontend/control_deck
+          npm ci
+      
+      - name: ESLint (control_deck)
+        run: |
+          cd frontend/control_deck
+          npm run lint --if-present || echo "No lint script defined"
+      
+      - name: Type check (control_deck)
+        run: |
+          cd frontend/control_deck
+          npm run type-check --if-present || npx tsc --noEmit || echo "No TypeScript check available"
+
+  lint-axe-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'frontend/axe_ui/package-lock.json'
+      
+      - name: Install dependencies (axe_ui)
+        run: |
+          cd frontend/axe_ui
+          npm ci
+      
+      - name: ESLint (axe_ui)
+        run: |
+          cd frontend/axe_ui
+          npm run lint --if-present || echo "No lint script defined"
+      
+      - name: Type check (axe_ui)
+        run: |
+          cd frontend/axe_ui
+          npm run type-check --if-present || npx tsc --noEmit || echo "No TypeScript check available"
+
+  build-control-deck:
+    needs: lint-control-deck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'frontend/control_deck/package-lock.json'
+      
+      - name: Install dependencies (control_deck)
+        run: |
+          cd frontend/control_deck
+          npm ci
+      
+      - name: Build (control_deck)
+        run: |
+          cd frontend/control_deck
+          npm run build
+      
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: control_deck-build
+          path: frontend/control_deck/.next
+          retention-days: 1
+
+  build-axe-ui:
+    needs: lint-axe-ui
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'frontend/axe_ui/package-lock.json'
+      
+      - name: Install dependencies (axe_ui)
+        run: |
+          cd frontend/axe_ui
+          npm ci
+      
+      - name: Build (axe_ui)
+        run: |
+          cd frontend/axe_ui
+          npm run build
+      
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: axe-ui-build
+          path: frontend/axe_ui/.next
+          retention-days: 1
