@@ -21,8 +21,9 @@
 11. [Development Workflow](#development-workflow)
 12. [Testing](#testing)
 13. [CI/CD Pipeline](#cicd-pipeline)
-14. [Critical Rules for AI Assistants](#critical-rules-for-ai-assistants)
-15. [Common Tasks & Examples](#common-tasks--examples)
+14. [Server Deployment](#server-deployment)
+15. [Critical Rules for AI Assistants](#critical-rules-for-ai-assistants)
+16. [Common Tasks & Examples](#common-tasks--examples)
 
 ---
 
@@ -1406,6 +1407,408 @@ CORS_ORIGINS=["http://localhost:3000", "http://localhost:3001"]
 # Logging
 LOG_LEVEL=INFO
 ```
+
+---
+
+## Server Deployment
+
+### Deployment Architecture
+
+BRAiN v2.0 uses a **three-environment deployment strategy**:
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Server: brain.falklabs.de (46.224.37.114)         │
+│                                                      │
+│  /srv/dev/     → Development (Port 8001, 3001)     │
+│  /srv/stage/   → Staging (Port 8002, 3003)         │
+│  /srv/prod/    → Production (Port 8000, 3000)      │
+│                                                      │
+│  /opt/brain/   → Old Production (deprecated)        │
+└─────────────────────────────────────────────────────┘
+```
+
+### Environment Mapping
+
+| Environment | Domain | Backend | Frontend | AXE | Database | Purpose |
+|-------------|--------|---------|----------|-----|----------|---------|
+| **Development** | dev.brain.falklabs.de | 8001 | 3001 | 3002 | brain_dev | Active development |
+| **Staging** | stage.brain.falklabs.de | 8002 | 3003 | 3004 | brain_stage | Pre-production testing |
+| **Production** | brain.falklabs.de | 8000 | 3000 | 3001 | brain_prod | Live system |
+| **Chat** | chat.falklabs.de | 8080 | - | - | openwebui_db | Open WebUI |
+
+### Deployment Workflow
+
+#### 1. Initial Server Setup (One-Time)
+
+```bash
+# SSH to server
+ssh root@brain.falklabs.de
+
+# Install Docker if not present
+curl -fsSL https://get.docker.com | sh
+
+# Install Docker Compose
+apt update && apt install docker-compose-plugin
+
+# Install Certbot for SSL
+apt install certbot python3-certbot-nginx
+```
+
+#### 2. Deploy Development Environment
+
+```bash
+# Create directory
+mkdir -p /srv/dev
+cd /srv/dev
+
+# Clone v2 branch
+git clone -b v2 https://github.com/satoshiflow/BRAiN.git .
+
+# Create .env.dev
+cat > .env.dev <<'EOF'
+ENVIRONMENT=development
+APP_NAME=BRAiN v2.0 Dev
+POSTGRES_DB=brain_dev
+POSTGRES_USER=brain
+POSTGRES_PASSWORD=brain_dev_secure_password
+DATABASE_URL=postgresql://brain:brain_dev_secure_password@postgres:5432/brain_dev
+REDIS_URL=redis://redis:6379/0
+API_HOST=0.0.0.0
+API_PORT=8000
+CORS_ORIGINS=["http://localhost:3001","https://dev.brain.falklabs.de"]
+LOG_LEVEL=DEBUG
+EOF
+
+# Start services
+export ENVIRONMENT=dev
+export ENV_FILE=.env.dev
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+
+# Wait for services
+sleep 30
+
+# Verify
+docker ps | grep brain
+curl http://localhost:8001/health
+```
+
+#### 3. Deploy Staging Environment
+
+```bash
+# Create directory
+mkdir -p /srv/stage
+cd /srv/stage
+
+# Clone v2 branch
+git clone -b v2 https://github.com/satoshiflow/BRAiN.git .
+
+# Create .env.stage
+cat > .env.stage <<'EOF'
+ENVIRONMENT=staging
+APP_NAME=BRAiN v2.0 Staging
+POSTGRES_DB=brain_stage
+POSTGRES_USER=brain
+POSTGRES_PASSWORD=brain_stage_secure_password
+DATABASE_URL=postgresql://brain:brain_stage_secure_password@postgres:5432/brain_stage
+REDIS_URL=redis://redis:6379/0
+API_HOST=0.0.0.0
+API_PORT=8000
+CORS_ORIGINS=["https://stage.brain.falklabs.de"]
+LOG_LEVEL=INFO
+EOF
+
+# Start services
+export ENVIRONMENT=stage
+export ENV_FILE=.env.stage
+docker-compose -f docker-compose.yml -f docker-compose.stage.yml up -d --build
+
+# Verify
+docker ps | grep brain
+curl http://localhost:8002/health
+```
+
+#### 4. Deploy Production Environment
+
+```bash
+# Create directory
+mkdir -p /srv/prod
+cd /srv/prod
+
+# Clone v2 branch (or specific release tag)
+git clone -b v2 https://github.com/satoshiflow/BRAiN.git .
+
+# Create .env.prod (with strong passwords)
+cat > .env.prod <<'EOF'
+ENVIRONMENT=production
+APP_NAME=BRAiN v2.0
+POSTGRES_DB=brain_prod
+POSTGRES_USER=brain
+POSTGRES_PASSWORD=$(openssl rand -hex 16)
+DATABASE_URL=postgresql://brain:STRONG_PASSWORD@postgres:5432/brain_prod
+REDIS_URL=redis://redis:6379/0
+API_HOST=0.0.0.0
+API_PORT=8000
+CORS_ORIGINS=["https://brain.falklabs.de"]
+LOG_LEVEL=WARNING
+JWT_SECRET_KEY=$(openssl rand -hex 32)
+EOF
+
+# Start services
+export ENVIRONMENT=prod
+export ENV_FILE=.env.prod
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+
+# Verify
+docker ps | grep brain
+curl http://localhost:8000/health
+```
+
+### Nginx Configuration
+
+#### 1. Install Modular Nginx Config
+
+```bash
+# From /srv/dev (after git pull)
+cd /srv/dev
+
+# Backup existing config
+cp /etc/nginx/nginx.conf /etc/nginx/nginx.conf.backup
+
+# Copy modular config
+cp nginx/nginx.conf /etc/nginx/nginx.conf
+cp -r nginx/snippets /etc/nginx/
+cp -r nginx/conf.d /etc/nginx/
+
+# Test configuration
+nginx -t
+
+# Reload nginx
+systemctl reload nginx
+```
+
+#### 2. Get SSL Certificates
+
+```bash
+# Development
+certbot --nginx -d dev.brain.falklabs.de --non-interactive --agree-tos --email admin@falklabs.de
+
+# Staging
+certbot --nginx -d stage.brain.falklabs.de --non-interactive --agree-tos --email admin@falklabs.de
+
+# Production (if not already configured)
+certbot --nginx -d brain.falklabs.de --non-interactive --agree-tos --email admin@falklabs.de
+```
+
+#### 3. Auto-Renewal
+
+Certbot auto-renewal is configured via systemd timer:
+
+```bash
+# Check renewal timer
+systemctl status certbot.timer
+
+# Test renewal (dry-run)
+certbot renew --dry-run
+
+# Manual renewal if needed
+certbot renew
+```
+
+### DNS Configuration
+
+Ensure DNS records point to server IP:
+
+| Subdomain | Type | Value | Purpose |
+|-----------|------|-------|---------|
+| `dev.brain.falklabs.de` | A | 46.224.37.114 | Development |
+| `stage.brain.falklabs.de` | A | 46.224.37.114 | Staging |
+| `brain.falklabs.de` | A | 46.224.37.114 | Production |
+| `chat.falklabs.de` | A | 46.224.37.114 | Open WebUI |
+
+### Update Deployment
+
+#### Update Development
+
+```bash
+cd /srv/dev
+git pull origin v2
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+docker-compose logs -f backend
+```
+
+#### Update Staging
+
+```bash
+cd /srv/stage
+git pull origin v2
+docker-compose -f docker-compose.yml -f docker-compose.stage.yml up -d --build
+docker-compose logs -f backend
+```
+
+#### Update Production (with downtime)
+
+```bash
+cd /srv/prod
+
+# Backup database
+docker exec brain-postgres-prod pg_dump -U brain brain_prod > backup_$(date +%Y%m%d).sql
+
+# Pull latest
+git pull origin v2
+
+# Rebuild
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+
+# Monitor logs
+docker-compose logs -f backend
+
+# Test
+curl https://brain.falklabs.de/api/health
+```
+
+### Monitoring & Logs
+
+#### View Logs
+
+```bash
+# Development
+cd /srv/dev
+docker-compose logs -f backend
+docker-compose logs -f control_deck
+
+# Staging
+cd /srv/stage
+docker-compose logs -f backend
+
+# Production
+cd /srv/prod
+docker-compose logs -f backend
+
+# Nginx logs
+tail -f /var/log/nginx/dev-brain-access.log
+tail -f /var/log/nginx/stage-brain-access.log
+tail -f /var/log/nginx/brain-access.log
+```
+
+#### Service Status
+
+```bash
+# Docker containers
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+# Nginx
+systemctl status nginx
+
+# Disk usage
+df -h
+docker system df
+
+# Database size
+docker exec brain-postgres-dev psql -U brain -d brain_dev -c "SELECT pg_size_pretty(pg_database_size('brain_dev'));"
+```
+
+### Backup & Restore
+
+#### Database Backup
+
+```bash
+# Development
+docker exec brain-postgres-dev pg_dump -U brain brain_dev > /backups/dev_$(date +%Y%m%d).sql
+
+# Staging
+docker exec brain-postgres-stage pg_dump -U brain brain_stage > /backups/stage_$(date +%Y%m%d).sql
+
+# Production
+docker exec brain-postgres-prod pg_dump -U brain brain_prod > /backups/prod_$(date +%Y%m%d).sql
+```
+
+#### Database Restore
+
+```bash
+# Stop application
+docker-compose stop backend
+
+# Restore
+docker exec -i brain-postgres-dev psql -U brain brain_dev < /backups/dev_20251211.sql
+
+# Start application
+docker-compose start backend
+```
+
+### Rollback Strategy
+
+If deployment fails:
+
+```bash
+# 1. Check which commit is currently deployed
+cd /srv/prod
+git log -1
+
+# 2. Rollback to previous version
+git log --oneline -10  # Find previous working commit
+git checkout <previous-commit-hash>
+
+# 3. Rebuild
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+
+# 4. Verify
+curl https://brain.falklabs.de/api/health
+```
+
+### Performance Optimization
+
+#### Docker Cleanup
+
+```bash
+# Remove unused images
+docker image prune -a
+
+# Remove unused volumes
+docker volume prune
+
+# Remove unused networks
+docker network prune
+
+# Full cleanup (careful!)
+docker system prune -a --volumes
+```
+
+#### Log Rotation
+
+Configure log rotation for nginx and Docker logs:
+
+```bash
+# /etc/logrotate.d/nginx-brain
+/var/log/nginx/dev-brain-*.log
+/var/log/nginx/stage-brain-*.log
+/var/log/nginx/brain-*.log {
+    daily
+    missingok
+    rotate 14
+    compress
+    delaycompress
+    notifempty
+    create 0640 www-data adm
+    sharedscripts
+    postrotate
+        [ -f /var/run/nginx.pid ] && kill -USR1 `cat /var/run/nginx.pid`
+    endscript
+}
+```
+
+### Security Checklist
+
+- [ ] Strong passwords in `.env.prod`
+- [ ] JWT secret keys generated
+- [ ] SSL certificates valid
+- [ ] Firewall configured (UFW)
+- [ ] Docker daemon secured
+- [ ] Regular backups scheduled
+- [ ] Log monitoring enabled
+- [ ] Rate limiting configured
+- [ ] CORS properly configured
+- [ ] Debug mode disabled in production
 
 ---
 
