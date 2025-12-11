@@ -52,6 +52,7 @@ Das Format basiert auf [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
   - Docker & Docker Compose setup
   - PostgreSQL 16 database integration
   - Redis 7 caching layer
+  - Nginx reverse proxy (nginx/ directory)
   - Multi-stage Dockerfile builds
   - Production-ready configuration
 
@@ -64,7 +65,8 @@ Das Format basiert auf [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 - **Configuration**
   - .env.example for backend configuration
   - docker-compose.yml for local development
-  - nginx.conf for reverse proxy configuration
+  - nginx/nginx.conf for reverse proxy configuration
+  - nginx/Dockerfile for proxy container
   - Comprehensive .gitignore for clean repository
 
 #### Technical Stack
