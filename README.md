@@ -1,4 +1,4 @@
-# 🧠 BRAiN Core Architecture v1.0 – Starter Kit
+# 🧠 BRAiN Core Architecture v2.0 – Starter Kit
 
 Dieses Repository ist ein produktionsreifes Skeleton für BRAiN Core v1.0:
 - FastAPI Backend mit Modul-Architektur

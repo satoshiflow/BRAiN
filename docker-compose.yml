@@ -2,54 +2,50 @@ services:
   backend:
     build:
       context: ./backend
-    container_name: brain-backend
+    container_name: brain-backend-${ENVIRONMENT:-dev}
     env_file:
-      - ./backend/.env
-    ports:
-      - "8000:8000"
+      - ${ENV_FILE:-.env.dev}
     depends_on:
       - postgres
       - redis
+    restart: unless-stopped
 
   control_deck:
     build:
       context: ./frontend/control_deck
-    container_name: brain-control-deck
+    container_name: brain-control-deck-${ENVIRONMENT:-dev}
     environment:
       - NEXT_PUBLIC_BRAIN_API_BASE=http://backend:8000
-    ports:
-      - "3000:3000"
     depends_on:
       - backend
+    restart: unless-stopped
 
   axe_ui:
     build:
       context: ./frontend/axe_ui
-    container_name: brain-axe-ui
+    container_name: brain-axe-ui-${ENVIRONMENT:-dev}
     environment:
       - NEXT_PUBLIC_BRAIN_API_BASE=http://backend:8000
-    ports:
-      - "3001:3000"
     depends_on:
       - backend
+    restart: unless-stopped
 
   postgres:
     image: postgres:16
-    container_name: brain-postgres
+    container_name: brain-postgres-${ENVIRONMENT:-dev}
     environment:
-      POSTGRES_DB: brain
-      POSTGRES_USER: brain
-      POSTGRES_PASSWORD: brain
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: ${POSTGRES_DB:-brain}
+      POSTGRES_USER: ${POSTGRES_USER:-brain}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-brain}
     volumes:
-      - brain_pg_data:/var/lib/postgresql/data
+      - brain_pg_data_${ENVIRONMENT:-dev}:/var/lib/postgresql/data
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
-    container_name: brain-redis
-    ports:
-      - "6379:6379"
+    container_name: brain-redis-${ENVIRONMENT:-dev}
+    restart: unless-stopped
 
 volumes:
-  brain_pg_data:
+  brain_pg_data_${ENVIRONMENT:-dev}:  
+  

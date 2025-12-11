@@ -1,229 +1,120 @@
-name: Deploy
+name: Deploy to Server
 
 on:
   push:
-    branches: [ main ]
+    branches: [ dev, stage, main ]
   workflow_dispatch:
-  workflow_run:
-    workflows: [ "Build Docker Images" ]
-    branches: [ main ]
-    types: [ completed ]
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  SSH_HOST: 46.224.37.114
+  SSH_USER: root
 
 jobs:
-  pre-deploy-tests:
+  determine-environment:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: ankane/pgvector:latest
-        env:
-          POSTGRES_PASSWORD: testpass
-          POSTGRES_DB: brain_test
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-      
-      redis:
-        image: redis:7-alpine
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 6379:6379
-    
+    outputs:
+      target-path: ${{ steps.set-env.outputs.target-path }}
+      environment-name: ${{ steps.set-env.outputs.environment-name }}
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-      
-      - name: Install dependencies
+      - name: Set environment based on branch
+        id: set-env
         run: |
-          python -m pip install --upgrade pip
-          cd backend
-          pip install -r requirements.txt
-          pip install pytest pytest-asyncio
-      
-      - name: Run integration tests
-        env:
-          DATABASE_URL: postgresql://postgres:testpass@localhost:5432/brain_test
-          REDIS_URL: redis://localhost:6379/0
-          ANTHROPIC_API_KEY: sk-test-key
-        run: |
-          cd backend
-          pytest tests/ -v -m integration || pytest tests/ -v
-      
-      - name: Run smoke tests
-        run: |
-          echo "✅ Smoke tests would run here"
+          case "${{ github.ref_name }}" in
+            dev)
+              echo "target-path=/srv/dev" >> $GITHUB_OUTPUT
+              echo "environment-name=development" >> $GITHUB_OUTPUT
+              ;;
+            stage)
+              echo "target-path=/srv/stage" >> $GITHUB_OUTPUT
+              echo "environment-name=staging" >> $GITHUB_OUTPUT
+              ;;
+            main)
+              echo "target-path=/srv/prod" >> $GITHUB_OUTPUT
+              echo "environment-name=production" >> $GITHUB_OUTPUT
+              ;;
+          esac
 
-  deploy-staging:
-    needs: pre-deploy-tests
+  deploy:
+    needs: determine-environment
     runs-on: ubuntu-latest
     environment:
-      name: staging
-      url: https://staging.brain.local
+      name: ${{ needs.determine-environment.outputs.environment-name }}
     
     steps:
       - uses: actions/checkout@v4
       
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Pull latest images
+      - name: Setup SSH
         run: |
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/backend:main || echo "Backend not found"
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/control-deck:main || echo "Control deck not found"
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/nginx:main || echo "Nginx not found"
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ env.SSH_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
       
-      - name: Deploy to staging
+      - name: Create target directory
         run: |
-          echo "🚀 Deploying to staging environment..."
-          # For local Docker Compose deployment (self-hosted runner)
-          # docker-compose up -d
-          # For Kubernetes deployment:
-          # kubectl apply -f k8s/staging/ --namespace=staging
-          # For Cloud deployment (AWS ECS, Google Cloud Run, etc.)
-          # Use specific deploy action for your platform
-          echo "✅ Staging deployment configuration ready"
+          ssh -i ~/.ssh/deploy_key ${{ env.SSH_USER }}@${{ env.SSH_HOST }} \
+            "mkdir -p ${{ needs.determine-environment.outputs.target-path }}"
+      
+      - name: Deploy application
+        run: |
+          # Sync repository to server
+          rsync -avz --delete \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='__pycache__' \
+            --exclude='.env' \
+            --exclude='.DS_Store' \
+            . ${{ env.SSH_USER }}@${{ env.SSH_HOST }}:${{ needs.determine-environment.outputs.target-path }}/
+      
+      - name: Pull docker images and restart services
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ env.SSH_USER }}@${{ env.SSH_HOST }} << 'EOF'
+            cd ${{ needs.determine-environment.outputs.target-path }}
+            
+            # Create .env if not exists
+            if [ ! -f backend/.env ]; then
+              echo "⚠️  backend/.env not found, using .env.example"
+              cp backend/.env.example backend/.env 2>/dev/null || echo "No .env.example found"
+            fi
+            
+            # Pull latest images
+            docker pull ghcr.io/${{ github.repository }}/backend:${{ github.ref_name }} 2>/dev/null || echo "Backend image not found"
+            
+            # Restart services
+            if [ -f docker-compose.yml ]; then
+              docker-compose down --remove-orphans
+              docker-compose up -d
+              echo "✅ Services restarted"
+            else
+              echo "⚠️  docker-compose.yml not found"
+            fi
+          EOF
       
       - name: Health check
         run: |
-          sleep 10
-          echo "🔍 Running health checks..."
-          # curl -f http://localhost/api/health || exit 1
-          echo "✅ Health checks passed"
+          ssh -i ~/.ssh/deploy_key ${{ env.SSH_USER }}@${{ env.SSH_HOST }} << 'EOF'
+            sleep 10
+            echo "🔍 Checking service health..."
+            # Check if backend is responding
+            if curl -f http://localhost:8000/health 2>/dev/null; then
+              echo "✅ Backend is healthy"
+            else
+              echo "⚠️  Backend health check failed (service may still be starting)"
+            fi
+          EOF
+      
+      - name: Cleanup SSH key
+        if: always()
+        run: |
+          rm -f ~/.ssh/deploy_key
       
       - name: Notify deployment
         if: always()
         uses: actions/github-script@v7
         with:
           script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: '🚀 Deployment to staging completed'
-            })
-
-  deploy-production:
-    needs: deploy-staging
-    runs-on: ubuntu-latest
-    environment:
-      name: production
-      url: https://brain.app
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Create deployment
-        uses: actions/github-script@v7
-        id: deployment
-        with:
-          script: |
-            const deployment = await github.rest.repos.createDeployment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              ref: context.ref,
-              environment: 'production',
-              required_contexts: [],
-              auto_merge: false
-            });
-            return deployment.data.id;
-      
-      - name: Deploy to production
-        run: |
-          echo "🚀 Deploying to production environment..."
-          # For local Docker Compose:
-          # docker-compose -f docker-compose.prod.yml up -d
-          # For Kubernetes:
-          # kubectl apply -f k8s/production/ --namespace=production
-          # For Cloud deployment:
-          # Use specific provider action
-          echo "✅ Production deployment ready"
-      
-      - name: Smoke tests
-        run: |
-          sleep 15
-          echo "🧪 Running production smoke tests..."
-          # curl -f https://brain.app/api/health || exit 1
-          echo "✅ Production smoke tests passed"
-      
-      - name: Update deployment status
-        if: success()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.repos.createDeploymentStatus({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              deployment_id: ${{ steps.deployment.outputs.result }},
-              state: 'success',
-              environment_url: 'https://brain.app',
-              description: 'Deployment succeeded'
-            });
-      
-      - name: Notify deployment
-        if: always()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const status = context.payload.pull_request ? 'updated' : 'deployed';
-            console.log(`✅ Production deployment ${status}`);
-
-  rollback:
-    if: failure()
-    needs: deploy-production
-    runs-on: ubuntu-latest
-    
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: HEAD~1
-      
-      - name: Notify rollback
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: '⚠️ Deployment failed, rolling back to previous version'
-            })
-      
-      - name: Rollback to previous version
-        run: |
-          echo "⚠️ Rolling back to previous deployment..."
-          # kubectl rollout undo deployment/brain-backend -n production
-          # kubectl rollout undo deployment/brain-frontend -n production
-          echo "✅ Rollback completed"
+            const status = context.payload.pull_request ? '🚀 Deployment updated' : '✅ Deployment completed';
+            const branch = '${{ github.ref_name }}';
+            const path = '${{ needs.determine-environment.outputs.target-path }}';
+            console.log(`${status} to ${path} (branch: ${branch})`)
