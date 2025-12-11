@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Guide for BRAiN
 
-**Version:** 0.3.0
+**Version:** 0.3.1
 **Last Updated:** 2025-12-11
 **Purpose:** Comprehensive guide for AI assistants working with the BRAiN codebase
 
@@ -1904,6 +1904,298 @@ systemctl status ollama
 
 ---
 
+## Server Deployment
+
+### Deployment Architecture
+
+BRAiN v2.0 uses a **three-environment deployment strategy** on server `brain.falklabs.de` (46.224.37.114):
+
+| Environment | Path | Backend Port | Frontend Port | Domain |
+|-------------|------|--------------|---------------|---------|
+| Development | `/srv/dev/` | 8001 | 3001 | dev.brain.falklabs.de |
+| Staging | `/srv/stage/` | 8002 | 3003 | stage.brain.falklabs.de |
+| Production | `/srv/prod/` | 8000 | 3000 | brain.falklabs.de |
+
+### Deployment Scripts
+
+Two automated scripts handle deployment:
+
+#### 1. Pre-Deployment Check
+
+```bash
+bash /root/brain-v2-precheck.sh
+```
+
+Verifies:
+- ✅ SSH key exists at `/root/.ssh/ssh_key_github`
+- ✅ SSH key has correct permissions (600)
+- ✅ GitHub SSH authentication works
+- ✅ Target directory state
+- ✅ Docker installation
+- ✅ Disk space (>10GB recommended)
+- ✅ Port availability (8001, 3001, 3002)
+
+#### 2. Main Setup Script
+
+```bash
+bash /root/brain-v2-setup.sh
+```
+
+Performs:
+1. **Directory Preparation** - Creates/backs up `/srv/dev/`
+2. **Repository Clone** - Clones via SSH from `git@github.com:satoshiflow/BRAiN.git` (branch: `v2`)
+3. **Environment Files** - Generates `.env.dev`, `.env.stage`, `.env.prod` with secure passwords
+4. **Docker Setup** - Installs/verifies Docker and Docker Compose
+5. **Container Build** - Builds and starts development containers
+6. **Service Verification** - Tests backend and frontend health
+7. **Nginx Configuration** - Installs modular nginx config
+8. **SSL Certificates** - Obtains Let's Encrypt certificates
+
+### Nginx Configuration Structure
+
+The modular nginx setup separates concerns:
+
+```
+nginx/
+├── nginx.conf              # Host system config (includes snippets & conf.d)
+├── nginx.docker.conf       # Docker container config (internal routing)
+├── Dockerfile              # Uses nginx.docker.conf
+├── README.md               # Configuration documentation
+├── snippets/
+│   ├── proxy-params.conf   # Standard proxy headers & timeouts
+│   └── rate-limits.conf    # Rate limiting zones
+└── conf.d/
+    ├── upstream.conf       # All environment upstreams
+    ├── dev.brain.conf      # Development server block
+    ├── stage.brain.conf    # Staging server block
+    └── brain.conf          # Production server block
+```
+
+**Key Points:**
+- `nginx.docker.conf` uses container names (e.g., `brain-backend:8000`)
+- `nginx.conf` + `conf.d/*` use localhost ports (e.g., `localhost:8001`)
+- Snippets provide reusable proxy settings (avoid duplicate directives)
+
+### Common Deployment Issues & Solutions
+
+#### Issue 1: Frontend TypeScript Build Errors
+
+**Error:**
+```
+Module '@/components/ui/sidebar' has no exported member 'SidebarProvider'
+```
+
+**Solution:**
+The sidebar component was missing `SidebarProvider`, `SidebarInset`, and `SidebarTrigger` exports. This has been fixed in recent commits. If you encounter this:
+
+```bash
+# Ensure you're on latest v2 branch
+cd /srv/dev
+git pull origin v2
+
+# Rebuild frontend
+docker compose -f docker-compose.yml -f docker-compose.dev.yml build --no-cache control_deck
+```
+
+#### Issue 2: Nginx Duplicate Directive Errors
+
+**Error:**
+```
+'proxy_connect_timeout' directive is duplicate
+```
+
+**Solution:**
+This occurred when proxy timeouts were defined both in snippets and server blocks. The modular config now centralizes these in `snippets/proxy-params.conf`:
+
+```nginx
+# snippets/proxy-params.conf already includes:
+proxy_connect_timeout 75s;
+proxy_send_timeout 300s;
+proxy_read_timeout 300s;
+```
+
+Remove duplicate directives from server blocks.
+
+#### Issue 3: Old Containers Blocking Ports
+
+**Error:**
+```
+Bind for 0.0.0.0:8000 failed: port is already allocated
+```
+
+**Solution:**
+Stop old containers from previous deployment:
+
+```bash
+# Check what's using the ports
+docker ps -a | grep brain
+netstat -tuln | grep -E ":(8000|8001|3001|3002)"
+
+# Stop old deployment
+cd /opt/brain && docker-compose down  # if old version exists
+
+# Or stop specific containers
+docker stop brain-backend brain-control-deck brain-axe-ui
+docker rm brain-backend brain-control-deck brain-axe-ui
+```
+
+#### Issue 4: npm Dependency Conflicts During Build
+
+**Error:**
+```
+ERESOLVE unable to resolve dependency tree
+```
+
+**Solution:**
+Frontend Dockerfiles use `--legacy-peer-deps` flag:
+
+```dockerfile
+RUN npm install --legacy-peer-deps
+```
+
+If you modify `package.json`, ensure this flag remains.
+
+#### Issue 5: Missing docker-compose.dev.yml
+
+**Error:**
+```
+open /srv/dev/docker-compose.dev.yml: no such file or directory
+```
+
+**Solution:**
+Create the file with development port mappings:
+
+```yaml
+# docker-compose.dev.yml
+services:
+  backend:
+    ports:
+      - "8001:8000"
+
+  control_deck:
+    ports:
+      - "3001:3000"
+
+  axe_ui:
+    ports:
+      - "3002:3000"
+```
+
+Then run:
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+```
+
+### Manual Deployment Steps
+
+If automated scripts fail, perform manual deployment:
+
+```bash
+# 1. Clone repository
+export GIT_SSH_COMMAND="ssh -i /root/.ssh/ssh_key_github -o StrictHostKeyChecking=no"
+git clone -b v2 git@github.com:satoshiflow/BRAiN.git /srv/dev
+
+# 2. Create environment file
+cd /srv/dev
+cat > .env.dev <<EOF
+ENVIRONMENT=development
+DATABASE_URL=postgresql://brain:YOUR_PASSWORD@postgres:5432/brain_dev
+REDIS_URL=redis://redis:6379/0
+CORS_ORIGINS=["http://localhost:3001","https://dev.brain.falklabs.de"]
+LOG_LEVEL=DEBUG
+EOF
+
+# 3. Build and start
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+
+# 4. Verify
+curl http://localhost:8001/health
+curl http://localhost:3001
+
+# 5. Configure nginx
+cp nginx/nginx.conf /etc/nginx/nginx.conf
+cp -r nginx/snippets /etc/nginx/
+cp -r nginx/conf.d /etc/nginx/
+nginx -t && systemctl reload nginx
+
+# 6. Get SSL certificate
+certbot --nginx -d dev.brain.falklabs.de --non-interactive --agree-tos --email admin@falklabs.de
+```
+
+### Updating Deployed Environment
+
+```bash
+cd /srv/dev
+
+# Pull latest changes
+git pull origin v2
+
+# Rebuild and restart
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+
+# Check logs
+docker compose logs -f backend
+```
+
+### Environment File Reference
+
+Generated `.env.dev` contains:
+
+```bash
+ENVIRONMENT=development
+APP_NAME=BRAiN v2.0 Dev
+
+# Database (password auto-generated)
+POSTGRES_DB=brain_dev
+POSTGRES_USER=brain
+POSTGRES_PASSWORD=brain_dev_<random>
+DATABASE_URL=postgresql://brain:<password>@postgres:5432/brain_dev
+
+# Redis
+REDIS_URL=redis://redis:6379/0
+
+# API
+API_HOST=0.0.0.0
+API_PORT=8000
+
+# CORS
+CORS_ORIGINS=["http://localhost:3001","http://dev.brain.falklabs.de","https://dev.brain.falklabs.de"]
+
+# Logging
+LOG_LEVEL=DEBUG
+
+# LLM (optional)
+OLLAMA_HOST=http://host.docker.internal:11434
+OLLAMA_MODEL=llama3.2:latest
+```
+
+### Workflow: Local → GitHub → Server
+
+1. **Local Development** (Windows PC: `D:\BRAiN-V2\`)
+   - Make changes on feature branches
+   - Test locally
+   - Push to GitHub
+
+2. **GitHub PR Review**
+   - Create PR to `v2` branch
+   - Code review
+   - Merge when approved
+
+3. **Server Deployment**
+   ```bash
+   ssh root@brain.falklabs.de
+   cd /srv/dev
+   git pull origin v2
+   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+   ```
+
+4. **Verify Deployment**
+   - Backend: https://dev.brain.falklabs.de/api/health
+   - Frontend: https://dev.brain.falklabs.de
+   - Logs: `docker compose logs -f`
+
+---
+
 ## Additional Resources
 
 **Documentation:**
@@ -1911,6 +2203,7 @@ systemctl status ollama
 - `docs/BRAIN_SERVER_DATASHEET_FOR_CHATGPT.md` - Server specifications
 - `README.dev.md` - Developer quick start
 - `CHANGELOG.md` - Version history
+- `nginx/README.md` - Nginx configuration guide
 
 **Key Technologies:**
 - [FastAPI Docs](https://fastapi.tiangolo.com/)
@@ -1922,6 +2215,12 @@ systemctl status ollama
 ---
 
 ## Version History
+
+**0.3.1** (2025-12-11)
+- Added comprehensive Server Deployment section
+- Fixed missing sidebar components (SidebarProvider, SidebarInset, SidebarTrigger)
+- Created modular nginx configuration structure
+- Added deployment troubleshooting guide
 
 **0.3.0** (2025-12-11)
 - Supervisor deck integration
