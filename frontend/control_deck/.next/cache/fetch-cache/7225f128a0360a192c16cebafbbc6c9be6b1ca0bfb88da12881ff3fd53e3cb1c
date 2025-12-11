@@ -1,1 +1,0 @@
-{"kind":"FETCH","data":{"headers":{"content-length":"14","content-type":"application/json","date":"Tue, 02 Dec 2025 11:24:57 GMT","server":"uvicorn"},"body":"eyJ0aHJlYXRzIjpbXX0=","status":200,"url":"http://localhost:8000/api/threats"},"revalidate":31536000,"tags":[]}
