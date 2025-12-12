@@ -8,6 +8,9 @@ RUN npm install --legacy-peer-deps
 COPY . .
 RUN npm run build
 
+# Ensure public directory exists
+RUN mkdir -p public
+
 FROM node:22-alpine AS runner
 
 WORKDIR /app
