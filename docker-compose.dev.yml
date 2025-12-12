@@ -20,3 +20,15 @@ services:
   redis:
     ports:
       - "6380:6379"
+
+  qdrant:
+    ports:
+      - "6334:6333"
+
+  ollama:
+    ports:
+      - "11434:11434"
+
+  openwebui:
+    ports:
+      - "8080:8080"
