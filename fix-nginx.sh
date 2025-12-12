@@ -12,7 +12,11 @@ if [ -f "/etc/nginx/conf.d/chat.conf" ]; then
 
     # Remove ALL duplicate proxy directive lines (typically around line 39-42)
     # These are duplicates because they're already defined in proxy-params.conf
-    sed -i '/^\s*proxy_connect_timeout/d; /^\s*proxy_send_timeout/d; /^\s*proxy_read_timeout/d' /etc/nginx/conf.d/chat.conf
+    # Using grep -v to remove lines containing these directives
+    grep -v 'proxy_connect_timeout' /etc/nginx/conf.d/chat.conf > /tmp/chat.conf.tmp
+    grep -v 'proxy_send_timeout' /tmp/chat.conf.tmp > /tmp/chat.conf.tmp2
+    grep -v 'proxy_read_timeout' /tmp/chat.conf.tmp2 > /etc/nginx/conf.d/chat.conf
+    rm /tmp/chat.conf.tmp /tmp/chat.conf.tmp2
 
     echo "Removed duplicate proxy timeout directives from chat.conf"
 fi

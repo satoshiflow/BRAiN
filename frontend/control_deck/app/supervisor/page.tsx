@@ -48,14 +48,16 @@ export default async function SupervisorPage() {
             <Separator orientation="vertical" className="mr-2 h-5" />
             <Breadcrumb>
               <BreadcrumbList>
-                <BreadcrumbItem className="hidden md:block">
-                  <BreadcrumbLink href="/">BRAiN</BreadcrumbLink>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator className="hidden md:block" />
-                <BreadcrumbItem className="hidden md:block">
-                  <BreadcrumbLink href="/">ControlDeck</BreadcrumbLink>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator className="hidden md:block" />
+                <div className="hidden md:block">
+                  <BreadcrumbItem>
+                    <BreadcrumbLink href="/">BRAiN</BreadcrumbLink>
+                  </BreadcrumbItem>
+                  <BreadcrumbSeparator />
+                  <BreadcrumbItem>
+                    <BreadcrumbLink href="/">ControlDeck</BreadcrumbLink>
+                  </BreadcrumbItem>
+                  <BreadcrumbSeparator />
+                </div>
                 <BreadcrumbItem>
                   <BreadcrumbPage>Supervisor</BreadcrumbPage>
                 </BreadcrumbItem>
