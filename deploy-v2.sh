@@ -82,9 +82,9 @@ log_success "Repository cloned successfully"
 #############################################
 log_info "Step 3/6: Creating .env configuration..."
 
-# Generate secure passwords
-POSTGRES_PASSWORD=$(openssl rand -base64 32)
-JWT_SECRET=$(openssl rand -base64 64)
+# Generate secure passwords (URL-safe, no special chars)
+POSTGRES_PASSWORD=$(openssl rand -base64 32 | tr -d '/+=' | head -c 32)
+JWT_SECRET=$(openssl rand -base64 64 | tr -d '/+=' | head -c 64)
 
 cat > "$V2_DIR/.env" <<EOF
 # 🧠 BRAIN v2.0 - Configuration
@@ -123,10 +123,10 @@ POSTGRES_HOST=postgres
 POSTGRES_PORT=5432
 POSTGRES_DB=brain
 POSTGRES_USER=brain
-POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+POSTGRES_PASSWORD="$POSTGRES_PASSWORD"
 
 # SQLAlchemy Database URL (async)
-DATABASE_URL=postgresql+asyncpg://brain:$POSTGRES_PASSWORD@postgres:5432/brain
+DATABASE_URL="postgresql+asyncpg://brain:$POSTGRES_PASSWORD@postgres:5432/brain"
 
 
 #############################################
@@ -197,7 +197,7 @@ LOG_ENABLE_CONSOLE=true
 #############################################
 # SECURITY
 #############################################
-JWT_SECRET_KEY=$JWT_SECRET
+JWT_SECRET_KEY="$JWT_SECRET"
 JWT_ALGORITHM=HS256
 JWT_ACCESS_TOKEN_EXPIRE_MINUTES=300
 PASSWORD_SALT_ROUNDS=12
