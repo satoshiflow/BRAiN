@@ -74,6 +74,16 @@ if [ ! -d "$V2_DIR" ]; then
 fi
 
 cd "$V2_DIR"
+
+# Check if remote is using SSH and switch to HTTPS if needed
+CURRENT_REMOTE=$(git remote get-url origin 2>/dev/null || echo "")
+if [[ "$CURRENT_REMOTE" == git@github.com:* ]]; then
+    log_info "Switching Git remote from SSH to HTTPS..."
+    HTTPS_URL=$(echo "$CURRENT_REMOTE" | sed 's|git@github.com:|https://github.com/|' | sed 's|\.git$||').git
+    git remote set-url origin "$HTTPS_URL"
+    log_success "Git remote updated to HTTPS"
+fi
+
 log_info "Fetching latest changes from Git..."
 git fetch origin
 git checkout claude/migrate-v2-launch-01UQ1FuiVg8Rv6UQwwDar1g5
