@@ -1,0 +1,56 @@
+# LiteLLM Configuration - Multi-Provider Support
+# Routes requests to different LLM providers under one API
+
+model_list:
+  # === LOCAL OLLAMA MODELS ===
+  - model_name: llama3.2-3b
+    litellm_params:
+      model: ollama/llama3.2:3b
+      api_base: http://ollama:11434
+
+  - model_name: qwen2.5-7b
+    litellm_params:
+      model: ollama/qwen2.5:7b
+      api_base: http://ollama:11434
+
+  - model_name: mistral-7b
+    litellm_params:
+      model: ollama/mistral:7b
+      api_base: http://ollama:11434
+
+  # === OPENAI (if API key provided) ===
+  - model_name: gpt-4o
+    litellm_params:
+      model: gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+
+  # === ANTHROPIC CLAUDE (if API key provided) ===
+  - model_name: claude-3-5-sonnet
+    litellm_params:
+      model: anthropic/claude-3-5-sonnet-20241022
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  - model_name: claude-3-5-haiku
+    litellm_params:
+      model: anthropic/claude-3-5-haiku-20241022
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+# General Settings
+general_settings:
+  master_key: "sk-brain-secret-key-change-this"  # Change this!
+  completion_model: llama3.2-3b  # Default model
+
+# Optional: Model fallbacks
+# If one model fails, try another
+router_settings:
+  routing_strategy: simple-shuffle
+
+# Optional: Rate limiting
+# litellm_settings:
+#   success_callback: ["prometheus"]
+#   failure_callback: ["prometheus"]
