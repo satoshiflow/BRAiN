@@ -1,0 +1,25 @@
+# --- FastAPI + Server ---
+fastapi
+uvicorn[standard]
+
+# --- Mission System Dependencies ---
+redis>=4.5.0
+pydantic>=2.0.0
+pydantic-settings>=2.1.0
+
+# --- Optional: WebSockets für Live-Updating ---
+websockets
+starlette
+
+# --- Optional: LLM/Agent Integration ---
+httpx
+python-dotenv
+
+# --- Logging / Utils ---
+loguru==0.7.3
+
+
+# --- Testing ---
+pytest
+httpx[http2]
+pytest-asyncio  

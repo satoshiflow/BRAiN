@@ -2,121 +2,81 @@ name: Backend CI
 
 on:
   push:
-    branches: [ main, v2, develop ]
+    branches: [ "dev" ]
     paths:
-      - 'backend/**'
-      - '.github/workflows/backend-ci.yml'
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
   pull_request:
-    branches: [ main, v2, develop ]
+    branches: [ "dev", "main" ]
     paths:
-      - 'backend/**'
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
 
 jobs:
-  lint:
+  backend-ci:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-      
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          cd backend
-          pip install -r requirements.txt
-          pip install ruff pylint
-      
-      - name: Lint with ruff
-        run: |
-          ruff check backend/app --select=E,W,F,I
-      
-      - name: Lint with pylint
-        continue-on-error: true
-        run: |
-          pylint backend/app --disable=C0111,C0103 || true
 
-  type-check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-      
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          cd backend
-          pip install -r requirements.txt
-          pip install mypy types-redis types-PyYAML
-      
-      - name: Type check with mypy
-        continue-on-error: true
-        run: |
-          mypy backend/app --ignore-missing-imports --no-implicit-optional
-
-  test:
-    runs-on: ubuntu-latest
     services:
       postgres:
-        image: ankane/pgvector:latest
+        image: postgres:16
         env:
-          POSTGRES_PASSWORD: testpass
-          POSTGRES_DB: brain_test
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+          POSTGRES_USER: brain
+          POSTGRES_PASSWORD: brain
+          POSTGRES_DB: brain
         ports:
           - 5432:5432
-      
-      redis:
-        image: redis:7-alpine
         options: >-
-          --health-cmd "redis-cli ping"
+          --health-cmd "pg_isready -U brain"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+
+      redis:
+        image: redis:7-alpine
         ports:
           - 6379:6379
-    
+
+      qdrant:
+        image: qdrant/qdrant:latest
+        ports:
+          - 6333:6333
+
+    env:
+      DATABASE_URL: postgresql+psycopg2://brain:brain@localhost:5432/brain
+      REDIS_URL: redis://localhost:6379/0
+      QDRANT_URL: http://localhost:6333
+
     steps:
-      - uses: actions/checkout@v4
-      
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
-          cache: 'pip'
-      
+          python-version: "3.11"
+
       - name: Install dependencies
+        working-directory: backend
         run: |
-          python -m pip install --upgrade pip
-          cd backend
           pip install -r requirements.txt
-          pip install pytest pytest-asyncio pytest-cov
-      
-      - name: Run tests with coverage
-        env:
-          DATABASE_URL: postgresql://postgres:testpass@localhost:5432/brain_test
-          REDIS_URL: redis://localhost:6379/0
-          ANTHROPIC_API_KEY: sk-test-key
+          pip install black ruff mypy
+
+      - name: Ruff (lint)
+        working-directory: backend
+        run: ruff check .
+
+      - name: Black (format check)
+        working-directory: backend
+        run: black --check .
+
+      - name: MyPy (type check)
+        working-directory: backend
+        run: mypy . || true  # not blocking am Anfang, später kannst du das '|| true' entfernen
+
+      - name: Run tests
+        working-directory: backend
+        run: pytest -q
+
+      - name: Docker build check (backend)
         run: |
-          cd backend
-          pytest tests/ -v --cov=app --cov-report=xml --cov-report=term-missing
-      
-      - name: Upload coverage reports
-        uses: codecov/codecov-action@v3
-        with:
-          file: ./backend/coverage.xml
-          flags: backend
-          name: backend-coverage
-          fail_ci_if_error: false
+          docker build -t brain-backend-ci ./backend

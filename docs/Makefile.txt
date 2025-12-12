@@ -1,0 +1,64 @@
+# Makefile für BRAIN Backend (Dev & Prod)
+
+PROJECT_NAME=brain
+COMPOSE_BASE=docker-compose.yml
+COMPOSE_DEV=docker-compose.dev.yml
+COMPOSE_PROD=docker-compose.prod.yml
+
+.PHONY: help dev-up dev-down dev-build dev-logs prod-up prod-down prod-build prod-logs test-local test-docker
+
+help:
+	@echo ""
+	@echo "BRAIN Backend – Makefile Befehle"
+	@echo "---------------------------------"
+	@echo "make dev-up        - Dev-Stack starten (mit Reload, Port 8010)"
+	@echo "make dev-down      - Dev-Stack stoppen"
+	@echo "make dev-build     - Dev-Stack neu bauen"
+	@echo "make dev-logs      - Logs des Dev-Backends verfolgen"
+	@echo ""
+	@echo "make prod-up       - Prod-Stack starten (Port 8000, ohne Reload)"
+	@echo "make prod-down     - Prod-Stack stoppen"
+	@echo "make prod-build    - Prod-Stack neu bauen"
+	@echo "make prod-logs     - Logs des Prod-Backends verfolgen"
+	@echo ""
+	@echo "make test-local    - PyTests lokal im venv ausführen"
+	@echo "make test-docker   - PyTests im Backend-Container ausführen"
+	@echo ""
+
+# ------ DEV -------
+
+dev-up:
+	docker compose -f $(COMPOSE_BASE) -f $(COMPOSE_DEV) up --build
+
+dev-down:
+	docker compose -f $(COMPOSE_BASE) -f $(COMPOSE_DEV) down
+
+dev-build:
+	docker compose -f $(COMPOSE_BASE) -f $(COMPOSE_DEV) build
+
+dev-logs:
+	docker compose -f $(COMPOSE_BASE) -f $(COMPOSE_DEV) logs -f backend
+
+# ------ PROD -------
+
+prod-up:
+	docker compose -f $(COMPOSE_BASE) -f $(COMPOSE_PROD) up -d --build
+
+prod-down:
+	docker compose -f $(COMPOSE_BASE) -f $(COMPOSE_PROD) down
+
+prod-build:
+	docker compose -f $(COMPOSE_BASE) -f $(COMPOSE_PROD) build
+
+prod-logs:
+	docker compose -f $(COMPOSE_BASE) -f $(COMPOSE_PROD) logs -f backend
+
+# ------ TESTS -------
+
+test-local:
+	# Lokale Tests im venv (Windows: vorher .venv aktivieren)
+	pytest
+
+test-docker:
+	# Tests im Backend-Container
+	docker compose -f $(COMPOSE_BASE) -f $(COMPOSE_DEV) run --rm backend pytest

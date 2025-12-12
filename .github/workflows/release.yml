@@ -1,193 +1,54 @@
-name: Release
+name: Create Release
 
 on:
   push:
     tags:
-      - 'v*.*.*'
-      - 'release-*'
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to release (e.g., 2.0.0)'
-        required: true
-        type: string
-
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+      - "v*.*.*"
 
 jobs:
-  validate-release:
+  create-release:
+    name: Create GitHub Release
     runs-on: ubuntu-latest
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Validate version format
-        run: |
-          if [[ ${{ github.ref }} =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            VERSION=${GITHUB_REF#refs/tags/}
-            echo "VERSION=$VERSION" >> $GITHUB_ENV
-            echo "✅ Valid version tag: $VERSION"
-          else
-            echo "❌ Invalid version format. Expected: v*.*.*"
-            exit 1
-          fi
-      
-      - name: Check CHANGELOG.md
-        run: |
-          if grep -q "## \[${{ env.VERSION }}\]" CHANGELOG.md; then
-            echo "✅ CHANGELOG.md updated for ${{ env.VERSION }}"
-          else
-            echo "⚠️ CHANGELOG.md not updated (continuing anyway)"
-          fi
 
-  build-release:
-    needs: validate-release
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-    
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Determine version
-        id: version
-        run: |
-          if [[ ${{ github.ref }} =~ ^refs/tags/ ]]; then
-            VERSION=${GITHUB_REF#refs/tags/v}
-          else
-            VERSION=${{ github.event.inputs.version }}
-          fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-      
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Build and push backend release
-        uses: docker/build-push-action@v5
-        with:
-          context: ./backend
-          file: ./backend/Dockerfile
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/backend:${{ env.VERSION }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/backend:latest
-          labels: |
-            org.opencontainers.image.version=${{ env.VERSION }}
-            org.opencontainers.image.revision=${{ github.sha }}
-      
-      - name: Build and push control-deck release
-        uses: docker/build-push-action@v5
-        with:
-          context: ./frontend/control_deck
-          file: ./frontend/control_deck/Dockerfile
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/control-deck:${{ env.VERSION }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/control-deck:latest
-          labels: |
-            org.opencontainers.image.version=${{ env.VERSION }}
-            org.opencontainers.image.revision=${{ github.sha }}
-      
-      - name: Build and push axe-ui release
-        uses: docker/build-push-action@v5
-        with:
-          context: ./frontend/axe_ui
-          file: ./frontend/axe_ui/Dockerfile
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/axe-ui:${{ env.VERSION }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/axe-ui:latest
-          labels: |
-            org.opencontainers.image.version=${{ env.VERSION }}
-            org.opencontainers.image.revision=${{ github.sha }}
-      
-      - name: Build and push nginx release
-        uses: docker/build-push-action@v5
-        with:
-          context: ./nginx
-          file: ./nginx/Dockerfile
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/nginx:${{ env.VERSION }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/nginx:latest
-          labels: |
-            org.opencontainers.image.version=${{ env.VERSION }}
-            org.opencontainers.image.revision=${{ github.sha }}
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-  create-github-release:
-    needs: build-release
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      
-      - name: Generate changelog
+      - name: Generate changelog (simple)
         id: changelog
         run: |
-          VERSION=${{ needs.build-release.outputs.version }}
-          CHANGELOG_SECTION=$(sed -n "/## \[${VERSION}\]/,/## \[/p" CHANGELOG.md | head -n -1)
           echo "changelog<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGELOG_SECTION" >> $GITHUB_OUTPUT
+          echo "Changes in $GITHUB_REF_NAME:" >> $GITHUB_OUTPUT
+          git log --oneline --no-merges $(git describe --tags --abbrev=0 --tags --match "v*.*.*" --always HEAD^)..HEAD >> $GITHUB_OUTPUT || true
           echo "EOF" >> $GITHUB_OUTPUT
-      
+
       - name: Create GitHub Release
-        uses: actions/create-release@v1
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          body: ${{ steps.changelog.outputs.changelog }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: v${{ needs.build-release.outputs.version }}
-          release_name: BRAiN v${{ needs.build-release.outputs.version }}
-          body: |
-            ## Release v${{ needs.build-release.outputs.version }}
-            
-            Docker images are now available:
-            - `ghcr.io/${{ github.repository }}/backend:${{ needs.build-release.outputs.version }}`
-            - `ghcr.io/${{ github.repository }}/control-deck:${{ needs.build-release.outputs.version }}`
-            - `ghcr.io/${{ github.repository }}/axe-ui:${{ needs.build-release.outputs.version }}`
-            - `ghcr.io/${{ github.repository }}/nginx:${{ needs.build-release.outputs.version }}`
-            
-            Also tagged as `:latest`
-            
-            ${{ steps.changelog.outputs.changelog }}
-          draft: false
-          prerelease: false
-
-  notify-release:
-    needs: [ build-release, create-github-release ]
+  upload-release-asset:
+    name: Upload Release Asset
     runs-on: ubuntu-latest
-    if: always()
-    
+    needs: create-release
     steps:
-      - name: Notify release
-        uses: actions/github-script@v7
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Build release asset
+        run: |
+          mkdir -p release
+          echo "This is a placeholder for the release asset." > release/asset.txt
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v2
         with:
-          script: |
-            const version = '${{ needs.build-release.outputs.version }}';
-            const status = context.payload.workflow_run?.conclusion || 'success';
+          tag_name: ${{ github.ref_name }}
+          files: release/asset.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   
+
             
-            console.log(`📦 BRAiN v${version} released!`);
-            console.log(`📍 Container images: ghcr.io/${{ github.repository }}`);
-            
-            if (status === 'success') {
-              console.log('✅ All release checks passed');
-            } else {
-              console.log('⚠️ Release completed with warnings');
-            }

@@ -1,94 +1,124 @@
-﻿############################################################
+############################################################
 # B R A i N  –  PROJECT WIDE IGNORE RULES
 # Backend (Python/FastAPI) + Frontend (Next.js) + Docker
-# NOTE: Virtual environments (.venv/) should never be in git
-# Use Docker & Docker Compose for all environments
 ############################################################
 
 #############################
 # PYTHON / FASTAPI BACKEND #
 #############################
+
+# Bytecode cache
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+
+# Virtual environments
 backend/.venv/
 .venv/
 venv/
 env/
-ENV/
+
+# Local environment configs (keep example)
 .env
 .env.*
 !.env.example
+
+# Python build artifacts
 build/
 dist/
 *.egg-info/
 
-#############################
-# TESTING & CODE QUALITY   #
-#############################
-.coverage
-.coverage.*
-htmlcov/
-.pytest_cache/
-.hypothesis/
-.tox/
-.mypy_cache/
-.dmypy.json
-.pyre/
 
 ################################
 # RUNTIME DATA & LOCAL STORAGE #
 ################################
+
+# Mission system, event logs, caches
 _data/
 data/
 storage/
 cache/
 tmp/
 temp/
+
+# Worker logs
 logs/
 *.log
+
+# Qdrant local storage (if ever created locally)
 qdrant_data/
 qdrant_storage/
+
+# Postgres dumps
 *.sql
 *.sqlite
 *.db
 
+
 ###########################
 # NEXT.JS / FRONTEND      #
 ###########################
+
+# Dependencies
 node_modules/
 .npm/
 .pnpm-store/
+
+# Next.js build output
 .next/
 out/
 dist/
 build/
+
+# Temp / cache
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 *.tsbuildinfo
+
+# Vercel
 .vercel/
+
 
 ############################
 # DOCKER / DEPLOYMENT      #
 ############################
+
+# Docker artifacts
 docker-data/
 docker-volume/
 docker-temp/
+
+# If docker-compose env files are used
 docker.env
 docker-compose.override.yml
+
 
 ############################
 # OS / IDE / EDITOR FILES #
 ############################
+
+# macOS
 .DS_Store
+
+# Windows
 Thumbs.db
+
+# VSCode
 .vscode/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# JetBrains
 .idea/
+
+# Other editors
 *.swp
 *.swo
+
 
 ############################################################
 # END OF FILE

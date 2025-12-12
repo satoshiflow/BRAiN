@@ -1,0 +1,19 @@
+# Start Prod (z. B. auf Hetzner):
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+
+# Start Dev-Setup:
+cd D:\Hetzner\brain_modular_refactor
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+
+docker compose down
+docker compose up --build
+
+host.docker.internal → Container mit lokal laufendes Ollama auf Windows
+# LLM / Ollama
+OLLAMA_HOST=http://host.docker.internal:11434
+LLM_DEFAULT_MODEL=phi3
+LLM_MAX_TOKENS=2048
+LLM_TEMPERATURE=0.7
+
+Set-Alias brain .\brain.ps1
+brain dev
