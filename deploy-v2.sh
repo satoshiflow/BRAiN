@@ -86,6 +86,19 @@ fi
 
 log_info "Fetching latest changes from Git..."
 git fetch origin
+
+# Handle local changes
+if ! git diff-index --quiet HEAD -- 2>/dev/null; then
+    log_warning "Local changes detected, stashing them..."
+    git stash push -m "Auto-stash before V2 deployment $(date +%Y%m%d_%H%M%S)"
+fi
+
+# Handle untracked files
+if [ -n "$(git ls-files --others --exclude-standard)" ]; then
+    log_warning "Untracked files detected, stashing them..."
+    git stash push -u -m "Auto-stash untracked files $(date +%Y%m%d_%H%M%S)"
+fi
+
 git checkout claude/migrate-v2-launch-01UQ1FuiVg8Rv6UQwwDar1g5
 git pull origin claude/migrate-v2-launch-01UQ1FuiVg8Rv6UQwwDar1g5
 log_success "Repository updated"
