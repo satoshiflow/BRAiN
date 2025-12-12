@@ -6,7 +6,7 @@ MissionControlRuntime
 Integration-Layer zwischen:
 
 - unserem einfachen MissionQueue-System (Redis ZSET)
-- dem EventStream aus mission_control_core.core
+- dem EventStream für Mission-Events
 
 Phase 2:
 - enqueue_mission() nutzt MissionQueue
@@ -21,7 +21,7 @@ import logging
 import os
 from typing import Any, Dict, List, Optional
 
-from backend.mission_control_core.core import (
+from .event_stream import (
     EventStream,
     Event,
     EventType,

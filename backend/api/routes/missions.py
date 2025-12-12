@@ -3,7 +3,7 @@
 BRAIN Mission System V2 - API Routes
 ------------------------------------
 
-Integration des Redis-basierten Mission-Systems + EventStream aus mission_control_core.
+Integration des Redis-basierten Mission-Systems mit EventStream.
 
 Expose:
 - GET  /api/missions/info
