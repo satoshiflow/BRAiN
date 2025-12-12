@@ -127,7 +127,7 @@ BRAiN/
 │   └── requirements.txt
 │
 ├── frontend/                  # Frontend applications
-│   ├── brain_control_ui/      # Admin/Control Center (Next.js)
+│   ├── control_deck/          # Admin/Control Center (Next.js)
 │   │   ├── src/
 │   │   │   ├── app/           # App Router pages
 │   │   │   │   ├── (control-center)/  # Route group
@@ -157,7 +157,7 @@ BRAiN/
 │   │   ├── package.json
 │   │   └── tsconfig.json
 │   │
-│   └── brain_ui/              # Chat Interface (Next.js)
+│   └── axe_ui/                # Chat Interface (Next.js)
 │       ├── app/               # App Router pages
 │       ├── src/
 │       │   ├── brain-ui/
@@ -1061,15 +1061,15 @@ docker compose restart backend
 
 **4. Start Frontend (Development):**
 ```bash
-# Control UI
-cd frontend/brain_control_ui
+# Control Deck
+cd frontend/control_deck
 npm install
 npm run dev  # http://localhost:3000
 
-# Chat UI
-cd frontend/brain_ui
+# AXE UI (Chat)
+cd frontend/axe_ui
 npm install
-npm run dev  # http://localhost:3002
+npm run dev  # http://localhost:3001
 ```
 
 ### Development Cycle
@@ -1095,7 +1095,7 @@ docker compose logs -f backend
 **Frontend Development:**
 ```bash
 # Next.js has hot reload - just edit files
-vim frontend/brain_control_ui/src/app/page.tsx
+vim frontend/control_deck/app/page.tsx
 # Browser auto-refreshes
 ```
 
@@ -1113,7 +1113,7 @@ docker compose up -d backend
 
 **Frontend:**
 ```bash
-cd frontend/brain_control_ui
+cd frontend/control_deck
 npm install new-package
 # or
 npm install --save-dev @types/new-package
@@ -1462,7 +1462,7 @@ curl http://localhost:8000/api/my-feature/hello
 
 3. **Add frontend hook:**
 ```typescript
-// frontend/brain_control_ui/src/hooks/useMyFeature.ts
+// frontend/control_deck/hooks/useMyFeature.ts
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 
@@ -1481,7 +1481,7 @@ export function useHello() {
 
 4. **Use in component:**
 ```typescript
-// frontend/brain_control_ui/src/components/hello-card.tsx
+// frontend/control_deck/components/hello-card.tsx
 "use client";
 
 import { useHello } from "@/hooks/useMyFeature";
@@ -1641,7 +1641,7 @@ class MissionWorker:
 
 3. **Update frontend types:**
 ```typescript
-// frontend/brain_control_ui/src/types/missions.ts
+// frontend/control_deck/types/missions.ts
 export type MissionType =
   | "general"
   | "code_review"
@@ -1762,7 +1762,7 @@ Navigate to Settings > LLM Configuration and use the form.
 
 1. **Install component:**
 ```bash
-cd frontend/brain_control_ui
+cd frontend/control_deck
 npx shadcn-ui@latest add dialog
 ```
 
