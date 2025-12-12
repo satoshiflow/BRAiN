@@ -2,9 +2,11 @@ services:
   backend:
     build:
       context: ./backend
-    container_name: brain-backend-${ENVIRONMENT:-dev}
+    container_name: brain-backend
     env_file:
-      - ${ENV_FILE:-.env.dev}
+      - .env
+    ports:
+      - "8000:8000"
     depends_on:
       - postgres
       - redis
@@ -13,9 +15,11 @@ services:
   control_deck:
     build:
       context: ./frontend/control_deck
-    container_name: brain-control-deck-${ENVIRONMENT:-dev}
+    container_name: brain-control-deck
     environment:
       - NEXT_PUBLIC_BRAIN_API_BASE=http://backend:8000
+    ports:
+      - "3000:3000"
     depends_on:
       - backend
     restart: unless-stopped
@@ -23,61 +27,73 @@ services:
   axe_ui:
     build:
       context: ./frontend/axe_ui
-    container_name: brain-axe-ui-${ENVIRONMENT:-dev}
+    container_name: brain-axe-ui
     environment:
       - NEXT_PUBLIC_BRAIN_API_BASE=http://backend:8000
+    ports:
+      - "3001:3000"
     depends_on:
       - backend
     restart: unless-stopped
 
   postgres:
     image: postgres:16
-    container_name: brain-postgres-${ENVIRONMENT:-dev}
+    container_name: brain-postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-brain}
       POSTGRES_USER: ${POSTGRES_USER:-brain}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-brain}
     volumes:
-      - brain_pg_data_${ENVIRONMENT:-dev}:/var/lib/postgresql/data
+      - brain_pg_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
     restart: unless-stopped
 
   redis:
     image: redis:7-alpine
-    container_name: brain-redis-${ENVIRONMENT:-dev}
+    container_name: brain-redis
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 5
+    ports:
+      - "6379:6379"
     restart: unless-stopped
 
   qdrant:
     image: qdrant/qdrant:latest
-    container_name: brain-qdrant-${ENVIRONMENT:-dev}
+    container_name: brain-qdrant
     volumes:
-      - brain_qdrant_data_${ENVIRONMENT:-dev}:/qdrant/storage
+      - brain_qdrant_data:/qdrant/storage
+    ports:
+      - "6333:6333"
     restart: unless-stopped
 
   ollama:
     image: ollama/ollama:latest
-    container_name: brain-ollama-${ENVIRONMENT:-dev}
+    container_name: brain-ollama
     volumes:
-      - brain_ollama_data_${ENVIRONMENT:-dev}:/root/.ollama
+      - brain_ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
     restart: unless-stopped
 
   openwebui:
     image: ghcr.io/open-webui/open-webui:main
-    container_name: brain-openwebui-${ENVIRONMENT:-dev}
+    container_name: brain-openwebui
     volumes:
-      - brain_openwebui_data_${ENVIRONMENT:-dev}:/app/backend/data
+      - brain_openwebui_data:/app/backend/data
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
+    ports:
+      - "8080:8080"
     depends_on:
       - ollama
     restart: unless-stopped
 
 volumes:
-  brain_pg_data_${ENVIRONMENT:-dev}:
-  brain_qdrant_data_${ENVIRONMENT:-dev}:
-  brain_ollama_data_${ENVIRONMENT:-dev}:
-  brain_openwebui_data_${ENVIRONMENT:-dev}:
+  brain_pg_data:
+  brain_qdrant_data:
+  brain_ollama_data:
+  brain_openwebui_data:
