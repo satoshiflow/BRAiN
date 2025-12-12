@@ -31,12 +31,23 @@ log_info "======================================"
 #############################################
 # Step 1: Stop old /opt/brain/ installation
 #############################################
-log_info "Step 1/6: Stopping old /opt/brain/ installation..."
+log_info "Step 1/7: Stopping old /opt/brain/ installation..."
+
+# Check for existing Ollama volume before stopping
+log_info "Checking for existing Ollama data..."
+OLD_OLLAMA_VOLUME=$(docker volume ls --format "{{.Name}}" | grep -E "brain.*ollama|ollama" | head -1)
+if [ -n "$OLD_OLLAMA_VOLUME" ]; then
+    log_success "Found existing Ollama volume: $OLD_OLLAMA_VOLUME"
+    REUSE_OLLAMA=true
+else
+    log_info "No existing Ollama volume found - will download models fresh"
+    REUSE_OLLAMA=false
+fi
 
 if [ -d "/opt/brain" ]; then
     cd /opt/brain
     if [ -f "docker-compose.yml" ]; then
-        log_info "Stopping old containers..."
+        log_info "Stopping old containers (keeping volumes)..."
         docker compose down || docker-compose down || true
         log_success "Old containers stopped"
     else
@@ -49,7 +60,7 @@ fi
 #############################################
 # Step 2: Update V2 Repository
 #############################################
-log_info "Step 2/6: Updating V2 repository..."
+log_info "Step 2/7: Updating V2 repository..."
 
 V2_DIR="/home/user/BRAiN"
 if [ ! -d "$V2_DIR" ]; then
@@ -67,7 +78,7 @@ log_success "Repository updated"
 #############################################
 # Step 3: Create .env.dev file
 #############################################
-log_info "Step 3/6: Creating .env.dev configuration..."
+log_info "Step 3/7: Creating .env.dev configuration..."
 
 # Generate secure passwords
 POSTGRES_PASSWORD=$(openssl rand -base64 32)
@@ -226,7 +237,7 @@ log_success ".env.dev created with secure passwords"
 #############################################
 # Step 4: Pull Docker images
 #############################################
-log_info "Step 4/6: Pulling Docker images..."
+log_info "Step 4/7: Pulling Docker images..."
 
 cd "$V2_DIR"
 ENV_FILE=.env.dev docker compose -f docker-compose.yml -f docker-compose.dev.yml pull
@@ -236,7 +247,7 @@ log_success "Docker images pulled"
 #############################################
 # Step 5: Start V2 services
 #############################################
-log_info "Step 5/6: Starting V2 services..."
+log_info "Step 5/7: Starting V2 services..."
 
 cd "$V2_DIR"
 ENV_FILE=.env.dev docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
@@ -244,9 +255,34 @@ ENV_FILE=.env.dev docker compose -f docker-compose.yml -f docker-compose.dev.yml
 log_success "V2 services started"
 
 #############################################
-# Step 6: Health checks
+# Step 6: Migrate Ollama data (if exists)
 #############################################
-log_info "Step 6/6: Running health checks..."
+log_info "Step 6/7: Checking Ollama data migration..."
+
+if [ "$REUSE_OLLAMA" = true ] && [ -n "$OLD_OLLAMA_VOLUME" ]; then
+    log_info "Migrating existing Ollama models from $OLD_OLLAMA_VOLUME..."
+
+    # Copy models from old volume to new volume
+    docker run --rm \
+        -v "$OLD_OLLAMA_VOLUME:/source:ro" \
+        -v "brain_ollama_data_dev:/dest" \
+        alpine sh -c "cp -r /source/* /dest/ 2>/dev/null || true"
+
+    log_success "Ollama models migrated - no need to re-download!"
+    log_info "Restarting Ollama to load models..."
+    docker restart brain-ollama-dev
+    sleep 5
+else
+    log_info "No existing Ollama data to migrate"
+    log_warning "You will need to download Ollama models manually:"
+    log_warning "  docker exec brain-ollama-dev ollama pull phi3"
+    log_warning "  docker exec brain-ollama-dev ollama pull llama3.2"
+fi
+
+#############################################
+# Step 7: Health checks
+#############################################
+log_info "Step 7/7: Running health checks..."
 
 # Wait for services to be ready
 log_info "Waiting 30 seconds for services to initialize..."
@@ -338,8 +374,15 @@ log_info "View logs with:"
 log_info "  cd $V2_DIR"
 log_info "  ENV_FILE=.env.dev docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f"
 echo ""
-log_info "To download Ollama models:"
-log_info "  docker exec brain-ollama-dev ollama pull phi3"
-log_info "  docker exec brain-ollama-dev ollama pull llama3.2"
-echo ""
+if [ "$REUSE_OLLAMA" != true ]; then
+    log_info "To download Ollama models:"
+    log_info "  docker exec brain-ollama-dev ollama pull phi3"
+    log_info "  docker exec brain-ollama-dev ollama pull llama3.2"
+    echo ""
+else
+    log_success "Ollama models were migrated from old installation! ✓"
+    log_info "Check available models:"
+    log_info "  docker exec brain-ollama-dev ollama list"
+    echo ""
+fi
 log_success "Deployment completed successfully! 🎉"

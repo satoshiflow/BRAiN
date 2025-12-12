@@ -34,14 +34,17 @@ bash deploy-v2.sh
 ```
 
 The script will:
-1. ✅ Stop old /opt/brain/ containers
+1. ✅ Stop old /opt/brain/ containers (volumes kept)
 2. ✅ Update V2 repository
 3. ✅ Create .env.dev with secure passwords
 4. ✅ Pull all Docker images
 5. ✅ Start all V2 services
-6. ✅ Run health checks
+6. ✅ **Migrate existing Ollama models** (if found - saves GB of downloads!)
+7. ✅ Run comprehensive health checks
 
 **Deployment time:** ~5-10 minutes (depending on image pull speed)
+
+**Smart Migration:** If Ollama models exist in the old installation, they will be automatically migrated to V2 - **no need to re-download GB of models!**
 
 ---
 
@@ -67,16 +70,18 @@ The script will:
 
 ## After Deployment
 
-### 1. Download Ollama Models
+### 1. Check/Download Ollama Models
+
+If the deployment script found existing models, they're already migrated! Otherwise, download them:
 
 ```bash
-# Download recommended models
+# Check if models are already available
+docker exec brain-ollama-dev ollama list
+
+# If no models found, download recommended ones:
 docker exec brain-ollama-dev ollama pull phi3
 docker exec brain-ollama-dev ollama pull llama3.2
 docker exec brain-ollama-dev ollama pull llama3.1
-
-# List downloaded models
-docker exec brain-ollama-dev ollama list
 ```
 
 ### 2. Access Services
