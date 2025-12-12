@@ -10,10 +10,11 @@ if [ -f "/etc/nginx/conf.d/chat.conf" ]; then
     # Backup original
     cp /etc/nginx/conf.d/chat.conf /etc/nginx/conf.d/chat.conf.backup
 
-    # Remove the duplicate proxy_connect_timeout line at line 39
-    sed -i '39{/proxy_connect_timeout/d;}' /etc/nginx/conf.d/chat.conf
+    # Remove ALL duplicate proxy directive lines (typically around line 39-42)
+    # These are duplicates because they're already defined in proxy-params.conf
+    sed -i '/^\s*proxy_connect_timeout/d; /^\s*proxy_send_timeout/d; /^\s*proxy_read_timeout/d' /etc/nginx/conf.d/chat.conf
 
-    echo "Fixed duplicate directive in chat.conf"
+    echo "Removed duplicate proxy timeout directives from chat.conf"
 fi
 
 # 2. Test Nginx configuration
