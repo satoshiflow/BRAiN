@@ -1,7 +1,7 @@
 # CLAUDE.md - AI Assistant Guide for BRAiN
 
-**Version:** 0.3.1
-**Last Updated:** 2025-12-11
+**Version:** 0.4.0
+**Last Updated:** 2025-12-12
 **Purpose:** Comprehensive guide for AI assistants working with the BRAiN codebase
 
 ---
@@ -2215,6 +2215,13 @@ OLLAMA_MODEL=llama3.2:latest
 ---
 
 ## Version History
+
+**0.4.0** (2025-12-12)
+- Comprehensive documentation overhaul
+- Updated all README files for clarity and completeness
+- Enhanced architecture documentation
+- Improved developer onboarding documentation
+- Synchronized version across all documentation files
 
 **0.3.1** (2025-12-11)
 - Added comprehensive Server Deployment section
