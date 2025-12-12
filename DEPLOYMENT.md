@@ -22,7 +22,7 @@ We've created an automated deployment script that handles everything:
 ssh root@brain.falklabs.de
 
 # 2. Navigate to V2 repository
-cd /home/user/BRAiN
+cd /root/BRAiN
 
 # 3. Pull latest changes
 git fetch origin
@@ -104,7 +104,7 @@ curl http://localhost:8001/docs
 ### 3. View Logs
 
 ```bash
-cd /home/user/BRAiN
+cd /root/BRAiN
 
 # All services
 ENV_FILE=.env.dev docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f
@@ -119,7 +119,7 @@ ENV_FILE=.env.dev docker compose -f docker-compose.yml -f docker-compose.dev.yml
 ### 4. Restart Services
 
 ```bash
-cd /home/user/BRAiN
+cd /root/BRAiN
 
 # Restart all
 ENV_FILE=.env.dev docker compose -f docker-compose.yml -f docker-compose.dev.yml restart
@@ -147,7 +147,7 @@ docker compose down
 ### 2. Update Repository
 
 ```bash
-cd /home/user/BRAiN
+cd /root/BRAiN
 git fetch origin
 git checkout claude/migrate-v2-launch-01UQ1FuiVg8Rv6UQwwDar1g5
 git pull
@@ -169,6 +169,8 @@ ENV_FILE=.env.dev docker compose -f docker-compose.yml -f docker-compose.dev.yml
 ### 5. Verify
 
 ```bash
+cd /root/BRAiN
+
 # Check containers
 docker ps
 
@@ -190,7 +192,7 @@ docker ps -a | grep brain
 docker logs brain-backend-dev
 
 # Check docker compose status
-cd /home/user/BRAiN
+cd /root/BRAiN
 ENV_FILE=.env.dev docker compose -f docker-compose.yml -f docker-compose.dev.yml ps
 ```
 
@@ -222,7 +224,7 @@ docker exec -it brain-postgres-dev psql -U brain -d brain_v2_dev
 ### Rebuild Everything
 
 ```bash
-cd /home/user/BRAiN
+cd /root/BRAiN
 
 # Stop and remove everything
 ENV_FILE=.env.dev docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v
@@ -252,7 +254,7 @@ If you need to rollback:
 
 ```bash
 # Stop V2
-cd /home/user/BRAiN
+cd /root/BRAiN
 ENV_FILE=.env.dev docker compose -f docker-compose.yml -f docker-compose.dev.yml down
 
 # Start old installation

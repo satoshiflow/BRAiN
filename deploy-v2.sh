@@ -62,10 +62,15 @@ fi
 #############################################
 log_info "Step 2/7: Updating V2 repository..."
 
-V2_DIR="/home/user/BRAiN"
+V2_DIR="/root/BRAiN"
 if [ ! -d "$V2_DIR" ]; then
     log_error "V2 repository not found at $V2_DIR"
-    exit 1
+    log_info "Trying alternative location: /home/user/BRAiN"
+    V2_DIR="/home/user/BRAiN"
+    if [ ! -d "$V2_DIR" ]; then
+        log_error "V2 repository not found in either location"
+        exit 1
+    fi
 fi
 
 cd "$V2_DIR"
