@@ -11,6 +11,8 @@ import {
 } from "@/components/ui/breadcrumb"
 import { fetchJson } from "@/lib/api"
 
+export const dynamic = "force-dynamic"
+
 type SupervisorStatus = {
   status: string
   timestamp: string

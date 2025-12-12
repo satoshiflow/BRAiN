@@ -13,6 +13,8 @@ import { NewThreatForm } from "@/components/NewThreatForm"
 import { ThreatTable, Threat } from "@/components/ThreatTable"
 import { fetchJson } from "@/lib/api"
 
+export const dynamic = "force-dynamic"
+
 type ThreatListResponse = {
   threats: Threat[]
 }
