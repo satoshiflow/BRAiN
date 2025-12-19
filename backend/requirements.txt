@@ -1,28 +1,86 @@
-# --- FastAPI + Server ---
-fastapi
-uvicorn[standard]
+# ============================================================================
+# BRAiN Backend - Complete Requirements (v0.3.0)
+# ============================================================================
+# Updated: 2024-12-19
+# Purpose: Complete dependency list with pinned versions for reproducibility
+# ============================================================================
 
-# --- Mission System Dependencies ---
-redis>=4.5.0
-pydantic>=2.0.0
-pydantic-settings>=2.1.0
+# --- Core FastAPI + Server ---
+fastapi==0.109.2
+uvicorn[standard]==0.27.1
+python-multipart==0.0.9        # Required for FastAPI file uploads and form data
 
-# --- Optional: WebSockets für Live-Updating ---
-websockets
-starlette
+# --- ASGI / Web Server ---
+starlette==0.36.3               # ASGI framework (FastAPI dependency)
+websockets==12.0                # WebSocket support
 
-# --- Optional: LLM/Agent Integration ---
-httpx
-python-dotenv
+# --- Database ---
+sqlalchemy[asyncio]==2.0.27     # ORM with async support
+asyncpg==0.29.0                 # Async PostgreSQL driver
+alembic==1.13.1                 # Database migrations
 
-# --- Agent Manager ---
-# (falls dein AgentManager im Backend schon eingebunden ist)
-# du nutzt keine speziellen Pakete hier, nur FastAPI, httpx, pydantic,
-# deshalb sind keine Extra-Einträge nötig.
+# --- Redis ---
+redis[hiredis]==5.0.1           # Redis client with hiredis for performance
 
-# --- Logging / Utils ---
-loguru
-python-json-logger>=2.0.0
+# --- Pydantic (Data Validation) ---
+pydantic==2.6.1
+pydantic-settings==2.1.0
 
-# --- Future compatibility (SupervisorAgent / AgentRouter) ---
-# orjson
+# --- HTTP Client ---
+httpx==0.26.0                   # Async HTTP client (for LLM API calls)
+
+# --- Environment ---
+python-dotenv==1.0.1
+
+# --- Logging ---
+loguru==0.7.2
+python-json-logger==2.0.7
+
+# --- Background Jobs / Scheduling ---
+APScheduler==3.10.4             # Background task scheduling
+
+# --- CLI Tools (Optional) ---
+typer==0.9.0                    # CLI interface for brain_cli
+rich==13.7.0                    # Beautiful terminal output
+
+# --- Optional: Supabase Integration ---
+supabase==2.3.4                 # Supabase client (for agent repository)
+
+# --- Optional: Vector DB ---
+qdrant-client==1.7.3            # Qdrant vector database client
+
+# --- Development / Testing ---
+pytest==8.0.1
+pytest-asyncio==0.23.5
+pytest-cov==4.1.0
+httpx-mock==0.11.0              # Mock HTTP requests in tests
+
+# --- Code Quality (Development) ---
+black==24.2.0                   # Code formatter
+ruff==0.2.2                     # Fast Python linter
+mypy==1.8.0                     # Static type checker
+
+# --- Type Stubs ---
+types-redis==4.6.0.20240218
+
+# ============================================================================
+# Optional Dependencies (Uncomment if needed)
+# ============================================================================
+
+# --- LLM Provider Integrations ---
+# openai==1.12.0                # OpenAI API client
+# anthropic==0.18.1             # Anthropic Claude API
+# litellm==1.30.0               # Multi-provider LLM gateway
+
+# --- Advanced Features ---
+# celery[redis]==5.3.6          # Distributed task queue
+# flower==2.0.1                 # Celery monitoring
+# prometheus-client==0.20.0     # Metrics export
+
+# ============================================================================
+# Notes:
+# - All versions are pinned for reproducibility
+# - Run `pip install -r requirements.txt` to install
+# - For development: `pip install -r requirements.txt -r requirements-dev.txt`
+# - Update versions: `pip list --outdated` then test thoroughly
+# ============================================================================

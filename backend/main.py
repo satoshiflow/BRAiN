@@ -1,7 +1,15 @@
 # backend/main.py
 """
-BRAIN Backend – FastAPI Application
-Haupt-Einstiegspunkt für das BRAIN Core Backend.
+BRAiN Core Backend v0.3.0
+Unified entry point - consolidates previous backend/main.py and backend/app/main.py
+
+CHANGELOG v0.3.0:
+- Merged dual entry points into single main.py
+- Modern lifespan context manager (replaces deprecated @app.on_event)
+- Unified auto-discovery for both backend/api/routes/* and app/api/routes/*
+- Explicit inclusion of all app module routers
+- Mission worker integrated into lifespan
+- Settings-based configuration
 """
 
 from __future__ import annotations
@@ -9,150 +17,238 @@ from __future__ import annotations
 import os
 import importlib
 import pkgutil
-from typing import List
+import logging
+from contextlib import asynccontextmanager
+from typing import AsyncIterator, List
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
 
+# Core infrastructure
+from app.core.config import get_settings
+from app.core.logging import configure_logging
+from app.core.redis_client import get_redis
+
+# Mission worker (from old backend/main.py)
 from backend.modules.missions.worker import start_mission_worker, stop_mission_worker
+
+# Legacy supervisor router (from old backend/main.py)
 from backend.modules.supervisor.router import router as supervisor_router
 
-# -------------------------------------------------------
-# FastAPI App
-# -------------------------------------------------------
-app = FastAPI(
-    title="BRAIN Core",
-    version="0.2.0",
-    description="BRAIN Backend – unified main app (Agents, Missions, AXE, Debug).",
-)
+# App module routers (from app/main.py)
+from app.modules.dna.router import router as dna_router
+from app.modules.karma.router import router as karma_router
+from app.modules.immune.router import router as immune_router
+from app.modules.credits.router import router as credits_router
+from app.modules.policy.router import router as policy_router
+from app.modules.threats.router import router as threats_router
+from app.modules.supervisor.router import router as app_supervisor_router
+from app.modules.missions.router import router as app_missions_router
+
+logger = logging.getLogger(__name__)
+settings = get_settings()
+
 
 # -------------------------------------------------------
-# CORS (für lokale Entwicklung großzügig)
+# Unified Lifespan (Startup + Shutdown)
 # -------------------------------------------------------
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """
+    Unified lifespan management combining:
+    - Core infrastructure (logging, redis) from app.core.lifecycle
+    - Mission worker from backend.modules.missions
+    """
+    # Startup
+    configure_logging()
+    logger.info(f"🧠 BRAiN Core v0.3.0 starting (env: {settings.environment})")
+
+    # Initialize Redis
+    redis = await get_redis()
+    await redis.ping()
+    logger.info("✅ Redis connection established")
+
+    # Start mission worker (if enabled)
+    mission_worker_task = None
+    if os.getenv("ENABLE_MISSION_WORKER", "true").lower() == "true":
+        mission_worker_task = await start_mission_worker()
+        logger.info("✅ Mission worker started")
+
+    logger.info("✅ All systems operational")
+
+    yield
+
+    # Shutdown
+    if mission_worker_task:
+        await stop_mission_worker()
+        logger.info("🛑 Mission worker stopped")
+
+    await redis.close()
+    logger.info("🛑 BRAiN Core shutdown complete")
+
+
+# -------------------------------------------------------
+# App Factory
+# -------------------------------------------------------
+def create_app() -> FastAPI:
+    """
+    Creates and configures the FastAPI application.
+
+    Combines functionality from:
+    - backend/main.py: Auto-discovery of backend/api/routes/*, mission worker
+    - app/main.py: Settings-based config, app module routers, lifespan
+    """
+    app = FastAPI(
+        title="BRAiN Core",
+        version="0.3.0",
+        description="Business Reasoning and Intelligence Network - Unified Backend",
+        lifespan=lifespan,
+    )
+
+    # CORS (from settings for production, with fallback)
+    cors_origins = settings.cors_origins if hasattr(settings, 'cors_origins') else [
         "http://localhost",
         "http://localhost:3000",
         "http://localhost:3001",
         "http://127.0.0.1:3000",
         "http://127.0.0.1:3001",
-        "*",  # später in Production einschränken
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+        "*",
+    ]
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # -------------------------------------------------------
+    # Root & Health Endpoints
+    # -------------------------------------------------------
+    @app.get("/", tags=["default"])
+    async def root() -> dict:
+        """Root endpoint with system information"""
+        return {
+            "name": "BRAiN Core Backend",
+            "version": "0.3.0",
+            "status": "operational",
+            "docs": "/docs",
+            "api_health": "/api/health",
+        }
+
+    @app.get("/api/health", tags=["default"])
+    async def api_health() -> dict:
+        """Global health check"""
+        return {
+            "status": "ok",
+            "message": "BRAiN Core Backend is running",
+            "version": "0.3.0",
+        }
+
+    @app.get("/debug/routes", tags=["default"])
+    async def list_routes() -> dict:
+        """Debug endpoint: List all registered routes"""
+        paths: List[str] = []
+        for route in app.routes:
+            if isinstance(route, APIRoute):
+                paths.append(f"{route.path} [{','.join(route.methods)}]")
+        return {"routes": sorted(paths)}
+
+    # -------------------------------------------------------
+    # Include Routers
+    # -------------------------------------------------------
+
+    # 1. Legacy supervisor router (from backend/modules)
+    app.include_router(supervisor_router, prefix="/api", tags=["legacy-supervisor"])
+
+    # 2. App module routers (from app/modules) - Main API
+    app.include_router(dna_router, tags=["dna"])
+    app.include_router(karma_router, tags=["karma"])
+    app.include_router(immune_router, tags=["immune"])
+    app.include_router(credits_router, tags=["credits"])
+    app.include_router(policy_router, tags=["policy"])
+    app.include_router(threats_router, tags=["threats"])
+    app.include_router(app_supervisor_router, tags=["supervisor"])
+    app.include_router(app_missions_router, tags=["missions"])
+
+    # 3. Auto-discover routes from backend/api/routes/*
+    _include_legacy_routers(app)
+
+    # 4. Auto-discover routes from app/api/routes/*
+    _include_app_routers(app)
+
+    logger.info("✅ App created, all routers registered")
+    return app
+
 
 # -------------------------------------------------------
-# Supervisor-Router
+# Auto-Discovery Functions
 # -------------------------------------------------------
-# Wichtig: nur "/api" als Prefix, damit die finalen Pfade
-# /api/supervisor/status
-# /api/supervisor/agents
-# /api/supervisor/control
-# lauten (siehe router.prefix = "/supervisor").
-app.include_router(
-    supervisor_router,
-    prefix="/api",
-)
-
-
-# -------------------------------------------------------
-# Basis-Health & Root
-# -------------------------------------------------------
-@app.get("/", tags=["default"])
-async def root() -> dict:
+def _include_legacy_routers(app: FastAPI) -> None:
     """
-    Root-Endpoint – gibt Basisinfos zum BRAIN Backend zurück.
+    Auto-discover and include routers from backend/api/routes/*
+    (Legacy router discovery from original backend/main.py)
     """
-    return {
-        "name": "BRAIN Core Backend",
-        "version": "0.2.0",
-        "docs": "/docs",
-        "api_health": "/api/health",
-    }
+    try:
+        from backend.api import routes as routes_pkg  # type: ignore[import]
+
+        package_path = routes_pkg.__path__  # type: ignore[attr-defined]
+        package_name = routes_pkg.__name__
+
+        for _, module_name, _ in pkgutil.iter_modules(package_path):
+            if module_name.startswith("_"):
+                continue
+
+            module_full_name = f"{package_name}.{module_name}"
+            module = importlib.import_module(module_full_name)
+            router = getattr(module, "router", None)
+
+            if router is not None:
+                app.include_router(router, tags=[f"legacy-{module_name}"])
+                logger.debug(f"✅ Included legacy router: {module_name}")
+    except ImportError as e:
+        logger.warning(f"⚠️ Could not import backend.api.routes: {e}")
 
 
-@app.get("/api/health", tags=["default"])
-async def api_health() -> dict:
+def _include_app_routers(app: FastAPI) -> None:
     """
-    Globaler Healthcheck des Backends.
-    (Details für einzelne Komponenten kommen aus den jeweiligen Routern.)
+    Auto-discover and include routers from app/api/routes/*
+    (App router discovery from original app/main.py)
     """
-    return {
-        "status": "ok",
-        "message": "BRAIN Core Backend is running",
-        "version": "0.2.0",
-    }
+    try:
+        from app.api import routes
+
+        for _, module_name, _ in pkgutil.iter_modules(routes.__path__):
+            if module_name.startswith("_"):
+                continue
+
+            module = importlib.import_module(f"app.api.routes.{module_name}")
+            router = getattr(module, "router", None)
+
+            if router is not None:
+                app.include_router(router, tags=[f"app-{module_name}"])
+                logger.debug(f"✅ Included app router: {module_name}")
+    except ImportError as e:
+        logger.warning(f"⚠️ Could not import app.api.routes: {e}")
 
 
 # -------------------------------------------------------
-# Mission-Worker Lifecycle
+# App Instance
 # -------------------------------------------------------
-@app.on_event("startup")
-async def on_startup():
-    # Mission-Worker nur starten, wenn nicht explizit deaktiviert
-    if os.getenv("ENABLE_MISSION_WORKER", "true").lower() == "true":
-        await start_mission_worker()
-
-
-@app.on_event("shutdown")
-async def on_shutdown():
-    await stop_mission_worker()
+app = create_app()
 
 
 # -------------------------------------------------------
-# Router-Autodiscovery
+# Development Server (if run directly)
 # -------------------------------------------------------
-def include_all_routers(app: FastAPI) -> None:
-    """
-    Findet alle Module in backend.api.routes.*, die ein 'router'-Attribut haben,
-    und hängt sie automatisch an die App.
-
-    Erwartete Struktur:
-        backend/
-          api/
-            __init__.py
-            routes/
-              __init__.py
-              agent_manager.py   -> router = APIRouter(prefix="/api/agents", ...)
-              missions.py        -> router = APIRouter(prefix="/api/missions", ...)
-              axe.py             -> router = APIRouter(prefix="/api/axe", ...)
-              debug_llm.py       -> router = APIRouter(prefix="/api/debug", ...)
-              ...
-    """
-    from backend.api import routes as routes_pkg  # type: ignore[import]
-
-    package_path = routes_pkg.__path__  # type: ignore[attr-defined]
-    package_name = routes_pkg.__name__
-
-    for _, module_name, _ in pkgutil.iter_modules(package_path):
-        module_full_name = f"{package_name}.{module_name}"
-        module = importlib.import_module(module_full_name)
-        router = getattr(module, "router", None)
-        if router is not None:
-            app.include_router(router)
-
-
-# beim Start alle API-Router registrieren
-include_all_routers(app)
-
-
-# -------------------------------------------------------
-# Route-Debugger
-# -------------------------------------------------------
-@app.get("/debug/routes", tags=["default"])
-async def list_routes() -> dict:
-    """
-    Debug-Endpoint: listet alle registrierten Pfade auf.
-    Sehr hilfreich, um zu prüfen, ob Autodiscovery & Prefixes korrekt greifen.
-    """
-    paths: List[str] = []
-    for route in app.routes:
-        if isinstance(route, APIRoute):
-            paths.append(f"{route.path} [{','.join(route.methods)}]")
-    return {"routes": paths}
-
-# End of file
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        log_level="info"
+    )
