@@ -45,6 +45,7 @@ from app.modules.policy.router import router as policy_router
 from app.modules.threats.router import router as threats_router
 from app.modules.supervisor.router import router as app_supervisor_router
 from app.modules.missions.router import router as app_missions_router
+from app.modules.foundation.router import router as foundation_router
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -164,6 +165,7 @@ def create_app() -> FastAPI:
     app.include_router(supervisor_router, prefix="/api", tags=["legacy-supervisor"])
 
     # 2. App module routers (from app/modules) - Main API
+    app.include_router(foundation_router, tags=["foundation"])  # NEW: Foundation module
     app.include_router(dna_router, tags=["dna"])
     app.include_router(karma_router, tags=["karma"])
     app.include_router(immune_router, tags=["immune"])
