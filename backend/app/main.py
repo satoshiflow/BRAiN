@@ -1,38 +1,36 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+# backend/app/main.py
+"""
+⚠️ DEPRECATED: This file is deprecated as of v0.3.0
 
-from app.core.config import get_settings
-from app.core.lifecycle import lifespan
-from app.api.routes import include_all_routers
+The entry point has been moved to backend/main.py for consolidation.
+This file is kept for backward compatibility only.
 
-from app.modules.dna.router import router as dna_router
-from app.modules.karma.router import router as karma_router
-from app.modules.immune.router import router as immune_router
+If you're importing from this file, update your imports:
+    OLD: from app.main import app
+    NEW: from backend.main import app
 
+This compatibility wrapper will be removed in v0.4.0
+"""
 
-settings = get_settings()
+import warnings
 
-def create_app() -> FastAPI:
-    app = FastAPI(
-        title=settings.app_name,
-        lifespan=lifespan,
-    )
+# Issue deprecation warning
+warnings.warn(
+    "backend/app/main.py is deprecated since v0.3.0. "
+    "Use backend/main.py instead. "
+    "This compatibility wrapper will be removed in v0.4.0",
+    DeprecationWarning,
+    stacklevel=2
+)
 
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.cors_origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+# Import from new unified location for backward compatibility
+try:
+    from backend.main import app, create_app, lifespan
 
-    include_all_routers(app)
-
-    # Module-Router explizit einhängen
-    app.include_router(dna_router)
-    app.include_router(karma_router)
-    app.include_router(immune_router)
-
-    return app
-
-app = create_app()
+    __all__ = ["app", "create_app", "lifespan"]
+except ImportError as e:
+    # Fallback error message if import fails
+    raise ImportError(
+        f"Could not import from backend.main: {e}\n"
+        "Please ensure backend/main.py exists and update your imports."
+    ) from e
