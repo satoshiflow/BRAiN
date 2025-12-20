@@ -16,6 +16,7 @@ import {
   type AnomalySeverity,
   type MaintenanceStatus,
 } from "@/lib/maintenanceApi";
+import { useMaintenanceWebSocket } from "@/hooks/useWebSocket";
 
 type LoadState<T> = {
   data?: T;
@@ -31,6 +32,25 @@ export default function MaintenancePage() {
   const [schedules, setSchedules] = useState<LoadState<MaintenanceSchedule[]>>({ loading: true });
 
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // WebSocket for real-time updates
+  const { status: wsStatus, lastMessage } = useMaintenanceWebSocket();
+
+  // Refresh data when WebSocket message arrives
+  useEffect(() => {
+    if (lastMessage) {
+      if (lastMessage.type === "health_metric" || lastMessage.type === "anomaly_detected") {
+        // Refresh analytics and anomalies
+        fetchMaintenanceAnalytics()
+          .then((d) => setAnalytics({ data: d, loading: false }))
+          .catch((e) => console.error("Failed to refresh analytics:", e));
+
+        fetchAnomalies({ acknowledged: false })
+          .then((d) => setAnomalies({ data: d, loading: false }))
+          .catch((e) => console.error("Failed to refresh anomalies:", e));
+      }
+    }
+  }, [lastMessage]);
 
   useEffect(() => {
     // Fetch module info
@@ -71,7 +91,34 @@ export default function MaintenancePage() {
   return (
     <div className="flex flex-col gap-6 p-6">
       <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold text-white">Predictive Maintenance</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-semibold text-white">Predictive Maintenance</h1>
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-neutral-400">Live Updates:</span>
+            <div className="flex items-center gap-1.5">
+              <div
+                className={`h-2 w-2 rounded-full ${
+                  wsStatus === "connected"
+                    ? "bg-green-500 animate-pulse"
+                    : wsStatus === "connecting"
+                      ? "bg-yellow-500 animate-pulse"
+                      : "bg-gray-500"
+                }`}
+              />
+              <span
+                className={
+                  wsStatus === "connected"
+                    ? "text-green-400"
+                    : wsStatus === "connecting"
+                      ? "text-yellow-400"
+                      : "text-gray-400"
+                }
+              >
+                {wsStatus}
+              </span>
+            </div>
+          </div>
+        </div>
         <p className="text-sm text-neutral-400">
           Fleet health monitoring, anomaly detection, and failure prediction for proactive maintenance.
         </p>

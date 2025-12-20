@@ -109,9 +109,23 @@ class RobotSimulator:
         if self.task:
             await self.task
 
+        # Broadcast simulator stopped
+        try:
+            from backend.app.api.routes.websocket import broadcast_simulator_status
+            await broadcast_simulator_status("stopped", len(self.robots))
+        except Exception as e:
+            print(f"WebSocket broadcast error: {e}")
+
     async def _run_loop(self):
         """Main simulation loop - updates health metrics every 5 seconds"""
         from backend.app.modules.maintenance.service import get_maintenance_service
+        from backend.app.api.routes.websocket import broadcast_health_metric, broadcast_simulator_status
+
+        # Broadcast simulator started
+        try:
+            await broadcast_simulator_status("running", len(self.robots))
+        except Exception as e:
+            print(f"WebSocket broadcast error: {e}")
 
         while self.running:
             try:
@@ -128,6 +142,16 @@ class RobotSimulator:
                         # Predict failures for components with low health
                         if metrics["health_score"] < 75:
                             maintenance_service.predict_failure(metrics["component_id"])
+
+                        # Broadcast health metric update via WebSocket
+                        try:
+                            await broadcast_health_metric(
+                                component_id=metrics["component_id"],
+                                health_score=metrics["health_score"],
+                                timestamp=metrics["timestamp"]
+                            )
+                        except Exception as e:
+                            print(f"WebSocket broadcast error: {e}")
 
             except Exception as e:
                 print(f"Simulator error: {e}")
