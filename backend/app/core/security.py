@@ -369,3 +369,154 @@ def require_scope(required_scope: str):
         return principal
 
     return check_scope
+
+
+# ============================================================================
+# RBAC Integration (Granular Permissions)
+# ============================================================================
+
+def require_permission(
+    permission: str,
+    resource_type: str | None = None,
+    extract_resource_id: str | None = None
+):
+    """
+    Dependency factory for granular permission-based access control.
+
+    Uses RBAC system for fine-grained permission checks including:
+    - Exact permissions (e.g., "missions:update")
+    - Wildcard permissions (e.g., "missions:*", "*:*")
+    - Scope-based permissions (e.g., "missions:update:own" - can only update own resources)
+    - Resource ownership validation
+
+    Args:
+        permission: Required permission (e.g., "missions:update")
+        resource_type: Optional resource type (e.g., "mission", "agent")
+        extract_resource_id: Optional parameter name to extract resource_id from route
+
+    Returns:
+        Dependency function that checks permission via RBAC
+
+    Usage:
+        # Simple permission check
+        @router.get("/missions")
+        async def list_missions(
+            principal: Principal = Depends(require_permission("missions:read"))
+        ):
+            return {"missions": [...]}
+
+        # Permission with resource ownership check
+        @router.put("/missions/{mission_id}")
+        async def update_mission(
+            mission_id: str,
+            principal: Principal = Depends(
+                require_permission(
+                    "missions:update",
+                    resource_type="mission",
+                    extract_resource_id="mission_id"
+                )
+            )
+        ):
+            # Only users with missions:update permission can update
+            # If user only has missions:update:own, must own this specific mission
+            return {"message": "Mission updated"}
+
+    Permission Scopes:
+        - "missions:read" - Can read all missions
+        - "missions:read:own" - Can only read own missions
+        - "missions:*" - Can do any action on missions
+        - "*:*" - Can do anything (super admin)
+
+    Role Hierarchy:
+        - Super Admin > Admin > Moderator > User > Guest
+        - Higher roles inherit permissions from lower roles
+    """
+
+    async def check_permission(
+        principal: Principal = Depends(get_current_principal_or_api_key),
+        request: Request = None,
+        **path_params
+    ) -> Principal:
+        from .rbac import get_rbac_manager
+
+        rbac = get_rbac_manager()
+
+        # Extract resource_id from path parameters if specified
+        resource_id = None
+        if extract_resource_id and extract_resource_id in path_params:
+            resource_id = path_params[extract_resource_id]
+
+        # Check permission via RBAC
+        result = await rbac.check_permission(
+            principal_id=principal.principal_id,
+            permission=permission,
+            resource_id=resource_id,
+            resource_type=resource_type
+        )
+
+        if not result.allowed:
+            # Log authorization failure
+            try:
+                from .audit import audit_log, AuditAction, AuditLevel
+                await audit_log.log(
+                    action=AuditAction.PERMISSION_GRANT,  # We'll need to add PERMISSION_DENIED
+                    level=AuditLevel.WARNING,
+                    user_id=principal.principal_id,
+                    ip_address=request.client.host if request and request.client else None,
+                    metadata={
+                        "permission": permission,
+                        "resource_type": resource_type,
+                        "resource_id": resource_id,
+                        "reason": result.reason
+                    }
+                )
+            except Exception as e:
+                from loguru import logger
+                logger.warning(f"Failed to log authorization failure: {e}")
+
+            # Raise 403 Forbidden
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=result.reason,
+            )
+
+        return principal
+
+    return check_permission
+
+
+async def check_resource_owner(
+    principal: Principal,
+    resource_type: str,
+    resource_id: str
+) -> bool:
+    """
+    Check if principal owns the specified resource.
+
+    Args:
+        principal: Authenticated principal
+        resource_type: Resource type (e.g., "mission", "agent")
+        resource_id: Resource ID
+
+    Returns:
+        True if principal owns the resource, False otherwise
+
+    Usage:
+        @router.delete("/missions/{mission_id}")
+        async def delete_mission(
+            mission_id: str,
+            principal: Principal = Depends(get_current_principal)
+        ):
+            # Check ownership
+            if not await check_resource_owner(principal, "mission", mission_id):
+                raise HTTPException(403, "You can only delete your own missions")
+
+            # Delete mission
+            ...
+    """
+    from .rbac import get_rbac_manager
+
+    rbac = get_rbac_manager()
+    owner_id = await rbac.get_resource_owner(resource_type, resource_id)
+
+    return owner_id == principal.principal_id if owner_id else False
