@@ -90,6 +90,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """
     # ===== STARTUP PHASE =====
     configure_logging()
+
+    # Initialize Sentry error tracking (Phase 2)
+    from app.core.sentry import init_sentry
+    init_sentry()
+
     logger.info("=" * 60)
     logger.info(f"🧠 BRAiN Core v0.3.0 starting (env: {settings.environment})")
     logger.info("=" * 60)
@@ -149,6 +154,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info("✅ Redis connection closed")
     except Exception as e:
         logger.error(f"⚠️ Error closing Redis connection: {e}")
+
+    # Step 4: Flush Sentry events (Phase 2)
+    try:
+        from app.core.sentry import is_enabled, flush
+        if is_enabled():
+            logger.info("🛑 Flushing Sentry events...")
+            flush(timeout=5.0)  # Wait up to 5 seconds for events to be sent
+            logger.info("✅ Sentry events flushed")
+    except Exception as e:
+        logger.error(f"⚠️ Error flushing Sentry events: {e}")
 
     logger.info("=" * 60)
     logger.info("✅ BRAiN Core shutdown complete")
