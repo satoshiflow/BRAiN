@@ -1,0 +1,133 @@
+# Docker Compose Configuration for Load-Balanced BRAiN Core
+#
+# This configuration runs multiple backend instances behind an nginx load balancer.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.loadbalanced.yml up
+#
+# Features:
+#   - 3 backend instances (backend_1, backend_2, backend_3)
+#   - Nginx load balancer with round-robin
+#   - Session affinity for WebSocket connections
+#   - Health check-based routing
+#   - Horizontal scaling capabilities
+
+version: '3.8'
+
+services:
+  # ============================================================================
+  # Nginx Load Balancer
+  # ============================================================================
+
+  nginx-lb:
+    image: nginx:alpine
+    container_name: brain-nginx-lb
+    ports:
+      - "8000:80"  # HTTP load balancer
+    volumes:
+      - ./nginx/nginx-lb.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend_1
+      - backend_2
+      - backend_3
+    networks:
+      - brain-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health/live"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # ============================================================================
+  # Backend Instances (Scaled Horizontally)
+  # ============================================================================
+
+  backend_1:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: brain-backend-1
+    environment:
+      - INSTANCE_ID=backend_1
+      - INSTANCE_NUMBER=1
+    env_file:
+      - .env
+    volumes:
+      - ./backend:/app
+      - ./storage:/app/storage
+    networks:
+      - brain-network
+    depends_on:
+      - postgres
+      - redis
+      - qdrant
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+
+  backend_2:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: brain-backend-2
+    environment:
+      - INSTANCE_ID=backend_2
+      - INSTANCE_NUMBER=2
+    env_file:
+      - .env
+    volumes:
+      - ./backend:/app
+      - ./storage:/app/storage
+    networks:
+      - brain-network
+    depends_on:
+      - postgres
+      - redis
+      - qdrant
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+
+  backend_3:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: brain-backend-3
+    environment:
+      - INSTANCE_ID=backend_3
+      - INSTANCE_NUMBER=3
+    env_file:
+      - .env
+    volumes:
+      - ./backend:/app
+      - ./storage:/app/storage
+    networks:
+      - brain-network
+    depends_on:
+      - postgres
+      - redis
+      - qdrant
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+
+# ============================================================================
+# Shared Network
+# ============================================================================
+
+networks:
+  brain-network:
+    external: true
