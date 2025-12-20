@@ -199,7 +199,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
 
 # ============================================================================
-# Rate Limiting (Simple In-Memory)
+# Rate Limiting (Simple In-Memory) - DEPRECATED
 # ============================================================================
 
 from collections import defaultdict
@@ -210,8 +210,10 @@ class SimpleRateLimitMiddleware(BaseHTTPMiddleware):
     """
     Simple in-memory rate limiting.
 
+    ⚠️ DEPRECATED: Use RedisRateLimitMiddleware for production!
+
     WARNING: This is for basic protection only!
-    For production, use Redis-based rate limiting (slowapi).
+    Not suitable for production (not distributed, memory-bound).
 
     Limits:
     - 100 requests per minute per IP
@@ -251,6 +253,144 @@ class SimpleRateLimitMiddleware(BaseHTTPMiddleware):
         self.requests[client_ip].append(now)
 
         return await call_next(request)
+
+
+# ============================================================================
+# Rate Limiting (Redis-based - Production)
+# ============================================================================
+
+class RedisRateLimitMiddleware(BaseHTTPMiddleware):
+    """
+    Production-grade distributed rate limiting using Redis.
+
+    Features:
+    - Distributed across multiple backend instances
+    - Per-IP and per-user rate limiting
+    - Multiple rate limit tiers (global, authenticated, premium)
+    - Sliding window log algorithm (accurate counting)
+    - Automatic Redis failover (fail-open)
+    - Prometheus metrics integration
+
+    Configuration:
+    - Global (unauthenticated): 100 req/min
+    - Authenticated users: 500 req/min
+    - Premium/admin users: 5000 req/min
+
+    Exemptions:
+    - /health/* endpoints (health checks should not be rate limited)
+    - /metrics endpoint (Prometheus scraping)
+    """
+
+    def __init__(self, app):
+        super().__init__(app)
+        # Rate limiter will be initialized in middleware
+        # (to avoid circular imports with redis_client)
+        self.rate_limiter = None
+        self._initialized = False
+
+    async def _ensure_initialized(self):
+        """Lazy initialization of rate limiter."""
+        if not self._initialized:
+            from app.core.redis_client import get_redis
+            from app.core.rate_limiter import RateLimiter
+
+            redis = await get_redis()
+            self.rate_limiter = RateLimiter(redis)
+            self._initialized = True
+
+    def _should_skip_rate_limit(self, path: str) -> bool:
+        """Check if path should be exempted from rate limiting."""
+        exempt_paths = [
+            "/health/",
+            "/metrics",
+            "/docs",
+            "/redoc",
+            "/openapi.json",
+        ]
+
+        for exempt_path in exempt_paths:
+            if path.startswith(exempt_path):
+                return True
+
+        return False
+
+    async def dispatch(self, request: Request, call_next: Callable):
+        # Skip rate limiting for exempt paths
+        if self._should_skip_rate_limit(request.url.path):
+            return await call_next(request)
+
+        # Ensure rate limiter is initialized
+        await self._ensure_initialized()
+
+        if not self.rate_limiter:
+            # Failover: If rate limiter failed to initialize, allow request
+            logger.warning("Rate limiter not initialized, allowing request")
+            return await call_next(request)
+
+        # Import utilities
+        from app.core.rate_limiter import (
+            get_client_identifier,
+            get_rate_limit_tier,
+            RateLimitTier,
+        )
+
+        try:
+            # Get client identifier (user ID, API key, or IP)
+            client_id = get_client_identifier(request)
+
+            # Get rate limit tier
+            tier_name = get_rate_limit_tier(request)
+            tier_config = RateLimitTier.get_limit(tier_name)
+
+            # Check rate limit
+            allowed, retry_after = await self.rate_limiter.is_allowed(
+                key=client_id,
+                max_requests=tier_config["max_requests"],
+                window_seconds=tier_config["window_seconds"],
+            )
+
+            if not allowed:
+                # Track rate limit hit in metrics
+                from app.core.metrics import MetricsCollector
+                MetricsCollector.track_rate_limit_hit(client_id, tier_name)
+
+                # Return 429 Too Many Requests
+                return JSONResponse(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    content={
+                        "error": "Rate limit exceeded",
+                        "message": f"Too many requests. Limit: {tier_config['max_requests']} requests per {tier_config['window_seconds']}s",
+                        "tier": tier_name,
+                        "retry_after": retry_after,
+                    },
+                    headers={
+                        "Retry-After": str(retry_after),
+                        "X-RateLimit-Limit": str(tier_config["max_requests"]),
+                        "X-RateLimit-Window": str(tier_config["window_seconds"]),
+                    },
+                )
+
+            # Request allowed - add rate limit headers
+            response = await call_next(request)
+
+            # Get current usage
+            usage = await self.rate_limiter.get_usage(
+                client_id, tier_config["window_seconds"]
+            )
+
+            # Add informational headers
+            response.headers["X-RateLimit-Limit"] = str(tier_config["max_requests"])
+            response.headers["X-RateLimit-Remaining"] = str(
+                max(0, tier_config["max_requests"] - usage["count"])
+            )
+            response.headers["X-RateLimit-Window"] = str(tier_config["window_seconds"])
+
+            return response
+
+        except Exception as e:
+            # Failover: If rate limiting fails, allow request (fail-open)
+            logger.error(f"Rate limit middleware error: {e}", exc_info=True)
+            return await call_next(request)
 
 
 # ============================================================================

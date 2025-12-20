@@ -285,6 +285,39 @@ app_health_status = Gauge(
 
 
 # ============================================================================
+# Rate Limiting Metrics
+# ============================================================================
+
+rate_limit_hits_total = Counter(
+    "brain_rate_limit_hits_total",
+    "Total rate limit hits (429 responses)",
+    ["client_type", "tier"],
+    registry=registry
+)
+
+rate_limit_checks_total = Counter(
+    "brain_rate_limit_checks_total",
+    "Total rate limit checks performed",
+    ["tier", "result"],
+    registry=registry
+)
+
+rate_limit_current_usage = Gauge(
+    "brain_rate_limit_current_usage",
+    "Current rate limit usage per client",
+    ["client_id", "tier"],
+    registry=registry
+)
+
+rate_limit_redis_errors_total = Counter(
+    "brain_rate_limit_redis_errors_total",
+    "Total Redis errors in rate limiting",
+    ["error_type"],
+    registry=registry
+)
+
+
+# ============================================================================
 # Helper Functions
 # ============================================================================
 
@@ -419,6 +452,36 @@ class MetricsCollector:
     def update_health_status(check_type: str, healthy: bool):
         """Update health check status."""
         app_health_status.labels(check_type=check_type).set(1 if healthy else 0)
+
+    @staticmethod
+    def track_rate_limit_hit(client_id: str, tier: str):
+        """Track rate limit hit (429 response)."""
+        # Determine client type from ID
+        client_type = "unknown"
+        if client_id.startswith("user:"):
+            client_type = "user"
+        elif client_id.startswith("apikey:"):
+            client_type = "apikey"
+        elif client_id.startswith("ip:"):
+            client_type = "ip"
+
+        rate_limit_hits_total.labels(client_type=client_type, tier=tier).inc()
+
+    @staticmethod
+    def track_rate_limit_check(tier: str, allowed: bool):
+        """Track rate limit check."""
+        result = "allowed" if allowed else "denied"
+        rate_limit_checks_total.labels(tier=tier, result=result).inc()
+
+    @staticmethod
+    def update_rate_limit_usage(client_id: str, tier: str, usage: int):
+        """Update current rate limit usage."""
+        rate_limit_current_usage.labels(client_id=client_id, tier=tier).set(usage)
+
+    @staticmethod
+    def track_rate_limit_redis_error(error_type: str):
+        """Track Redis error in rate limiting."""
+        rate_limit_redis_errors_total.labels(error_type=error_type).inc()
 
 
 # ============================================================================

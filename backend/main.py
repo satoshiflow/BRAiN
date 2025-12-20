@@ -35,7 +35,7 @@ from app.core.middleware import (
     RequestIDMiddleware,
     SecurityHeadersMiddleware,
     RequestLoggingMiddleware,
-    SimpleRateLimitMiddleware,
+    RedisRateLimitMiddleware,  # Phase 3 - Distributed rate limiting
     PrometheusMiddleware,
 )
 
@@ -222,9 +222,9 @@ def create_app() -> FastAPI:
     # 3. Request ID Tracking (adds unique ID to each request)
     app.add_middleware(RequestIDMiddleware)
 
-    # 4. Rate Limiting (basic protection - upgrade to Redis-based for production)
-    if settings.environment != "development":
-        app.add_middleware(SimpleRateLimitMiddleware, max_requests=100, window_seconds=60)
+    # 4. Rate Limiting (Phase 3 - Redis-based distributed rate limiting)
+    # Multi-tier: 100 req/min (unauthenticated), 500 req/min (authenticated), 5000 req/min (premium)
+    app.add_middleware(RedisRateLimitMiddleware)
 
     # 5. Prometheus Metrics (Phase 2 - tracks HTTP requests)
     app.add_middleware(PrometheusMiddleware)
@@ -232,7 +232,7 @@ def create_app() -> FastAPI:
     # 6. Request Logging (logs all requests with timing)
     app.add_middleware(RequestLoggingMiddleware)
 
-    logger.info("✅ Production middleware registered (Phase 1 + Phase 2)")
+    logger.info("✅ Production middleware registered (Phase 1 + Phase 2 + Phase 3)")
 
     # -------------------------------------------------------
     # Root & Health Endpoints
