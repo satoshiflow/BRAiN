@@ -36,6 +36,7 @@ from app.core.middleware import (
     SecurityHeadersMiddleware,
     RequestLoggingMiddleware,
     SimpleRateLimitMiddleware,
+    PrometheusMiddleware,
 )
 
 # Mission worker (from old backend/main.py)
@@ -191,10 +192,10 @@ def create_app() -> FastAPI:
     )
 
     # -------------------------------------------------------
-    # Production Middleware (Phase 1)
+    # Production Middleware (Phase 1 + Phase 2)
     # -------------------------------------------------------
     # Order matters: First middleware registered = Last to execute
-    # Execution order: Request → Logging → Rate Limit → Request ID → Security → Exception → Route → Exception → ...
+    # Execution order: Request → Logging → Prometheus → Rate Limit → Request ID → Security → Exception → Route → Exception → ...
 
     # 1. Global Exception Handler (catches all unhandled exceptions)
     app.add_middleware(GlobalExceptionMiddleware)
@@ -210,10 +211,13 @@ def create_app() -> FastAPI:
     if settings.environment != "development":
         app.add_middleware(SimpleRateLimitMiddleware, max_requests=100, window_seconds=60)
 
-    # 5. Request Logging (logs all requests with timing)
+    # 5. Prometheus Metrics (Phase 2 - tracks HTTP requests)
+    app.add_middleware(PrometheusMiddleware)
+
+    # 6. Request Logging (logs all requests with timing)
     app.add_middleware(RequestLoggingMiddleware)
 
-    logger.info("✅ Production middleware registered")
+    logger.info("✅ Production middleware registered (Phase 1 + Phase 2)")
 
     # -------------------------------------------------------
     # Root & Health Endpoints

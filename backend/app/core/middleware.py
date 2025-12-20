@@ -6,6 +6,7 @@ Provides:
 - Request ID tracking
 - Security headers
 - Request logging
+- Prometheus metrics tracking
 """
 
 import time
@@ -250,6 +251,134 @@ class SimpleRateLimitMiddleware(BaseHTTPMiddleware):
         self.requests[client_ip].append(now)
 
         return await call_next(request)
+
+
+# ============================================================================
+# Prometheus Metrics Middleware
+# ============================================================================
+
+class PrometheusMiddleware(BaseHTTPMiddleware):
+    """
+    Collects Prometheus metrics for HTTP requests.
+
+    Metrics collected:
+    - Request count (method, endpoint, status)
+    - Request duration (method, endpoint)
+    - Requests in progress (method, endpoint)
+    - Request/response size (optional)
+
+    Features:
+    - Automatic endpoint normalization (path parameters)
+    - Excludes /metrics endpoint (avoids self-tracking)
+    - Low overhead
+    """
+
+    def __init__(self, app):
+        super().__init__(app)
+        # Import here to avoid circular imports
+        from app.core.metrics import (
+            http_requests_in_progress,
+            MetricsCollector
+        )
+        self.in_progress = http_requests_in_progress
+        self.metrics = MetricsCollector
+
+    def _normalize_endpoint(self, path: str) -> str:
+        """
+        Normalize endpoint path for metrics.
+
+        Replaces path parameters with placeholders to avoid
+        high cardinality in metrics.
+
+        Example:
+            /api/users/123 -> /api/users/{id}
+            /api/missions/abc-def -> /api/missions/{id}
+        """
+        # Simple normalization: replace UUIDs and numeric IDs
+        import re
+
+        # Replace UUIDs (8-4-4-4-12 format)
+        path = re.sub(
+            r'/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}',
+            '/{id}',
+            path,
+            flags=re.IGNORECASE
+        )
+
+        # Replace numeric IDs (e.g., /users/123 -> /users/{id})
+        path = re.sub(r'/\d+', '/{id}', path)
+
+        # Replace alphanumeric IDs (e.g., /users/abc123 -> /users/{id})
+        # Be conservative: only if it looks like an ID (>6 chars, alphanumeric)
+        path = re.sub(r'/[a-zA-Z0-9_-]{8,}', '/{id}', path)
+
+        return path
+
+    async def dispatch(self, request: Request, call_next: Callable):
+        # Skip metrics endpoint to avoid self-tracking
+        if request.url.path == "/metrics":
+            return await call_next(request)
+
+        # Normalize endpoint for metrics
+        endpoint = self._normalize_endpoint(request.url.path)
+        method = request.method
+
+        # Track requests in progress
+        self.in_progress.labels(method=method, endpoint=endpoint).inc()
+
+        # Track request size (optional)
+        request_size = None
+        if hasattr(request, 'headers') and 'content-length' in request.headers:
+            try:
+                request_size = int(request.headers['content-length'])
+            except (ValueError, KeyError):
+                pass
+
+        # Start timer
+        start_time = time.time()
+
+        try:
+            # Process request
+            response = await call_next(request)
+
+            # Calculate duration
+            duration = time.time() - start_time
+
+            # Track response size
+            response_size = None
+            if hasattr(response, 'headers') and 'content-length' in response.headers:
+                try:
+                    response_size = int(response.headers['content-length'])
+                except (ValueError, KeyError):
+                    pass
+
+            # Record metrics
+            self.metrics.track_http_request(
+                method=method,
+                endpoint=endpoint,
+                status=response.status_code,
+                duration=duration,
+                request_size=request_size,
+                response_size=response_size
+            )
+
+            return response
+
+        except Exception as exc:
+            # Track error
+            duration = time.time() - start_time
+            self.metrics.track_http_request(
+                method=method,
+                endpoint=endpoint,
+                status=500,
+                duration=duration,
+                request_size=request_size
+            )
+            raise
+
+        finally:
+            # Decrement in-progress counter
+            self.in_progress.labels(method=method, endpoint=endpoint).dec()
 
 
 # ============================================================================
