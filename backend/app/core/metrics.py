@@ -318,6 +318,57 @@ rate_limit_redis_errors_total = Counter(
 
 
 # ============================================================================
+# Cache Metrics
+# ============================================================================
+
+cache_operations_total = Counter(
+    "brain_cache_operations_total",
+    "Total cache operations",
+    ["operation", "status"],
+    registry=registry
+)
+
+cache_hits_total = Counter(
+    "brain_cache_hits_total",
+    "Total cache hits",
+    registry=registry
+)
+
+cache_misses_total = Counter(
+    "brain_cache_misses_total",
+    "Total cache misses",
+    registry=registry
+)
+
+cache_operation_duration_seconds = Histogram(
+    "brain_cache_operation_duration_seconds",
+    "Cache operation latency in seconds",
+    ["operation"],
+    buckets=(0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5),
+    registry=registry
+)
+
+cache_keys_total = Gauge(
+    "brain_cache_keys_total",
+    "Total number of keys in cache",
+    registry=registry
+)
+
+cache_memory_bytes = Gauge(
+    "brain_cache_memory_bytes",
+    "Cache memory usage in bytes",
+    registry=registry
+)
+
+cache_ttl_seconds = Histogram(
+    "brain_cache_ttl_seconds",
+    "Cache TTL distribution in seconds",
+    ["key_type"],
+    registry=registry
+)
+
+
+# ============================================================================
 # Helper Functions
 # ============================================================================
 
@@ -482,6 +533,38 @@ class MetricsCollector:
     def track_rate_limit_redis_error(error_type: str):
         """Track Redis error in rate limiting."""
         rate_limit_redis_errors_total.labels(error_type=error_type).inc()
+
+    @staticmethod
+    def track_cache_operation(operation: str, duration: float, success: bool = True):
+        """Track cache operation metrics."""
+        status = "success" if success else "error"
+        cache_operations_total.labels(operation=operation, status=status).inc()
+        cache_operation_duration_seconds.labels(operation=operation).observe(duration)
+
+    @staticmethod
+    def track_cache_hit():
+        """Track cache hit."""
+        cache_hits_total.inc()
+
+    @staticmethod
+    def track_cache_miss():
+        """Track cache miss."""
+        cache_misses_total.inc()
+
+    @staticmethod
+    def update_cache_keys_count(count: int):
+        """Update total cache keys count."""
+        cache_keys_total.set(count)
+
+    @staticmethod
+    def update_cache_memory(bytes_used: int):
+        """Update cache memory usage."""
+        cache_memory_bytes.set(bytes_used)
+
+    @staticmethod
+    def track_cache_ttl(key_type: str, ttl_seconds: int):
+        """Track cache TTL distribution."""
+        cache_ttl_seconds.labels(key_type=key_type).observe(ttl_seconds)
 
 
 # ============================================================================

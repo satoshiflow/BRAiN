@@ -108,6 +108,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.error(f"❌ Failed to connect to Redis: {e}")
         raise
 
+    # Warm cache (Phase 3 - pre-populate frequently accessed data)
+    try:
+        from app.core.cache import warm_cache
+        await warm_cache()
+        logger.info("✅ Cache warmed successfully")
+    except Exception as e:
+        logger.warning(f"⚠️ Cache warming failed (non-critical): {e}")
+        # Continue startup even if cache warming fails
+
     # Start mission worker (if enabled)
     mission_worker_task = None
     try:
