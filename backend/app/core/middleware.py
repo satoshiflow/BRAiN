@@ -13,7 +13,7 @@ import time
 import uuid
 import traceback
 from datetime import datetime
-from typing import Callable, Optional
+from typing import Callable, Optional, Dict
 
 from fastapi import Request, Response, status
 from fastapi.responses import JSONResponse
@@ -103,50 +103,248 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 
 
 # ============================================================================
-# Security Headers
+# Security Headers (Enhanced)
 # ============================================================================
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """
-    Adds security headers to all responses.
+    Enhanced security headers middleware with comprehensive protection.
 
     Headers added:
-    - X-Frame-Options: Prevent clickjacking
-    - X-Content-Type-Options: Prevent MIME-sniffing
-    - X-XSS-Protection: XSS protection for older browsers
-    - Strict-Transport-Security: Enforce HTTPS
-    - Content-Security-Policy: Restrict resource loading
-    - Referrer-Policy: Control referrer information
+    - X-Frame-Options: Prevent clickjacking (DENY)
+    - X-Content-Type-Options: Prevent MIME-sniffing (nosniff)
+    - X-XSS-Protection: XSS protection for legacy browsers (deprecated but included)
+    - X-Download-Options: Prevent file download in browser context (IE)
+    - X-Permitted-Cross-Domain-Policies: Restrict cross-domain access (Adobe)
+    - Strict-Transport-Security: Enforce HTTPS (HSTS)
+    - Content-Security-Policy: Comprehensive CSP with nonce support
+    - Referrer-Policy: Control referrer information leakage
+    - Permissions-Policy: Control browser features
+    - Cross-Origin-Opener-Policy: Prevent cross-origin attacks
+    - Cross-Origin-Resource-Policy: Restrict resource sharing
+    - Cross-Origin-Embedder-Policy: Enable SharedArrayBuffer
+
+    Features:
+    - Configurable CSP directives
+    - CSP nonce generation for inline scripts/styles
+    - Report-only mode for testing
+    - Environment-aware configuration
+    - HSTS preload support
+    - Comprehensive feature policy
     """
 
-    def __init__(self, app, hsts_enabled: bool = True):
+    def __init__(
+        self,
+        app,
+        hsts_enabled: bool = True,
+        hsts_max_age: int = 31536000,  # 1 year
+        hsts_include_subdomains: bool = True,
+        hsts_preload: bool = True,
+        csp_report_only: bool = False,
+        csp_report_uri: Optional[str] = None,
+        custom_csp: Optional[Dict[str, str]] = None
+    ):
+        """
+        Initialize security headers middleware.
+
+        Args:
+            app: FastAPI app instance
+            hsts_enabled: Enable HSTS header (default: True)
+            hsts_max_age: HSTS max age in seconds (default: 1 year)
+            hsts_include_subdomains: Include subdomains in HSTS (default: True)
+            hsts_preload: Enable HSTS preload (default: True)
+            csp_report_only: Use CSP report-only mode (default: False)
+            csp_report_uri: CSP violation report URI (default: None)
+            custom_csp: Custom CSP directives override (default: None)
+        """
         super().__init__(app)
         self.hsts_enabled = hsts_enabled
+        self.hsts_max_age = hsts_max_age
+        self.hsts_include_subdomains = hsts_include_subdomains
+        self.hsts_preload = hsts_preload
+        self.csp_report_only = csp_report_only
+        self.csp_report_uri = csp_report_uri
+        self.custom_csp = custom_csp or {}
+
+    def _generate_csp_nonce(self) -> str:
+        """Generate cryptographically secure nonce for CSP."""
+        import secrets
+        return secrets.token_urlsafe(16)
+
+    def _build_csp(self, nonce: Optional[str] = None) -> str:
+        """
+        Build Content Security Policy header.
+
+        Args:
+            nonce: Optional nonce for inline scripts/styles
+
+        Returns:
+            CSP header string
+        """
+        # Default CSP directives (strict)
+        csp_directives = {
+            # Default source: self only
+            "default-src": "'self'",
+
+            # Scripts: self + nonce (no unsafe-inline, no unsafe-eval in production)
+            "script-src": f"'self' 'nonce-{nonce}'" if nonce else "'self'",
+
+            # Styles: self + nonce
+            "style-src": f"'self' 'nonce-{nonce}'" if nonce else "'self' 'unsafe-inline'",
+
+            # Images: self + data URLs + HTTPS
+            "img-src": "'self' data: https:",
+
+            # Fonts: self + data URLs
+            "font-src": "'self' data:",
+
+            # AJAX/WebSocket: self + WebSocket protocols
+            "connect-src": "'self' ws: wss:",
+
+            # Media: self only
+            "media-src": "'self'",
+
+            # Objects: none (disable Flash, etc.)
+            "object-src": "'none'",
+
+            # Base URI: self only (prevents base tag injection)
+            "base-uri": "'self'",
+
+            # Form actions: self only
+            "form-action": "'self'",
+
+            # Frame ancestors: none (prevent clickjacking)
+            "frame-ancestors": "'none'",
+
+            # Upgrade insecure requests (HTTP -> HTTPS)
+            "upgrade-insecure-requests": "",
+
+            # Block mixed content
+            "block-all-mixed-content": "",
+        }
+
+        # Apply custom CSP overrides
+        csp_directives.update(self.custom_csp)
+
+        # Add report URI if configured
+        if self.csp_report_uri:
+            csp_directives["report-uri"] = self.csp_report_uri
+
+        # Build CSP string
+        csp_parts = []
+        for directive, value in csp_directives.items():
+            if value:
+                csp_parts.append(f"{directive} {value}")
+            else:
+                csp_parts.append(directive)
+
+        return "; ".join(csp_parts)
 
     async def dispatch(self, request: Request, call_next: Callable):
+        # Generate CSP nonce
+        csp_nonce = self._generate_csp_nonce()
+
+        # Store nonce in request state (for use in templates)
+        request.state.csp_nonce = csp_nonce
+
+        # Process request
         response = await call_next(request)
 
-        # Security headers
+        # ====================================================================
+        # Core Security Headers
+        # ====================================================================
+
+        # X-Frame-Options: Prevent clickjacking
+        # DENY = cannot be embedded in any frame
         response.headers["X-Frame-Options"] = "DENY"
+
+        # X-Content-Type-Options: Prevent MIME-sniffing
+        # nosniff = browsers must respect Content-Type header
         response.headers["X-Content-Type-Options"] = "nosniff"
+
+        # X-XSS-Protection: Legacy XSS protection (deprecated but harmless)
+        # 1; mode=block = enable XSS filter, block page if attack detected
         response.headers["X-XSS-Protection"] = "1; mode=block"
+
+        # X-Download-Options: Prevent file download in browser (IE only)
+        # noopen = don't auto-open downloads
+        response.headers["X-Download-Options"] = "noopen"
+
+        # X-Permitted-Cross-Domain-Policies: Restrict cross-domain access
+        # none = no cross-domain policy files allowed (Flash, PDF, etc.)
+        response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
+
+        # ====================================================================
+        # Content Security Policy
+        # ====================================================================
+
+        csp = self._build_csp(nonce=csp_nonce)
+
+        if self.csp_report_only:
+            # Report-only mode (for testing)
+            response.headers["Content-Security-Policy-Report-Only"] = csp
+        else:
+            # Enforcement mode (production)
+            response.headers["Content-Security-Policy"] = csp
+
+        # ====================================================================
+        # HSTS (HTTP Strict Transport Security)
+        # ====================================================================
+
+        if self.hsts_enabled:
+            hsts_value = f"max-age={self.hsts_max_age}"
+
+            if self.hsts_include_subdomains:
+                hsts_value += "; includeSubDomains"
+
+            if self.hsts_preload:
+                hsts_value += "; preload"
+
+            response.headers["Strict-Transport-Security"] = hsts_value
+
+        # ====================================================================
+        # Referrer Policy
+        # ====================================================================
+
+        # strict-origin-when-cross-origin:
+        # - Same origin: send full URL
+        # - Cross origin HTTPS: send origin only
+        # - HTTPS -> HTTP: send nothing
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
 
-        # Content Security Policy (adjust as needed)
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
-            "style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data: https:; "
-            "font-src 'self' data:; "
-            "connect-src 'self' ws: wss:;"
-        )
+        # ====================================================================
+        # Permissions Policy (Feature Policy)
+        # ====================================================================
 
-        # HSTS (only in production/HTTPS)
-        if self.hsts_enabled:
-            response.headers["Strict-Transport-Security"] = (
-                "max-age=31536000; includeSubDomains; preload"
-            )
+        # Restrict powerful browser features
+        permissions_policy = [
+            "accelerometer=()",        # Disable accelerometer
+            "camera=()",               # Disable camera
+            "geolocation=()",          # Disable geolocation
+            "gyroscope=()",            # Disable gyroscope
+            "magnetometer=()",         # Disable magnetometer
+            "microphone=()",           # Disable microphone
+            "payment=()",              # Disable payment API
+            "usb=()",                  # Disable USB API
+            "interest-cohort=()",      # Disable FLoC tracking
+        ]
+        response.headers["Permissions-Policy"] = ", ".join(permissions_policy)
+
+        # ====================================================================
+        # Cross-Origin Policies
+        # ====================================================================
+
+        # Cross-Origin-Opener-Policy: Isolate browsing context
+        # same-origin = only same-origin documents can reference this window
+        response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+
+        # Cross-Origin-Resource-Policy: Restrict resource sharing
+        # same-origin = only same-origin can load this resource
+        response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+
+        # Cross-Origin-Embedder-Policy: Enable SharedArrayBuffer
+        # require-corp = require CORP header for cross-origin resources
+        response.headers["Cross-Origin-Embedder-Policy"] = "require-corp"
 
         return response
 
