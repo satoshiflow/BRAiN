@@ -13,7 +13,7 @@ import time
 import uuid
 import traceback
 from datetime import datetime
-from typing import Callable
+from typing import Callable, Optional
 
 from fastapi import Request, Response, status
 from fastapi.responses import JSONResponse
@@ -519,6 +519,167 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
         finally:
             # Decrement in-progress counter
             self.in_progress.labels(method=method, endpoint=endpoint).dec()
+
+
+# ============================================================================
+# Audit Logging Middleware
+# ============================================================================
+
+class AuditLoggingMiddleware(BaseHTTPMiddleware):
+    """
+    Automatic audit logging for all API requests.
+
+    Features:
+    - Logs all API requests (method, endpoint, user, status, duration)
+    - Extracts user ID from JWT token or API key
+    - Records client IP address
+    - Stores in Redis with 90-day retention
+    - Non-blocking (async logging)
+    - Automatic failure handling (fail-open)
+
+    Excludes:
+    - Health check endpoints (/health/*)
+    - Metrics endpoint (/metrics)
+    - Static assets
+    - WebSocket connections (logged separately)
+    """
+
+    def __init__(self, app):
+        super().__init__(app)
+        self.audit_logger = None
+        self._initialized = False
+
+    async def _ensure_initialized(self):
+        """Lazy initialization of audit logger."""
+        if not self._initialized:
+            from app.core.audit import get_audit_logger
+            self.audit_logger = get_audit_logger()
+            self._initialized = True
+
+    def _should_skip_audit(self, path: str) -> bool:
+        """Check if path should be exempted from audit logging."""
+        exempt_paths = [
+            "/health/",
+            "/metrics",
+            "/docs",
+            "/redoc",
+            "/openapi.json",
+            "/static/",
+            "/favicon.ico",
+        ]
+
+        for exempt_path in exempt_paths:
+            if path.startswith(exempt_path):
+                return True
+
+        return False
+
+    def _extract_user_id(self, request: Request) -> Optional[str]:
+        """Extract user ID from request (JWT token or API key)."""
+        try:
+            # Check for principal in request state (set by auth middleware)
+            if hasattr(request.state, "principal"):
+                principal = request.state.principal
+                return principal.principal_id
+
+            # Try to extract from JWT token
+            from fastapi.security import HTTPAuthorizationCredentials
+            from jose import jwt
+            import os
+
+            # Check Authorization header
+            auth_header = request.headers.get("Authorization")
+            if auth_header and auth_header.startswith("Bearer "):
+                token = auth_header.split(" ")[1]
+                try:
+                    # Decode without verification (we just need the user ID)
+                    payload = jwt.decode(
+                        token,
+                        os.getenv("JWT_SECRET_KEY", ""),
+                        algorithms=["HS256"],
+                        options={"verify_signature": False}  # Just for logging
+                    )
+                    return payload.get("sub")
+                except Exception:
+                    pass
+
+            # Check API key header
+            api_key_header = request.headers.get("X-API-Key")
+            if api_key_header:
+                # We don't validate here, just note that an API key was used
+                return f"apikey:{api_key_header[:8]}..."
+
+            return None
+
+        except Exception as e:
+            logger.debug(f"Failed to extract user ID from request: {e}")
+            return None
+
+    async def dispatch(self, request: Request, call_next: Callable):
+        # Skip audit logging for exempt paths
+        if self._should_skip_audit(request.url.path):
+            return await call_next(request)
+
+        # Ensure audit logger is initialized
+        await self._ensure_initialized()
+
+        if not self.audit_logger:
+            # Failover: If audit logger failed to initialize, continue without logging
+            logger.warning("Audit logger not initialized, skipping audit log")
+            return await call_next(request)
+
+        # Extract request details
+        method = request.method
+        endpoint = request.url.path
+        client_ip = request.client.host if request.client else None
+        user_id = self._extract_user_id(request)
+
+        # Start timer
+        start_time = time.time()
+
+        try:
+            # Process request
+            response = await call_next(request)
+
+            # Calculate duration
+            duration_ms = (time.time() - start_time) * 1000
+
+            # Log API request (fire and forget)
+            try:
+                await self.audit_logger.log_api_request(
+                    method=method,
+                    endpoint=endpoint,
+                    user_id=user_id,
+                    ip_address=client_ip,
+                    status_code=response.status_code,
+                    duration_ms=duration_ms,
+                    error=None
+                )
+            except Exception as e:
+                # Don't let audit logging failures affect the request
+                logger.error(f"Failed to log audit entry: {e}")
+
+            return response
+
+        except Exception as exc:
+            # Log failed request
+            duration_ms = (time.time() - start_time) * 1000
+
+            try:
+                await self.audit_logger.log_api_request(
+                    method=method,
+                    endpoint=endpoint,
+                    user_id=user_id,
+                    ip_address=client_ip,
+                    status_code=500,
+                    duration_ms=duration_ms,
+                    error=str(exc)
+                )
+            except Exception as e:
+                logger.error(f"Failed to log audit entry for error: {e}")
+
+            # Re-raise the original exception
+            raise
 
 
 # ============================================================================
