@@ -3,17 +3,19 @@ Security and authentication for BRAiN Core.
 
 Provides:
 - JWT token-based authentication
+- API key authentication
 - Principal (user) model with roles
 - Dependency injection for protected routes
 """
 
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import Depends, HTTPException, status, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer, APIKeyHeader
 from jose import JWTError
 
 from .jwt import verify_token
 
 security_scheme = HTTPBearer(auto_error=False)
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
 class Principal:
@@ -204,3 +206,166 @@ def require_any_role(*required_roles: str):
         return principal
 
     return check_roles
+
+
+# ============================================================================
+# API Key Authentication
+# ============================================================================
+
+async def get_principal_from_api_key(
+    api_key: str | None = Depends(api_key_header),
+    request: Request = None,
+) -> Principal | None:
+    """
+    Authenticate using API key from X-API-Key header.
+
+    Args:
+        api_key: API key from header
+        request: FastAPI request (for client IP)
+
+    Returns:
+        Principal object if valid API key, None otherwise
+    """
+    if not api_key:
+        return None
+
+    try:
+        from .api_keys import get_api_key_manager
+
+        manager = get_api_key_manager()
+
+        # Get client IP for whitelist check
+        client_ip = None
+        if request:
+            client_ip = request.client.host if request.client else None
+
+        # Validate API key
+        api_key_obj = await manager.validate_key(
+            plaintext_key=api_key,
+            client_ip=client_ip
+        )
+
+        if not api_key_obj:
+            return None
+
+        # Create principal from API key
+        # API keys use their name as principal_id
+        return Principal(
+            principal_id=f"apikey:{api_key_obj.id}",
+            tenant_id=None,
+            app_id=api_key_obj.name,
+            roles=["api_key"] + api_key_obj.scopes,  # Add api_key role + scopes as roles
+        )
+
+    except Exception as e:
+        # Log error but don't expose details
+        from loguru import logger
+        logger.error(f"API key validation error: {e}")
+        return None
+
+
+async def get_current_principal_or_api_key(
+    credentials: HTTPAuthorizationCredentials | None = Depends(security_scheme),
+    api_key: str | None = Depends(api_key_header),
+    request: Request = None,
+) -> Principal:
+    """
+    Dependency for authentication via JWT or API key.
+
+    Tries JWT first (Bearer token), then API key (X-API-Key header).
+
+    Args:
+        credentials: HTTP Authorization header with Bearer token
+        api_key: API key from X-API-Key header
+        request: FastAPI request
+
+    Returns:
+        Principal object with user information
+
+    Raises:
+        HTTPException: 401 if neither authentication method succeeds
+
+    Usage:
+        @router.get("/protected")
+        async def protected_route(
+            principal: Principal = Depends(get_current_principal_or_api_key)
+        ):
+            return {"user_id": principal.principal_id}
+    """
+    # Try JWT authentication first
+    if credentials:
+        try:
+            return await get_current_principal(credentials)
+        except HTTPException:
+            pass  # Fall through to API key
+
+    # Try API key authentication
+    if api_key:
+        principal = await get_principal_from_api_key(api_key, request)
+        if principal:
+            return principal
+
+    # Neither authentication method succeeded
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Authentication required: provide Bearer token or X-API-Key header",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+async def get_current_principal_or_api_key_optional(
+    credentials: HTTPAuthorizationCredentials | None = Depends(security_scheme),
+    api_key: str | None = Depends(api_key_header),
+    request: Request = None,
+) -> Principal | None:
+    """
+    Optional authentication via JWT or API key.
+
+    Returns None if no authentication provided.
+
+    Returns:
+        Principal object if authenticated, None otherwise
+    """
+    try:
+        return await get_current_principal_or_api_key(credentials, api_key, request)
+    except HTTPException:
+        return None
+
+
+def require_scope(required_scope: str):
+    """
+    Dependency factory for scope-based access control (API keys).
+
+    Args:
+        required_scope: Scope that the principal must have
+
+    Returns:
+        Dependency function that checks for the scope
+
+    Usage:
+        @router.get("/missions")
+        async def list_missions(
+            principal: Principal = Depends(require_scope("missions:read"))
+        ):
+            return {"missions": [...]}
+    """
+
+    async def check_scope(
+        principal: Principal = Depends(get_current_principal_or_api_key)
+    ) -> Principal:
+        # Check if principal has the required scope
+        # Scopes are stored in roles list for API keys
+        if not principal.has_role(required_scope):
+            # Check for wildcard scopes
+            resource = required_scope.split(":")[0]
+            wildcard_scope = f"{resource}:*"
+
+            if not principal.has_role(wildcard_scope) and not principal.has_role("*:*"):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Insufficient permissions: requires '{required_scope}' scope",
+                )
+
+        return principal
+
+    return check_scope
