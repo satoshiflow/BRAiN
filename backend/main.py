@@ -29,6 +29,7 @@ from fastapi.routing import APIRoute
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.core.redis_client import get_redis
+from app.core.db import close_db_connections
 from app.core.middleware import (
     GlobalExceptionMiddleware,
     RequestIDMiddleware,
@@ -64,36 +65,93 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """
-    Unified lifespan management combining:
-    - Core infrastructure (logging, redis) from app.core.lifecycle
-    - Mission worker from backend.modules.missions
+    Unified lifespan management with graceful shutdown.
+
+    Startup Phase:
+    - Configure logging
+    - Initialize Redis connection
+    - Start mission worker
+    - Verify all systems operational
+
+    Shutdown Phase (graceful):
+    - Stop accepting new requests (handled by FastAPI)
+    - Allow in-flight requests to complete (with timeout)
+    - Stop mission worker gracefully
+    - Close all database connections
+    - Close Redis connection
+    - Log shutdown completion
+
+    The shutdown sequence ensures:
+    1. No data loss (in-flight requests complete)
+    2. Clean resource cleanup
+    3. Proper signal handling (SIGTERM/SIGINT)
+    4. Observable shutdown (detailed logging)
     """
-    # Startup
+    # ===== STARTUP PHASE =====
     configure_logging()
+    logger.info("=" * 60)
     logger.info(f"🧠 BRAiN Core v0.3.0 starting (env: {settings.environment})")
+    logger.info("=" * 60)
 
     # Initialize Redis
-    redis = await get_redis()
-    await redis.ping()
-    logger.info("✅ Redis connection established")
+    try:
+        redis = await get_redis()
+        await redis.ping()
+        logger.info("✅ Redis connection established")
+    except Exception as e:
+        logger.error(f"❌ Failed to connect to Redis: {e}")
+        raise
 
     # Start mission worker (if enabled)
     mission_worker_task = None
-    if os.getenv("ENABLE_MISSION_WORKER", "true").lower() == "true":
-        mission_worker_task = await start_mission_worker()
-        logger.info("✅ Mission worker started")
+    try:
+        if os.getenv("ENABLE_MISSION_WORKER", "true").lower() == "true":
+            mission_worker_task = await start_mission_worker()
+            logger.info("✅ Mission worker started")
+    except Exception as e:
+        logger.error(f"❌ Failed to start mission worker: {e}")
+        # Continue startup even if mission worker fails
+        # (non-critical component)
 
-    logger.info("✅ All systems operational")
+    logger.info("=" * 60)
+    logger.info("✅ All systems operational - ready to serve requests")
+    logger.info("=" * 60)
 
-    yield
+    yield  # Application runs here
 
-    # Shutdown
+    # ===== SHUTDOWN PHASE (GRACEFUL) =====
+    logger.info("=" * 60)
+    logger.info("🛑 Initiating graceful shutdown...")
+    logger.info("=" * 60)
+
+    # Step 1: Stop mission worker (allow current missions to complete)
     if mission_worker_task:
-        await stop_mission_worker()
-        logger.info("🛑 Mission worker stopped")
+        try:
+            logger.info("🛑 Stopping mission worker...")
+            await stop_mission_worker()
+            logger.info("✅ Mission worker stopped gracefully")
+        except Exception as e:
+            logger.error(f"⚠️ Error stopping mission worker: {e}")
 
-    await redis.close()
-    logger.info("🛑 BRAiN Core shutdown complete")
+    # Step 2: Close database connections
+    try:
+        logger.info("🛑 Closing database connections...")
+        await close_db_connections()
+        logger.info("✅ Database connections closed")
+    except Exception as e:
+        logger.error(f"⚠️ Error closing database connections: {e}")
+
+    # Step 3: Close Redis connection
+    try:
+        logger.info("🛑 Closing Redis connection...")
+        await redis.close()
+        logger.info("✅ Redis connection closed")
+    except Exception as e:
+        logger.error(f"⚠️ Error closing Redis connection: {e}")
+
+    logger.info("=" * 60)
+    logger.info("✅ BRAiN Core shutdown complete")
+    logger.info("=" * 60)
 
 
 # -------------------------------------------------------
@@ -284,5 +342,10 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=8000,
         reload=True,
-        log_level="info"
+        log_level="info",
+        # Graceful shutdown configuration
+        timeout_keep_alive=5,        # Keep-alive timeout (seconds)
+        timeout_graceful_shutdown=30, # Graceful shutdown timeout (seconds)
+        # Signal handling (SIGTERM, SIGINT)
+        # Uvicorn handles signals automatically and triggers lifespan shutdown
     )
