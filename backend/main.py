@@ -29,6 +29,13 @@ from fastapi.routing import APIRoute
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.core.redis_client import get_redis
+from app.core.middleware import (
+    GlobalExceptionMiddleware,
+    RequestIDMiddleware,
+    SecurityHeadersMiddleware,
+    RequestLoggingMiddleware,
+    SimpleRateLimitMiddleware,
+)
 
 # Mission worker (from old backend/main.py)
 from backend.modules.missions.worker import start_mission_worker, stop_mission_worker
@@ -124,6 +131,31 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # -------------------------------------------------------
+    # Production Middleware (Phase 1)
+    # -------------------------------------------------------
+    # Order matters: First middleware registered = Last to execute
+    # Execution order: Request → Logging → Rate Limit → Request ID → Security → Exception → Route → Exception → ...
+
+    # 1. Global Exception Handler (catches all unhandled exceptions)
+    app.add_middleware(GlobalExceptionMiddleware)
+
+    # 2. Security Headers (adds security headers to all responses)
+    hsts_enabled = settings.environment == "production"
+    app.add_middleware(SecurityHeadersMiddleware, hsts_enabled=hsts_enabled)
+
+    # 3. Request ID Tracking (adds unique ID to each request)
+    app.add_middleware(RequestIDMiddleware)
+
+    # 4. Rate Limiting (basic protection - upgrade to Redis-based for production)
+    if settings.environment != "development":
+        app.add_middleware(SimpleRateLimitMiddleware, max_requests=100, window_seconds=60)
+
+    # 5. Request Logging (logs all requests with timing)
+    app.add_middleware(RequestLoggingMiddleware)
+
+    logger.info("✅ Production middleware registered")
 
     # -------------------------------------------------------
     # Root & Health Endpoints
