@@ -1,0 +1,112 @@
+# BRAiN Backup Service Configuration
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.backup.yml up -d
+#
+# This adds an automated backup service that runs daily at 2 AM
+
+version: '3.8'
+
+services:
+  # Automated backup service using offen/docker-volume-backup
+  backup:
+    image: offen/docker-volume-backup:latest
+    container_name: brain-backup
+    restart: unless-stopped
+
+    environment:
+      # Backup schedule (cron format)
+      BACKUP_CRON_EXPRESSION: "0 2 * * *"  # Daily at 2 AM
+
+      # Retention policy
+      BACKUP_RETENTION_DAYS: "30"  # Keep backups for 30 days
+
+      # Backup filename pattern
+      BACKUP_FILENAME: "brain-backup-%Y%m%d-%H%M%S.tar.gz"
+
+      # Compression
+      BACKUP_COMPRESSION: "gz"
+
+      # Email notifications (optional)
+      # EMAIL_NOTIFICATION_RECIPIENT: "admin@example.com"
+      # EMAIL_NOTIFICATION_SENDER: "backup@brain.falklabs.de"
+      # EMAIL_SMTP_HOST: "smtp.gmail.com"
+      # EMAIL_SMTP_PORT: "587"
+      # EMAIL_SMTP_USERNAME: "your-email@gmail.com"
+      # EMAIL_SMTP_PASSWORD: "your-app-password"
+
+      # S3 storage (optional)
+      # AWS_S3_BUCKET_NAME: "brain-backups"
+      # AWS_ACCESS_KEY_ID: "your-access-key"
+      # AWS_SECRET_ACCESS_KEY: "your-secret-key"
+      # AWS_S3_PATH: "production/brain"
+
+      # Backup sources
+      BACKUP_SOURCES: "/backup"
+
+      # Archive destination
+      BACKUP_ARCHIVE: "/archive"
+
+    volumes:
+      # Read-only access to data volumes
+      - brain_pg_data:/backup/postgres:ro
+      - brain_redis_data:/backup/redis:ro
+      - brain_qdrant_data:/backup/qdrant:ro
+
+      # Local backup storage (read-write)
+      - ./backups:/archive
+
+      # Docker socket for stopping containers during backup (optional)
+      # - /var/run/docker.sock:/var/run/docker.sock:ro
+
+    networks:
+      - brain_network
+
+  # Alternative: Custom backup service using our scripts
+  backup-custom:
+    image: ubuntu:22.04
+    container_name: brain-backup-custom
+    restart: unless-stopped
+
+    environment:
+      BACKUP_DIR: "/backups"
+      RETENTION_DAYS: "30"
+      POSTGRES_CONTAINER: "brain-postgres"
+      REDIS_CONTAINER: "brain-redis"
+      QDRANT_CONTAINER: "brain-qdrant"
+      POSTGRES_USER: "brain"
+      POSTGRES_DB: "brain"
+
+    volumes:
+      # Backup scripts
+      - ./scripts/backup:/scripts:ro
+
+      # Backup storage
+      - ./backups:/backups
+
+      # Docker socket for container access
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+    command: >
+      bash -c "
+        apt-get update &&
+        apt-get install -y docker.io cron postgresql-client redis-tools &&
+        echo '0 2 * * * /scripts/backup.sh >> /var/log/brain-backup.log 2>&1' | crontab - &&
+        cron &&
+        tail -f /var/log/brain-backup.log
+      "
+
+    networks:
+      - brain_network
+
+networks:
+  brain_network:
+    external: true
+
+volumes:
+  brain_pg_data:
+    external: true
+  brain_redis_data:
+    external: true
+  brain_qdrant_data:
+    external: true
