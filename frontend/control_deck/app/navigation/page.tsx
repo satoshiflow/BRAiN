@@ -11,6 +11,7 @@ import {
   type PathPlanningMode,
   type ObstacleAvoidanceStrategy,
 } from "@/lib/navigationApi";
+import { PathVisualization } from "@/components/PathVisualization";
 
 type LoadState<T> = {
   data?: T;
@@ -313,13 +314,11 @@ export default function NavigationPage() {
         )}
       </section>
 
-      {/* Path Visualization Placeholder */}
+      {/* Path Visualization */}
       <section>
-        <h2 className="mb-3 text-sm font-semibold text-neutral-300">Path Visualization</h2>
+        <h2 className="mb-3 text-sm font-semibold text-neutral-300">Real-Time Path Visualization</h2>
         <div className="rounded-2xl border border-neutral-800 bg-neutral-900/70 px-4 py-4">
-          <div className="flex h-64 items-center justify-center rounded-xl border border-dashed border-neutral-700/70 text-xs text-neutral-500">
-            2D Path Viewer Placeholder – Real-time path and obstacle visualization coming soon
-          </div>
+          <PathVisualization className="w-full" updateInterval={100} />
         </div>
       </section>
 
