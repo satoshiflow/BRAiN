@@ -46,6 +46,7 @@ from app.modules.threats.router import router as threats_router
 from app.modules.supervisor.router import router as app_supervisor_router
 from app.modules.missions.router import router as app_missions_router
 from app.modules.foundation.router import router as foundation_router
+from app.modules.mission_rating.router import router as mission_rating_router
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -174,6 +175,7 @@ def create_app() -> FastAPI:
     app.include_router(threats_router, tags=["threats"])
     app.include_router(app_supervisor_router, tags=["supervisor"])
     app.include_router(app_missions_router, tags=["missions"])
+    app.include_router(mission_rating_router, tags=["mission-rating"])
 
     # 3. Auto-discover routes from backend/api/routes/*
     _include_legacy_routers(app)
