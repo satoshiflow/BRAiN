@@ -1,118 +1,68 @@
-import os
-import shutil
+"""
+BRAiN CLI - Main Entry Point
+
+Comprehensive command-line interface for BRAiN development and operations.
+
+Commands:
+    brain db          - Database operations
+    brain generate    - Code generation
+    brain dev         - Development utilities
+    brain config      - Configuration management
+    brain test        - Testing utilities
+    brain info        - System information
+
+Created: 2025-12-20
+Phase: 5 - Developer Experience & Advanced Features
+"""
+
+import sys
 from pathlib import Path
-from typing import Optional
 
 import typer
-import subprocess
+from rich.console import Console
 
-app = typer.Typer(help="BRAiN Developer CLI")
+# Add backend to path
+backend_path = str(Path(__file__).parent.parent)
+if backend_path not in sys.path:
+    sys.path.insert(0, backend_path)
+
+# Import subcommands
+from backend.brain_cli.commands import config_cli, db_cli, dev_cli, generate_cli, info_cli, test_cli
+
+app = typer.Typer(
+    name="brain",
+    help="BRAiN CLI - Development and Operations Tool",
+    add_completion=True,
+)
+
+console = Console()
+
+# Register subcommands
+app.add_typer(db_cli.app, name="db")
+app.add_typer(generate_cli.app, name="generate")
+app.add_typer(dev_cli.app, name="dev")
+app.add_typer(config_cli.app, name="config")
+app.add_typer(test_cli.app, name="test")
+app.add_typer(info_cli.app, name="info")
 
 
-BASE_DIR = Path(__file__).resolve().parents[1]
-MODULES_DIR = BASE_DIR / "app" / "modules"
-
-
-@app.command("module-create")
-def module_create(
-    name: str = typer.Argument(..., help="Name des Moduls, z.B. fewo"),
+@app.callback()
+def main(
+    version: bool = typer.Option(False, "--version", "-v", help="Show version"),
 ):
-    """Erzeugt ein neues Modul-Skelett gemäß BRAiN Modulstandard."""
-    module_dir = MODULES_DIR / name
-    if module_dir.exists():
-        typer.echo(f"Modul {name} existiert bereits.")
-        raise typer.Exit(code=1)
+    """
+    BRAiN CLI - Development and Operations Tool
 
-    typer.echo(f"Erzeuge Modul {name} unter {module_dir}...")
-    (module_dir / "core").mkdir(parents=True)
-    (module_dir / "tests").mkdir(parents=True)
-
-    (module_dir / "__init__.py").write_text("")
-    (module_dir / "router.py").write_text(
-        f"""from fastapi import APIRouter
-
-router = APIRouter(prefix="/api/{name}", tags=["{name}"])
-
-# TODO: add endpoints here
-"""
-    )
-    (module_dir / "schemas.py").write_text("from pydantic import BaseModel\n\n")
-    (module_dir / "jobs.py").write_text("# APScheduler jobs for this module\n")
-    (module_dir / "ui_manifest.py").write_text(
-        f"""UI_MANIFEST = {{
-    "name": "{name}",
-    "label": "{name.title()}",
-    "routes": [],
-}}
-"""
-    )
-    (module_dir / "manifest.json").write_text(
-        f"""{{
-  "name": "{name}",
-  "version": "0.1.0",
-  "domain": "{name}",
-  "router_prefix": "/api/{name}",
-  "security": {{}},
-  "governance": {{}},
-  "ui": {{
-    "enabled": true
-  }}
-}}
-"""
-    )
-
-    typer.echo("Modul erstellt.")
-
-
-@app.command("dev-up")
-def dev_up():
-    """Startet docker-compose für das Dev-Environment."""
-    typer.echo("Starte docker-compose ...")
-    subprocess.run(["docker-compose", "up", "-d"], check=True)
-
-
-@app.command("dev-test")
-def dev_test(
-    path: Optional[str] = typer.Argument(None, help="Optionaler Pfad für pytest"),
-):
-    """Führt Tests aus."""
-    args = ["pytest"]
-    if path:
-        args.append(path)
-    typer.echo(f"Running tests: {' '.join(args)}")
-    subprocess.run(args, check=True)
-
-
-@app.command("module-check")
-def module_check():
-    """Überprüft Modulverzeichnisstruktur."""
-    if not MODULES_DIR.exists():
-        typer.echo(f"Modules dir {MODULES_DIR} not found")
-        raise typer.Exit(code=1)
-
-    errors = 0
-    for child in MODULES_DIR.iterdir():
-        if not child.is_dir():
-            continue
-        required = [
-            child / "router.py",
-            child / "schemas.py",
-            child / "jobs.py",
-            child / "ui_manifest.py",
-            child / "manifest.json",
-        ]
-        for f in required:
-            if not f.exists():
-                typer.echo(f"[ERROR] {child.name}: missing {f.name}")
-                errors += 1
-    if errors == 0:
-        typer.echo("All modules look good ✅")
-    else:
-        typer.echo(f"Module check finished with {errors} errors.")
-        raise typer.Exit(code=1)
+    Use 'brain COMMAND --help' for more information on a command.
+    """
+    if version:
+        console.print("[bold cyan]BRAiN CLI[/bold cyan] v1.0.0")
+        console.print("Phase 5 - Developer Experience & Advanced Features")
+        raise typer.Exit()
 
 
 def run():
+    """Entry point for CLI."""
     app()
 
 
