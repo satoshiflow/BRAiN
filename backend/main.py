@@ -24,6 +24,7 @@ from typing import AsyncIterator, List
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
+from fastapi.staticfiles import StaticFiles
 
 # Core infrastructure
 from app.core.config import get_settings
@@ -298,6 +299,12 @@ def create_app() -> FastAPI:
 
     # 4. Auto-discover routes from app/api/routes/*
     _include_app_routers(app)
+
+    # 5. Mount static files (Phase 5 - WebSocket test client)
+    static_dir = os.path.join(os.path.dirname(__file__), "app", "static")
+    if os.path.exists(static_dir):
+        app.mount("/static", StaticFiles(directory=static_dir), name="static")
+        logger.info(f"✅ Static files mounted from {static_dir}")
 
     logger.info("✅ App created, all routers registered")
     return app
