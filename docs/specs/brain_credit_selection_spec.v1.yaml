@@ -1,0 +1,712 @@
+---
+# BRAIN Credit & Selection System Specification
+# Version: 1.0.0
+# Status: Draft
+# Date: 2025-12-21
+# Purpose: Deterministic resource allocation and agent lifecycle management
+
+metadata:
+  version: "1.0.0"
+  status: "draft"
+  created_at: "2025-12-21"
+  last_modified: "2025-12-21"
+  authors:
+    - "FalkLabs Team"
+  reviewers: []
+
+# ============================================================================
+# CORE PHILOSOPHY
+# ============================================================================
+
+philosophy:
+  description: |
+    The BRAIN Credit System treats computational resources as "energy" rather
+    than currency. Credits represent the right to consume system resources
+    (CPU, memory, I/O, LLM tokens) and are allocated deterministically based
+    on observable system state.
+
+  principles:
+    - name: "Deterministic Allocation"
+      description: "Credit calculations are purely deterministic functions of system state"
+
+    - name: "Append-Only Ledger"
+      description: "All credit transactions are immutable and append-only"
+
+    - name: "No Manual Minting"
+      description: "Credits cannot be manually created; only system rules mint credits"
+
+    - name: "Fail-Closed Security"
+      description: "Ambiguous states result in denial, never implicit approval"
+
+    - name: "Complete Auditability"
+      description: "Every action is traceable through the audit trail"
+
+    - name: "Existence Tax"
+      description: "Active entities consume credits over time (maintenance cost)"
+
+# ============================================================================
+# CREDIT TYPES
+# ============================================================================
+
+credit_types:
+  - id: "COMPUTE_CREDITS"
+    symbol: "CC"
+    description: "Credits for CPU and memory consumption"
+    base_unit: 1.0
+    decimals: 6
+
+  - id: "LLM_CREDITS"
+    symbol: "LC"
+    description: "Credits for LLM API calls (tokens)"
+    base_unit: 1.0
+    decimals: 6
+
+  - id: "STORAGE_CREDITS"
+    symbol: "SC"
+    description: "Credits for persistent storage (database, files)"
+    base_unit: 1.0
+    decimals: 6
+
+  - id: "NETWORK_CREDITS"
+    symbol: "NC"
+    description: "Credits for network I/O and external API calls"
+    base_unit: 1.0
+    decimals: 6
+
+# ============================================================================
+# CREDIT LEDGER SPECIFICATION
+# ============================================================================
+
+ledger:
+  architecture: "append_only"
+  storage: "postgresql"
+
+  schema:
+    table_name: "credit_ledger"
+    columns:
+      - name: "id"
+        type: "UUID"
+        primary_key: true
+        default: "gen_random_uuid()"
+
+      - name: "sequence_number"
+        type: "BIGSERIAL"
+        description: "Monotonically increasing sequence for ordering"
+        indexed: true
+
+      - name: "timestamp"
+        type: "TIMESTAMPTZ"
+        description: "Transaction timestamp"
+        default: "NOW()"
+        indexed: true
+
+      - name: "entity_id"
+        type: "VARCHAR(255)"
+        description: "Agent, mission, or system entity ID"
+        indexed: true
+        nullable: false
+
+      - name: "entity_type"
+        type: "VARCHAR(50)"
+        description: "Type: AGENT, MISSION, SYSTEM"
+        indexed: true
+        nullable: false
+
+      - name: "credit_type"
+        type: "VARCHAR(50)"
+        description: "CC, LC, SC, NC"
+        indexed: true
+        nullable: false
+
+      - name: "amount"
+        type: "NUMERIC(20,6)"
+        description: "Credit amount (positive=mint, negative=burn)"
+        nullable: false
+
+      - name: "balance_after"
+        type: "NUMERIC(20,6)"
+        description: "Balance after this transaction"
+        nullable: false
+
+      - name: "transaction_type"
+        type: "VARCHAR(50)"
+        description: "MINT, BURN, TRANSFER, TAX"
+        indexed: true
+        nullable: false
+
+      - name: "reason"
+        type: "TEXT"
+        description: "Human-readable reason for transaction"
+        nullable: false
+
+      - name: "metadata"
+        type: "JSONB"
+        description: "Additional transaction context"
+        default: "{}"
+
+      - name: "signature"
+        type: "VARCHAR(255)"
+        description: "Cryptographic signature for audit trail"
+        nullable: false
+
+    constraints:
+      - type: "CHECK"
+        expression: "entity_type IN ('AGENT', 'MISSION', 'SYSTEM')"
+
+      - type: "CHECK"
+        expression: "credit_type IN ('CC', 'LC', 'SC', 'NC')"
+
+      - type: "CHECK"
+        expression: "transaction_type IN ('MINT', 'BURN', 'TRANSFER', 'TAX')"
+
+    indexes:
+      - name: "idx_ledger_entity_time"
+        columns: ["entity_id", "timestamp DESC"]
+
+      - name: "idx_ledger_sequence"
+        columns: ["sequence_number DESC"]
+        unique: true
+
+      - name: "idx_ledger_credit_type"
+        columns: ["credit_type", "timestamp DESC"]
+
+# ============================================================================
+# CREDIT CALCULATOR SPECIFICATION
+# ============================================================================
+
+calculator:
+  description: |
+    The Credit Calculator is a deterministic engine that computes credit
+    allocations based on system state and predefined rules. It ensures
+    reproducible calculations given identical inputs.
+
+  implementation_principles:
+    - "Pure functions only (no side effects)"
+    - "Explicit error handling (no silent failures)"
+    - "Comprehensive logging for debugging"
+    - "Unit testable with deterministic outputs"
+
+  calculation_rules:
+
+    - rule_id: "AGENT_CREATION_MINT"
+      description: "Initial credits granted when an agent is created"
+      credit_type: "CC"
+      formula: "1000.0"
+      conditions: []
+
+    - rule_id: "AGENT_EXISTENCE_TAX"
+      description: "Hourly credit consumption for active agents"
+      credit_type: "CC"
+      formula: "5.0 * hours_active"
+      conditions:
+        - "agent.status == 'ACTIVE'"
+
+    - rule_id: "LLM_CALL_COST"
+      description: "Credits consumed per LLM token"
+      credit_type: "LC"
+      formula: "0.001 * total_tokens"
+      conditions: []
+
+    - rule_id: "MISSION_COMPLETION_REWARD"
+      description: "Credits earned for successful mission completion"
+      credit_type: "CC"
+      formula: "50.0 * mission.priority_multiplier"
+      conditions:
+        - "mission.status == 'COMPLETED'"
+
+    - rule_id: "STORAGE_USAGE_TAX"
+      description: "Daily credit consumption for storage"
+      credit_type: "SC"
+      formula: "0.1 * storage_mb"
+      conditions: []
+
+  error_handling:
+    insufficient_credits:
+      action: "REJECT"
+      message: "Insufficient credits for operation"
+      log_level: "WARNING"
+
+    negative_balance:
+      action: "SUSPEND_ENTITY"
+      message: "Entity balance is negative; suspending operations"
+      log_level: "ERROR"
+
+    calculation_error:
+      action: "FAIL_CLOSED"
+      message: "Credit calculation failed; denying operation"
+      log_level: "CRITICAL"
+
+# ============================================================================
+# AGENT REGISTRY SPECIFICATION
+# ============================================================================
+
+agent_registry:
+  description: |
+    Extended agent registry with lifecycle tracking and credit integration.
+
+  schema:
+    table_name: "agent_registry"
+    columns:
+      - name: "agent_id"
+        type: "UUID"
+        primary_key: true
+
+      - name: "agent_name"
+        type: "VARCHAR(255)"
+        nullable: false
+        unique: true
+
+      - name: "agent_type"
+        type: "VARCHAR(100)"
+        description: "CODER, OPS, SUPERVISOR, FLEET, etc."
+        nullable: false
+
+      - name: "status"
+        type: "VARCHAR(50)"
+        description: "ACTIVE, SUSPENDED, TERMINATED"
+        default: "ACTIVE"
+        indexed: true
+
+      - name: "created_at"
+        type: "TIMESTAMPTZ"
+        default: "NOW()"
+
+      - name: "activated_at"
+        type: "TIMESTAMPTZ"
+        nullable: true
+        description: "When agent became ACTIVE"
+
+      - name: "suspended_at"
+        type: "TIMESTAMPTZ"
+        nullable: true
+
+      - name: "terminated_at"
+        type: "TIMESTAMPTZ"
+        nullable: true
+
+      - name: "last_activity_at"
+        type: "TIMESTAMPTZ"
+        nullable: true
+
+      - name: "credit_balance_cc"
+        type: "NUMERIC(20,6)"
+        default: 0.0
+        description: "Cached compute credit balance"
+
+      - name: "credit_balance_lc"
+        type: "NUMERIC(20,6)"
+        default: 0.0
+        description: "Cached LLM credit balance"
+
+      - name: "credit_balance_sc"
+        type: "NUMERIC(20,6)"
+        default: 0.0
+        description: "Cached storage credit balance"
+
+      - name: "credit_balance_nc"
+        type: "NUMERIC(20,6)"
+        default: 0.0
+        description: "Cached network credit balance"
+
+      - name: "total_credits_earned"
+        type: "NUMERIC(20,6)"
+        default: 0.0
+
+      - name: "total_credits_spent"
+        type: "NUMERIC(20,6)"
+        default: 0.0
+
+      - name: "metadata"
+        type: "JSONB"
+        default: "{}"
+
+    constraints:
+      - type: "CHECK"
+        expression: "status IN ('ACTIVE', 'SUSPENDED', 'TERMINATED')"
+
+# ============================================================================
+# ENTITY LIFECYCLE MANAGEMENT
+# ============================================================================
+
+lifecycle:
+  description: |
+    Manages the complete lifecycle of entities (agents, missions) with
+    integrated credit accounting and existence tax.
+
+  states:
+    - name: "CREATED"
+      description: "Entity exists but not yet active"
+      transitions_to: ["ACTIVE", "TERMINATED"]
+
+    - name: "ACTIVE"
+      description: "Entity is operational and consuming resources"
+      transitions_to: ["SUSPENDED", "TERMINATED"]
+      existence_tax: true
+
+    - name: "SUSPENDED"
+      description: "Entity temporarily inactive (low credits or admin action)"
+      transitions_to: ["ACTIVE", "TERMINATED"]
+      existence_tax: false
+
+    - name: "TERMINATED"
+      description: "Entity permanently shut down"
+      transitions_to: []
+      existence_tax: false
+
+  existence_tax:
+    description: |
+      Active entities consume credits over time to prevent resource hoarding.
+      Tax is calculated hourly and deducted automatically.
+
+    collection_interval: "1 hour"
+
+    rules:
+      - entity_type: "AGENT"
+        base_rate_cc: 5.0
+        base_rate_lc: 0.0
+        base_rate_sc: 0.1
+        base_rate_nc: 0.0
+
+      - entity_type: "MISSION"
+        base_rate_cc: 2.0
+        base_rate_lc: 0.0
+        base_rate_sc: 0.05
+        base_rate_nc: 0.0
+
+  auto_suspend:
+    description: "Automatically suspend entities with insufficient credits"
+    enabled: true
+    grace_period: "1 hour"
+    min_balance_cc: 10.0
+
+  auto_terminate:
+    description: "Terminate entities suspended for extended period"
+    enabled: true
+    suspension_threshold: "7 days"
+
+# ============================================================================
+# AUDIT TRAIL SPECIFICATION
+# ============================================================================
+
+audit_trail:
+  description: |
+    Comprehensive audit logging for all credit transactions and lifecycle events.
+
+  schema:
+    table_name: "audit_trail"
+    columns:
+      - name: "id"
+        type: "UUID"
+        primary_key: true
+
+      - name: "timestamp"
+        type: "TIMESTAMPTZ"
+        default: "NOW()"
+        indexed: true
+
+      - name: "event_type"
+        type: "VARCHAR(100)"
+        description: "CREDIT_MINT, CREDIT_BURN, AGENT_CREATE, etc."
+        indexed: true
+
+      - name: "entity_id"
+        type: "VARCHAR(255)"
+        indexed: true
+
+      - name: "entity_type"
+        type: "VARCHAR(50)"
+
+      - name: "actor_id"
+        type: "VARCHAR(255)"
+        description: "Who/what triggered the event"
+
+      - name: "action"
+        type: "TEXT"
+        description: "Human-readable description"
+
+      - name: "result"
+        type: "VARCHAR(50)"
+        description: "SUCCESS, FAILURE, DENIED"
+
+      - name: "metadata"
+        type: "JSONB"
+        default: "{}"
+
+      - name: "signature"
+        type: "VARCHAR(255)"
+        description: "Event signature for tamper detection"
+
+    retention_policy:
+      enabled: true
+      retention_days: 365
+      archive_after_days: 90
+
+# ============================================================================
+# SECURITY & AUTHORIZATION
+# ============================================================================
+
+security:
+  principles:
+    - "No silent privilege escalation"
+    - "Explicit authorization for all operations"
+    - "Fail-closed on ambiguity"
+    - "Comprehensive audit logging"
+
+  permissions:
+    - permission: "CREDIT_VIEW_SELF"
+      description: "View own credit balance"
+      assignable_to: ["AGENT", "USER"]
+
+    - permission: "CREDIT_VIEW_ALL"
+      description: "View all credit balances"
+      assignable_to: ["ADMIN", "SUPERVISOR"]
+
+    - permission: "CREDIT_ADMIN"
+      description: "Administer credit rules (no manual minting)"
+      assignable_to: ["ADMIN"]
+
+    - permission: "AGENT_CREATE"
+      description: "Create new agents"
+      assignable_to: ["ADMIN", "SUPERVISOR"]
+
+    - permission: "AGENT_TERMINATE"
+      description: "Terminate agents"
+      assignable_to: ["ADMIN", "SUPERVISOR"]
+
+  authorization_model:
+    type: "RBAC"
+    roles:
+      - role: "ADMIN"
+        permissions: ["CREDIT_VIEW_ALL", "CREDIT_ADMIN", "AGENT_CREATE", "AGENT_TERMINATE"]
+
+      - role: "SUPERVISOR"
+        permissions: ["CREDIT_VIEW_ALL", "AGENT_CREATE", "AGENT_TERMINATE"]
+
+      - role: "AGENT"
+        permissions: ["CREDIT_VIEW_SELF"]
+
+      - role: "USER"
+        permissions: ["CREDIT_VIEW_SELF"]
+
+# ============================================================================
+# API SPECIFICATION
+# ============================================================================
+
+api:
+  base_path: "/api/credits/v2"
+
+  endpoints:
+
+    - path: "/balance/{entity_id}"
+      method: "GET"
+      description: "Get credit balance for an entity"
+      auth_required: true
+      permission: "CREDIT_VIEW_SELF or CREDIT_VIEW_ALL"
+      response:
+        type: "object"
+        schema:
+          entity_id: "string"
+          entity_type: "string"
+          balances:
+            compute_credits: "number"
+            llm_credits: "number"
+            storage_credits: "number"
+            network_credits: "number"
+          total_earned: "number"
+          total_spent: "number"
+          last_updated: "timestamp"
+
+    - path: "/ledger/{entity_id}"
+      method: "GET"
+      description: "Get transaction history for an entity"
+      auth_required: true
+      permission: "CREDIT_VIEW_SELF or CREDIT_VIEW_ALL"
+      query_params:
+        - name: "limit"
+          type: "integer"
+          default: 100
+        - name: "offset"
+          type: "integer"
+          default: 0
+        - name: "credit_type"
+          type: "string"
+          optional: true
+
+    - path: "/allocate"
+      method: "POST"
+      description: "Request credit allocation (system validates and mints)"
+      auth_required: true
+      permission: "AGENT_CREATE or ADMIN"
+      request_body:
+        entity_id: "string"
+        entity_type: "string"
+        allocation_reason: "string"
+
+    - path: "/spend"
+      method: "POST"
+      description: "Record credit expenditure"
+      auth_required: true
+      request_body:
+        entity_id: "string"
+        credit_type: "string"
+        amount: "number"
+        reason: "string"
+        metadata: "object"
+
+    - path: "/audit"
+      method: "GET"
+      description: "Query audit trail"
+      auth_required: true
+      permission: "CREDIT_VIEW_ALL"
+      query_params:
+        - name: "entity_id"
+          type: "string"
+          optional: true
+        - name: "event_type"
+          type: "string"
+          optional: true
+        - name: "start_date"
+          type: "timestamp"
+          optional: true
+        - name: "end_date"
+          type: "timestamp"
+          optional: true
+
+# ============================================================================
+# TESTING REQUIREMENTS
+# ============================================================================
+
+testing:
+  coverage_target: 95
+
+  test_categories:
+
+    - category: "Unit Tests"
+      description: "Test individual components in isolation"
+      targets:
+        - "Credit Calculator determinism"
+        - "Ledger append-only enforcement"
+        - "Signature generation and validation"
+        - "Balance calculation accuracy"
+
+    - category: "Integration Tests"
+      description: "Test component interactions"
+      targets:
+        - "Agent creation with credit allocation"
+        - "Existence tax collection"
+        - "Auto-suspend on low balance"
+        - "Credit transfer between entities"
+
+    - category: "Security Tests"
+      description: "Validate security properties"
+      targets:
+        - "No manual credit minting"
+        - "Authorization enforcement"
+        - "Fail-closed behavior"
+        - "Audit trail completeness"
+
+    - category: "Performance Tests"
+      description: "Validate performance characteristics"
+      targets:
+        - "Ledger write throughput"
+        - "Balance query latency"
+        - "Concurrent transaction handling"
+
+  test_data:
+    synthetic_agents: 100
+    synthetic_transactions: 10000
+    test_duration_days: 30
+
+# ============================================================================
+# IMPLEMENTATION PHASES
+# ============================================================================
+
+implementation:
+
+  phase_1:
+    name: "Core Infrastructure"
+    deliverables:
+      - "Database schema (migrations)"
+      - "Credit Ledger implementation"
+      - "Basic Credit Calculator"
+      - "Unit tests"
+
+  phase_2:
+    name: "Agent Integration"
+    deliverables:
+      - "Agent Registry extension"
+      - "Lifecycle management"
+      - "Existence tax automation"
+      - "Integration tests"
+
+  phase_3:
+    name: "API & Security"
+    deliverables:
+      - "REST API endpoints"
+      - "Authorization enforcement"
+      - "Audit trail system"
+      - "Security tests"
+
+  phase_4:
+    name: "Monitoring & Operations"
+    deliverables:
+      - "Metrics and dashboards"
+      - "Alerting rules"
+      - "Operational runbooks"
+      - "Performance tests"
+
+# ============================================================================
+# COMPLIANCE & GOVERNANCE
+# ============================================================================
+
+compliance:
+
+  data_retention:
+    ledger: "permanent"
+    audit_trail: "365 days (with archive)"
+    agent_registry: "permanent (soft delete)"
+
+  privacy:
+    pii_fields: []
+    encryption_at_rest: "required"
+    encryption_in_transit: "required"
+
+  governance:
+    review_frequency: "quarterly"
+    change_approval: "required"
+    documentation_updates: "mandatory"
+
+# ============================================================================
+# APPENDICES
+# ============================================================================
+
+appendices:
+
+  glossary:
+    - term: "Credit"
+      definition: "A unit of computational resource allocation (not currency)"
+
+    - term: "Entity"
+      definition: "An agent, mission, or system component that can hold credits"
+
+    - term: "Existence Tax"
+      definition: "Automatic credit consumption for active entities"
+
+    - term: "Deterministic"
+      definition: "Producing identical results given identical inputs"
+
+    - term: "Append-Only"
+      definition: "Data structure where records can only be added, never modified or deleted"
+
+  references:
+    - title: "Event Sourcing Pattern"
+      url: "https://martinfowler.com/eaaDev/EventSourcing.html"
+
+    - title: "Blockchain Ledger Design"
+      url: "https://en.wikipedia.org/wiki/Blockchain"
+
+    - title: "RBAC Authorization"
+      url: "https://en.wikipedia.org/wiki/Role-based_access_control"
+
+---
+# End of brain_credit_selection_spec.v1.yaml
