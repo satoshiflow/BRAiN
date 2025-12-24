@@ -318,10 +318,18 @@ async def get_audit_log(
     Returns recent audit events including mode changes, bundle loads, and security events.
 
     **Event Types:**
-    - mode_change: Operation mode changes
-    - bundle_load: Bundle loading events
-    - bundle_validation: Bundle validation events
-    - network_block: Blocked network requests
+    - sovereign.mode_changed: Operation mode changes
+    - sovereign.gate_check_passed: Gate check successful
+    - sovereign.gate_check_failed: Gate check failed
+    - sovereign.egress_rules_applied: Firewall rules applied
+    - sovereign.egress_rules_removed: Firewall rules removed
+    - sovereign.network_probe_passed: Network connectivity verified
+    - sovereign.network_probe_failed: Network probe failed
+    - sovereign.ipv6_gate_checked: IPv6 gate check performed
+    - sovereign.ipv6_gate_failed: IPv6 gate check failed
+    - sovereign.connector_blocked: Connector/Gateway blocked
+    - sovereign.dmz_stopped: DMZ gateway stopped
+    - sovereign.bundle_loaded: Bundle loaded successfully
     """
     try:
         service = get_sovereign_service()

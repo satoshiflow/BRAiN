@@ -294,12 +294,57 @@ class NetworkCheckResult(BaseModel):
         }
 
 
+class AuditSeverity(str, Enum):
+    """Audit event severity levels."""
+
+    INFO = "info"
+    WARNING = "warning"
+    ERROR = "error"
+    CRITICAL = "critical"
+
+
+class AuditEventType(str, Enum):
+    """Sovereign mode audit event types."""
+
+    # Mode changes
+    MODE_CHANGED = "sovereign.mode_changed"
+
+    # Gate checks
+    GATE_CHECK_PASSED = "sovereign.gate_check_passed"
+    GATE_CHECK_FAILED = "sovereign.gate_check_failed"
+
+    # Firewall/Egress
+    EGRESS_RULES_APPLIED = "sovereign.egress_rules_applied"
+    EGRESS_RULES_REMOVED = "sovereign.egress_rules_removed"
+    EGRESS_RULES_FAILED = "sovereign.egress_rules_failed"
+
+    # Network probes
+    NETWORK_PROBE_PASSED = "sovereign.network_probe_passed"
+    NETWORK_PROBE_FAILED = "sovereign.network_probe_failed"
+
+    # IPv6
+    IPV6_GATE_CHECKED = "sovereign.ipv6_gate_checked"
+    IPV6_GATE_PASSED = "sovereign.ipv6_gate_passed"
+    IPV6_GATE_FAILED = "sovereign.ipv6_gate_failed"
+    IPV6_GATE_BLOCKED = "sovereign.ipv6_gate_blocked"
+
+    # Connectors/Gateway
+    CONNECTOR_BLOCKED = "sovereign.connector_blocked"
+    DMZ_STOPPED = "sovereign.dmz_stopped"
+    DMZ_STARTED = "sovereign.dmz_started"
+
+    # Bundle operations
+    BUNDLE_LOADED = "sovereign.bundle_loaded"
+    BUNDLE_LOAD_FAILED = "sovereign.bundle_load_failed"
+
+
 class AuditEntry(BaseModel):
     """Audit log entry for sovereign mode operations."""
 
     id: str = Field(..., description="Unique entry ID")
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     event_type: str = Field(..., description="Event type (mode_change, bundle_load, etc.)")
+    severity: AuditSeverity = Field(default=AuditSeverity.INFO, description="Event severity")
 
     # Event details
     mode_before: Optional[OperationMode] = Field(None)
@@ -313,6 +358,9 @@ class AuditEntry(BaseModel):
     # Result
     success: bool = Field(..., description="Operation succeeded")
     error: Optional[str] = Field(None, description="Error if failed")
+
+    # Flags
+    ipv6_related: bool = Field(default=False, description="Event is IPv6-related")
 
     # Metadata
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional context")
