@@ -421,3 +421,191 @@ async def remove_quarantine(bundle_id: str):
     except Exception as e:
         logger.error(f"Error removing quarantine for {bundle_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# IPv6 MONITORING ENDPOINTS
+# ============================================================================
+
+from backend.app.modules.sovereign_mode.ipv6_monitoring import (
+    get_ipv6_traffic_monitor,
+    IPv6TrafficStats,
+    IPv6FirewallStats,
+)
+from fastapi.responses import PlainTextResponse
+
+
+@router.get("/ipv6/traffic", response_model=IPv6TrafficStats)
+async def get_ipv6_traffic_stats():
+    """
+    Get IPv6 traffic statistics.
+
+    Returns kernel-level IPv6 traffic metrics:
+    - Packets/bytes received and sent
+    - Dropped packets
+    - IPv6 enabled status
+
+    **Use Case**: Monitor IPv6 traffic in real-time
+    """
+    monitor = get_ipv6_traffic_monitor()
+    
+    try:
+        stats = await monitor.get_traffic_stats()
+        return stats
+    
+    except Exception as e:
+        logger.error(f"Failed to get IPv6 traffic stats: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get IPv6 traffic stats: {str(e)}"
+        )
+
+
+@router.get("/ipv6/firewall", response_model=IPv6FirewallStats)
+async def get_ipv6_firewall_stats():
+    """
+    Get IPv6 firewall statistics.
+
+    Returns IPv6 firewall metrics:
+    - Active firewall rules
+    - Allowed packets
+    - Dropped packets
+    - Rejected packets
+
+    **Use Case**: Monitor IPv6 firewall effectiveness
+    """
+    monitor = get_ipv6_traffic_monitor()
+    
+    try:
+        stats = await monitor.get_firewall_stats()
+        return stats
+    
+    except Exception as e:
+        logger.error(f"Failed to get IPv6 firewall stats: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get IPv6 firewall stats: {str(e)}"
+        )
+
+
+@router.get("/ipv6/metrics/prometheus", response_class=PlainTextResponse)
+async def get_ipv6_prometheus_metrics():
+    """
+    Get IPv6 metrics in Prometheus format.
+
+    Returns IPv6 traffic and firewall metrics in Prometheus format.
+
+    **Metrics exposed**:
+    - `ipv6_enabled`: IPv6 status (1=yes, 0=no)
+    - `ipv6_packets_received_total`: Total packets received
+    - `ipv6_packets_sent_total`: Total packets sent
+    - `ipv6_bytes_received_total`: Total bytes received
+    - `ipv6_bytes_sent_total`: Total bytes sent
+    - `ipv6_dropped_packets_total`: Total dropped packets
+    - `ipv6_firewall_active_rules`: Active firewall rules
+    - `ipv6_firewall_allowed_packets_total`: Allowed packets
+    - `ipv6_firewall_dropped_packets_total`: Dropped packets
+
+    **Use Case**: Prometheus/Grafana integration
+    """
+    monitor = get_ipv6_traffic_monitor()
+    
+    try:
+        metrics = await monitor.get_prometheus_metrics()
+        return metrics
+    
+    except Exception as e:
+        logger.error(f"Failed to get IPv6 Prometheus metrics: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get IPv6 Prometheus metrics: {str(e)}"
+        )
+
+
+# ============================================================================
+# FIREWALL AUDIT LOGGING ENDPOINTS
+# ============================================================================
+
+from backend.app.modules.sovereign_mode.firewall_audit import (
+    get_firewall_audit_log,
+    FirewallAuditEntry,
+    FirewallOperation,
+)
+from typing import Dict, Any
+
+
+@router.get("/firewall/audit/recent", response_model=List[FirewallAuditEntry])
+async def get_recent_firewall_audit_entries(
+    limit: int = 100,
+    operation: Optional[str] = None,
+):
+    """
+    Get recent firewall audit log entries.
+
+    Returns recent firewall rule changes and operations.
+
+    **Query Parameters**:
+    - `limit`: Maximum number of entries (default: 100, max: 1000)
+    - `operation`: Filter by operation type (optional)
+
+    **Operations**:
+    - `rule_added`: Firewall rule was added
+    - `rule_removed`: Firewall rule was removed
+    - `rules_flushed`: All rules were flushed
+    - `mode_changed`: Firewall mode changed
+    - `script_executed`: Firewall script executed
+
+    **Use Case**: Audit trail, compliance, troubleshooting
+    """
+    if limit > 1000:
+        limit = 1000
+
+    audit_log = get_firewall_audit_log()
+
+    try:
+        # Parse operation filter
+        op_filter = None
+        if operation:
+            try:
+                op_filter = FirewallOperation(operation)
+            except ValueError:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid operation: {operation}. Must be one of: {[e.value for e in FirewallOperation]}"
+                )
+
+        entries = await audit_log.get_recent_entries(limit=limit, operation=op_filter)
+        return entries
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        logger.error(f"Failed to get firewall audit entries: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get firewall audit entries: {str(e)}"
+        )
+
+
+@router.get("/firewall/audit/stats", response_model=Dict[str, Any])
+async def get_firewall_audit_stats():
+    """
+    Get firewall audit statistics.
+
+    Returns aggregated statistics about firewall operations:
+    - Total entries
+    - Operations by type
+    - Scripts used
+    - Modes changed
+    - Success rate
+
+    **Use Case**: Compliance reporting, system health
+    """
+    audit_log = get_firewall_audit_log()
+
+    try:
+        stats = await audit_log.get_stats()
+        return stats
+
+    except Exception as e:
+        logger.error(f"Failed to get firewall audit stats: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get firewall audit stats: {str(e)}"
+        )

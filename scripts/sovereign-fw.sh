@@ -380,6 +380,87 @@ apply_ipv6_sovereign_rules() {
     return 0
 }
 
+# ============================================================================
+# IPv6 ALLOWLIST MODE FUNCTIONS
+# ============================================================================
+
+apply_ipv6_allowlist_rules() {
+    local subnet="$1"
+    local allowlist="$2"  # Comma-separated list of IPv6 addresses/networks
+    local rule_count=0
+
+    print_info "Applying IPv6 allowlist mode firewall rules..."
+    log_info "Applying IPv6 allowlist rules for subnet $subnet"
+    log_info "Allowlist: $allowlist"
+
+    # Ensure chain exists
+    ensure_docker_user_chain_ipv6
+
+    # Remove existing IPv6 BRAiN rules first
+    remove_ipv6_brain_rules > /dev/null
+
+    # Rule 1: Allow established/related connections
+    ip6tables -I DOCKER-USER 1 \
+        -m conntrack --ctstate ESTABLISHED,RELATED \
+        -s "$subnet" \
+        -m comment --comment "brain-sovereign-ipv6:established" \
+        -j ACCEPT
+    ((rule_count++))
+    log_info "Added IPv6 rule: ACCEPT established/related"
+
+    # Rule 2: Allow to localhost (::1)
+    ip6tables -I DOCKER-USER 2 \
+        -s "$subnet" \
+        -d ::1/128 \
+        -m comment --comment "brain-sovereign-ipv6:localhost" \
+        -j ACCEPT
+    ((rule_count++))
+    log_info "Added IPv6 rule: ACCEPT to localhost"
+
+    # Rule 3: Allow to ULA (Unique Local Addresses: fc00::/7)
+    ip6tables -I DOCKER-USER 3 \
+        -s "$subnet" \
+        -d fc00::/7 \
+        -m comment --comment "brain-sovereign-ipv6:ula" \
+        -j ACCEPT
+    ((rule_count++))
+    log_info "Added IPv6 rule: ACCEPT to ULA"
+
+    # Rules 4+: Allow to allowlist destinations
+    local dest_rule_num=4
+    if [[ -n "$allowlist" ]]; then
+        IFS=',' read -ra ALLOWED <<< "$allowlist"
+        for dest in "${ALLOWED[@]}"; do
+            dest=$(echo "$dest" | xargs)  # Trim whitespace
+            
+            if [[ -n "$dest" ]]; then
+                ip6tables -I DOCKER-USER "$dest_rule_num" \
+                    -s "$subnet" \
+                    -d "$dest" \
+                    -m comment --comment "brain-sovereign-ipv6:allowlist-$dest_rule_num" \
+                    -j ACCEPT
+                ((rule_count++))
+                ((dest_rule_num++))
+                log_info "Added IPv6 rule: ACCEPT to $dest"
+                print_success "  ✓ Allowed: $dest"
+            fi
+        done
+    fi
+
+    # Final rule: DROP all other egress (FAIL-CLOSED)
+    ip6tables -A DOCKER-USER \
+        -s "$subnet" \
+        -m comment --comment "brain-sovereign-ipv6:drop-egress" \
+        -j DROP
+    ((rule_count++))
+    log_info "Added IPv6 rule: DROP all other egress"
+
+    print_success "Applied $rule_count IPv6 allowlist mode rules"
+
+    return 0
+}
+
+
 verify_ipv6_rules() {
     local rule_count
     rule_count=$(count_ipv6_brain_rules)
