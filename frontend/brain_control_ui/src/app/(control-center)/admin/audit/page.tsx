@@ -93,6 +93,51 @@ function getEventTypeBadge(eventType: string) {
 }
 
 /**
+ * Collapsible JSON Viewer Component
+ *
+ * SECURITY: Metadata is collapsed by default to prevent accidental exposure
+ * of sensitive/redacted data in audit logs.
+ */
+function CollapsibleMetadata({ metadata }: { metadata: Record<string, any> }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  if (Object.keys(metadata).length === 0) {
+    return (
+      <span className="text-xs text-muted-foreground">No metadata</span>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="gap-2"
+      >
+        {isExpanded ? (
+          <>
+            <XCircle className="h-3 w-3" />
+            Hide Metadata
+          </>
+        ) : (
+          <>
+            <CheckCircle2 className="h-3 w-3" />
+            Show Metadata ({Object.keys(metadata).length} fields)
+          </>
+        )}
+      </Button>
+
+      {isExpanded && (
+        <pre className="overflow-x-auto rounded-lg bg-background p-3 text-xs border border-amber-500/30">
+          {JSON.stringify(metadata, null, 2)}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+/**
  * Audit Entry Row Component
  */
 function AuditEntryRow({ entry }: { entry: AuditEntry }) {
@@ -172,15 +217,13 @@ function AuditEntryRow({ entry }: { entry: AuditEntry }) {
                 </div>
               )}
 
-              {/* Metadata */}
-              {Object.keys(entry.metadata).length > 0 && (
-                <div>
-                  <span className="text-xs font-semibold text-muted-foreground">Metadata:</span>
-                  <pre className="mt-1 overflow-x-auto rounded-lg bg-background p-3 text-xs">
-                    {JSON.stringify(entry.metadata, null, 2)}
-                  </pre>
+              {/* Metadata - COLLAPSED BY DEFAULT (Security) */}
+              <div>
+                <span className="text-xs font-semibold text-muted-foreground">Metadata:</span>
+                <div className="mt-1">
+                  <CollapsibleMetadata metadata={entry.metadata} />
                 </div>
-              )}
+              </div>
             </div>
           </TableCell>
         </TableRow>

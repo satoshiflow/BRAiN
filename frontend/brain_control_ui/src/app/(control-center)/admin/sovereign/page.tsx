@@ -260,15 +260,58 @@ export default function SovereignModePage() {
     );
   }
 
-  // Error state
+  // Error state - Graceful degradation
   if (error || !status) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <Alert variant="destructive" className="max-w-md">
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Sovereign Mode</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Secure offline operation with model bundle management
+            </p>
+          </div>
+        </div>
+
+        <Alert variant="destructive">
           <XCircle className="h-4 w-4" />
           <AlertDescription>
             Failed to load sovereign mode status: {error?.message || "Unknown error"}
+            <br />
+            <span className="text-xs text-muted-foreground mt-2 block">
+              The sovereign mode API endpoint may not be available. Check backend logs or ensure
+              the sovereign_mode module is enabled.
+            </span>
           </AlertDescription>
+        </Alert>
+
+        <Card className="border-amber-500/30">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Module Unavailable
+            </CardTitle>
+            <CardDescription>
+              This feature requires the Sovereign Mode backend module
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm text-muted-foreground">
+            <p>
+              <strong>Possible causes:</strong>
+            </p>
+            <ul className="list-disc list-inside space-y-1 ml-2">
+              <li>Backend API is not running</li>
+              <li>Sovereign mode module is not enabled</li>
+              <li>Network connectivity issues</li>
+              <li>API endpoint configuration mismatch</li>
+            </ul>
+            <p className="mt-4">
+              <strong>To resolve:</strong> Check backend logs with{" "}
+              <code className="bg-muted px-1 py-0.5 rounded">
+                docker compose logs backend | grep sovereign
+              </code>
+            </p>
+          </CardContent>
         </Alert>
       </div>
     );
