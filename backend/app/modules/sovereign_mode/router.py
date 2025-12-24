@@ -609,3 +609,231 @@ async def get_firewall_audit_stats():
         raise HTTPException(
             status_code=500, detail=f"Failed to get firewall audit stats: {str(e)}"
         )
+
+
+# ============================================================================
+# G1: Bundle Signing & Trusted Key Management
+# ============================================================================
+
+
+@router.post("/bundles/{bundle_id}/sign", summary="Sign bundle with system key")
+async def sign_bundle_endpoint(bundle_id: str):
+    """
+    Sign a bundle using the system signing key.
+
+    **Auth**: Owner only (TODO: Add auth middleware)
+
+    **Returns**: Bundle with signature added
+    """
+    from backend.app.modules.sovereign_mode.crypto import (
+        generate_keypair,
+        sign_bundle as crypto_sign_bundle,
+        export_public_key_pem,
+        export_public_key_hex,
+    )
+    from backend.app.modules.sovereign_mode.keyring import get_trusted_keyring
+    from datetime import datetime
+
+    service = get_sovereign_mode_service()
+
+    try:
+        # Get bundle
+        bundle = service.bundle_manager.get_bundle(bundle_id)
+        if not bundle:
+            raise HTTPException(status_code=404, detail=f"Bundle not found: {bundle_id}")
+
+        # Generate or load system key (simplified for now)
+        # TODO: Use persistent system key from storage
+        private_key, public_key = generate_keypair()
+        public_key_pem = export_public_key_pem(public_key)
+        public_key_hex = export_public_key_hex(public_key)
+
+        key_id = "system-key-001"
+
+        # Add key to keyring if not present
+        keyring = get_trusted_keyring()
+        if not keyring.is_trusted(key_id):
+            keyring.add_key(
+                key_id=key_id,
+                public_key_pem=public_key_pem,
+                origin="system",
+                trust_level="full",
+                added_by="system",
+                description="System master signing key",
+            )
+
+        # Sign bundle
+        bundle_dict = bundle.model_dump()
+        signature_hex = crypto_sign_bundle(bundle_dict, private_key)
+
+        # Update bundle
+        bundle.signature = signature_hex
+        bundle.signature_algorithm = "ed25519"
+        bundle.signed_by_key_id = key_id
+        bundle.signed_at = datetime.utcnow()
+
+        logger.info(f"Signed bundle {bundle_id} with key {key_id}")
+
+        return bundle
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to sign bundle {bundle_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to sign bundle: {str(e)}")
+
+
+@router.post("/bundles/{bundle_id}/verify", summary="Verify bundle signature")
+async def verify_bundle_endpoint(bundle_id: str):
+    """
+    Verify a bundle's signature against trusted keyring.
+
+    **Returns**: ValidationResult with signature verification status
+    """
+    service = get_sovereign_mode_service()
+
+    try:
+        # Get bundle
+        bundle = service.bundle_manager.get_bundle(bundle_id)
+        if not bundle:
+            raise HTTPException(status_code=404, detail=f"Bundle not found: {bundle_id}")
+
+        # Validate bundle (includes signature verification)
+        result = service.bundle_manager.validate_bundle(bundle_id, force=True)
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to verify bundle {bundle_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to verify bundle: {str(e)}")
+
+
+@router.get("/keys", summary="List trusted keys")
+async def list_trusted_keys(
+    origin: Optional[str] = None,
+    trust_level: Optional[str] = None,
+    include_revoked: bool = False,
+):
+    """
+    List all trusted public keys in keyring.
+
+    **Query Parameters**:
+    - origin: Filter by origin (system/owner/external)
+    - trust_level: Filter by trust level (full/limited)
+    - include_revoked: Include revoked keys (default: false)
+
+    **Auth**: Core/Owner (TODO: Add auth middleware)
+
+    **Returns**: List of TrustedKey objects
+    """
+    from backend.app.modules.sovereign_mode.keyring import get_trusted_keyring
+
+    try:
+        keyring = get_trusted_keyring()
+        keys = keyring.list_keys(
+            origin=origin,
+            trust_level=trust_level,
+            include_revoked=include_revoked,
+        )
+
+        return keys
+
+    except Exception as e:
+        logger.error(f"Failed to list trusted keys: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to list keys: {str(e)}")
+
+
+@router.post("/keys", summary="Add trusted key")
+async def add_trusted_key(
+    key_id: str,
+    public_key_pem: str,
+    origin: str = "owner",
+    trust_level: str = "full",
+    description: Optional[str] = None,
+):
+    """
+    Add a new trusted public key to the keyring.
+
+    **Request Body**:
+    - key_id: Unique key identifier
+    - public_key_pem: PEM-encoded Ed25519 public key
+    - origin: Key origin (system/owner/external)
+    - trust_level: Trust level (full/limited)
+    - description: Optional key description
+
+    **Auth**: Owner only (TODO: Add auth middleware)
+
+    **Returns**: TrustedKey object
+    """
+    from backend.app.modules.sovereign_mode.keyring import get_trusted_keyring
+
+    try:
+        keyring = get_trusted_keyring()
+
+        trusted_key = keyring.add_key(
+            key_id=key_id,
+            public_key_pem=public_key_pem,
+            origin=origin,
+            trust_level=trust_level,
+            added_by="api",  # TODO: Use actual user from auth
+            description=description,
+        )
+
+        logger.info(f"Added trusted key: {key_id} (origin={origin})")
+
+        return trusted_key
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to add trusted key: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to add key: {str(e)}")
+
+
+@router.delete("/keys/{key_id}", summary="Remove trusted key")
+async def remove_trusted_key(key_id: str, revoke: bool = False):
+    """
+    Remove or revoke a trusted key.
+
+    **Path Parameters**:
+    - key_id: Key identifier to remove/revoke
+
+    **Query Parameters**:
+    - revoke: If true, revoke key (maintain audit trail); if false, delete key
+
+    **Auth**: Owner only (TODO: Add auth middleware)
+
+    **Returns**: Success message
+    """
+    from backend.app.modules.sovereign_mode.keyring import get_trusted_keyring
+
+    try:
+        keyring = get_trusted_keyring()
+
+        if revoke:
+            # Revoke key (maintains audit trail)
+            success = keyring.revoke_key(key_id, reason="Manual revocation via API")
+            if not success:
+                raise HTTPException(status_code=404, detail=f"Key not found: {key_id}")
+
+            logger.warning(f"Revoked trusted key: {key_id}")
+            return {"success": True, "message": f"Key {key_id} revoked"}
+
+        else:
+            # Delete key (permanent removal)
+            success = keyring.remove_key(key_id)
+            if not success:
+                raise HTTPException(status_code=404, detail=f"Key not found: {key_id}")
+
+            logger.warning(f"Removed trusted key: {key_id}")
+            return {"success": True, "message": f"Key {key_id} removed"}
+
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to remove/revoke key {key_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to remove key: {str(e)}")
