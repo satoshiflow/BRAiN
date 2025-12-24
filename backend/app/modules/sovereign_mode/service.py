@@ -45,6 +45,10 @@ from backend.app.modules.sovereign_mode.network_guard import (
     get_network_guard,
     NetworkGuard,
 )
+from backend.app.modules.sovereign_mode.ipv6_gate import (
+    get_ipv6_gate_checker,
+    IPv6GateResult,
+)
 
 
 class SovereignModeService:
@@ -230,6 +234,89 @@ class SovereignModeService:
                 if not network_check.is_online:
                     raise ValueError(
                         "Cannot switch to ONLINE mode: network unavailable"
+                    )
+
+            # IPv6 gate check for SOVEREIGN mode
+            if new_mode == OperationMode.SOVEREIGN and not request.force:
+                ipv6_checker = get_ipv6_gate_checker()
+                ipv6_result = await ipv6_checker.check()
+
+                # Audit IPv6 gate check
+                self._audit(
+                    event_type=AuditEventType.IPV6_GATE_CHECKED.value,
+                    success=(ipv6_result.status in ["pass", "not_applicable"]),
+                    severity=(
+                        AuditSeverity.INFO
+                        if ipv6_result.status == "pass"
+                        else (
+                            AuditSeverity.WARNING
+                            if ipv6_result.status == "not_applicable"
+                            else AuditSeverity.ERROR
+                        )
+                    ),
+                    reason=f"IPv6 gate check: {ipv6_result.status}",
+                    ipv6_related=True,
+                    metadata={
+                        "ipv6_active": ipv6_result.ipv6_active,
+                        "policy": ipv6_result.policy,
+                        "ip6tables_available": ipv6_result.ip6tables_available,
+                        "rules_applied": ipv6_result.firewall_rules_applied,
+                    },
+                )
+
+                if ipv6_result.status == "fail":
+                    # Emit critical audit event
+                    self._audit(
+                        event_type=AuditEventType.IPV6_GATE_FAILED.value,
+                        success=False,
+                        severity=AuditSeverity.CRITICAL,
+                        reason="IPv6 gate check failed - cannot activate sovereign mode",
+                        error=ipv6_result.error,
+                        ipv6_related=True,
+                        metadata={
+                            "ipv6_active": ipv6_result.ipv6_active,
+                            "policy": ipv6_result.policy,
+                            "ip6tables_available": ipv6_result.ip6tables_available,
+                        },
+                    )
+
+                    # Build user-friendly error message
+                    error_msg = (
+                        "❌ Cannot activate Sovereign Mode: IPv6 gate check failed.\n\n"
+                        f"Reason: {ipv6_result.error}\n\n"
+                        "Solutions:\n"
+                        "1. Install ip6tables:\n"
+                        "   sudo apt-get update && sudo apt-get install iptables\n\n"
+                        "2. Disable IPv6 on host:\n"
+                        "   sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1\n"
+                        "   sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1\n\n"
+                        "   Make persistent: Add to /etc/sysctl.conf:\n"
+                        "   net.ipv6.conf.all.disable_ipv6 = 1\n"
+                        "   net.ipv6.conf.default.disable_ipv6 = 1\n\n"
+                        "3. Apply IPv6 firewall rules:\n"
+                        "   sudo scripts/sovereign-fw.sh apply sovereign\n\n"
+                        f"Current Status:\n"
+                        f"- IPv6 Active: {'Yes' if ipv6_result.ipv6_active else 'No'}\n"
+                        f"- ip6tables Available: {'Yes' if ipv6_result.ip6tables_available else 'No'}\n"
+                        f"- Policy: {ipv6_result.policy}\n"
+                        f"- Rules Applied: {'Yes' if ipv6_result.firewall_rules_applied else 'No'}"
+                    )
+
+                    raise ValueError(error_msg)
+
+                elif ipv6_result.status == "pass":
+                    # Emit success audit event
+                    self._audit(
+                        event_type=AuditEventType.IPV6_GATE_PASSED.value,
+                        success=True,
+                        severity=AuditSeverity.INFO,
+                        reason="IPv6 gate check passed - IPv6 is properly blocked",
+                        ipv6_related=True,
+                        metadata={
+                            "ipv6_active": ipv6_result.ipv6_active,
+                            "policy": ipv6_result.policy,
+                            "rules_applied": ipv6_result.firewall_rules_applied,
+                        },
                     )
 
             # Load bundle if switching to offline modes

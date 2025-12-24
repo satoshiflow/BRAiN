@@ -243,6 +243,158 @@ remove_brain_rules() {
     echo "$removed"
 }
 
+# ============================================================================
+# IPv6 SUPPORT FUNCTIONS
+# ============================================================================
+
+detect_ipv6_active() {
+    # Check if IPv6 is active on host (excluding localhost)
+    if ip -6 addr show 2>/dev/null | grep -q "scope global"; then
+        return 0  # IPv6 active
+    else
+        return 1  # IPv6 not active
+    fi
+}
+
+check_ip6tables_available() {
+    # Check if ip6tables command exists
+    if command -v ip6tables &>/dev/null; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+ensure_docker_user_chain_ipv6() {
+    # Check if DOCKER-USER chain exists for IPv6
+    if ! ip6tables -L DOCKER-USER -n &> /dev/null; then
+        print_warn "IPv6 DOCKER-USER chain does not exist, creating it..."
+        ip6tables -N DOCKER-USER
+        ip6tables -I FORWARD -j DOCKER-USER
+        log_info "Created IPv6 DOCKER-USER chain"
+    fi
+}
+
+detect_docker_ipv6_network() {
+    # Try to detect IPv6 subnet for Docker network
+    if command -v docker &>/dev/null; then
+        local subnet
+        subnet=$(docker network inspect "$DOCKER_NETWORK_NAME" 2>/dev/null \
+            | grep -oP '(?<="Subnet": ")[a-fA-F0-9:]+/[0-9]+' \
+            | head -1)
+
+        if [[ -n "$subnet" && "$subnet" == *":"* ]]; then
+            log_info "Detected $DOCKER_NETWORK_NAME IPv6 subnet: $subnet"
+            echo "$subnet"
+            return 0
+        fi
+    fi
+
+    # Fallback: use ULA range (Unique Local Addresses)
+    log_warn "Could not detect Docker IPv6 network, using ULA fallback: fc00::/7"
+    echo "fc00::/7"
+}
+
+count_ipv6_brain_rules() {
+    ip6tables -L DOCKER-USER -n --line-numbers 2>/dev/null \
+        | grep -c "brain-sovereign-ipv6" || echo "0"
+}
+
+remove_ipv6_brain_rules() {
+    local removed=0
+
+    # Remove rules in reverse order (to preserve line numbers)
+    while true; do
+        local line_num
+        line_num=$(ip6tables -L DOCKER-USER -n --line-numbers 2>/dev/null \
+            | grep "brain-sovereign-ipv6" \
+            | tail -1 \
+            | awk '{print $1}')
+
+        if [[ -z "$line_num" ]]; then
+            break
+        fi
+
+        ip6tables -D DOCKER-USER "$line_num"
+        ((removed++))
+    done
+
+    if [[ $removed -gt 0 ]]; then
+        log_info "Removed $removed IPv6 BRAiN firewall rules"
+        print_success "Removed $removed IPv6 BRAiN firewall rules"
+    fi
+
+    echo "$removed"
+}
+
+apply_ipv6_sovereign_rules() {
+    local subnet="$1"
+    local rule_count=0
+
+    print_info "Applying IPv6 sovereign mode firewall rules..."
+    log_info "Applying IPv6 sovereign rules for subnet $subnet"
+
+    # Ensure chain exists
+    ensure_docker_user_chain_ipv6
+
+    # Remove existing IPv6 BRAiN rules first
+    remove_ipv6_brain_rules > /dev/null
+
+    # Rule 1: Allow established/related connections
+    ip6tables -I DOCKER-USER 1 \
+        -m conntrack --ctstate ESTABLISHED,RELATED \
+        -s "$subnet" \
+        -m comment --comment "brain-sovereign-ipv6:established" \
+        -j ACCEPT
+    ((rule_count++))
+    log_info "Added IPv6 rule: ACCEPT established/related"
+
+    # Rule 2: Allow to localhost (::1)
+    ip6tables -I DOCKER-USER 2 \
+        -s "$subnet" \
+        -d ::1/128 \
+        -m comment --comment "brain-sovereign-ipv6:localhost" \
+        -j ACCEPT
+    ((rule_count++))
+    log_info "Added IPv6 rule: ACCEPT to localhost"
+
+    # Rule 3: Allow to ULA (Unique Local Addresses: fc00::/7)
+    ip6tables -I DOCKER-USER 3 \
+        -s "$subnet" \
+        -d fc00::/7 \
+        -m comment --comment "brain-sovereign-ipv6:ula" \
+        -j ACCEPT
+    ((rule_count++))
+    log_info "Added IPv6 rule: ACCEPT to ULA"
+
+    # Rule 4: DROP all other egress (FAIL-CLOSED)
+    ip6tables -A DOCKER-USER \
+        -s "$subnet" \
+        -m comment --comment "brain-sovereign-ipv6:drop-egress" \
+        -j DROP
+    ((rule_count++))
+    log_info "Added IPv6 rule: DROP all other egress"
+
+    print_success "Applied $rule_count IPv6 sovereign mode rules"
+
+    return 0
+}
+
+verify_ipv6_rules() {
+    local rule_count
+    rule_count=$(count_ipv6_brain_rules)
+
+    if [[ $rule_count -ge 4 ]]; then
+        return 0  # Rules present
+    else
+        return 1  # Rules missing
+    fi
+}
+
+# ============================================================================
+# IPv4 RULE APPLICATION (with IPv6 integration)
+# ============================================================================
+
 apply_sovereign_rules() {
     local subnet="$1"
     local rule_count=0
@@ -314,6 +466,29 @@ apply_sovereign_rules() {
 
     print_success "Applied $rule_count sovereign mode rules"
 
+    # IPv6 Rules
+    if detect_ipv6_active; then
+        print_info "IPv6 detected as active on host"
+
+        if ! check_ip6tables_available; then
+            print_error "IPv6 is active but ip6tables is not available"
+            print_error "Install ip6tables or disable IPv6 on the host"
+            log_error "IPv6 active but ip6tables not available - FAIL-OPEN RISK"
+            exit 1
+        fi
+
+        # Get IPv6 subnet (detect or use default)
+        local ipv6_subnet
+        ipv6_subnet=$(detect_docker_ipv6_network)
+
+        apply_ipv6_sovereign_rules "$ipv6_subnet"
+
+        log_info "IPv6 sovereign mode enabled with subnet $ipv6_subnet"
+    else
+        print_info "IPv6 not active, skipping IPv6 rules"
+        log_info "IPv6 not detected, IPv6 firewall rules not applied"
+    fi
+
     # Save state
     echo "sovereign" > "$STATE_FILE"
     echo "$subnet" >> "$STATE_FILE"
@@ -329,12 +504,22 @@ apply_connected_rules() {
     # Backup first
     backup_iptables
 
-    # Remove all BRAiN rules
+    # Remove all IPv4 BRAiN rules
     local removed
     removed=$(remove_brain_rules)
 
     if [[ $removed -eq 0 ]]; then
-        print_warn "No sovereign rules to remove (already in connected mode?)"
+        print_warn "No IPv4 sovereign rules to remove (already in connected mode?)"
+    fi
+
+    # Remove IPv6 rules if present
+    if check_ip6tables_available; then
+        local ipv6_removed
+        ipv6_removed=$(remove_ipv6_brain_rules)
+
+        if [[ $ipv6_removed -gt 0 ]]; then
+            log_info "Removed $ipv6_removed IPv6 sovereign rules"
+        fi
     fi
 
     # Save state
@@ -376,14 +561,30 @@ get_last_change_timestamp() {
 }
 
 verify_sovereign_rules() {
-    local rule_count
-    rule_count=$(count_brain_rules)
+    local ipv4_count
+    ipv4_count=$(count_brain_rules)
 
-    if [[ $rule_count -ge 6 ]]; then
-        return 0  # Rules present
-    else
-        return 1  # Rules missing
+    # IPv4 rules: at least 6
+    if [[ $ipv4_count -lt 6 ]]; then
+        return 1  # IPv4 rules missing
     fi
+
+    # IPv6 rules: at least 4 (if IPv6 active)
+    if detect_ipv6_active; then
+        if check_ip6tables_available; then
+            local ipv6_count
+            ipv6_count=$(count_ipv6_brain_rules)
+
+            if [[ $ipv6_count -lt 4 ]]; then
+                return 1  # IPv6 rules missing
+            fi
+        else
+            # IPv6 active but ip6tables not available - FAIL
+            return 1
+        fi
+    fi
+
+    return 0  # All rules present
 }
 
 # ============================================================================
@@ -424,21 +625,57 @@ cmd_status() {
         echo "  Last Changed:    $change_date"
     fi
 
-    # Rule count
+    # Rule count (IPv4)
     local rule_count
     rule_count=$(count_brain_rules)
-    echo "  Active Rules:    $rule_count"
+    echo "  IPv4 Rules:      $rule_count"
+
+    # IPv6 status
+    if detect_ipv6_active; then
+        echo -e "  IPv6 Active:     ${YELLOW}YES${NC}"
+
+        if check_ip6tables_available; then
+            local ipv6_rule_count
+            ipv6_rule_count=$(count_ipv6_brain_rules)
+            echo "  IPv6 Rules:      $ipv6_rule_count"
+
+            if [[ $ipv6_rule_count -lt 4 ]] && [[ "$mode" == "sovereign" ]]; then
+                echo -e "  IPv6 Status:     ${RED}UNPROTECTED (RISK)${NC}"
+            fi
+        else
+            echo -e "  ip6tables:       ${RED}NOT AVAILABLE${NC}"
+            if [[ "$mode" == "sovereign" ]]; then
+                echo -e "  IPv6 Status:     ${RED}FAIL-OPEN RISK${NC}"
+            fi
+        fi
+    else
+        echo -e "  IPv6 Active:     ${GREEN}NO${NC}"
+    fi
 
     echo ""
 
-    # Show rules if present
+    # Show IPv4 rules if present
     if [[ $rule_count -gt 0 ]]; then
-        print_info "Current Rules:"
+        print_info "IPv4 Rules:"
         iptables -L DOCKER-USER -n --line-numbers 2>/dev/null \
             | grep "$COMMENT_PREFIX" \
             | sed 's/^/  /'
     else
-        print_warn "No BRAiN firewall rules active"
+        print_warn "No IPv4 BRAiN firewall rules active"
+    fi
+
+    # Show IPv6 rules if present
+    if detect_ipv6_active && check_ip6tables_available; then
+        local ipv6_rule_count
+        ipv6_rule_count=$(count_ipv6_brain_rules)
+
+        if [[ $ipv6_rule_count -gt 0 ]]; then
+            echo ""
+            print_info "IPv6 Rules:"
+            ip6tables -L DOCKER-USER -n --line-numbers 2>/dev/null \
+                | grep "brain-sovereign-ipv6" \
+                | sed 's/^/  /'
+        fi
     fi
 
     echo ""
