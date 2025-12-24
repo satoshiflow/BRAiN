@@ -24,6 +24,8 @@ from backend.app.modules.sovereign_mode.schemas import (
     BundleLoadRequest,
     NetworkCheckResult,
     AuditEntry,
+    AuditSeverity,
+    AuditEventType,
 )
 from backend.app.modules.sovereign_mode.mode_detector import (
     get_mode_detector,
@@ -254,17 +256,16 @@ class SovereignModeService:
 
             # Audit log
             if self.config.audit_mode_changes:
-                audit_entry = AuditEntry(
-                    id=f"mode_change_{int(datetime.utcnow().timestamp())}",
-                    event_type="mode_change",
+                self._audit(
+                    event_type=AuditEventType.MODE_CHANGED.value,
+                    success=True,
+                    severity=AuditSeverity.INFO,
                     mode_before=old_mode,
                     mode_after=new_mode,
                     bundle_id=self.config.active_bundle_id,
                     reason=request.reason,
                     triggered_by=triggered_by,
-                    success=True,
                 )
-                self._log_audit(audit_entry)
 
             logger.info(
                 f"Mode changed: {old_mode} -> {new_mode} "
@@ -321,14 +322,12 @@ class SovereignModeService:
 
             # Audit log
             if self.config.audit_bundle_loads:
-                audit_entry = AuditEntry(
-                    id=f"bundle_load_{int(datetime.utcnow().timestamp())}",
-                    event_type="bundle_load",
+                self._audit(
+                    event_type=AuditEventType.BUNDLE_LOADED.value,
+                    success=True,
                     bundle_id=bundle_id,
                     triggered_by="manual",
-                    success=True,
                 )
-                self._log_audit(audit_entry)
 
             bundle = self.bundle_manager.get_bundle(bundle_id)
             logger.info(f"Bundle loaded: {bundle_id}")
@@ -371,6 +370,25 @@ class SovereignModeService:
         """
         result = await self.detector.check_connectivity()
         self.last_network_check = result
+
+        # Audit network probe
+        if result.is_online:
+            self._audit(
+                event_type=AuditEventType.NETWORK_PROBE_PASSED.value,
+                success=True,
+                reason=f"Network probe successful via {result.check_method}",
+                latency_ms=result.latency_ms,
+                check_method=result.check_method,
+            )
+        else:
+            self._audit(
+                event_type=AuditEventType.NETWORK_PROBE_FAILED.value,
+                success=False,
+                severity=AuditSeverity.WARNING,
+                reason=f"Network probe failed: {result.error or 'No connectivity'}",
+                error=result.error,
+                check_method=result.check_method,
+            )
 
         logger.info(
             f"Network check: {'ONLINE' if result.is_online else 'OFFLINE'} "
@@ -481,9 +499,69 @@ class SovereignModeService:
 
             return self.config
 
+    def _audit(
+        self,
+        event_type: str,
+        success: bool = True,
+        severity: Optional[AuditSeverity] = None,
+        reason: Optional[str] = None,
+        error: Optional[str] = None,
+        triggered_by: str = "system",
+        mode_before: Optional[OperationMode] = None,
+        mode_after: Optional[OperationMode] = None,
+        bundle_id: Optional[str] = None,
+        ipv6_related: bool = False,
+        **metadata,
+    ):
+        """
+        Create and log audit entry with automatic severity mapping.
+
+        Args:
+            event_type: Event type (use AuditEventType enum values)
+            success: Operation succeeded
+            severity: Event severity (auto-detected if not provided)
+            reason: Reason for event
+            error: Error message if failed
+            triggered_by: Who/what triggered event
+            mode_before: Mode before change
+            mode_after: Mode after change
+            bundle_id: Associated bundle ID
+            ipv6_related: Event is IPv6-related
+            **metadata: Additional metadata
+        """
+        # Auto-detect severity if not provided
+        if severity is None:
+            if not success:
+                severity = AuditSeverity.ERROR
+            elif "failed" in event_type or "blocked" in event_type:
+                severity = AuditSeverity.WARNING
+            elif "critical" in event_type:
+                severity = AuditSeverity.CRITICAL
+            else:
+                severity = AuditSeverity.INFO
+
+        # Create audit entry
+        entry = AuditEntry(
+            id=f"{event_type.split('.')[-1]}_{int(datetime.utcnow().timestamp() * 1000)}",
+            timestamp=datetime.utcnow(),
+            event_type=event_type,
+            severity=severity,
+            mode_before=mode_before,
+            mode_after=mode_after,
+            bundle_id=bundle_id,
+            reason=reason,
+            triggered_by=triggered_by,
+            success=success,
+            error=error,
+            ipv6_related=ipv6_related,
+            metadata=metadata,
+        )
+
+        self._log_audit(entry)
+
     def _log_audit(self, entry: AuditEntry):
         """
-        Log audit entry.
+        Write audit entry to storage.
 
         Args:
             entry: Audit entry to log
@@ -497,6 +575,8 @@ class SovereignModeService:
 
             with open(audit_path, "a") as f:
                 f.write(entry.model_dump_json() + "\n")
+
+            logger.debug(f"Audit event logged: {entry.event_type} (severity={entry.severity})")
 
         except Exception as e:
             logger.error(f"Error writing audit log: {e}")

@@ -23,6 +23,9 @@ from backend.app.modules.sovereign_mode.schemas import (
     BundleStatus,
     ValidationResult,
     ModeConfig,
+    AuditEntry,
+    AuditSeverity,
+    AuditEventType,
 )
 
 __all__ = [
@@ -34,4 +37,7 @@ __all__ = [
     "BundleStatus",
     "ValidationResult",
     "ModeConfig",
+    "AuditEntry",
+    "AuditSeverity",
+    "AuditEventType",
 ]
