@@ -337,6 +337,12 @@ class AuditEventType(str, Enum):
     BUNDLE_LOADED = "sovereign.bundle_loaded"
     BUNDLE_LOAD_FAILED = "sovereign.bundle_load_failed"
 
+    # AXE Governance (G3)
+    AXE_REQUEST_RECEIVED = "axe.request_received"
+    AXE_REQUEST_FORWARDED = "axe.request_forwarded"
+    AXE_REQUEST_BLOCKED = "axe.request_blocked"
+    AXE_TRUST_TIER_VIOLATION = "axe.trust_tier_violation"
+
 
 class AuditEntry(BaseModel):
     """Audit log entry for sovereign mode operations."""
