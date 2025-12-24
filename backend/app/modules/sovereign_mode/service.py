@@ -45,6 +45,10 @@ from backend.app.modules.sovereign_mode.network_guard import (
     get_network_guard,
     NetworkGuard,
 )
+from backend.app.modules.sovereign_mode.ipv6_gate import (
+    get_ipv6_gate_checker,
+    IPv6GateResult,
+)
 
 
 class SovereignModeService:
@@ -231,6 +235,54 @@ class SovereignModeService:
                     raise ValueError(
                         "Cannot switch to ONLINE mode: network unavailable"
                     )
+
+            # IPv6 Gate Check for SOVEREIGN mode (Phase C: IPv6 Hardening)
+            if new_mode == OperationMode.SOVEREIGN and not request.force:
+                ipv6_checker = get_ipv6_gate_checker()
+                ipv6_result = await ipv6_checker.check()
+
+                # Audit: IPv6 gate check performed
+                if self.config.audit_mode_changes:
+                    self._audit(
+                        event_type="sovereign.ipv6_gate_checked",
+                        success=(ipv6_result.status != "fail"),
+                        severity=AuditSeverity.WARNING
+                        if ipv6_result.status == "fail"
+                        else AuditSeverity.INFO,
+                        ipv6_active=ipv6_result.ipv6_active,
+                        ipv6_policy=ipv6_result.policy,
+                        ipv6_status=ipv6_result.status,
+                        ipv6_rules_applied=ipv6_result.firewall_rules_applied,
+                        ipv6_ip6tables_available=ipv6_result.ip6tables_available,
+                        details=ipv6_result.details,
+                    )
+
+                # Fail-Closed: Reject SOVEREIGN mode if IPv6 cannot be blocked
+                if ipv6_result.status == "fail":
+                    error_msg = (
+                        f"Cannot activate SOVEREIGN mode: {ipv6_result.error}"
+                    )
+                    logger.error(error_msg)
+
+                    # Audit: IPv6 gate failure prevented SOVEREIGN activation
+                    if self.config.audit_mode_changes:
+                        self._audit(
+                            event_type="sovereign.ipv6_gate_failed",
+                            success=False,
+                            severity=AuditSeverity.ERROR,
+                            ipv6_active=ipv6_result.ipv6_active,
+                            ipv6_policy=ipv6_result.policy,
+                            ipv6_error=ipv6_result.error,
+                            remediation=ipv6_result.details.get("remediation", []),
+                        )
+
+                    raise ValueError(error_msg)
+
+                logger.info(
+                    f"IPv6 gate check: {ipv6_result.status} "
+                    f"(IPv6 active: {ipv6_result.ipv6_active}, "
+                    f"policy: {ipv6_result.policy})"
+                )
 
             # Load bundle if switching to offline modes
             if new_mode in [OperationMode.OFFLINE, OperationMode.SOVEREIGN]:

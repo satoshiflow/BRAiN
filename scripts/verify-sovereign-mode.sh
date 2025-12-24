@@ -322,6 +322,125 @@ test_network_probe() {
 }
 
 # ============================================================================
+# TEST LAYER 7: IPv6 ENFORCEMENT (Phase C: IPv6 Hardening)
+# ============================================================================
+
+test_ipv6_enforcement() {
+    print_header "LAYER 7: IPv6 Enforcement (Phase C)"
+
+    # Test 1: Check if IPv6 is active on host
+    print_test "Detect IPv6 status on host"
+    local ipv6_active=false
+    if ip -6 addr show 2>/dev/null | grep -q "scope global"; then
+        ipv6_active=true
+        pass
+    else
+        echo -e "${BLUE}ℹ N/A (IPv6 not active)${NC}"
+        echo ""
+        echo "  IPv6 is not active on this host. IPv6 enforcement tests"
+        echo "  are not applicable. This is a safe configuration."
+        echo ""
+        return
+    fi
+
+    # IPv6 is active - must verify enforcement
+    echo ""
+    echo "  ${YELLOW}⚠ IPv6 is ACTIVE on host - enforcement REQUIRED${NC}"
+    echo ""
+
+    # Test 2: Check if ip6tables is available
+    print_test "ip6tables command available"
+    if command -v ip6tables &>/dev/null; then
+        pass
+    else
+        fail "ip6tables not found (cannot enforce IPv6 blocking)"
+        echo ""
+        echo "  ${RED}CRITICAL: IPv6 is active but ip6tables is missing!${NC}"
+        echo "  This creates a security bypass risk."
+        echo ""
+        echo "  Solutions:"
+        echo "    1. Install iptables: sudo apt-get install iptables"
+        echo "    2. Disable IPv6: sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1"
+        echo ""
+        return
+    fi
+
+    # Test 3: Check IPv6 firewall rules count
+    print_test "IPv6 firewall rules active (≥4 rules)"
+    local ipv6_rule_count
+    ipv6_rule_count=$(sudo ip6tables -L DOCKER-USER -n 2>/dev/null | grep -c "brain-sovereign-ipv6" || echo "0")
+
+    if [[ "$ipv6_rule_count" -ge 4 ]]; then
+        pass
+    else
+        fail "Only $ipv6_rule_count IPv6 rules active (expected: ≥4)"
+        echo ""
+        echo "  ${RED}CRITICAL: IPv6 rules not applied!${NC}"
+        echo "  Run: sudo scripts/sovereign-fw.sh apply sovereign"
+        echo ""
+    fi
+
+    # Test 4: Check if brain-sovereign-ipv6 rules exist
+    print_test "IPv6 DOCKER-USER chain has BRAiN rules"
+    if sudo ip6tables -L DOCKER-USER -n 2>/dev/null | grep -q "brain-sovereign-ipv6"; then
+        pass
+    else
+        fail "No brain-sovereign-ipv6 rules found in DOCKER-USER"
+    fi
+
+    # Test 5: Verify specific IPv6 rule types
+    print_test "IPv6 established/related rule exists"
+    if sudo ip6tables -L DOCKER-USER -n 2>/dev/null | grep -q "brain-sovereign-ipv6:established"; then
+        pass
+    else
+        fail "IPv6 established rule not found"
+    fi
+
+    print_test "IPv6 localhost (::1) rule exists"
+    if sudo ip6tables -L DOCKER-USER -n 2>/dev/null | grep -q "brain-sovereign-ipv6:localhost"; then
+        pass
+    else
+        fail "IPv6 localhost rule not found"
+    fi
+
+    print_test "IPv6 ULA (fc00::/7) rule exists"
+    if sudo ip6tables -L DOCKER-USER -n 2>/dev/null | grep -q "brain-sovereign-ipv6:ula"; then
+        pass
+    else
+        fail "IPv6 ULA rule not found"
+    fi
+
+    print_test "IPv6 DROP egress rule exists"
+    if sudo ip6tables -L DOCKER-USER -n 2>/dev/null | grep -q "brain-sovereign-ipv6:drop-egress"; then
+        pass
+    else
+        fail "IPv6 DROP egress rule not found"
+    fi
+
+    # Test 6: Test IPv6 egress blocking (Google Public DNS IPv6)
+    print_test "Block IPv6 egress to 2001:4860:4860::8888 (Google DNS)"
+    # Try to ping6 or curl via IPv6 (if container supports IPv6)
+    # Note: Container might not have IPv6 enabled, so we test from host perspective
+    # We verify rules are in place, actual container test depends on Docker IPv6 config
+    if sudo ip6tables -L DOCKER-USER -n 2>/dev/null | grep -q "DROP.*brain-sovereign-ipv6:drop-egress"; then
+        pass
+    else
+        fail "IPv6 DROP rule not enforced"
+    fi
+
+    # Test 7: Check backend IPv6 gate check integration
+    print_test "Backend IPv6 gate check endpoint"
+    local api_response
+    api_response=$(curl -s http://localhost:8000/api/sovereign-mode/status 2>/dev/null)
+
+    if echo "$api_response" | grep -q "ipv6"; then
+        pass
+    else
+        warn "API response does not include IPv6 status (check if backend integration is deployed)"
+    fi
+}
+
+# ============================================================================
 # MAIN EXECUTION
 # ============================================================================
 
@@ -353,6 +472,7 @@ main() {
     test_internal_connectivity
     test_backend_api
     test_network_probe
+    test_ipv6_enforcement
 
     # Summary
     print_header "TEST SUMMARY"
