@@ -1,0 +1,72 @@
+# BRAiN DMZ Gateway Services
+# Separate compose project for internet-facing connectors
+#
+# SECURITY NOTICE:
+# - This stack is ISOLATED from brain_internal network
+# - DMZ services CANNOT access Postgres/Redis/Qdrant directly
+# - Communication with Core ONLY via HTTP API (host.docker.internal:8000)
+# - Stopped automatically when Sovereign Mode is activated
+
+version: '3.8'
+
+services:
+  telegram_gateway:
+    build:
+      context: ./dmz/telegram_gateway
+      dockerfile: Dockerfile
+    container_name: brain-dmz-telegram
+    environment:
+      # Core API endpoint (via host network)
+      - BRAIN_API_URL=${BRAIN_API_URL:-http://host.docker.internal:8000}
+
+      # Telegram Bot Token (REQUIRED - set in .env)
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+
+      # Optional: Webhook mode vs polling
+      - TELEGRAM_MODE=${TELEGRAM_MODE:-polling}
+      - TELEGRAM_WEBHOOK_URL=${TELEGRAM_WEBHOOK_URL:-}
+
+      # DMZ Mode (for internal checks)
+      - DMZ_MODE=enabled
+
+      # Logging
+      - LOG_LEVEL=${DMZ_LOG_LEVEL:-INFO}
+
+    restart: unless-stopped
+
+    networks:
+      - dmz_network
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          memory: 128M
+
+  # Future: Add more DMZ services
+  # whatsapp_gateway:
+  #   build: ./dmz/whatsapp_gateway
+  #   ...
+
+  # discord_gateway:
+  #   build: ./dmz/discord_gateway
+  #   ...
+
+networks:
+  dmz_network:
+    driver: bridge
+    internal: false  # Allows internet access
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16
