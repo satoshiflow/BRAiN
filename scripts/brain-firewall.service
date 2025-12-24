@@ -1,0 +1,30 @@
+[Unit]
+Description=BRAiN Sovereign Mode Firewall Enforcement
+Documentation=file:///root/BRAiN/docs/sovereign_egress_enforcement.md
+After=docker.service
+Requires=docker.service
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+
+# Apply sovereign mode on boot
+ExecStart=/root/BRAiN/scripts/sovereign-fw.sh apply sovereign
+
+# Rollback on stop
+ExecStop=/root/BRAiN/scripts/sovereign-fw.sh rollback
+
+# Security hardening
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/brain /var/log
+
+# Restart policy
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target

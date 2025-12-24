@@ -269,6 +269,12 @@ class NetworkCheckResult(BaseModel):
     checked_at: datetime = Field(default_factory=datetime.utcnow)
     error: Optional[str] = Field(None, description="Error if check failed")
 
+    # Host firewall state (Phase 2 integration)
+    firewall_state: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Host firewall enforcement state (iptables)"
+    )
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -277,6 +283,13 @@ class NetworkCheckResult(BaseModel):
                 "check_method": "dns",
                 "checked_at": "2025-12-23T12:00:00Z",
                 "error": None,
+                "firewall_state": {
+                    "firewall_enabled": True,
+                    "mode": "sovereign",
+                    "rules_count": 6,
+                    "last_check": "2025-12-24T10:00:00Z",
+                    "error": None
+                }
             }
         }
 
