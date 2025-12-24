@@ -191,6 +191,188 @@ get_docker_bridge_interface() {
 }
 
 # ============================================================================
+# DMZ NETWORK DETECTION AND ISOLATION (Phase B: DMZ Gateway)
+# ============================================================================
+
+detect_dmz_network() {
+    """
+    Detect DMZ Docker network subnet.
+
+    Returns:
+        DMZ subnet (e.g., 172.21.0.0/16) or empty string if not found
+    """
+    local dmz_network="brain_dmz_net"
+    local subnet=""
+
+    # Try to detect brain_dmz_net network
+    if docker network inspect "$dmz_network" &> /dev/null; then
+        subnet=$(docker network inspect "$dmz_network" \
+            | grep -oP '(?<="Subnet": ")[^"]+' \
+            | head -1)
+
+        if [[ -n "$subnet" ]]; then
+            log_info "Detected DMZ network ($dmz_network): $subnet"
+            echo "$subnet"
+            return 0
+        fi
+    fi
+
+    log_debug "DMZ network not found ($dmz_network)"
+    return 1
+}
+
+count_dmz_isolation_rules() {
+    """
+    Count active DMZ isolation rules.
+
+    Returns:
+        Number of brain-dmz-isolation rules in iptables
+    """
+    iptables -L DOCKER-USER -n 2>/dev/null | grep -c "brain-dmz-isolation" || echo "0"
+}
+
+remove_dmz_isolation_rules() {
+    """
+    Remove all DMZ isolation rules from iptables.
+
+    Idempotent: Safe to call multiple times.
+    """
+    local removed=0
+
+    # Remove all rules with brain-dmz-isolation comment
+    while iptables -L DOCKER-USER -n 2>/dev/null | grep -q "brain-dmz-isolation"; do
+        # Find and delete the rule
+        local line_num
+        line_num=$(iptables -L DOCKER-USER -n --line-numbers 2>/dev/null \
+            | grep "brain-dmz-isolation" \
+            | head -1 \
+            | awk '{print $1}')
+
+        if [[ -n "$line_num" ]]; then
+            iptables -D DOCKER-USER "$line_num" 2>/dev/null && ((removed++))
+        else
+            break
+        fi
+    done
+
+    if [[ $removed -gt 0 ]]; then
+        log_info "Removed $removed DMZ isolation rule(s)"
+    fi
+
+    return 0
+}
+
+apply_dmz_isolation_rules() {
+    """
+    Apply DMZ network isolation rules.
+
+    DMZ can ONLY access Core API (port 8000), but NOT databases.
+
+    Args:
+        $1: DMZ subnet (e.g., 172.21.0.0/16)
+        $2: Core subnet (e.g., 172.20.0.0/16)
+
+    Rules Applied:
+        1. DMZ → Core API (8000): ALLOW
+        2. DMZ → Postgres (5432): DROP
+        3. DMZ → Redis (6379): DROP
+        4. DMZ → Qdrant (6333): DROP
+        5. DMZ → Other Core ports: DROP (default deny)
+    """
+    local dmz_subnet="$1"
+    local core_subnet="$2"
+
+    if [[ -z "$dmz_subnet" ]] || [[ -z "$core_subnet" ]]; then
+        log_warn "DMZ or Core subnet not provided, skipping DMZ isolation rules"
+        return 1
+    fi
+
+    log_info "Applying DMZ isolation rules (DMZ: $dmz_subnet → Core: $core_subnet)"
+
+    # Ensure DOCKER-USER chain exists
+    if ! iptables -L DOCKER-USER -n &> /dev/null; then
+        iptables -N DOCKER-USER
+        iptables -I FORWARD -j DOCKER-USER
+    fi
+
+    # Remove existing DMZ rules first (idempotent)
+    remove_dmz_isolation_rules > /dev/null
+
+    # Rule 1: Allow DMZ → Core API (port 8000)
+    iptables -I DOCKER-USER 1 \
+        -s "$dmz_subnet" \
+        -d "$core_subnet" \
+        -p tcp --dport 8000 \
+        -m comment --comment "brain-dmz-isolation:allow-core-api" \
+        -j ACCEPT
+
+    log_info "Added DMZ rule: ALLOW $dmz_subnet → $core_subnet:8000 (Core API)"
+
+    # Rule 2: Block DMZ → Postgres (port 5432)
+    iptables -A DOCKER-USER \
+        -s "$dmz_subnet" \
+        -d "$core_subnet" \
+        -p tcp --dport 5432 \
+        -m comment --comment "brain-dmz-isolation:block-postgres" \
+        -j DROP
+
+    log_info "Added DMZ rule: DROP $dmz_subnet → $core_subnet:5432 (Postgres)"
+
+    # Rule 3: Block DMZ → Redis (port 6379)
+    iptables -A DOCKER-USER \
+        -s "$dmz_subnet" \
+        -d "$core_subnet" \
+        -p tcp --dport 6379 \
+        -m comment --comment "brain-dmz-isolation:block-redis" \
+        -j DROP
+
+    log_info "Added DMZ rule: DROP $dmz_subnet → $core_subnet:6379 (Redis)"
+
+    # Rule 4: Block DMZ → Qdrant (port 6333)
+    iptables -A DOCKER-USER \
+        -s "$dmz_subnet" \
+        -d "$core_subnet" \
+        -p tcp --dport 6333 \
+        -m comment --comment "brain-dmz-isolation:block-qdrant" \
+        -j DROP
+
+    log_info "Added DMZ rule: DROP $dmz_subnet → $core_subnet:6333 (Qdrant)"
+
+    # Rule 5: Block DMZ → Ollama (port 11434)
+    iptables -A DOCKER-USER \
+        -s "$dmz_subnet" \
+        -d "$core_subnet" \
+        -p tcp --dport 11434 \
+        -m comment --comment "brain-dmz-isolation:block-ollama" \
+        -j DROP
+
+    log_info "Added DMZ rule: DROP $dmz_subnet → $core_subnet:11434 (Ollama)"
+
+    log_info "DMZ isolation rules applied (5 rules)"
+    return 0
+}
+
+verify_dmz_isolation_rules() {
+    """
+    Verify DMZ isolation rules are applied.
+
+    Returns:
+        0 if rules are correctly applied
+        1 if rules are missing or incorrect
+    """
+    local rule_count
+    rule_count=$(count_dmz_isolation_rules)
+
+    if [[ "$rule_count" -ge 5 ]]; then
+        log_debug "DMZ isolation rules verified ($rule_count rules)"
+        return 0
+    else
+        log_warn "DMZ isolation rules incomplete ($rule_count/5 rules)"
+        return 1
+    fi
+}
+
+# ============================================================================
 # IPv6 DETECTION AND MANAGEMENT
 # ============================================================================
 
@@ -545,6 +727,24 @@ apply_sovereign_rules() {
         log_info "IPv6 not detected, skipping IPv6 firewall rules"
     fi
 
+    # DMZ Isolation (Phase B: DMZ Gateway)
+    local dmz_subnet
+    dmz_subnet=$(detect_dmz_network)
+
+    if [[ -n "$dmz_subnet" ]]; then
+        print_info "DMZ network detected: $dmz_subnet"
+        log_info "Applying DMZ isolation rules"
+
+        if apply_dmz_isolation_rules "$dmz_subnet" "$subnet"; then
+            print_success "DMZ isolation rules applied (5 rules)"
+        else
+            print_warn "Failed to apply DMZ isolation rules (DMZ may bypass security)"
+            log_warn "DMZ isolation rules failed to apply"
+        fi
+    else
+        log_debug "DMZ network not found, skipping DMZ isolation rules"
+    fi
+
     # Save state
     echo "sovereign" > "$STATE_FILE"
     echo "$subnet" >> "$STATE_FILE"
@@ -576,6 +776,16 @@ apply_connected_rules() {
         if [[ $ipv6_removed -gt 0 ]]; then
             print_success "Removed $ipv6_removed IPv6 sovereign rules"
         fi
+    fi
+
+    # Remove DMZ isolation rules (Phase B: DMZ Gateway)
+    local dmz_removed
+    dmz_removed=$(count_dmz_isolation_rules)
+
+    if [[ $dmz_removed -gt 0 ]]; then
+        remove_dmz_isolation_rules
+        print_success "Removed $dmz_removed DMZ isolation rules"
+        log_info "Removed DMZ isolation rules"
     fi
 
     # Save state
@@ -731,6 +941,25 @@ cmd_status() {
         fi
     fi
 
+    # Show DMZ isolation rules if present (Phase B: DMZ Gateway)
+    local dmz_rule_count
+    dmz_rule_count=$(count_dmz_isolation_rules)
+
+    if [[ $dmz_rule_count -gt 0 ]]; then
+        echo ""
+        print_info "Current DMZ Isolation Rules:"
+        iptables -L DOCKER-USER -n --line-numbers 2>/dev/null \
+            | grep "brain-dmz-isolation" \
+            | sed 's/^/  /'
+    else
+        local dmz_subnet
+        dmz_subnet=$(detect_dmz_network)
+        if [[ -n "$dmz_subnet" ]]; then
+            echo ""
+            print_warn "DMZ network detected ($dmz_subnet) but no isolation rules applied!"
+        fi
+    fi
+
     echo ""
 }
 
@@ -857,6 +1086,15 @@ cmd_rollback() {
         if [[ $ipv6_removed -gt 0 ]]; then
             print_success "Rollback: removed $ipv6_removed IPv6 rules"
         fi
+    fi
+
+    # Remove DMZ isolation rules if present (Phase B: DMZ Gateway)
+    local dmz_removed
+    dmz_removed=$(count_dmz_isolation_rules)
+
+    if [[ $dmz_removed -gt 0 ]]; then
+        remove_dmz_isolation_rules
+        print_success "Rollback: removed $dmz_removed DMZ isolation rules"
     fi
 
     # Clear state

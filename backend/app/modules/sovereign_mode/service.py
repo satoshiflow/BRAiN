@@ -49,6 +49,11 @@ from backend.app.modules.sovereign_mode.ipv6_gate import (
     get_ipv6_gate_checker,
     IPv6GateResult,
 )
+from backend.app.modules.dmz_control import (
+    get_dmz_control_service,
+    DMZControlRequest,
+    DMZStatus,
+)
 
 
 class SovereignModeService:
@@ -283,6 +288,94 @@ class SovereignModeService:
                     f"(IPv6 active: {ipv6_result.ipv6_active}, "
                     f"policy: {ipv6_result.policy})"
                 )
+
+            # DMZ Control for SOVEREIGN mode (Phase B: DMZ Gateway)
+            if new_mode == OperationMode.SOVEREIGN and not request.force:
+                import os
+                dmz_enabled = os.getenv("BRAIN_DMZ_ENABLED", "false").lower() == "true"
+
+                if dmz_enabled:
+                    logger.info("DMZ is enabled, checking status before SOVEREIGN activation")
+
+                    dmz_service = get_dmz_control_service()
+                    dmz_status = await dmz_service.get_status()
+
+                    # If DMZ is running, stop it
+                    if dmz_status.status == DMZStatus.RUNNING:
+                        logger.warning("DMZ is running, stopping before SOVEREIGN activation")
+
+                        try:
+                            stop_result = await dmz_service.stop(
+                                DMZControlRequest(action="stop", timeout=30)
+                            )
+
+                            if not stop_result.success:
+                                error_msg = (
+                                    f"Cannot activate SOVEREIGN mode: Failed to stop DMZ: {stop_result.message}"
+                                )
+                                logger.error(error_msg)
+
+                                # Audit: DMZ stop failed
+                                if self.config.audit_mode_changes:
+                                    self._audit(
+                                        event_type=AuditEventType.DMZ_STOPPED.value,
+                                        success=False,
+                                        severity=AuditSeverity.ERROR,
+                                        dmz_previous_status=dmz_status.status,
+                                        dmz_error=stop_result.message,
+                                        details=stop_result.details or {},
+                                    )
+
+                                raise ValueError(error_msg)
+
+                            # Audit: DMZ stopped successfully
+                            if self.config.audit_mode_changes:
+                                self._audit(
+                                    event_type=AuditEventType.DMZ_STOPPED.value,
+                                    success=True,
+                                    severity=AuditSeverity.INFO,
+                                    dmz_previous_status=dmz_status.status,
+                                    dmz_current_status=stop_result.current_status,
+                                    dmz_services_affected=stop_result.services_affected,
+                                )
+
+                            logger.info(f"DMZ stopped successfully: {stop_result.message}")
+
+                        except Exception as e:
+                            error_msg = f"Cannot activate SOVEREIGN mode: Exception while stopping DMZ: {str(e)}"
+                            logger.error(error_msg)
+
+                            # Audit: DMZ stop exception
+                            if self.config.audit_mode_changes:
+                                self._audit(
+                                    event_type=AuditEventType.DMZ_STOPPED.value,
+                                    success=False,
+                                    severity=AuditSeverity.ERROR,
+                                    dmz_previous_status=dmz_status.status,
+                                    dmz_error=str(e),
+                                )
+
+                            raise ValueError(error_msg)
+
+                    elif dmz_status.status in [DMZStatus.STOPPED, DMZStatus.UNKNOWN]:
+                        # DMZ already stopped or not running - OK
+                        logger.info(f"DMZ status: {dmz_status.status} - no action needed")
+
+                    elif dmz_status.status == DMZStatus.ERROR:
+                        # DMZ in error state - warn but allow (fail-safe)
+                        logger.warning(f"DMZ in ERROR state: {dmz_status.message} - proceeding")
+
+                        if self.config.audit_mode_changes:
+                            self._audit(
+                                event_type="sovereign.dmz_error_state",
+                                success=True,
+                                severity=AuditSeverity.WARNING,
+                                dmz_status=dmz_status.status,
+                                dmz_message=dmz_status.message,
+                            )
+
+                else:
+                    logger.debug("DMZ not enabled (BRAIN_DMZ_ENABLED=false), skipping DMZ check")
 
             # Load bundle if switching to offline modes
             if new_mode in [OperationMode.OFFLINE, OperationMode.SOVEREIGN]:

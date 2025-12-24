@@ -1,0 +1,91 @@
+# ============================================================================
+# BRAiN DMZ Gateway - Docker Compose
+# ============================================================================
+#
+# Purpose:
+#   Isolated DMZ zone for external communication (Telegram, webhooks, etc.)
+#   Provides controlled exposure while maintaining core isolation.
+#
+# Security Model:
+#   - Separate network (brain_dmz_net) from core (brain_internal)
+#   - No direct access to databases (Postgres, Redis, Qdrant)
+#   - Communication only via Core HTTP API
+#   - Stopped when Sovereign Mode is active
+#
+# Usage:
+#   Start DMZ:  docker compose -f docker-compose.dmz.yml up -d
+#   Stop DMZ:   docker compose -f docker-compose.dmz.yml down
+#   Status:     docker compose -f docker-compose.dmz.yml ps
+#
+# Version: 1.0.0
+# Phase: B (DMZ Gateway & AXE Connector Foundation)
+# ============================================================================
+
+services:
+  telegram-gateway:
+    build:
+      context: ./dmz/telegram-gateway
+      dockerfile: Dockerfile
+    container_name: brain-dmz-telegram
+    env_file:
+      - .env
+    environment:
+      # Telegram Bot Configuration
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_MODE=${TELEGRAM_MODE:-polling}  # polling or webhook
+      - TELEGRAM_WEBHOOK_URL=${TELEGRAM_WEBHOOK_URL:-}
+
+      # Core API Connection
+      - BRAIN_CORE_API_URL=http://brain-backend:8000
+      - BRAIN_CORE_API_TOKEN=${BRAIN_DMZ_API_TOKEN:-}
+
+      # Gateway Configuration
+      - DMZ_GATEWAY_NAME=telegram-gateway
+      - DMZ_GATEWAY_VERSION=1.0.0
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+    # External port for Telegram webhooks (if webhook mode)
+    ports:
+      - "8001:8000"
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    restart: unless-stopped
+
+    networks:
+      - brain_dmz_net
+      - brain_internal  # Access to Core API only
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+networks:
+  # DMZ Network - Isolated from internal services
+  brain_dmz_net:
+    driver: bridge
+    internal: false  # Allows internet access for external APIs
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.21.0.0/16
+          gateway: 172.21.0.1
+
+  # Connect to core network for API access
+  brain_internal:
+    external: true
+    name: brain_brain_internal  # Reference to core compose network
+
+# No volumes - DMZ services are stateless by design
