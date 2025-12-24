@@ -42,6 +42,37 @@ async function apiPost<T>(path: string, body: Json): Promise<T> {
   return (await resp.json()) as T;
 }
 
+async function apiPut<T>(path: string, body: Json): Promise<T> {
+  const url = `${API_BASE}${path}`;
+  const resp = await fetch(url, {
+    method: "PUT",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body ?? {}),
+  });
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`PUT ${path} → HTTP ${resp.status}: ${text}`);
+  }
+  return (await resp.json()) as T;
+}
+
+async function apiDelete(path: string): Promise<void> {
+  const url = `${API_BASE}${path}`;
+  const resp = await fetch(url, {
+    method: "DELETE",
+    headers: {
+      Accept: "application/json",
+    },
+  });
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`DELETE ${path} → HTTP ${resp.status}: ${text}`);
+  }
+}
+
 // ---------- Typen ----------
 
 export interface BackendHealth {
@@ -166,6 +197,57 @@ export const brainApi = {
   debug: {
     llmPing: (body: LlmDebugRequest) =>
       apiPost<LlmDebugResponse>("/api/debug/llm-ping", body),
+  },
+
+  // Sovereign Mode
+  sovereignMode: {
+    info: () => apiGet<import("@/types/sovereign").SovereignInfo>("/api/sovereign-mode/info"),
+    status: () => apiGet<import("@/types/sovereign").SovereignMode>("/api/sovereign-mode/status"),
+    changeMode: (payload: import("@/types/sovereign").ModeChangeRequest) =>
+      apiPost<import("@/types/sovereign").SovereignMode>("/api/sovereign-mode/mode", payload),
+
+    // Bundles
+    listBundles: (status?: import("@/types/sovereign").BundleStatus) =>
+      apiGet<import("@/types/sovereign").Bundle[]>(
+        `/api/sovereign-mode/bundles${status ? `?status=${status}` : ""}`
+      ),
+    getBundle: (bundleId: string) =>
+      apiGet<import("@/types/sovereign").Bundle>(`/api/sovereign-mode/bundles/${bundleId}`),
+    loadBundle: (payload: import("@/types/sovereign").BundleLoadRequest) =>
+      apiPost<import("@/types/sovereign").Bundle>("/api/sovereign-mode/bundles/load", payload),
+    validateBundle: (bundleId: string, force?: boolean) =>
+      apiPost<import("@/types/sovereign").ValidationResult>(
+        `/api/sovereign-mode/bundles/${bundleId}/validate${force ? "?force=true" : ""}`,
+        {}
+      ),
+    discoverBundles: () =>
+      apiPost<import("@/types/sovereign").BundleDiscoveryResult>(
+        "/api/sovereign-mode/bundles/discover",
+        {}
+      ),
+    removeQuarantine: (bundleId: string) =>
+      apiDelete(`/api/sovereign-mode/bundles/${bundleId}/quarantine`),
+
+    // Network
+    checkNetwork: () =>
+      apiGet<import("@/types/sovereign").NetworkCheckResult>("/api/sovereign-mode/network/check"),
+
+    // Configuration
+    getConfig: () => apiGet<import("@/types/sovereign").ModeConfig>("/api/sovereign-mode/config"),
+    updateConfig: (updates: Partial<import("@/types/sovereign").ModeConfig>) =>
+      apiPut<import("@/types/sovereign").ModeConfig>("/api/sovereign-mode/config", updates),
+
+    // Audit
+    getAuditLog: (limit?: number, eventType?: string) =>
+      apiGet<import("@/types/sovereign").AuditEntry[]>(
+        `/api/sovereign-mode/audit?${limit ? `limit=${limit}` : "limit=100"}${
+          eventType ? `&event_type=${eventType}` : ""
+        }`
+      ),
+
+    // Statistics
+    getStatistics: () =>
+      apiGet<import("@/types/sovereign").SovereignStatistics>("/api/sovereign-mode/statistics"),
   },
 };
 

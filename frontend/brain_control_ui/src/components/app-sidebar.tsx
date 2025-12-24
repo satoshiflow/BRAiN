@@ -10,6 +10,10 @@ import {
   Settings,
   Sparkles,
   Workflow,
+  Shield,
+  Package,
+  Globe,
+  ScrollText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -36,6 +40,13 @@ const deckNav: NavItem[] = [
   { href: "/settings/agents", label: "Agent Config", icon: Activity },
   { href: "/lifecycle", label: "Lifecycle", icon: Workflow, badge: "beta" },
   { href: "/supervisor", label: "Supervisor", icon: Settings, badge: "beta" },
+];
+
+const adminNav: NavItem[] = [
+  { href: "/admin/sovereign", label: "Sovereign Mode", icon: Shield },
+  { href: "/admin/bundles", label: "Bundles", icon: Package },
+  { href: "/admin/network", label: "Network & Gates", icon: Globe },
+  { href: "/admin/audit", label: "Audit Log", icon: ScrollText },
 ];
 
 export function AppSidebar({ variant = "inset" }: AppSidebarProps) {
@@ -152,6 +163,39 @@ export function AppSidebar({ variant = "inset" }: AppSidebarProps) {
                       )}
                     </span>
                   )}
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
+
+        {/* ADMIN */}
+        <div className="mt-4 border-t border-border pt-3">
+          {!collapsed && (
+            <div className="mb-2 text-[0.68rem] uppercase tracking-[0.2em] text-muted-foreground">
+              Admin
+            </div>
+          )}
+          <nav className="flex flex-col gap-1">
+            {adminNav.map((item) => {
+              const Icon = item.icon;
+              const active = pathname === item.href;
+
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "group flex items-center gap-2 rounded-2xl px-2 py-1.5 text-[0.78rem] font-medium transition",
+                    active
+                      ? "bg-foreground text-background shadow-md"
+                      : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                  )}
+                >
+                  <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-background/70 text-[0.9rem]">
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  {!collapsed && <span>{item.label}</span>}
                 </Link>
               );
             })}
