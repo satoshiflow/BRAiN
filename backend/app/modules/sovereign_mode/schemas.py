@@ -44,7 +44,12 @@ class Bundle(BaseModel):
     # Security
     sha256_hash: str = Field(..., description="SHA256 hash of model file")
     sha256_manifest_hash: str = Field(..., description="SHA256 hash of manifest")
-    signed_by: Optional[str] = Field(None, description="Digital signature (future)")
+
+    # G1: Bundle Signing & Trusted Origin
+    signature: Optional[str] = Field(None, description="Ed25519 signature (hex, 128 chars)")
+    signature_algorithm: str = Field(default="ed25519", description="Signature algorithm")
+    signed_by_key_id: Optional[str] = Field(None, description="Key ID that signed this bundle")
+    signed_at: Optional[datetime] = Field(None, description="Signature timestamp")
 
     # Metadata
     description: Optional[str] = Field(None, description="Bundle description")
@@ -95,6 +100,12 @@ class ValidationResult(BaseModel):
     # File checks
     file_exists: bool = Field(default=True, description="File exists on disk")
     manifest_valid: bool = Field(default=True, description="Manifest is valid JSON")
+
+    # G1: Signature validation
+    signature_valid: bool = Field(default=True, description="Ed25519 signature is valid")
+    signature_present: bool = Field(default=False, description="Bundle has signature")
+    key_trusted: bool = Field(default=False, description="Signing key is trusted")
+    key_id: Optional[str] = Field(None, description="Signing key ID")
 
     # Errors
     errors: List[str] = Field(default_factory=list, description="Validation errors")
@@ -336,6 +347,19 @@ class AuditEventType(str, Enum):
     # Bundle operations
     BUNDLE_LOADED = "sovereign.bundle_loaded"
     BUNDLE_LOAD_FAILED = "sovereign.bundle_load_failed"
+
+    # G1: Bundle Signing & Trusted Origin
+    BUNDLE_SIGNATURE_VERIFIED = "sovereign.bundle_signature_verified"
+    BUNDLE_SIGNATURE_INVALID = "sovereign.bundle_signature_invalid"
+    BUNDLE_KEY_UNTRUSTED = "sovereign.bundle_key_untrusted"
+    BUNDLE_QUARANTINED = "sovereign.bundle_quarantined"
+    BUNDLE_UNSIGNED = "sovereign.bundle_unsigned"
+
+    # AXE Governance (G3)
+    AXE_REQUEST_RECEIVED = "axe.request_received"
+    AXE_REQUEST_FORWARDED = "axe.request_forwarded"
+    AXE_REQUEST_BLOCKED = "axe.request_blocked"
+    AXE_TRUST_TIER_VIOLATION = "axe.trust_tier_violation"
 
 
 class AuditEntry(BaseModel):

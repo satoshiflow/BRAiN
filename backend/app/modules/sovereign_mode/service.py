@@ -51,6 +51,14 @@ from backend.app.modules.sovereign_mode.ipv6_gate import (
 )
 
 
+# Import DMZ control (lazy to avoid circular imports)
+def _get_dmz_service():
+    """Lazy import to avoid circular dependency."""
+    from backend.app.modules.dmz_control.service import get_dmz_control_service
+
+    return get_dmz_control_service()
+
+
 class SovereignModeService:
     """
     Sovereign Mode orchestration service.
@@ -332,6 +340,86 @@ class SovereignModeService:
                     logger.info(f"Loaded bundle: {bundle_id}")
                 else:
                     logger.warning("No bundle specified for offline mode")
+
+            # Stop DMZ if switching to SOVEREIGN or OFFLINE
+            if new_mode in [OperationMode.SOVEREIGN, OperationMode.OFFLINE]:
+                try:
+                    dmz_service = _get_dmz_service()
+                    dmz_stopped = await dmz_service.stop_dmz()
+
+                    if dmz_stopped:
+                        self._audit(
+                            event_type=AuditEventType.DMZ_STOPPED.value,
+                            success=True,
+                            severity=AuditSeverity.INFO,
+                            reason=f"DMZ stopped for {new_mode.value} mode",
+                            mode_after=new_mode,
+                        )
+                        logger.info(f"DMZ gateway stopped for {new_mode.value} mode")
+                    else:
+                        # Log warning but don't block mode change
+                        # (DMZ might not be running or compose file might not exist)
+                        logger.warning("Failed to stop DMZ gateway (might not be running)")
+                        self._audit(
+                            event_type=AuditEventType.DMZ_STOPPED.value,
+                            success=False,
+                            severity=AuditSeverity.WARNING,
+                            reason=f"Failed to stop DMZ for {new_mode.value} mode",
+                            error="DMZ stop command failed",
+                        )
+
+                except Exception as e:
+                    # Log error but don't block mode change
+                    logger.error(f"Error stopping DMZ: {e}")
+                    self._audit(
+                        event_type=AuditEventType.DMZ_STOPPED.value,
+                        success=False,
+                        severity=AuditSeverity.ERROR,
+                        reason="Error stopping DMZ",
+                        error=str(e),
+                    )
+
+            # Start DMZ if switching to ONLINE (and DMZ enabled in ENV)
+            elif new_mode == OperationMode.ONLINE:
+                import os
+
+                dmz_enabled = os.getenv("BRAIN_DMZ_ENABLED", "false").lower() == "true"
+
+                if dmz_enabled:
+                    try:
+                        dmz_service = _get_dmz_service()
+                        dmz_started = await dmz_service.start_dmz()
+
+                        if dmz_started:
+                            self._audit(
+                                event_type=AuditEventType.DMZ_STARTED.value,
+                                success=True,
+                                severity=AuditSeverity.INFO,
+                                reason="DMZ started for ONLINE mode",
+                                mode_after=new_mode,
+                            )
+                            logger.info("DMZ gateway started for ONLINE mode")
+                        else:
+                            logger.warning("Failed to start DMZ gateway")
+                            self._audit(
+                                event_type=AuditEventType.DMZ_STARTED.value,
+                                success=False,
+                                severity=AuditSeverity.WARNING,
+                                reason="Failed to start DMZ for ONLINE mode",
+                                error="DMZ start command failed",
+                            )
+
+                    except Exception as e:
+                        logger.error(f"Error starting DMZ: {e}")
+                        self._audit(
+                            event_type=AuditEventType.DMZ_STARTED.value,
+                            success=False,
+                            severity=AuditSeverity.ERROR,
+                            reason="Error starting DMZ",
+                            error=str(e),
+                        )
+                else:
+                    logger.debug("DMZ not enabled (BRAIN_DMZ_ENABLED=false)")
 
             # Update mode
             self.config.current_mode = new_mode

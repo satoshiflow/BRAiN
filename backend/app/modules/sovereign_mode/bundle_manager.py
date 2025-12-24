@@ -15,32 +15,50 @@ from backend.app.modules.sovereign_mode.schemas import (
     Bundle,
     BundleStatus,
     ValidationResult,
+    AuditEventType,
 )
 from backend.app.modules.sovereign_mode.hash_validator import get_hash_validator
+from backend.app.modules.sovereign_mode.signature_validator import (
+    get_signature_validator,
+    SignaturePolicy,
+)
 
 
 class BundleManager:
     """Manages offline model bundles."""
 
     DEFAULT_BUNDLES_DIR = "storage/models/bundles"
+    DEFAULT_QUARANTINE_DIR = "storage/quarantine"
     MANIFEST_FILENAME = "manifest.json"
 
-    def __init__(self, bundles_dir: Optional[str] = None):
+    def __init__(
+        self,
+        bundles_dir: Optional[str] = None,
+        quarantine_dir: Optional[str] = None,
+        signature_policy: Optional[SignaturePolicy] = None,
+    ):
         """
         Initialize bundle manager.
 
         Args:
             bundles_dir: Directory containing bundles (default: storage/models/bundles)
+            quarantine_dir: Directory for quarantined bundles (default: storage/quarantine)
+            signature_policy: Signature validation policy (default: strict)
         """
         self.bundles_dir = Path(bundles_dir or self.DEFAULT_BUNDLES_DIR)
+        self.quarantine_dir = Path(quarantine_dir or self.DEFAULT_QUARANTINE_DIR)
+
+        # Validators
         self.validator = get_hash_validator()
+        self.signature_validator = get_signature_validator(policy=signature_policy)
 
         # Bundle registry
         self.bundles: Dict[str, Bundle] = {}
         self.active_bundle_id: Optional[str] = None
 
-        # Ensure bundles directory exists
+        # Ensure directories exist
         self.bundles_dir.mkdir(parents=True, exist_ok=True)
+        self.quarantine_dir.mkdir(parents=True, exist_ok=True)
 
         logger.info(f"Bundle manager initialized: {self.bundles_dir}")
 
@@ -186,8 +204,12 @@ class BundleManager:
                 logger.debug(f"Using cached validation for {bundle_id}")
                 return cached
 
-        # Perform validation
+        # Perform hash validation
         result = self.validator.validate_bundle(bundle)
+
+        # G1: Perform signature validation (modifies result in place)
+        if result.is_valid:  # Only check signature if hash is valid
+            result = self.signature_validator.validate_bundle_signature(bundle, result)
 
         # Update bundle status
         if result.is_valid:
@@ -195,8 +217,30 @@ class BundleManager:
             bundle.last_validated = datetime.utcnow()
             logger.info(f"Bundle {bundle_id} validated successfully")
         else:
-            if bundle.status != BundleStatus.QUARANTINED:
-                bundle.status = BundleStatus.FAILED
+            # Check if quarantine is required
+            should_quarantine = (
+                self.signature_validator.policy.quarantine_on_failure
+                and bundle.status != BundleStatus.QUARANTINED
+            )
+
+            if should_quarantine:
+                # Quarantine bundle with detailed reason
+                reason_parts = []
+                if not result.signature_valid:
+                    reason_parts.append("invalid signature")
+                if not result.key_trusted:
+                    reason_parts.append("untrusted key")
+                if not result.signature_present and not self.signature_validator.policy.allow_unsigned_bundles:
+                    reason_parts.append("missing signature")
+                if not result.hash_match:
+                    reason_parts.append("hash mismatch")
+
+                reason = "Validation failed: " + ", ".join(reason_parts)
+                self.quarantine_bundle(bundle_id, reason)
+            else:
+                if bundle.status != BundleStatus.QUARANTINED:
+                    bundle.status = BundleStatus.FAILED
+
             logger.error(
                 f"Bundle {bundle_id} validation failed: {result.errors}"
             )
@@ -206,6 +250,8 @@ class BundleManager:
     def quarantine_bundle(self, bundle_id: str, reason: str):
         """
         Quarantine a bundle.
+
+        Moves bundle files to quarantine directory and marks status.
 
         Args:
             bundle_id: Bundle to quarantine
@@ -226,7 +272,68 @@ class BundleManager:
             self.active_bundle_id = None
             logger.warning(f"Unloaded quarantined bundle: {bundle_id}")
 
+        # Move bundle to quarantine directory
+        try:
+            import shutil
+
+            # Create quarantine subdirectory for this bundle
+            quarantine_bundle_dir = self.quarantine_dir / bundle_id
+            quarantine_bundle_dir.mkdir(parents=True, exist_ok=True)
+
+            # Move manifest file
+            manifest_path = Path(bundle.manifest_path)
+            if manifest_path.exists():
+                dest_manifest = quarantine_bundle_dir / manifest_path.name
+                shutil.copy2(manifest_path, dest_manifest)
+                logger.debug(f"Copied manifest to quarantine: {dest_manifest}")
+
+            # Move model file
+            file_path = Path(bundle.file_path)
+            if file_path.exists():
+                dest_file = quarantine_bundle_dir / file_path.name
+                shutil.copy2(file_path, dest_file)
+                logger.debug(f"Copied model file to quarantine: {dest_file}")
+
+            # Write quarantine metadata
+            quarantine_meta = {
+                "bundle_id": bundle_id,
+                "reason": reason,
+                "quarantined_at": bundle.quarantine_timestamp.isoformat(),
+                "original_manifest_path": str(manifest_path),
+                "original_file_path": str(file_path),
+            }
+
+            meta_file = quarantine_bundle_dir / "quarantine_metadata.json"
+            with open(meta_file, "w") as f:
+                json.dump(quarantine_meta, f, indent=2)
+
+            logger.info(f"Bundle {bundle_id} files copied to quarantine: {quarantine_bundle_dir}")
+
+        except Exception as e:
+            logger.error(f"Failed to move bundle {bundle_id} to quarantine: {e}")
+
+        # Emit audit event
+        self._emit_quarantine_audit_event(bundle_id, reason)
+
         logger.warning(f"Bundle {bundle_id} quarantined: {reason}")
+
+    def _emit_quarantine_audit_event(self, bundle_id: str, reason: str):
+        """Emit BUNDLE_QUARANTINED audit event."""
+        try:
+            from backend.app.modules.sovereign_mode.service import (
+                get_sovereign_mode_service,
+            )
+
+            service = get_sovereign_mode_service()
+            service._emit_audit_event(
+                event_type=AuditEventType.BUNDLE_QUARANTINED,
+                success=True,
+                reason=reason,
+                bundle_id=bundle_id,
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to emit quarantine audit event: {e}")
 
     def load_bundle(
         self, bundle_id: str, skip_validation: bool = False
