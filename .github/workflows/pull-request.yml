@@ -5,6 +5,11 @@ on:
     types: [ opened, edited, synchronize ]
     branches: [ main, v2, develop ]
 
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
 jobs:
   validate-pr:
     runs-on: ubuntu-latest
@@ -54,10 +59,11 @@ jobs:
 
   label-pr:
     runs-on: ubuntu-latest
-    
+    if: github.event.pull_request.head.repo.full_name == github.repository
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Auto-label PR based on files changed
         uses: actions/github-script@v7
         with:
@@ -191,10 +197,11 @@ jobs:
 
   code-review-assistant:
     runs-on: ubuntu-latest
-    
+    if: github.event.pull_request.head.repo.full_name == github.repository
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Provide review suggestions
         uses: actions/github-script@v7
         with:
