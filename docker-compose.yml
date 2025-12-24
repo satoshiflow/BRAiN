@@ -11,6 +11,8 @@ services:
       - postgres
       - redis
     restart: unless-stopped
+    networks:
+      - brain_internal
 
   control_deck:
     build:
@@ -23,6 +25,8 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
+    networks:
+      - brain_internal
 
   axe_ui:
     build:
@@ -35,6 +39,8 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
+    networks:
+      - brain_internal
 
   postgres:
     image: postgres:16
@@ -48,6 +54,8 @@ services:
     ports:
       - "5432:5432"
     restart: unless-stopped
+    networks:
+      - brain_internal
 
   redis:
     image: redis:7-alpine
@@ -60,6 +68,8 @@ services:
     ports:
       - "6379:6379"
     restart: unless-stopped
+    networks:
+      - brain_internal
 
   qdrant:
     image: qdrant/qdrant:latest
@@ -69,6 +79,8 @@ services:
     ports:
       - "6333:6333"
     restart: unless-stopped
+    networks:
+      - brain_internal
 
   ollama:
     image: ollama/ollama:latest
@@ -78,6 +90,8 @@ services:
     ports:
       - "11434:11434"
     restart: unless-stopped
+    networks:
+      - brain_internal
 
   openwebui:
     image: ghcr.io/open-webui/open-webui:main
@@ -91,6 +105,23 @@ services:
     depends_on:
       - ollama
     restart: unless-stopped
+    networks:
+      - brain_internal
+
+networks:
+  brain_internal:
+    driver: bridge
+    internal: false  # Set to true for full isolation (blocks direct internet)
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1
+
+  # Optional: Separate gateway network for services requiring internet access
+  # brain_gateway:
+  #   driver: bridge
+  #   internal: false
 
 volumes:
   brain_pg_data:

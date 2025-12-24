@@ -208,16 +208,51 @@ async def validate_bundle(
     response_model=NetworkCheckResult,
     summary="Check network connectivity"
 )
-async def check_network():
+async def check_network(
+    include_firewall: bool = True
+):
     """
     Check network connectivity.
 
     Performs DNS and/or HTTP checks to determine if network is available.
-    Used for auto-detection and mode switching.
+    Optionally includes host firewall state (iptables enforcement).
+
+    Args:
+        include_firewall: Whether to check host firewall state (default: True)
+
+    Returns:
+        NetworkCheckResult with optional firewall_state field
+
+    **Phase 2 Enhancement:** Now includes host firewall enforcement status
+    when include_firewall=True. This verifies that iptables rules are active
+    at the kernel level, providing defense-in-depth beyond application-level
+    NetworkGuard.
     """
     try:
         service = get_sovereign_service()
         result = await service.check_network()
+
+        # Phase 2: Add host firewall state check
+        if include_firewall:
+            from backend.app.modules.sovereign_mode.network_guard import check_host_firewall_state
+
+            try:
+                firewall_state = await check_host_firewall_state()
+                result.firewall_state = firewall_state
+
+                logger.debug(
+                    f"Network check with firewall: online={result.is_online}, "
+                    f"firewall_mode={firewall_state.get('mode')}"
+                )
+
+            except Exception as fw_error:
+                logger.warning(f"Could not check firewall state: {fw_error}")
+                result.firewall_state = {
+                    "firewall_enabled": False,
+                    "mode": "unknown",
+                    "rules_count": 0,
+                    "error": str(fw_error)
+                }
 
         return result
 

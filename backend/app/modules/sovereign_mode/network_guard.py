@@ -379,3 +379,91 @@ def patch_httpx_client(client: httpx.AsyncClient, guard: Optional[NetworkGuard] 
     client._transport = GuardedHTTPTransport(guard=guard)
 
     logger.info("Patched httpx client with network guard")
+
+
+async def check_host_firewall_state() -> dict:
+    """
+    Check if host firewall is enforcing sovereign mode.
+
+    Executes sovereign-fw.sh check command via subprocess to verify
+    that iptables rules are active on the host system.
+
+    Returns:
+        Dictionary with firewall state:
+        {
+            "firewall_enabled": bool,
+            "mode": "sovereign" | "connected" | "unknown",
+            "rules_count": int,
+            "last_check": datetime,
+            "error": Optional[str]
+        }
+    """
+    import asyncio
+    import os
+    from pathlib import Path
+
+    # Find script path (relative to backend directory)
+    backend_root = Path(__file__).parent.parent.parent.parent
+    script_path = backend_root.parent / "scripts" / "sovereign-fw.sh"
+
+    result = {
+        "firewall_enabled": False,
+        "mode": "unknown",
+        "rules_count": 0,
+        "last_check": datetime.utcnow(),
+        "error": None
+    }
+
+    # Check if script exists
+    if not script_path.exists():
+        result["error"] = f"Firewall script not found: {script_path}"
+        logger.warning(result["error"])
+        return result
+
+    try:
+        # Execute status command (doesn't require root to read state)
+        proc = await asyncio.create_subprocess_exec(
+            str(script_path),
+            "status",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+
+        stdout, stderr = await asyncio.wait_for(
+            proc.communicate(),
+            timeout=10.0
+        )
+
+        # Parse output
+        output = stdout.decode('utf-8')
+
+        # Extract mode from output (looking for "Mode: sovereign" or "Mode: connected")
+        for line in output.split('\n'):
+            if 'Mode:' in line:
+                mode_text = line.split('Mode:')[1].strip()
+                if 'sovereign' in mode_text.lower():
+                    result["mode"] = "sovereign"
+                    result["firewall_enabled"] = True
+                elif 'connected' in mode_text.lower():
+                    result["mode"] = "connected"
+                    result["firewall_enabled"] = False
+                break
+
+            if 'Active Rules:' in line:
+                try:
+                    rules_text = line.split('Active Rules:')[1].strip()
+                    result["rules_count"] = int(rules_text)
+                except (ValueError, IndexError):
+                    pass
+
+        logger.debug(f"Host firewall check: mode={result['mode']}, rules={result['rules_count']}")
+
+    except asyncio.TimeoutError:
+        result["error"] = "Firewall script timeout"
+        logger.warning("Timeout checking host firewall state")
+
+    except Exception as e:
+        result["error"] = str(e)
+        logger.error(f"Error checking host firewall state: {e}")
+
+    return result
