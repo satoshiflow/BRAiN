@@ -322,6 +322,56 @@ test_network_probe() {
 }
 
 # ============================================================================
+# TEST LAYER 7: IPv6 GATE CHECK
+# ============================================================================
+
+test_ipv6_gate() {
+    print_header "LAYER 7: IPv6 Gate Check"
+
+    # Test 1: Detect IPv6 status
+    print_test "IPv6 status detection"
+    local ipv6_active=false
+    if ip -6 addr show 2>/dev/null | grep -q "scope global"; then
+        ipv6_active=true
+        pass
+    else
+        pass  # Not active is OK
+    fi
+
+    # Test 2: If IPv6 active, check ip6tables availability
+    if [[ "$ipv6_active" == "true" ]]; then
+        print_test "ip6tables available"
+        if command -v ip6tables &>/dev/null; then
+            pass
+        else
+            fail "IPv6 is active but ip6tables is not available"
+        fi
+
+        # Test 3: Check IPv6 firewall rules
+        print_test "IPv6 firewall rules active"
+        if sudo ip6tables -L DOCKER-USER -n 2>/dev/null | grep -q "brain-sovereign-ipv6"; then
+            pass
+        else
+            fail "IPv6 is active but no ip6tables rules found"
+        fi
+
+        # Test 4: Count IPv6 rules
+        print_test "IPv6 rules count (≥4 rules)"
+        local ipv6_rule_count
+        ipv6_rule_count=$(sudo ip6tables -L DOCKER-USER -n 2>/dev/null | grep -c "brain-sovereign-ipv6" || echo "0")
+
+        if [[ "$ipv6_rule_count" -ge 4 ]]; then
+            pass
+        else
+            fail "Only $ipv6_rule_count IPv6 rules active (expected: ≥4)"
+        fi
+    else
+        print_test "IPv6 not active (skipping IPv6 checks)"
+        pass
+    fi
+}
+
+# ============================================================================
 # MAIN EXECUTION
 # ============================================================================
 
@@ -353,6 +403,7 @@ main() {
     test_internal_connectivity
     test_backend_api
     test_network_probe
+    test_ipv6_gate
 
     # Summary
     print_header "TEST SUMMARY"

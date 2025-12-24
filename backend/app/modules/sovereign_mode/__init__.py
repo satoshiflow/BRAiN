@@ -27,6 +27,11 @@ from backend.app.modules.sovereign_mode.schemas import (
     AuditSeverity,
     AuditEventType,
 )
+from backend.app.modules.sovereign_mode.ipv6_gate import (
+    IPv6GateChecker,
+    IPv6GateResult,
+    get_ipv6_gate_checker,
+)
 
 __all__ = [
     "SovereignModeService",
@@ -40,4 +45,7 @@ __all__ = [
     "AuditEntry",
     "AuditSeverity",
     "AuditEventType",
+    "IPv6GateChecker",
+    "IPv6GateResult",
+    "get_ipv6_gate_checker",
 ]

@@ -1,7 +1,7 @@
 # BRAiN Sovereign Mode Audit + DMZ + IPv6 Implementation TODO
 
 **Sprint**: Audit + DMZ + IPv6 (Sovereign Hardened)
-**Status**: Phase A Complete, Phase C & B Remaining
+**Status**: Phase A & C Complete, Phase B Remaining
 **Date**: 2025-12-24
 
 ---
@@ -32,11 +32,43 @@
   - `BRAIN_SOVEREIGN_IPV6_ALLOWLIST=`
   - `BRAIN_DMZ_ENABLED=false`
 
+### Phase C: IPv6 Hardening (COMPLETED 2025-12-24)
+
+- [x] C.2: Extended `sovereign-fw.sh` with IPv6 support
+  - Added `detect_ipv6_active()`, `check_ip6tables_available()`
+  - Added `apply_ipv6_sovereign_rules()`, `remove_ipv6_brain_rules()`
+  - Integrated IPv6 checks in `apply_sovereign_rules()`
+  - Extended `verify_sovereign_rules()` with IPv6 validation
+  - Enhanced `cmd_status()` with IPv6 status display
+
+- [x] C.3: Implemented IPv6 Gate Checker backend
+  - New file: `backend/app/modules/sovereign_mode/ipv6_gate.py`
+  - Classes: `IPv6GateChecker`, `IPv6GateResult`
+  - Singleton: `get_ipv6_gate_checker()`
+  - Checks: IPv6 active, ip6tables available, rules applied
+
+- [x] C.4: Integrated IPv6 gate check in mode change
+  - Modified `backend/app/modules/sovereign_mode/service.py`
+  - IPv6 gate check before SOVEREIGN mode activation
+  - Emits audit events: IPV6_GATE_CHECKED, IPV6_GATE_FAILED, IPV6_GATE_PASSED
+  - Fail-closed: Blocks SOVEREIGN mode if IPv6 not properly secured
+  - User-friendly error messages with remediation steps
+
+- [x] C.5: Extended verification suite with IPv6 tests
+  - Modified `scripts/verify-sovereign-mode.sh`
+  - Added Layer 7: IPv6 Gate Check
+  - Tests: IPv6 status, ip6tables availability, rules count
+
+- [x] C.6: Error messages & user guidance
+  - Implemented in `service.py` (lines 284-303)
+  - Provides 3 remediation options with exact commands
+  - Displays current system status
+
 ---
 
 ## ❌ REMAINING TASKS
 
-### Phase C: IPv6 Hardening (CRITICAL)
+### Phase B: DMZ Gateway Architecture (NOT STARTED)
 
 #### C.2: Extend `sovereign-fw.sh` with IPv6 Support
 
