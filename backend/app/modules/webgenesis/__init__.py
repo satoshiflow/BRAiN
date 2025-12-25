@@ -56,6 +56,8 @@ from .service import (
     get_webgenesis_service,
 )
 
+from .router import router
+
 __all__ = [
     # Enums
     "DeployTarget",
@@ -84,6 +86,8 @@ __all__ = [
     # Service
     "WebGenesisService",
     "get_webgenesis_service",
+    # Router
+    "router",
 ]
 
 __version__ = "1.0.0"
