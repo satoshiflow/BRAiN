@@ -372,6 +372,11 @@ class AuditEventType(str, Enum):
     AXE_REQUEST_BLOCKED = "axe.request_blocked"
     AXE_TRUST_TIER_VIOLATION = "axe.trust_tier_violation"
 
+    # Sprint 7.4: Safe Mode
+    SYSTEM_SAFE_MODE_ENABLED = "system.safe_mode_enabled"
+    SYSTEM_SAFE_MODE_DISABLED = "system.safe_mode_disabled"
+    SYSTEM_SAFE_MODE_EXECUTION_BLOCKED = "system.safe_mode_execution_blocked"
+
 
 class AuditEntry(BaseModel):
     """Audit log entry for sovereign mode operations."""
@@ -414,5 +419,126 @@ class AuditEntry(BaseModel):
                 "success": True,
                 "error": None,
                 "metadata": {"network_check_failed": True},
+            }
+        }
+
+
+# Sprint 7: Evidence Pack Schemas
+
+
+class EvidenceScope(str, Enum):
+    """Evidence export scope."""
+
+    AUDIT = "audit"  # For auditors - compliance focus
+    INVESTOR = "investor"  # For investors - operational focus
+    INTERNAL = "internal"  # For internal review - full detail
+
+
+class EvidenceExportRequest(BaseModel):
+    """Request to export governance evidence pack."""
+
+    from_timestamp: datetime = Field(..., description="Start of time range (ISO 8601)")
+    to_timestamp: datetime = Field(..., description="End of time range (ISO 8601)")
+    scope: EvidenceScope = Field(default=EvidenceScope.AUDIT, description="Evidence scope")
+    include_bundle_details: bool = Field(default=True, description="Include bundle metadata")
+    include_executor_summary: bool = Field(default=True, description="Include executor stats")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "from_timestamp": "2025-12-01T00:00:00Z",
+                "to_timestamp": "2025-12-25T23:59:59Z",
+                "scope": "audit",
+                "include_bundle_details": True,
+                "include_executor_summary": True,
+            }
+        }
+
+
+class EvidencePack(BaseModel):
+    """Governance evidence pack for audit/compliance."""
+
+    # Metadata
+    pack_id: str = Field(..., description="Unique pack identifier")
+    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    scope: EvidenceScope = Field(..., description="Evidence scope")
+    time_range_start: datetime = Field(..., description="Evidence start time")
+    time_range_end: datetime = Field(..., description="Evidence end time")
+
+    # Governance Configuration
+    current_mode: OperationMode = Field(..., description="Current operation mode")
+    governance_config: ModeConfig = Field(..., description="Current governance configuration")
+
+    # Audit Events (filtered by time range)
+    audit_events: List[AuditEntry] = Field(
+        default_factory=list,
+        description="Filtered audit events"
+    )
+    audit_summary: Dict[str, int] = Field(
+        default_factory=dict,
+        description="Audit event counts by type"
+    )
+
+    # Mode History
+    mode_history: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Mode changes in time range"
+    )
+
+    # Override Usage (if applicable)
+    override_usage: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Override usage statistics"
+    )
+
+    # Bundle Trust Summary
+    bundle_summary: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Bundle trust and quarantine summary"
+    )
+
+    # Executor Activity (if included)
+    executor_summary: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Executor activity summary"
+    )
+
+    # Cryptographic Verification
+    content_hash: str = Field(..., description="SHA256 hash of pack content (deterministic)")
+    hash_algorithm: str = Field(default="sha256", description="Hash algorithm used")
+
+    # Metadata
+    system_version: str = Field(default="1.0.0", description="BRAiN version")
+    evidence_format_version: str = Field(default="1.0", description="Evidence pack format")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "pack_id": "evidence_20251225_audit",
+                "generated_at": "2025-12-25T12:00:00Z",
+                "scope": "audit",
+                "time_range_start": "2025-12-01T00:00:00Z",
+                "time_range_end": "2025-12-25T23:59:59Z",
+                "current_mode": "sovereign",
+                "audit_events": [],
+                "audit_summary": {
+                    "MODE_CHANGED": 5,
+                    "BUNDLE_LOADED": 3,
+                    "BUNDLE_QUARANTINED": 1
+                },
+                "mode_history": [
+                    {
+                        "timestamp": "2025-12-20T10:00:00Z",
+                        "from": "online",
+                        "to": "sovereign"
+                    }
+                ],
+                "bundle_summary": {
+                    "total_bundles": 3,
+                    "validated": 2,
+                    "quarantined": 1
+                },
+                "content_hash": "abc123def456...",
+                "hash_algorithm": "sha256"
             }
         }

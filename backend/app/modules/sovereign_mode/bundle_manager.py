@@ -23,6 +23,13 @@ from backend.app.modules.sovereign_mode.signature_validator import (
     SignaturePolicy,
 )
 
+# Sprint 7: Metrics integration
+try:
+    from backend.app.modules.monitoring.metrics import get_metrics_collector
+    METRICS_AVAILABLE = True
+except ImportError:
+    METRICS_AVAILABLE = False
+
 
 class BundleManager:
     """Manages offline model bundles."""
@@ -266,6 +273,14 @@ class BundleManager:
         bundle.status = BundleStatus.QUARANTINED
         bundle.quarantine_reason = reason
         bundle.quarantine_timestamp = datetime.utcnow()
+
+        # Sprint 7: Record quarantine in metrics (fail-safe)
+        if METRICS_AVAILABLE:
+            try:
+                metrics = get_metrics_collector()
+                metrics.record_quarantine()
+            except Exception as e:
+                logger.warning(f"Failed to record quarantine metric: {e}")
 
         # Unload if active
         if self.active_bundle_id == bundle_id:
