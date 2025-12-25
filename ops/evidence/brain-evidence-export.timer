@@ -1,0 +1,53 @@
+# BRAiN Governance Evidence Export Timer
+#
+# Purpose: Trigger daily audit log export at 02:00 server time
+# Service: brain-evidence-export.service
+# Schedule: Daily at 02:00 (configurable)
+#
+# Installation:
+#   sudo cp ops/evidence/brain-evidence-export.timer /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable brain-evidence-export.timer
+#   sudo systemctl start brain-evidence-export.timer
+#
+# Status:
+#   systemctl status brain-evidence-export.timer
+#   systemctl list-timers | grep brain-evidence
+#
+# Next run:
+#   systemctl status brain-evidence-export.timer | grep Trigger
+#
+# Logs:
+#   journalctl -u brain-evidence-export.timer -f
+#
+# Version: 1.0.0
+# Last Updated: 2025-12-25
+
+[Unit]
+Description=BRAiN Governance Audit Export Timer (Daily at 02:00)
+Documentation=file:///opt/brain/ops/evidence/README.md
+Requires=brain-evidence-export.service
+
+[Timer]
+# Daily at 02:00 server time
+OnCalendar=daily
+# Alternative: specific time
+# OnCalendar=*-*-* 02:00:00
+
+# Run 5 minutes after system boot (if boot time is past scheduled time)
+OnBootSec=5min
+
+# If system was down during scheduled time, run on next boot
+Persistent=true
+
+# Randomize execution time by up to 15 minutes to avoid thundering herd
+# RandomizedDelaySec=15min
+
+# Unit to trigger
+Unit=brain-evidence-export.service
+
+# Accuracy (how close to scheduled time, default: 1min)
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,80 @@
+# BRAiN Governance Evidence Export Service
+#
+# Purpose: Export daily audit log snapshots from BRAiN backend
+# Type: Oneshot (runs once per trigger, exits)
+# Trigger: brain-evidence-export.timer (daily at 02:00)
+#
+# Installation:
+#   sudo cp ops/evidence/brain-evidence-export.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable brain-evidence-export.service
+#
+# Manual Run:
+#   sudo systemctl start brain-evidence-export.service
+#   sudo systemctl status brain-evidence-export.service
+#
+# Logs:
+#   journalctl -u brain-evidence-export.service -f
+#
+# Version: 1.0.0
+# Last Updated: 2025-12-25
+
+[Unit]
+Description=BRAiN Governance Audit Export (Daily Evidence Snapshot)
+Documentation=file:///opt/brain/ops/evidence/README.md
+After=network-online.target docker.service
+Wants=network-online.target
+# Ensure backend is running before export
+Requires=docker.service
+
+[Service]
+Type=oneshot
+
+# Working directory (where the script is located)
+WorkingDirectory=/opt/brain/ops/evidence
+
+# Script to execute
+ExecStart=/opt/brain/ops/evidence/export_audit.sh
+
+# Environment variables
+Environment="BACKEND_URL=http://localhost:8000"
+Environment="EVIDENCE_DIR=/var/lib/brain/evidence"
+Environment="RETENTION_DAYS=90"
+# Environment="DEBUG=1"
+
+# Optional: Load additional config from file
+# EnvironmentFile=-/etc/brain/evidence-export.conf
+
+# User and group (run as root for now, can be changed to dedicated user)
+User=root
+Group=root
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/brain/evidence
+# ReadOnlyPaths=/opt/brain
+
+# Resource limits
+CPUQuota=50%
+MemoryLimit=512M
+TasksMax=10
+
+# Restart policy (do not restart on failure, let timer retry)
+Restart=no
+
+# Timeout (max 10 minutes for export)
+TimeoutStartSec=600
+
+# Standard output and error
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=brain-evidence-export
+
+# Success exit status
+SuccessExitStatus=0
+
+[Install]
+WantedBy=multi-user.target

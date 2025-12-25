@@ -1,0 +1,114 @@
+# Prometheus Configuration for BRAiN Governance Monitoring
+#
+# Purpose: Scrape governance metrics from BRAiN backend
+# Network: Uses internal Docker network (brain_internal)
+# Security: Read-only, no writes to backend
+#
+# Metrics Endpoint: http://backend:8000/api/sovereign-mode/metrics
+# Scrape Interval: 30s (real-time governance monitoring)
+#
+# Last Updated: 2025-12-25
+# Version: 1.0.0
+
+global:
+  # How frequently to scrape targets
+  scrape_interval: 30s
+
+  # How frequently to evaluate rules (not used yet, but good to set)
+  evaluation_interval: 30s
+
+  # External labels to add to all time series and alerts
+  external_labels:
+    cluster: 'brain'
+    environment: 'production'
+    service: 'governance'
+
+# Alertmanager configuration (optional, not deployed yet)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#             - 'alertmanager:9093'
+
+# Load rules once and periodically evaluate them according to evaluation_interval
+# rule_files:
+#   - '/etc/prometheus/rules/*.yml'
+
+# Scrape configurations
+scrape_configs:
+  # ============================================================================
+  # BRAiN Governance Metrics
+  # ============================================================================
+  - job_name: 'brain-governance'
+
+    # Scrape interval for this job (override global)
+    scrape_interval: 30s
+
+    # Timeout for each scrape (must be less than scrape_interval)
+    scrape_timeout: 10s
+
+    # Metrics path (default: /metrics)
+    metrics_path: '/api/sovereign-mode/metrics'
+
+    # Scheme (http or https)
+    scheme: http
+
+    # Static targets
+    static_configs:
+      - targets:
+          # Internal Docker network hostname
+          # Service name 'backend' resolves to brain-backend container
+          - 'backend:8000'
+
+        labels:
+          # Custom labels for this target
+          component: 'sovereign-mode'
+          layer: 'governance'
+          module: 'g4-monitoring'
+
+    # Relabeling (optional, for advanced filtering)
+    # relabel_configs:
+    #   - source_labels: [__address__]
+    #     target_label: instance
+    #     replacement: 'brain-backend'
+
+  # ============================================================================
+  # IPv6 Monitoring Metrics (optional, if needed)
+  # ============================================================================
+  - job_name: 'brain-ipv6'
+
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    metrics_path: '/api/sovereign-mode/ipv6/metrics/prometheus'
+    scheme: http
+
+    static_configs:
+      - targets:
+          - 'backend:8000'
+
+        labels:
+          component: 'ipv6-monitoring'
+          layer: 'network'
+          module: 'sovereign-mode'
+
+  # ============================================================================
+  # Prometheus Self-Monitoring
+  # ============================================================================
+  - job_name: 'prometheus'
+
+    scrape_interval: 30s
+
+    static_configs:
+      - targets:
+          - 'localhost:9090'
+
+        labels:
+          component: 'prometheus'
+          layer: 'observability'
+
+# ============================================================================
+# Storage Configuration
+# ============================================================================
+# Retention policy is set via docker-compose flags
+# Default: --storage.tsdb.retention.time=15d
+# For production: --storage.tsdb.retention.time=90d (compliance)
