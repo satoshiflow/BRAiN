@@ -89,6 +89,16 @@ from .ops_service import (
     site_lock,
 )
 
+from .health import (
+    HealthCheckService,
+    get_health_service,
+)
+
+from .rollback import (
+    RollbackService,
+    get_rollback_service,
+)
+
 from .router import router
 
 __all__ = [
@@ -139,6 +149,12 @@ __all__ = [
     "WebGenesisOpsService",
     "get_ops_service",
     "site_lock",
+    # Health Check Service (Sprint II)
+    "HealthCheckService",
+    "get_health_service",
+    # Rollback Service (Sprint II)
+    "RollbackService",
+    "get_rollback_service",
     # Router
     "router",
 ]
