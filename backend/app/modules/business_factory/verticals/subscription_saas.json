@@ -1,0 +1,201 @@
+{
+  "vertical_id": "subscription_saas_v1",
+  "name": "Subscription & SaaS Light",
+  "description": "Software-as-a-Service and subscription-based business models with recurring revenue",
+  "version": "1.0.0",
+  "created_at": "2025-12-25",
+
+  "business_types": [
+    "saas",
+    "subscription",
+    "membership",
+    "digital_products"
+  ],
+
+  "template_config": {
+    "website": {
+      "template_id": "saas_landing_v1",
+      "required_pages": ["home", "pricing", "features", "docs", "contact"],
+      "optional_pages": ["blog", "case-studies", "api-docs", "changelog"],
+      "features": [
+        "pricing_table",
+        "feature_comparison",
+        "signup_flow",
+        "demo_request",
+        "api_documentation"
+      ],
+      "seo_focus": [
+        "feature_keywords",
+        "comparison_keywords",
+        "solution_keywords"
+      ]
+    },
+
+    "erp": {
+      "required_modules": [
+        "crm",
+        "sale",
+        "sale_subscription",
+        "account",
+        "website"
+      ],
+      "optional_modules": [
+        "website_sale",
+        "payment",
+        "helpdesk",
+        "project"
+      ],
+      "workflows": [
+        "signup_to_subscription",
+        "trial_to_paid",
+        "recurring_invoicing",
+        "churn_prevention"
+      ]
+    },
+
+    "integrations": [
+      {
+        "name": "Signup Form to Subscription",
+        "source": "website",
+        "target": "odoo",
+        "type": "subscription_signup",
+        "priority": "critical",
+        "config": {
+          "create_subscription": true,
+          "trial_period_days": 14,
+          "auto_convert_trial": true,
+          "payment_required": false
+        }
+      },
+      {
+        "name": "Subscription to Invoicing",
+        "source": "odoo",
+        "target": "odoo",
+        "type": "internal_workflow",
+        "priority": "critical",
+        "config": {
+          "auto_invoice_monthly": true,
+          "payment_reminder_days": 7,
+          "suspend_on_non_payment": true
+        }
+      }
+    ]
+  },
+
+  "risk_profile": {
+    "overall_complexity": "high",
+    "common_risks": [
+      {
+        "risk": "Payment processing failures",
+        "severity": "critical",
+        "mitigation": "Implement retry logic and payment gateway fallback",
+        "probability": "medium"
+      },
+      {
+        "risk": "Subscription churn",
+        "severity": "high",
+        "mitigation": "Set up automated retention campaigns and usage analytics",
+        "probability": "high"
+      },
+      {
+        "risk": "Trial abuse",
+        "severity": "medium",
+        "mitigation": "Implement email verification and fraud detection",
+        "probability": "medium"
+      },
+      {
+        "risk": "Scalability issues",
+        "severity": "high",
+        "mitigation": "Plan for horizontal scaling from day 1",
+        "probability": "low"
+      }
+    ],
+    "estimated_setup_time_minutes": 35,
+    "estimated_cost_euros": 0.0,
+    "rollback_complexity": "high"
+  },
+
+  "default_parameters": {
+    "website_config": {
+      "primary_color": "#0ea5e9",
+      "secondary_color": "#64748b",
+      "tagline": "The Modern Solution for [Problem]",
+      "description": "Powerful, simple, and affordable [solution] for teams of all sizes",
+      "features": ["pricing_table", "signup_flow", "feature_comparison"]
+    },
+    "erp_config": {
+      "currency": "USD",
+      "fiscal_year_start": "01-01",
+      "language": "en_US",
+      "timezone": "UTC"
+    }
+  },
+
+  "pricing_tiers": [
+    {
+      "name": "Starter",
+      "price_monthly": 29,
+      "features": ["Basic features", "Up to 10 users", "Email support"],
+      "target": "Small teams and startups"
+    },
+    {
+      "name": "Professional",
+      "price_monthly": 99,
+      "features": ["All Starter features", "Unlimited users", "Priority support", "Advanced analytics"],
+      "target": "Growing businesses",
+      "popular": true
+    },
+    {
+      "name": "Enterprise",
+      "price_monthly": 299,
+      "features": ["All Professional features", "Custom integrations", "Dedicated account manager", "SLA"],
+      "target": "Large organizations"
+    }
+  ],
+
+  "validation_rules": {
+    "required_fields": [
+      "business_name",
+      "contact_email",
+      "pricing_model"
+    ],
+    "recommended_fields": [
+      "trial_period_days",
+      "payment_gateway",
+      "subscription_tiers"
+    ]
+  },
+
+  "success_metrics": {
+    "kpis": [
+      "mrr",
+      "arr",
+      "churn_rate",
+      "ltv_cac_ratio",
+      "trial_to_paid_conversion"
+    ],
+    "dashboards": [
+      "subscription_analytics",
+      "revenue_forecast",
+      "churn_analysis",
+      "cohort_retention"
+    ]
+  },
+
+  "examples": [
+    {
+      "name": "TaskFlow SaaS",
+      "industry": "Project Management Software",
+      "pricing_model": "Tiered subscription",
+      "trial_period": 14,
+      "target_market": "SME teams worldwide"
+    },
+    {
+      "name": "DataSync Pro",
+      "industry": "Data Integration Platform",
+      "pricing_model": "Usage-based + base fee",
+      "trial_period": 30,
+      "target_market": "Enterprise and mid-market"
+    }
+  ]
+}
