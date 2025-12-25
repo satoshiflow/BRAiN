@@ -83,6 +83,12 @@ from .releases import (
     get_release_manager,
 )
 
+from .ops_service import (
+    WebGenesisOpsService,
+    get_ops_service,
+    site_lock,
+)
+
 from .router import router
 
 __all__ = [
@@ -129,6 +135,10 @@ __all__ = [
     # Release Manager (Sprint II)
     "ReleaseManager",
     "get_release_manager",
+    # Operational Service (Sprint II)
+    "WebGenesisOpsService",
+    "get_ops_service",
+    "site_lock",
     # Router
     "router",
 ]
