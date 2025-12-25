@@ -2,7 +2,9 @@
 WebGenesis Module - Data Models
 
 Schemas for website generation, build, and deployment.
+
 Sprint I: MVP for static website generation and Docker Compose deployment.
+Sprint II: Operational hardening (lifecycle, health, rollback) + DNS automation.
 """
 
 from __future__ import annotations
@@ -47,6 +49,32 @@ class TemplateType(str, Enum):
     STATIC_HTML = "static_html"  # Static HTML + Tailwind (MVP)
     NEXTJS = "nextjs"  # Next.js static export (future)
     ASTRO = "astro"  # Astro static (future)
+
+
+class SiteLifecycleStatus(str, Enum):
+    """
+    Container lifecycle status (Sprint II).
+
+    Reflects Docker Compose container state.
+    """
+
+    RUNNING = "running"  # Container is running
+    STOPPED = "stopped"  # Container stopped gracefully
+    EXITED = "exited"  # Container exited
+    RESTARTING = "restarting"  # Container is restarting
+    PAUSED = "paused"  # Container is paused
+    DEAD = "dead"  # Container is dead
+    CREATED = "created"  # Container created but not started
+    UNKNOWN = "unknown"  # Status cannot be determined
+
+
+class HealthStatus(str, Enum):
+    """Health check status (Sprint II)"""
+
+    HEALTHY = "healthy"  # Health check passing
+    UNHEALTHY = "unhealthy"  # Health check failing
+    STARTING = "starting"  # Container starting (grace period)
+    UNKNOWN = "unknown"  # Health status unknown
 
 
 # ============================================================================
@@ -179,6 +207,37 @@ class SEOConfig(BaseModel):
         }
 
 
+class DNSConfig(BaseModel):
+    """
+    DNS configuration for automatic DNS record creation (Sprint II).
+
+    Requires Hetzner DNS API integration.
+    """
+
+    enable: bool = Field(True, description="Enable DNS record creation")
+    zone: str = Field(..., description="DNS zone name (e.g., 'example.com')")
+    record_type: Literal["A", "AAAA", "CNAME"] = Field(
+        "A", description="DNS record type"
+    )
+    name: str = Field("@", description="Record name (@ for root, www, subdomain, etc.)")
+    value: Optional[str] = Field(
+        None, description="Record value (if None: use BRAIN_PUBLIC_IPV4/IPv6)"
+    )
+    ttl: int = Field(300, description="DNS TTL in seconds", ge=60, le=86400)
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "enable": True,
+                "zone": "example.com",
+                "record_type": "A",
+                "name": "www",
+                "value": "1.2.3.4",
+                "ttl": 300,
+            }
+        }
+
+
 class DeployConfig(BaseModel):
     """Deployment configuration"""
 
@@ -194,6 +253,9 @@ class DeployConfig(BaseModel):
     healthcheck_path: str = Field("/", description="Health check endpoint path")
     domain: Optional[str] = Field(None, description="Custom domain (optional)")
     ssl_enabled: bool = Field(False, description="Enable SSL (future)")
+    dns: Optional[DNSConfig] = Field(
+        None, description="DNS configuration (Sprint II - optional)"
+    )
 
     class Config:
         json_schema_extra = {
@@ -593,5 +655,204 @@ class WebGenesisAuditEvent(BaseModel):
                 "details": {"url": "http://localhost:8080"},
                 "timestamp": "2025-01-01T12:00:00",
                 "trust_tier": "dmz",
+            }
+        }
+
+
+# ============================================================================
+# Sprint II: Operational Models (Releases, Lifecycle, Health, Rollback)
+# ============================================================================
+
+
+class ReleaseMetadata(BaseModel):
+    """
+    Release metadata (Sprint II).
+
+    Each successful deployment creates a release snapshot for rollback.
+    """
+
+    release_id: str = Field(..., description="Unique release identifier (rel_{timestamp}_{hash})")
+    site_id: str = Field(..., description="Associated site ID")
+    artifact_hash: str = Field(..., description="SHA-256 hash of build artifacts")
+    created_at: datetime = Field(
+        default_factory=datetime.utcnow, description="Release creation timestamp"
+    )
+    deployed_url: Optional[str] = Field(None, description="Deployment URL at time of release")
+    docker_compose_path: Optional[str] = Field(
+        None, description="Path to frozen docker-compose.yml"
+    )
+    health_status: Optional[str] = Field(None, description="Health status after deployment")
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict, description="Extra release metadata"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "release_id": "rel_1703001234_a3f5c8e9",
+                "site_id": "site_001",
+                "artifact_hash": "a1b2c3d4e5f6...",
+                "created_at": "2025-01-01T12:00:00",
+                "deployed_url": "http://localhost:8080",
+                "health_status": "healthy",
+            }
+        }
+
+
+class SiteOperationalStatus(BaseModel):
+    """
+    Extended site status with container lifecycle and health (Sprint II).
+
+    Includes container state from Docker Compose.
+    """
+
+    site_id: str = Field(..., description="Site ID")
+    manifest_status: SiteStatus = Field(..., description="Manifest status")
+    lifecycle_status: SiteLifecycleStatus = Field(
+        ..., description="Container lifecycle status"
+    )
+    health_status: HealthStatus = Field(..., description="Health check status")
+    container_id: Optional[str] = Field(None, description="Docker container ID")
+    container_name: Optional[str] = Field(None, description="Docker container name")
+    deployed_url: Optional[str] = Field(None, description="Deployed URL")
+    last_deployed_at: Optional[datetime] = Field(None, description="Last deployment timestamp")
+    last_release_id: Optional[str] = Field(None, description="Last release ID")
+    uptime_seconds: Optional[int] = Field(None, description="Container uptime in seconds")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "site_id": "site_001",
+                "manifest_status": "deployed",
+                "lifecycle_status": "running",
+                "health_status": "healthy",
+                "container_id": "abc123def456",
+                "deployed_url": "http://localhost:8080",
+                "last_deployed_at": "2025-01-01T12:00:00",
+                "last_release_id": "rel_1703001234_a3f5c8e9",
+                "uptime_seconds": 3600,
+            }
+        }
+
+
+# ============================================================================
+# Sprint II: Lifecycle Operation Requests/Responses
+# ============================================================================
+
+
+class LifecycleOperationResponse(BaseModel):
+    """Generic response for lifecycle operations (start/stop/restart)"""
+
+    success: bool = Field(..., description="Operation success")
+    site_id: str = Field(..., description="Site ID")
+    operation: str = Field(..., description="Operation performed")
+    lifecycle_status: SiteLifecycleStatus = Field(
+        ..., description="Container status after operation"
+    )
+    message: str = Field(..., description="Status message")
+    timestamp: datetime = Field(
+        default_factory=datetime.utcnow, description="Operation timestamp"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": True,
+                "site_id": "site_001",
+                "operation": "start",
+                "lifecycle_status": "running",
+                "message": "Site started successfully",
+                "timestamp": "2025-01-01T12:00:00",
+            }
+        }
+
+
+class RemoveRequest(BaseModel):
+    """Request to remove site"""
+
+    keep_data: bool = Field(True, description="Keep site data (source/build/releases)")
+
+    class Config:
+        json_schema_extra = {"example": {"keep_data": True}}
+
+
+class RemoveResponse(BaseModel):
+    """Response after site removal"""
+
+    success: bool = Field(..., description="Removal success")
+    site_id: str = Field(..., description="Site ID")
+    data_removed: bool = Field(..., description="Whether site data was removed")
+    message: str = Field(..., description="Status message")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": True,
+                "site_id": "site_001",
+                "data_removed": False,
+                "message": "Site removed, data preserved",
+            }
+        }
+
+
+class RollbackRequest(BaseModel):
+    """Request to rollback site to previous release"""
+
+    release_id: Optional[str] = Field(
+        None, description="Target release ID (if None: use previous release)"
+    )
+
+    class Config:
+        json_schema_extra = {"example": {"release_id": "rel_1703001234_a3f5c8e9"}}
+
+
+class RollbackResponse(BaseModel):
+    """Response after rollback operation"""
+
+    success: bool = Field(..., description="Rollback success")
+    site_id: str = Field(..., description="Site ID")
+    from_release: Optional[str] = Field(None, description="Previous release ID")
+    to_release: str = Field(..., description="Target release ID")
+    lifecycle_status: SiteLifecycleStatus = Field(
+        ..., description="Container status after rollback"
+    )
+    health_status: HealthStatus = Field(
+        ..., description="Health status after rollback"
+    )
+    message: str = Field(..., description="Status message")
+    warnings: List[str] = Field(default_factory=list, description="Warnings if any")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": True,
+                "site_id": "site_001",
+                "from_release": "rel_1703002000_b4c7d9e2",
+                "to_release": "rel_1703001234_a3f5c8e9",
+                "lifecycle_status": "running",
+                "health_status": "healthy",
+                "message": "Rollback completed successfully",
+                "warnings": [],
+            }
+        }
+
+
+class ReleasesListResponse(BaseModel):
+    """Response for listing site releases"""
+
+    site_id: str = Field(..., description="Site ID")
+    releases: List[ReleaseMetadata] = Field(..., description="List of releases")
+    total_count: int = Field(..., description="Total number of releases")
+    current_release_id: Optional[str] = Field(
+        None, description="Currently deployed release ID"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "site_id": "site_001",
+                "releases": [],
+                "total_count": 5,
+                "current_release_id": "rel_1703002000_b4c7d9e2",
             }
         }
