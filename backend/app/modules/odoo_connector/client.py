@@ -7,6 +7,8 @@ Sprint IV: AXE × Odoo Integration
 
 from __future__ import annotations
 
+import os
+import socket
 import xmlrpc.client
 from typing import Any, Dict, List, Optional
 
@@ -45,21 +47,67 @@ class OdooXMLRPCClient:
         self.common_url = f"{self.base_url}/xmlrpc/2/common"
         self.object_url = f"{self.base_url}/xmlrpc/2/object"
 
+        # Timeout configuration (from ENV, default: 30 seconds)
+        self.timeout = float(os.getenv("ODOO_TIMEOUT_SECONDS", "30"))
+        logger.debug(f"Odoo XML-RPC timeout: {self.timeout}s")
+
         # Session state
         self.uid: Optional[int] = None
         self._common_proxy: Optional[xmlrpc.client.ServerProxy] = None
         self._object_proxy: Optional[xmlrpc.client.ServerProxy] = None
 
     def _get_common_proxy(self) -> xmlrpc.client.ServerProxy:
-        """Get or create common endpoint proxy."""
+        """
+        Get or create common endpoint proxy with timeout.
+
+        Timeout is configured via ODOO_TIMEOUT_SECONDS env var (default: 30s).
+        """
         if self._common_proxy is None:
-            self._common_proxy = xmlrpc.client.ServerProxy(self.common_url)
+            # Create transport with timeout
+            transport = xmlrpc.client.Transport()
+            # Set socket timeout for underlying connection
+            original_make_connection = transport.make_connection
+
+            def make_connection_with_timeout(host):
+                conn = original_make_connection(host)
+                conn.timeout = self.timeout
+                return conn
+
+            transport.make_connection = make_connection_with_timeout
+
+            self._common_proxy = xmlrpc.client.ServerProxy(
+                self.common_url,
+                transport=transport,
+                allow_none=True  # Odoo compatibility
+            )
+            logger.debug(f"Created Odoo common proxy with {self.timeout}s timeout")
         return self._common_proxy
 
     def _get_object_proxy(self) -> xmlrpc.client.ServerProxy:
-        """Get or create object endpoint proxy."""
+        """
+        Get or create object endpoint proxy with timeout.
+
+        Timeout is configured via ODOO_TIMEOUT_SECONDS env var (default: 30s).
+        """
         if self._object_proxy is None:
-            self._object_proxy = xmlrpc.client.ServerProxy(self.object_url)
+            # Create transport with timeout
+            transport = xmlrpc.client.Transport()
+            # Set socket timeout for underlying connection
+            original_make_connection = transport.make_connection
+
+            def make_connection_with_timeout(host):
+                conn = original_make_connection(host)
+                conn.timeout = self.timeout
+                return conn
+
+            transport.make_connection = make_connection_with_timeout
+
+            self._object_proxy = xmlrpc.client.ServerProxy(
+                self.object_url,
+                transport=transport,
+                allow_none=True  # Odoo compatibility
+            )
+            logger.debug(f"Created Odoo object proxy with {self.timeout}s timeout")
         return self._object_proxy
 
     async def authenticate(self) -> int:

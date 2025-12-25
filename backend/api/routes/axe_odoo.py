@@ -10,7 +10,7 @@ Sprint IV: AXE × Odoo Integration
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from loguru import logger
 
 from backend.app.modules.odoo_connector import (
@@ -39,35 +39,64 @@ router = APIRouter(prefix="/api/axe/odoo", tags=["axe-odoo"])
 # ============================================================================
 
 
-def enforce_local_trust_tier():
+def enforce_local_trust_tier(request: Request = None):
     """
     Enforce LOCAL trust tier for Odoo operations.
+
+    Security Implementation:
+    - Checks if ODOO_ENFORCE_TRUST_TIER is enabled (default: true)
+    - Validates request comes from localhost (127.0.0.1 or ::1)
+    - Logs warning if trust tier check is bypassed
 
     Raises:
         HTTPException: 403 if trust tier check fails
 
-    Note: In production, this should check actual trust tier from
-    authentication/authorization context. For now, this is a placeholder.
+    Future: Integrate with Policy Engine for full RBAC
     """
-    # TODO: Implement actual trust tier check
-    # For now, we'll allow all operations (development mode)
-    # In production, this should verify that the request comes from:
-    # - Local system (localhost)
-    # - Authenticated admin user
-    # - Specific authorized agents
+    import os
 
-    # Example implementation:
-    # from backend.app.modules.policy import PolicyService
-    # policy_service = PolicyService()
-    # result = policy_service.evaluate(
-    #     agent_id=current_user_agent_id,
-    #     action="odoo.module_operation",
-    #     context={"trust_tier": "LOCAL"}
-    # )
-    # if result.effect != PolicyEffect.ALLOW:
-    #     raise HTTPException(status_code=403, detail="LOCAL trust tier required")
+    # Feature flag (default: true for security)
+    enforce = os.getenv("ODOO_ENFORCE_TRUST_TIER", "true").lower() == "true"
 
-    pass  # Development mode - allow all
+    if not enforce:
+        logger.warning(
+            "⚠️ ODOO trust tier enforcement DISABLED (ODOO_ENFORCE_TRUST_TIER=false) "
+            "- ALL Odoo operations are unprotected!"
+        )
+        return
+
+    # If no request context (testing), allow
+    if request is None:
+        logger.debug("No request context - allowing (test mode)")
+        return
+
+    # Get client IP
+    client_host = request.client.host if request.client else None
+
+    # Allow localhost (IPv4 and IPv6)
+    if client_host in ["127.0.0.1", "::1", "localhost"]:
+        logger.debug(f"Odoo operation allowed from localhost: {client_host}")
+        return
+
+    # Check X-Forwarded-For header (if behind proxy)
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        # Take first IP (original client)
+        original_client = forwarded_for.split(",")[0].strip()
+        if original_client in ["127.0.0.1", "::1"]:
+            logger.debug(f"Odoo operation allowed from proxied localhost: {original_client}")
+            return
+
+    # Deny all other requests
+    logger.error(
+        f"🔒 Odoo operation DENIED - LOCAL trust tier required. "
+        f"Request from: {client_host} (X-Forwarded-For: {forwarded_for})"
+    )
+    raise HTTPException(
+        status_code=403,
+        detail="Forbidden: Odoo operations require LOCAL trust tier. "
+               "Only localhost requests are permitted."
+    )
 
 
 # ============================================================================
@@ -76,7 +105,7 @@ def enforce_local_trust_tier():
 
 
 @router.post("/module/generate", response_model=OdooOrchestrationResult)
-async def generate_odoo_module(request: ModuleGenerateRequest):
+async def generate_odoo_module(payload: ModuleGenerateRequest, request: Request):
     """
     Generate Odoo module from text specification.
 
@@ -104,11 +133,11 @@ async def generate_odoo_module(request: ModuleGenerateRequest):
     """
     try:
         # Enforce trust tier
-        enforce_local_trust_tier()
+        enforce_local_trust_tier(request)
 
         # Execute orchestration
         orchestrator = get_odoo_orchestrator()
-        result = await orchestrator.generate_and_install(request)
+        result = await orchestrator.generate_and_install(payload)
 
         return result
 
@@ -124,7 +153,7 @@ async def generate_odoo_module(request: ModuleGenerateRequest):
 
 
 @router.post("/module/install", response_model=OdooOrchestrationResult)
-async def install_odoo_module(request: ModuleInstallRequest):
+async def install_odoo_module(payload: ModuleInstallRequest, request: Request):
     """
     Install a previously generated Odoo module.
 
@@ -147,11 +176,11 @@ async def install_odoo_module(request: ModuleInstallRequest):
     """
     try:
         # Enforce trust tier
-        enforce_local_trust_tier()
+        enforce_local_trust_tier(request)
 
         # Execute orchestration
         orchestrator = get_odoo_orchestrator()
-        result = await orchestrator.install_existing(request)
+        result = await orchestrator.install_existing(payload)
 
         return result
 
@@ -167,7 +196,7 @@ async def install_odoo_module(request: ModuleInstallRequest):
 
 
 @router.post("/module/upgrade", response_model=OdooOrchestrationResult)
-async def upgrade_odoo_module(request: ModuleUpgradeRequest):
+async def upgrade_odoo_module(payload: ModuleUpgradeRequest, request: Request):
     """
     Upgrade an Odoo module.
 
@@ -194,11 +223,11 @@ async def upgrade_odoo_module(request: ModuleUpgradeRequest):
     """
     try:
         # Enforce trust tier
-        enforce_local_trust_tier()
+        enforce_local_trust_tier(request)
 
         # Execute orchestration
         orchestrator = get_odoo_orchestrator()
-        result = await orchestrator.upgrade_module(request)
+        result = await orchestrator.upgrade_module(payload)
 
         return result
 
@@ -214,7 +243,7 @@ async def upgrade_odoo_module(request: ModuleUpgradeRequest):
 
 
 @router.post("/module/rollback", response_model=OdooOrchestrationResult)
-async def rollback_odoo_module(request: ModuleRollbackRequest):
+async def rollback_odoo_module(payload: ModuleRollbackRequest, request: Request):
     """
     Rollback Odoo module to previous version.
 
@@ -236,11 +265,11 @@ async def rollback_odoo_module(request: ModuleRollbackRequest):
     """
     try:
         # Enforce trust tier
-        enforce_local_trust_tier()
+        enforce_local_trust_tier(request)
 
         # Execute orchestration
         orchestrator = get_odoo_orchestrator()
-        result = await orchestrator.rollback_module(request)
+        result = await orchestrator.rollback_module(payload)
 
         return result
 
@@ -261,7 +290,7 @@ async def rollback_odoo_module(request: ModuleRollbackRequest):
 
 
 @router.get("/modules", response_model=RegistryListResponse)
-async def list_generated_modules():
+async def list_generated_modules(request: Request):
     """
     List all generated Odoo modules in registry.
 
@@ -272,7 +301,7 @@ async def list_generated_modules():
     """
     try:
         # Enforce trust tier
-        enforce_local_trust_tier()
+        enforce_local_trust_tier(request)
 
         # Get all modules from registry
         registry = get_odoo_registry()
@@ -296,6 +325,7 @@ async def list_generated_modules():
 
 @router.get("/modules/odoo", response_model=OdooModuleListResponse)
 async def list_odoo_installed_modules(
+    request: Request,
     state: OdooModuleState | None = Query(None, description="Filter by module state")
 ):
     """
@@ -313,7 +343,7 @@ async def list_odoo_installed_modules(
     """
     try:
         # Enforce trust tier
-        enforce_local_trust_tier()
+        enforce_local_trust_tier(request)
 
         # Query Odoo
         odoo_service = get_odoo_service()

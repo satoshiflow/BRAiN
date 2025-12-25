@@ -8,6 +8,7 @@ Sprint IV: AXE × Odoo Integration
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import uuid
 from datetime import datetime
@@ -26,6 +27,70 @@ from .schemas import (
     ModuleReleaseRecord,
     ModuleVersion,
 )
+
+
+def _validate_safe_path_component(component: str, field_name: str = "path component") -> str:
+    """
+    Validate that a path component is safe (no path traversal).
+
+    Security checks:
+    - No path traversal sequences (../, ..\, etc.)
+    - No directory separators (/, \)
+    - No null bytes or control characters
+    - Only alphanumeric, underscore, hyphen, dot (semantic versioning)
+    - Not empty
+
+    Args:
+        component: Path component to validate (module_name or version)
+        field_name: Description for error messages
+
+    Returns:
+        Validated component (unchanged)
+
+    Raises:
+        ValueError: If component contains unsafe characters
+
+    Examples:
+        >>> _validate_safe_path_component("my_module")  # OK
+        >>> _validate_safe_path_component("1.0.0")  # OK
+        >>> _validate_safe_path_component("../etc/passwd")  # Raises ValueError
+    """
+    if not component:
+        raise ValueError(f"Invalid {field_name}: cannot be empty")
+
+    # Check for path traversal
+    if ".." in component:
+        raise ValueError(
+            f"Invalid {field_name} '{component}': path traversal detected (..)"
+        )
+
+    # Check for directory separators
+    if "/" in component or "\\" in component:
+        raise ValueError(
+            f"Invalid {field_name} '{component}': directory separators not allowed"
+        )
+
+    # Check for null bytes and control characters
+    if "\x00" in component or any(ord(c) < 32 for c in component):
+        raise ValueError(
+            f"Invalid {field_name} '{component}': null bytes or control characters not allowed"
+        )
+
+    # Validate character set: alphanumeric, underscore, hyphen, dot
+    # Pattern: allows module names like "my_module" and versions like "1.0.0-rc1"
+    if not re.match(r'^[a-zA-Z0-9_.-]+$', component):
+        raise ValueError(
+            f"Invalid {field_name} '{component}': only alphanumeric, underscore, hyphen, and dot allowed"
+        )
+
+    # Additional check: must not start with dot (hidden files)
+    if component.startswith("."):
+        raise ValueError(
+            f"Invalid {field_name} '{component}': cannot start with dot"
+        )
+
+    logger.debug(f"Path component validated: {component}")
+    return component
 
 
 class OdooModuleRegistry:
@@ -85,12 +150,16 @@ class OdooModuleRegistry:
         version = generation_result.version
         module_hash = generation_result.module_hash
 
+        # Validate path components (security: prevent path traversal)
+        safe_module_name = _validate_safe_path_component(module_name, "module_name")
+        safe_version = _validate_safe_path_component(version, "version")
+
         # Module directory
-        module_dir = self.modules_dir / module_name
+        module_dir = self.modules_dir / safe_module_name
         module_dir.mkdir(parents=True, exist_ok=True)
 
         # Version directory
-        version_dir = module_dir / version
+        version_dir = module_dir / safe_version
 
         # Check if version already exists
         if version_dir.exists():
