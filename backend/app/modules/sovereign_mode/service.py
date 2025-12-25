@@ -91,6 +91,10 @@ class SovereignModeService:
         # Audit log
         self.audit_log: List[AuditEntry] = []
 
+        # G2: Owner Override State (in-memory, single-use)
+        self.active_override: Optional["OwnerOverride"] = None
+        self.override_lock = RLock()
+
         # Initialize
         self._initialize()
 
@@ -204,13 +208,582 @@ class SovereignModeService:
                     "Network restored but staying in offline mode (manual switch required)"
                 )
 
+    # =========================================================================
+    # G2: Mode Switch Governance - Preflight Engine (2-Phase Commit)
+    # =========================================================================
+
+    async def _check_network_gate(
+        self, target_mode: OperationMode
+    ) -> "GateCheckResult":
+        """
+        Check network connectivity gate.
+
+        Required for: ONLINE mode
+        """
+        from backend.app.modules.sovereign_mode.schemas import (
+            GateCheckResult,
+            GateCheckStatus,
+        )
+
+        required = target_mode == OperationMode.ONLINE
+        blocking = required
+
+        try:
+            network_check = await self.detector.check_connectivity()
+            is_online = network_check.is_online
+
+            if required and not is_online:
+                return GateCheckResult(
+                    gate_name="network_gate",
+                    status=GateCheckStatus.FAIL,
+                    required=True,
+                    blocking=True,
+                    reason="Network unavailable but required for ONLINE mode",
+                    error="Network connectivity check failed",
+                    metadata={"is_online": False, "check_method": network_check.check_method},
+                )
+            elif is_online:
+                return GateCheckResult(
+                    gate_name="network_gate",
+                    status=GateCheckStatus.PASS,
+                    required=required,
+                    blocking=blocking,
+                    reason="Network connectivity verified" if required else "Network available (not required)",
+                    metadata={
+                        "is_online": True,
+                        "latency_ms": network_check.latency_ms,
+                        "check_method": network_check.check_method,
+                    },
+                )
+            else:
+                return GateCheckResult(
+                    gate_name="network_gate",
+                    status=GateCheckStatus.NOT_APPLICABLE,
+                    required=False,
+                    blocking=False,
+                    reason=f"Network not required for {target_mode.value} mode",
+                    metadata={"is_online": False},
+                )
+
+        except Exception as e:
+            logger.error(f"Network gate check error: {e}")
+            return GateCheckResult(
+                gate_name="network_gate",
+                status=GateCheckStatus.FAIL if required else GateCheckStatus.WARNING,
+                required=required,
+                blocking=blocking,
+                reason="Network check error",
+                error=str(e),
+                metadata={},
+            )
+
+    async def _check_ipv6_gate(
+        self, target_mode: OperationMode
+    ) -> "GateCheckResult":
+        """
+        Check IPv6 security gate.
+
+        Required for: SOVEREIGN mode
+        """
+        from backend.app.modules.sovereign_mode.schemas import (
+            GateCheckResult,
+            GateCheckStatus,
+        )
+
+        required = target_mode == OperationMode.SOVEREIGN
+        blocking = required
+
+        if not required:
+            return GateCheckResult(
+                gate_name="ipv6_gate",
+                status=GateCheckStatus.NOT_APPLICABLE,
+                required=False,
+                blocking=False,
+                reason=f"IPv6 check not required for {target_mode.value} mode",
+                metadata={},
+            )
+
+        try:
+            ipv6_checker = get_ipv6_gate_checker()
+            ipv6_result = await ipv6_checker.check()
+
+            if ipv6_result.status == "fail":
+                return GateCheckResult(
+                    gate_name="ipv6_gate",
+                    status=GateCheckStatus.FAIL,
+                    required=True,
+                    blocking=True,
+                    reason="IPv6 security check failed - IPv6 active but not properly blocked",
+                    error=ipv6_result.error,
+                    metadata={
+                        "ipv6_active": ipv6_result.ipv6_active,
+                        "policy": ipv6_result.policy,
+                        "ip6tables_available": ipv6_result.ip6tables_available,
+                        "firewall_rules_applied": ipv6_result.firewall_rules_applied,
+                    },
+                )
+            elif ipv6_result.status == "pass":
+                return GateCheckResult(
+                    gate_name="ipv6_gate",
+                    status=GateCheckStatus.PASS,
+                    required=True,
+                    blocking=True,
+                    reason="IPv6 properly blocked - safe to activate SOVEREIGN mode",
+                    metadata={
+                        "ipv6_active": ipv6_result.ipv6_active,
+                        "policy": ipv6_result.policy,
+                        "firewall_rules_applied": ipv6_result.firewall_rules_applied,
+                    },
+                )
+            else:  # not_applicable
+                return GateCheckResult(
+                    gate_name="ipv6_gate",
+                    status=GateCheckStatus.WARNING,
+                    required=True,
+                    blocking=False,
+                    reason="IPv6 not active on system (check not applicable)",
+                    metadata={
+                        "ipv6_active": ipv6_result.ipv6_active,
+                        "policy": ipv6_result.policy,
+                    },
+                )
+
+        except Exception as e:
+            logger.error(f"IPv6 gate check error: {e}")
+            return GateCheckResult(
+                gate_name="ipv6_gate",
+                status=GateCheckStatus.FAIL,
+                required=True,
+                blocking=True,
+                reason="IPv6 gate check error",
+                error=str(e),
+                metadata={},
+            )
+
+    async def _check_dmz_gate(
+        self, target_mode: OperationMode
+    ) -> "GateCheckResult":
+        """
+        Check DMZ status gate.
+
+        Required for: SOVEREIGN, OFFLINE modes (DMZ must be stopped)
+        """
+        from backend.app.modules.sovereign_mode.schemas import (
+            GateCheckResult,
+            GateCheckStatus,
+        )
+
+        required_stopped = target_mode in [OperationMode.SOVEREIGN, OperationMode.OFFLINE]
+        required_running = target_mode == OperationMode.ONLINE
+
+        try:
+            dmz_service = _get_dmz_service()
+            dmz_status = await dmz_service.get_status()
+            is_running = dmz_status.get("running", False)
+
+            if required_stopped and is_running:
+                return GateCheckResult(
+                    gate_name="dmz_gate",
+                    status=GateCheckStatus.WARNING,
+                    required=True,
+                    blocking=False,  # Will be stopped automatically
+                    reason=f"DMZ running but will be stopped for {target_mode.value} mode",
+                    metadata={"dmz_running": True, "will_stop": True},
+                )
+            elif required_stopped and not is_running:
+                return GateCheckResult(
+                    gate_name="dmz_gate",
+                    status=GateCheckStatus.PASS,
+                    required=True,
+                    blocking=False,
+                    reason=f"DMZ not running (correct for {target_mode.value} mode)",
+                    metadata={"dmz_running": False},
+                )
+            elif required_running:
+                import os
+                dmz_enabled = os.getenv("BRAIN_DMZ_ENABLED", "false").lower() == "true"
+
+                if dmz_enabled:
+                    return GateCheckResult(
+                        gate_name="dmz_gate",
+                        status=GateCheckStatus.WARNING if not is_running else GateCheckStatus.PASS,
+                        required=False,
+                        blocking=False,
+                        reason="DMZ will be started for ONLINE mode" if not is_running else "DMZ already running",
+                        metadata={"dmz_running": is_running, "dmz_enabled": True},
+                    )
+                else:
+                    return GateCheckResult(
+                        gate_name="dmz_gate",
+                        status=GateCheckStatus.NOT_APPLICABLE,
+                        required=False,
+                        blocking=False,
+                        reason="DMZ not enabled in configuration",
+                        metadata={"dmz_running": is_running, "dmz_enabled": False},
+                    )
+            else:
+                return GateCheckResult(
+                    gate_name="dmz_gate",
+                    status=GateCheckStatus.NOT_APPLICABLE,
+                    required=False,
+                    blocking=False,
+                    reason="DMZ check not applicable for this mode",
+                    metadata={"dmz_running": is_running},
+                )
+
+        except Exception as e:
+            logger.error(f"DMZ gate check error: {e}")
+            return GateCheckResult(
+                gate_name="dmz_gate",
+                status=GateCheckStatus.WARNING,
+                required=False,
+                blocking=False,
+                reason="DMZ status check error (non-critical)",
+                error=str(e),
+                metadata={},
+            )
+
+    async def _check_bundle_trust_gate(
+        self, target_mode: OperationMode, bundle_id: Optional[str]
+    ) -> "GateCheckResult":
+        """
+        Check bundle trust gate (G1 integration).
+
+        Required for: SOVEREIGN, OFFLINE modes
+        """
+        from backend.app.modules.sovereign_mode.schemas import (
+            GateCheckResult,
+            GateCheckStatus,
+        )
+
+        required = target_mode in [OperationMode.SOVEREIGN, OperationMode.OFFLINE]
+
+        if not required:
+            return GateCheckResult(
+                gate_name="bundle_trust_gate",
+                status=GateCheckStatus.NOT_APPLICABLE,
+                required=False,
+                blocking=False,
+                reason=f"Bundle not required for {target_mode.value} mode",
+                metadata={},
+            )
+
+        # Check if bundle is specified
+        effective_bundle_id = bundle_id or self.config.fallback_bundle_id
+
+        if not effective_bundle_id:
+            return GateCheckResult(
+                gate_name="bundle_trust_gate",
+                status=GateCheckStatus.WARNING,
+                required=True,
+                blocking=False,
+                reason="No bundle specified for offline mode",
+                metadata={"bundle_id": None},
+            )
+
+        try:
+            # Check if bundle exists and is trusted
+            bundle = self.bundle_manager.get_bundle(effective_bundle_id)
+
+            if not bundle:
+                return GateCheckResult(
+                    gate_name="bundle_trust_gate",
+                    status=GateCheckStatus.FAIL,
+                    required=True,
+                    blocking=True,
+                    reason=f"Bundle not found: {effective_bundle_id}",
+                    error="Bundle does not exist",
+                    metadata={"bundle_id": effective_bundle_id},
+                )
+
+            # Check quarantine status
+            if bundle.status == "quarantined":
+                return GateCheckResult(
+                    gate_name="bundle_trust_gate",
+                    status=GateCheckStatus.FAIL,
+                    required=True,
+                    blocking=True,
+                    reason=f"Bundle is quarantined: {bundle.quarantine_reason}",
+                    error="Bundle in quarantine",
+                    metadata={
+                        "bundle_id": effective_bundle_id,
+                        "quarantine_reason": bundle.quarantine_reason,
+                    },
+                )
+
+            # Check signature if enforce policy (G1)
+            if not self.config.allow_unsigned_bundles:
+                if not bundle.signature:
+                    return GateCheckResult(
+                        gate_name="bundle_trust_gate",
+                        status=GateCheckStatus.FAIL,
+                        required=True,
+                        blocking=True,
+                        reason="Bundle not signed (policy requires signature)",
+                        error="Unsigned bundle not allowed",
+                        metadata={
+                            "bundle_id": effective_bundle_id,
+                            "allow_unsigned_bundles": False,
+                        },
+                    )
+
+            # All checks passed
+            return GateCheckResult(
+                gate_name="bundle_trust_gate",
+                status=GateCheckStatus.PASS,
+                required=True,
+                blocking=False,
+                reason=f"Bundle validated and trusted: {effective_bundle_id}",
+                metadata={
+                    "bundle_id": effective_bundle_id,
+                    "signed": bool(bundle.signature),
+                    "status": bundle.status.value,
+                },
+            )
+
+        except Exception as e:
+            logger.error(f"Bundle trust gate check error: {e}")
+            return GateCheckResult(
+                gate_name="bundle_trust_gate",
+                status=GateCheckStatus.FAIL,
+                required=True,
+                blocking=True,
+                reason="Bundle validation error",
+                error=str(e),
+                metadata={"bundle_id": effective_bundle_id},
+            )
+
+    async def preflight_mode_change(
+        self,
+        target_mode: OperationMode,
+        bundle_id: Optional[str] = None,
+        request_id: Optional[str] = None,
+    ) -> "ModeChangePreflightResult":
+        """
+        Perform preflight checks for mode change (G2 - Phase 1 of 2-Phase Commit).
+
+        NO SIDE EFFECTS - this method only checks, does not modify state.
+
+        Args:
+            target_mode: Desired target mode
+            bundle_id: Optional bundle ID for offline modes
+            request_id: Optional correlation ID
+
+        Returns:
+            ModeChangePreflightResult with all gate check results
+        """
+        from backend.app.modules.sovereign_mode.schemas import (
+            ModeChangePreflightResult,
+            ModeChangePreflightStatus,
+        )
+        import uuid
+
+        request_id = request_id or str(uuid.uuid4())
+        current_mode = self.config.current_mode
+
+        logger.info(
+            f"[G2] Preflight check: {current_mode.value} -> {target_mode.value} "
+            f"(request_id={request_id})"
+        )
+
+        # Execute all gate checks in parallel for efficiency
+        gate_checks = await asyncio.gather(
+            self._check_network_gate(target_mode),
+            self._check_ipv6_gate(target_mode),
+            self._check_dmz_gate(target_mode),
+            self._check_bundle_trust_gate(target_mode, bundle_id),
+            return_exceptions=True,
+        )
+
+        # Filter out exceptions and log them
+        checks = []
+        for i, check in enumerate(gate_checks):
+            if isinstance(check, Exception):
+                logger.error(f"Gate check {i} failed with exception: {check}")
+                # Create fallback FAIL check
+                from backend.app.modules.sovereign_mode.schemas import (
+                    GateCheckResult,
+                    GateCheckStatus,
+                )
+                checks.append(
+                    GateCheckResult(
+                        gate_name=f"gate_{i}",
+                        status=GateCheckStatus.FAIL,
+                        required=True,
+                        blocking=True,
+                        reason="Gate check raised exception",
+                        error=str(check),
+                        metadata={},
+                    )
+                )
+            else:
+                checks.append(check)
+
+        # Aggregate results
+        blocking_reasons = []
+        warnings = []
+
+        for check in checks:
+            if check.blocking and check.status == "fail":
+                blocking_reasons.append(f"{check.gate_name}: {check.reason}")
+            elif check.status == "warning":
+                warnings.append(f"{check.gate_name}: {check.reason}")
+
+        # Determine overall status
+        has_blocking_failures = len(blocking_reasons) > 0
+        has_warnings = len(warnings) > 0
+
+        if has_blocking_failures:
+            overall_status = ModeChangePreflightStatus.FAIL
+        elif has_warnings:
+            overall_status = ModeChangePreflightStatus.WARNING
+        else:
+            overall_status = ModeChangePreflightStatus.PASS
+
+        can_proceed = overall_status == ModeChangePreflightStatus.PASS
+        override_required = overall_status == ModeChangePreflightStatus.FAIL
+
+        result = ModeChangePreflightResult(
+            target_mode=target_mode,
+            current_mode=current_mode,
+            checks=checks,
+            overall_status=overall_status,
+            blocking_reasons=blocking_reasons,
+            warnings=warnings,
+            can_proceed=can_proceed,
+            override_required=override_required,
+            request_id=request_id,
+            checked_by="system",
+        )
+
+        logger.info(
+            f"[G2] Preflight result: {overall_status.value} "
+            f"(can_proceed={can_proceed}, override_required={override_required})"
+        )
+
+        return result
+
+    # =========================================================================
+    # G2: End of Preflight Engine
+    # =========================================================================
+
+    # =========================================================================
+    # G2: Owner Override Management
+    # =========================================================================
+
+    def _create_override(
+        self, reason: str, duration_seconds: int, token: Optional[str] = None
+    ) -> "OwnerOverride":
+        """
+        Create and store an owner override.
+
+        Override is single-use and time-limited.
+        """
+        from backend.app.modules.sovereign_mode.schemas import OwnerOverride
+        from datetime import timedelta
+
+        override = OwnerOverride(
+            reason=reason,
+            duration_seconds=duration_seconds,
+            override_token=token,
+            granted_by="owner",
+        )
+
+        # Calculate expiration
+        override.expires_at = override.granted_at + timedelta(seconds=duration_seconds)
+
+        with self.override_lock:
+            self.active_override = override
+
+        logger.info(
+            f"[G2] Owner override created: reason='{reason[:50]}...', "
+            f"expires_at={override.expires_at}"
+        )
+
+        return override
+
+    def _validate_override(self) -> bool:
+        """
+        Validate active override.
+
+        Returns True if override is valid and not consumed.
+        Automatically expires outdated overrides.
+        """
+        with self.override_lock:
+            if self.active_override is None:
+                return False
+
+            # Check if consumed
+            if self.active_override.consumed:
+                logger.warning("[G2] Override already consumed")
+                return False
+
+            # Check if expired
+            now = datetime.utcnow()
+            if self.active_override.expires_at and now > self.active_override.expires_at:
+                logger.warning(
+                    f"[G2] Override expired at {self.active_override.expires_at}"
+                )
+
+                # Emit expired audit event
+                self._audit(
+                    event_type=AuditEventType.MODE_OVERRIDE_EXPIRED.value,
+                    success=False,
+                    severity=AuditSeverity.INFO,
+                    reason=f"Override expired: {self.active_override.reason}",
+                    metadata={
+                        "granted_at": str(self.active_override.granted_at),
+                        "expires_at": str(self.active_override.expires_at),
+                        "duration_seconds": self.active_override.duration_seconds,
+                    },
+                )
+
+                self.active_override = None
+                return False
+
+            return True
+
+    def _consume_override(self) -> Optional["OwnerOverride"]:
+        """
+        Consume active override (single-use).
+
+        Returns the override if valid, None otherwise.
+        """
+        with self.override_lock:
+            if not self._validate_override():
+                return None
+
+            override = self.active_override
+            override.consumed = True
+            override.consumed_at = datetime.utcnow()
+
+            logger.info(
+                f"[G2] Override consumed: reason='{override.reason[:50]}...'"
+            )
+
+            # Clear from active state
+            self.active_override = None
+
+            return override
+
+    # =========================================================================
+    # G2: End of Override Management
+    # =========================================================================
+
     async def change_mode(
         self,
         request: ModeChangeRequest,
         triggered_by: str = "manual",
     ) -> SovereignMode:
         """
-        Change operation mode.
+        Change operation mode (G2 - 2-Phase Commit with Governance).
+
+        **G2 Governance Flow:**
+        1. Run preflight checks (all gates)
+        2. Check if override is provided/valid
+        3. Only commit if PASS or valid override
+        4. Rollback on errors
+        5. Comprehensive audit trail
 
         Args:
             request: Mode change request
@@ -220,358 +793,295 @@ class SovereignModeService:
             Updated SovereignMode status
 
         Raises:
-            ValueError: If mode change is invalid
+            ValueError: If preflight fails and no valid override
         """
         with self.lock:
             old_mode = self.config.current_mode
             new_mode = request.target_mode
+            import uuid
+            request_id = str(uuid.uuid4())
 
             logger.info(
-                f"Mode change requested: {old_mode} -> {new_mode} "
-                f"(triggered_by={triggered_by}, force={request.force})"
+                f"[G2] Mode change requested: {old_mode.value} -> {new_mode.value} "
+                f"(triggered_by={triggered_by}, request_id={request_id})"
             )
 
-            # Validate mode change
-            if old_mode == new_mode and not request.force:
-                logger.warning(f"Already in {new_mode} mode, no change")
+            # Skip if already in target mode (unless force/override)
+            if old_mode == new_mode and not request.force and not request.override_reason:
+                logger.warning(f"Already in {new_mode.value} mode, no change")
                 return await self.get_status()
 
-            # Check if network is required for ONLINE mode
-            if new_mode == OperationMode.ONLINE and not request.force:
-                network_check = await self.detector.check_connectivity()
-                if not network_check.is_online:
-                    raise ValueError(
-                        "Cannot switch to ONLINE mode: network unavailable"
-                    )
+            # ================================================================
+            # G2 PHASE 1: PREFLIGHT (Governance Gate Checks)
+            # ================================================================
 
-            # IPv6 gate check for SOVEREIGN mode
-            if new_mode == OperationMode.SOVEREIGN and not request.force:
-                ipv6_checker = get_ipv6_gate_checker()
-                ipv6_result = await ipv6_checker.check()
+            # Run preflight checks
+            preflight_result = await self.preflight_mode_change(
+                target_mode=new_mode,
+                bundle_id=request.bundle_id,
+                request_id=request_id,
+            )
 
-                # Audit IPv6 gate check
+            # Emit preflight audit event
+            if preflight_result.overall_status == "pass":
                 self._audit(
-                    event_type=AuditEventType.IPV6_GATE_CHECKED.value,
-                    success=(ipv6_result.status in ["pass", "not_applicable"]),
-                    severity=(
-                        AuditSeverity.INFO
-                        if ipv6_result.status == "pass"
-                        else (
-                            AuditSeverity.WARNING
-                            if ipv6_result.status == "not_applicable"
-                            else AuditSeverity.ERROR
-                        )
-                    ),
-                    reason=f"IPv6 gate check: {ipv6_result.status}",
-                    ipv6_related=True,
+                    event_type=AuditEventType.MODE_PREFLIGHT_OK.value,
+                    success=True,
+                    severity=AuditSeverity.INFO,
+                    reason=f"Preflight passed for {old_mode.value} -> {new_mode.value}",
+                    mode_before=old_mode,
+                    mode_after=new_mode,
                     metadata={
-                        "ipv6_active": ipv6_result.ipv6_active,
-                        "policy": ipv6_result.policy,
-                        "ip6tables_available": ipv6_result.ip6tables_available,
-                        "rules_applied": ipv6_result.firewall_rules_applied,
+                        "request_id": request_id,
+                        "checks": len(preflight_result.checks),
+                        "warnings": len(preflight_result.warnings),
+                    },
+                )
+            elif preflight_result.overall_status == "warning":
+                self._audit(
+                    event_type=AuditEventType.MODE_PREFLIGHT_WARNING.value,
+                    success=True,
+                    severity=AuditSeverity.WARNING,
+                    reason=f"Preflight passed with warnings: {', '.join(preflight_result.warnings)}",
+                    mode_before=old_mode,
+                    mode_after=new_mode,
+                    metadata={
+                        "request_id": request_id,
+                        "warnings": preflight_result.warnings,
+                    },
+                )
+            else:  # fail
+                self._audit(
+                    event_type=AuditEventType.MODE_PREFLIGHT_FAILED.value,
+                    success=False,
+                    severity=AuditSeverity.ERROR,
+                    reason=f"Preflight failed: {', '.join(preflight_result.blocking_reasons)}",
+                    mode_before=old_mode,
+                    mode_after=new_mode,
+                    metadata={
+                        "request_id": request_id,
+                        "blocking_reasons": preflight_result.blocking_reasons,
                     },
                 )
 
-                if ipv6_result.status == "fail":
-                    # Emit critical audit event
-                    self._audit(
-                        event_type=AuditEventType.IPV6_GATE_FAILED.value,
-                        success=False,
-                        severity=AuditSeverity.CRITICAL,
-                        reason="IPv6 gate check failed - cannot activate sovereign mode",
-                        error=ipv6_result.error,
-                        ipv6_related=True,
-                        metadata={
-                            "ipv6_active": ipv6_result.ipv6_active,
-                            "policy": ipv6_result.policy,
-                            "ip6tables_available": ipv6_result.ip6tables_available,
-                        },
+            # ================================================================
+            # G2: OVERRIDE VALIDATION & GOVERNANCE DECISION
+            # ================================================================
+
+            can_proceed = False
+            used_override = None
+
+            if preflight_result.can_proceed:
+                # Preflight passed - proceed normally
+                can_proceed = True
+                logger.info("[G2] Preflight PASS - proceeding with mode change")
+
+            else:
+                # Preflight failed - check for override
+
+                # Legacy force flag (deprecated) -> convert to override
+                if request.force and not request.override_reason:
+                    logger.warning(
+                        "[G2] DEPRECATED: force=true used without override_reason. "
+                        "This will be removed in future versions."
+                    )
+                    # Allow legacy force but log warning
+                    can_proceed = True
+
+                # New override mechanism (G2)
+                elif request.override_reason:
+                    # Create override
+                    override = self._create_override(
+                        reason=request.override_reason,
+                        duration_seconds=request.override_duration_seconds,
+                        token=request.override_token,
                     )
 
-                    # Build user-friendly error message
-                    error_msg = (
-                        "❌ Cannot activate Sovereign Mode: IPv6 gate check failed.\n\n"
-                        f"Reason: {ipv6_result.error}\n\n"
-                        "Solutions:\n"
-                        "1. Install ip6tables:\n"
-                        "   sudo apt-get update && sudo apt-get install iptables\n\n"
-                        "2. Disable IPv6 on host:\n"
-                        "   sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1\n"
-                        "   sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1\n\n"
-                        "   Make persistent: Add to /etc/sysctl.conf:\n"
-                        "   net.ipv6.conf.all.disable_ipv6 = 1\n"
-                        "   net.ipv6.conf.default.disable_ipv6 = 1\n\n"
-                        "3. Apply IPv6 firewall rules:\n"
-                        "   sudo scripts/sovereign-fw.sh apply sovereign\n\n"
-                        f"Current Status:\n"
-                        f"- IPv6 Active: {'Yes' if ipv6_result.ipv6_active else 'No'}\n"
-                        f"- ip6tables Available: {'Yes' if ipv6_result.ip6tables_available else 'No'}\n"
-                        f"- Policy: {ipv6_result.policy}\n"
-                        f"- Rules Applied: {'Yes' if ipv6_result.firewall_rules_applied else 'No'}"
-                    )
+                    # Validate and consume
+                    used_override = self._consume_override()
 
-                    raise ValueError(error_msg)
+                    if used_override:
+                        can_proceed = True
+                        logger.warning(
+                            f"[G2] Override USED - bypassing preflight failures. "
+                            f"Reason: {used_override.reason[:100]}"
+                        )
 
-                elif ipv6_result.status == "pass":
-                    # Emit success audit event
-                    self._audit(
-                        event_type=AuditEventType.IPV6_GATE_PASSED.value,
-                        success=True,
-                        severity=AuditSeverity.INFO,
-                        reason="IPv6 gate check passed - IPv6 is properly blocked",
-                        ipv6_related=True,
-                        metadata={
-                            "ipv6_active": ipv6_result.ipv6_active,
-                            "policy": ipv6_result.policy,
-                            "rules_applied": ipv6_result.firewall_rules_applied,
-                        },
-                    )
-
-            # Load bundle if switching to offline modes
-            if new_mode in [OperationMode.OFFLINE, OperationMode.SOVEREIGN]:
-                bundle_id = request.bundle_id or self.config.fallback_bundle_id
-
-                if bundle_id:
-                    success = self.bundle_manager.load_bundle(bundle_id)
-                    if not success:
-                        raise ValueError(f"Failed to load bundle: {bundle_id}")
-
-                    self.config.active_bundle_id = bundle_id
-                    logger.info(f"Loaded bundle: {bundle_id}")
-                else:
-                    logger.warning("No bundle specified for offline mode")
-
-            # Stop DMZ if switching to SOVEREIGN or OFFLINE
-            if new_mode in [OperationMode.SOVEREIGN, OperationMode.OFFLINE]:
-                try:
-                    dmz_service = _get_dmz_service()
-                    dmz_stopped = await dmz_service.stop_dmz()
-
-                    if dmz_stopped:
+                        # Emit override audit event
                         self._audit(
-                            event_type=AuditEventType.DMZ_STOPPED.value,
+                            event_type=AuditEventType.MODE_OVERRIDE_USED.value,
                             success=True,
-                            severity=AuditSeverity.INFO,
-                            reason=f"DMZ stopped for {new_mode.value} mode",
-                            mode_after=new_mode,
-                        )
-                        logger.info(f"DMZ gateway stopped for {new_mode.value} mode")
-                    else:
-                        # Log warning but don't block mode change
-                        # (DMZ might not be running or compose file might not exist)
-                        logger.warning("Failed to stop DMZ gateway (might not be running)")
-                        self._audit(
-                            event_type=AuditEventType.DMZ_STOPPED.value,
-                            success=False,
                             severity=AuditSeverity.WARNING,
-                            reason=f"Failed to stop DMZ for {new_mode.value} mode",
-                            error="DMZ stop command failed",
+                            reason=f"Override used: {used_override.reason}",
+                            mode_before=old_mode,
+                            mode_after=new_mode,
+                            metadata={
+                                "request_id": request_id,
+                                "override_duration_seconds": used_override.duration_seconds,
+                                "override_granted_at": str(used_override.granted_at),
+                                "override_granted_by": used_override.granted_by,
+                                "blocking_reasons_overridden": preflight_result.blocking_reasons,
+                            },
                         )
+                    else:
+                        logger.error("[G2] Override creation/validation failed")
 
-                except Exception as e:
-                    # Log error but don't block mode change
-                    logger.error(f"Error stopping DMZ: {e}")
-                    self._audit(
-                        event_type=AuditEventType.DMZ_STOPPED.value,
-                        success=False,
-                        severity=AuditSeverity.ERROR,
-                        reason="Error stopping DMZ",
-                        error=str(e),
-                    )
+            # Final decision: BLOCK if no valid override and preflight failed
+            if not can_proceed:
+                error_msg = (
+                    f"❌ Mode change BLOCKED by governance (G2):\n\n"
+                    f"Preflight status: {preflight_result.overall_status.upper()}\n\n"
+                    f"Blocking reasons:\n"
+                )
+                for reason in preflight_result.blocking_reasons:
+                    error_msg += f"  - {reason}\n"
 
-            # Start DMZ if switching to ONLINE (and DMZ enabled in ENV)
-            elif new_mode == OperationMode.ONLINE:
-                import os
+                error_msg += (
+                    f"\n\nTo override, provide:\n"
+                    f"  - override_reason: <detailed reason (min 10 chars)>\n"
+                    f"  - override_duration_seconds: <validity time (default 3600s)>\n"
+                )
 
-                dmz_enabled = os.getenv("BRAIN_DMZ_ENABLED", "false").lower() == "true"
+                logger.error(f"[G2] Mode change BLOCKED: {error_msg}")
+                raise ValueError(error_msg)
 
-                if dmz_enabled:
+            # ================================================================
+            # G2 PHASE 2: COMMIT (Mode Change Execution)
+            # ================================================================
+
+            try:
+                logger.info(f"[G2] COMMIT: Executing mode change {old_mode.value} -> {new_mode.value}")
+
+                # Load bundle if switching to offline modes
+                if new_mode in [OperationMode.OFFLINE, OperationMode.SOVEREIGN]:
+                    bundle_id = request.bundle_id or self.config.fallback_bundle_id
+
+                    if bundle_id:
+                        success = self.bundle_manager.load_bundle(bundle_id)
+                        if not success:
+                            raise ValueError(f"Failed to load bundle: {bundle_id}")
+
+                        self.config.active_bundle_id = bundle_id
+                        logger.info(f"Loaded bundle: {bundle_id}")
+                    else:
+                        logger.warning("No bundle specified for offline mode")
+
+                # Stop DMZ if switching to SOVEREIGN or OFFLINE
+                if new_mode in [OperationMode.SOVEREIGN, OperationMode.OFFLINE]:
                     try:
                         dmz_service = _get_dmz_service()
-                        dmz_started = await dmz_service.start_dmz()
+                        dmz_stopped = await dmz_service.stop_dmz()
 
-                        if dmz_started:
+                        if dmz_stopped:
                             self._audit(
-                                event_type=AuditEventType.DMZ_STARTED.value,
+                                event_type=AuditEventType.DMZ_STOPPED.value,
                                 success=True,
                                 severity=AuditSeverity.INFO,
-                                reason="DMZ started for ONLINE mode",
+                                reason=f"DMZ stopped for {new_mode.value} mode",
                                 mode_after=new_mode,
                             )
-                            logger.info("DMZ gateway started for ONLINE mode")
+                            logger.info(f"DMZ gateway stopped for {new_mode.value} mode")
                         else:
-                            logger.warning("Failed to start DMZ gateway")
-                            self._audit(
-                                event_type=AuditEventType.DMZ_STARTED.value,
-                                success=False,
-                                severity=AuditSeverity.WARNING,
-                                reason="Failed to start DMZ for ONLINE mode",
-                                error="DMZ start command failed",
-                            )
+                            logger.warning("Failed to stop DMZ gateway (might not be running)")
 
                     except Exception as e:
-                        logger.error(f"Error starting DMZ: {e}")
-                        self._audit(
-                            event_type=AuditEventType.DMZ_STARTED.value,
-                            success=False,
-                            severity=AuditSeverity.ERROR,
-                            reason="Error starting DMZ",
-                            error=str(e),
-                        )
-                else:
-                    logger.debug("DMZ not enabled (BRAIN_DMZ_ENABLED=false)")
+                        logger.error(f"Error stopping DMZ: {e}")
+                        # Don't block mode change on DMZ errors
 
-            # Update mode
-            self.config.current_mode = new_mode
-            self.guard.set_mode(new_mode)
-            self.last_mode_change = datetime.utcnow()
+                # Start DMZ if switching to ONLINE (and DMZ enabled in ENV)
+                elif new_mode == OperationMode.ONLINE:
+                    import os
+                    dmz_enabled = os.getenv("BRAIN_DMZ_ENABLED", "false").lower() == "true"
 
-            # Save config
-            self._save_config()
+                    if dmz_enabled:
+                        try:
+                            dmz_service = _get_dmz_service()
+                            dmz_started = await dmz_service.start_dmz()
 
-            # Audit log
-            if self.config.audit_mode_changes:
+                            if dmz_started:
+                                self._audit(
+                                    event_type=AuditEventType.DMZ_STARTED.value,
+                                    success=True,
+                                    severity=AuditSeverity.INFO,
+                                    reason="DMZ started for ONLINE mode",
+                                    mode_after=new_mode,
+                                )
+                                logger.info("DMZ gateway started for ONLINE mode")
+                            else:
+                                logger.warning("Failed to start DMZ gateway")
+
+                        except Exception as e:
+                            logger.error(f"Error starting DMZ: {e}")
+                            # Don't block mode change on DMZ errors
+
+                # COMMIT: Update mode
+                self.config.current_mode = new_mode
+                self.last_mode_change = datetime.utcnow()
+
+                # Update network guard
+                self.guard.set_mode(new_mode)
+
+                # Save config
+                self._save_config()
+
+                # Emit mode change audit event
                 self._audit(
                     event_type=AuditEventType.MODE_CHANGED.value,
                     success=True,
                     severity=AuditSeverity.INFO,
+                    reason=f"Mode changed: {old_mode.value} -> {new_mode.value}",
                     mode_before=old_mode,
                     mode_after=new_mode,
-                    bundle_id=self.config.active_bundle_id,
-                    reason=request.reason,
                     triggered_by=triggered_by,
+                    metadata={
+                        "request_id": request_id,
+                        "override_used": used_override is not None,
+                        "preflight_status": preflight_result.overall_status.value,
+                    },
                 )
 
-            logger.info(
-                f"Mode changed: {old_mode} -> {new_mode} "
-                f"(triggered_by={triggered_by})"
-            )
+                logger.info(
+                    f"[G2] Mode change COMMITTED: {old_mode.value} -> {new_mode.value} "
+                    f"(override={used_override is not None})"
+                )
 
-            return await self.get_status()
+                return await self.get_status()
 
-    async def load_bundle(self, request: BundleLoadRequest) -> Bundle:
-        """
-        Load an offline bundle.
+            except Exception as e:
+                # ROLLBACK on commit error
+                logger.error(f"[G2] Mode change COMMIT FAILED - attempting rollback: {e}")
 
-        Args:
-            request: Bundle load request
-
-        Returns:
-            Loaded Bundle
-
-        Raises:
-            ValueError: If bundle load fails
-        """
-        with self.lock:
-            bundle_id = request.bundle_id
-
-            logger.info(f"Loading bundle: {bundle_id}")
-
-            # Validate bundle
-            if request.force_revalidate:
-                result = self.bundle_manager.validate_bundle(bundle_id, force=True)
-            else:
-                result = self.bundle_manager.validate_bundle(bundle_id, force=False)
-
-            if not result.is_valid:
-                if self.config.quarantine_on_failure:
-                    self.bundle_manager.quarantine_bundle(
-                        bundle_id,
-                        f"Validation failed: {result.errors}",
-                    )
-
-                raise ValueError(f"Bundle validation failed: {result.errors}")
-
-            # Load bundle
-            success = self.bundle_manager.load_bundle(
-                bundle_id,
-                skip_validation=request.skip_quarantine_check,
-            )
-
-            if not success:
-                raise ValueError(f"Failed to load bundle: {bundle_id}")
-
-            # Update config
-            self.config.active_bundle_id = bundle_id
-            self._save_config()
-
-            # Audit log
-            if self.config.audit_bundle_loads:
+                # Emit commit failed audit
                 self._audit(
-                    event_type=AuditEventType.BUNDLE_LOADED.value,
-                    success=True,
-                    bundle_id=bundle_id,
-                    triggered_by="manual",
+                    event_type=AuditEventType.MODE_COMMIT_FAILED.value,
+                    success=False,
+                    severity=AuditSeverity.CRITICAL,
+                    reason=f"Mode commit failed: {str(e)}",
+                    mode_before=old_mode,
+                    mode_after=new_mode,
+                    error=str(e),
+                    metadata={"request_id": request_id},
                 )
 
-            bundle = self.bundle_manager.get_bundle(bundle_id)
-            logger.info(f"Bundle loaded: {bundle_id}")
+                # Rollback (restore old mode)
+                self.config.current_mode = old_mode
+                self.guard.set_mode(old_mode)
+                self._save_config()
 
-            return bundle
+                # Emit rollback audit
+                self._audit(
+                    event_type=AuditEventType.MODE_ROLLBACK.value,
+                    success=True,
+                    severity=AuditSeverity.WARNING,
+                    reason=f"Rolled back to {old_mode.value} after commit failure",
+                    mode_before=new_mode,
+                    mode_after=old_mode,
+                    metadata={"request_id": request_id, "error": str(e)},
+                )
 
-    async def validate_bundle(
-        self, bundle_id: str, force: bool = False
-    ) -> ValidationResult:
-        """
-        Validate bundle integrity.
+                logger.warning(f"[G2] Rolled back to {old_mode.value}")
 
-        Args:
-            bundle_id: Bundle to validate
-            force: Force revalidation
-
-        Returns:
-            ValidationResult
-        """
-        logger.info(f"Validating bundle: {bundle_id} (force={force})")
-
-        result = self.bundle_manager.validate_bundle(bundle_id, force=force)
-
-        # Quarantine if failed and auto-quarantine enabled
-        if not result.is_valid and self.config.quarantine_on_failure:
-            self.bundle_manager.quarantine_bundle(
-                bundle_id,
-                f"Validation failed: {result.errors}",
-            )
-            logger.warning(f"Bundle {bundle_id} quarantined due to validation failure")
-
-        return result
-
-    async def check_network(self) -> NetworkCheckResult:
-        """
-        Check network connectivity.
-
-        Returns:
-            NetworkCheckResult
-        """
-        result = await self.detector.check_connectivity()
-        self.last_network_check = result
-
-        # Audit network probe
-        if result.is_online:
-            self._audit(
-                event_type=AuditEventType.NETWORK_PROBE_PASSED.value,
-                success=True,
-                reason=f"Network probe successful via {result.check_method}",
-                latency_ms=result.latency_ms,
-                check_method=result.check_method,
-            )
-        else:
-            self._audit(
-                event_type=AuditEventType.NETWORK_PROBE_FAILED.value,
-                success=False,
-                severity=AuditSeverity.WARNING,
-                reason=f"Network probe failed: {result.error or 'No connectivity'}",
-                error=result.error,
-                check_method=result.check_method,
-            )
-
-        logger.info(
-            f"Network check: {'ONLINE' if result.is_online else 'OFFLINE'} "
-            f"(latency={result.latency_ms}ms, method={result.check_method})"
-        )
-
-        return result
-
+                raise ValueError(f"Mode change failed: {str(e)}")
     async def get_status(self) -> SovereignMode:
         """
         Get current sovereign mode status.

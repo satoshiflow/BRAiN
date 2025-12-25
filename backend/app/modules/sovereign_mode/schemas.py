@@ -236,12 +236,38 @@ class SovereignMode(BaseModel):
 
 
 class ModeChangeRequest(BaseModel):
-    """Request to change operation mode."""
+    """
+    Request to change operation mode.
+
+    G2 Enhancement:
+    - force=True is deprecated (use override fields instead)
+    - override_reason + override_duration provide governance-compliant override
+    """
 
     target_mode: OperationMode = Field(..., description="Desired mode")
-    force: bool = Field(default=False, description="Force mode change")
-    reason: Optional[str] = Field(None, description="Reason for change")
+
+    # Deprecated: use override_reason instead
+    force: bool = Field(
+        default=False,
+        description="DEPRECATED: Use override_reason for governance-compliant overrides"
+    )
+
+    reason: Optional[str] = Field(None, description="Reason for change (informational)")
     bundle_id: Optional[str] = Field(None, description="Bundle to load (for offline)")
+
+    # G2: Owner Override (replaces force=true)
+    override_reason: Optional[str] = Field(
+        None,
+        min_length=10,
+        description="Reason for overriding preflight failures (min 10 chars)"
+    )
+    override_duration_seconds: int = Field(
+        default=3600,
+        ge=60,
+        le=86400,
+        description="Override validity in seconds (60s - 24h, default 1h)"
+    )
+    override_token: Optional[str] = Field(None, description="Optional override verification token")
 
     class Config:
         json_schema_extra = {
@@ -250,6 +276,9 @@ class ModeChangeRequest(BaseModel):
                 "force": False,
                 "reason": "Network unavailable",
                 "bundle_id": "llama-3.2-7b-v1.0",
+                "override_reason": "Emergency mode - datacenter network down, switching to offline bundle",
+                "override_duration_seconds": 3600,
+                "override_token": None,
             }
         }
 
@@ -361,6 +390,15 @@ class AuditEventType(str, Enum):
     AXE_REQUEST_BLOCKED = "axe.request_blocked"
     AXE_TRUST_TIER_VIOLATION = "axe.trust_tier_violation"
 
+    # G2: Mode Switch Governance (2-Phase Commit)
+    MODE_PREFLIGHT_OK = "sovereign.mode_preflight_ok"
+    MODE_PREFLIGHT_FAILED = "sovereign.mode_preflight_failed"
+    MODE_PREFLIGHT_WARNING = "sovereign.mode_preflight_warning"
+    MODE_OVERRIDE_USED = "sovereign.mode_override_used"
+    MODE_OVERRIDE_EXPIRED = "sovereign.mode_override_expired"
+    MODE_COMMIT_FAILED = "sovereign.mode_commit_failed"
+    MODE_ROLLBACK = "sovereign.mode_rollback"
+
 
 class AuditEntry(BaseModel):
     """Audit log entry for sovereign mode operations."""
@@ -403,5 +441,175 @@ class AuditEntry(BaseModel):
                 "success": True,
                 "error": None,
                 "metadata": {"network_check_failed": True},
+            }
+        }
+
+
+# =============================================================================
+# G2: Mode Switch Governance (2-Phase Commit) - New Schemas
+# =============================================================================
+
+
+class GateCheckStatus(str, Enum):
+    """Status of a single gate check."""
+
+    PASS = "pass"
+    FAIL = "fail"
+    WARNING = "warning"
+    SKIPPED = "skipped"
+    NOT_APPLICABLE = "not_applicable"
+
+
+class GateCheckResult(BaseModel):
+    """Result of a single gate check."""
+
+    gate_name: str = Field(..., description="Name of the gate (network, ipv6, dmz, bundle_trust)")
+    status: GateCheckStatus = Field(..., description="Check status")
+    required: bool = Field(default=True, description="Is this check required for target mode")
+    blocking: bool = Field(default=False, description="Does failure block mode change")
+    reason: Optional[str] = Field(None, description="Why check passed/failed")
+    error: Optional[str] = Field(None, description="Error details if failed")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional check data")
+    checked_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "gate_name": "network_gate",
+                "status": "pass",
+                "required": True,
+                "blocking": True,
+                "reason": "Network connectivity verified",
+                "error": None,
+                "metadata": {"is_online": True, "latency_ms": 23.5},
+                "checked_at": "2025-12-25T12:00:00Z",
+            }
+        }
+
+
+class ModeChangePreflightStatus(str, Enum):
+    """Overall preflight check status."""
+
+    PASS = "pass"
+    FAIL = "fail"
+    WARNING = "warning"
+
+
+class ModeChangePreflightResult(BaseModel):
+    """
+    Result of mode change preflight checks.
+
+    G2 - 2-Phase Commit:
+    Phase 1 (Preflight) produces this result.
+    Phase 2 (Commit) may proceed only if:
+    - overall_status == PASS
+    - OR valid owner override provided
+    """
+
+    target_mode: OperationMode = Field(..., description="Requested target mode")
+    current_mode: OperationMode = Field(..., description="Current mode")
+
+    # Gate checks
+    checks: List[GateCheckResult] = Field(..., description="Individual gate check results")
+
+    # Overall status
+    overall_status: ModeChangePreflightStatus = Field(..., description="Aggregated status")
+    blocking_reasons: List[str] = Field(default_factory=list, description="Reasons blocking mode change")
+    warnings: List[str] = Field(default_factory=list, description="Non-blocking warnings")
+
+    # Recommendations
+    can_proceed: bool = Field(..., description="Safe to proceed without override")
+    override_required: bool = Field(..., description="Owner override needed to proceed")
+
+    # Metadata
+    request_id: str = Field(..., description="Correlation ID for audit trail")
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    checked_by: str = Field(default="system", description="Who/what performed preflight")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "target_mode": "sovereign",
+                "current_mode": "online",
+                "checks": [
+                    {
+                        "gate_name": "network_gate",
+                        "status": "pass",
+                        "required": False,
+                        "blocking": False,
+                        "reason": "Network available (not required for sovereign)",
+                    },
+                    {
+                        "gate_name": "ipv6_gate",
+                        "status": "pass",
+                        "required": True,
+                        "blocking": True,
+                        "reason": "IPv6 properly blocked",
+                    },
+                ],
+                "overall_status": "pass",
+                "blocking_reasons": [],
+                "warnings": [],
+                "can_proceed": True,
+                "override_required": False,
+                "request_id": "preflight_abc123",
+                "timestamp": "2025-12-25T12:00:00Z",
+                "checked_by": "manual_api",
+            }
+        }
+
+
+class OwnerOverride(BaseModel):
+    """
+    Owner override for mode change governance.
+
+    Allows bypassing preflight failures with:
+    - Explicit reason (required)
+    - Time limitation (default 1 hour)
+    - Full audit trail
+    """
+
+    reason: str = Field(..., min_length=10, description="Reason for override (min 10 chars)")
+    duration_seconds: int = Field(
+        default=3600,
+        ge=60,
+        le=86400,
+        description="Override validity duration (60s - 24h, default 1h)"
+    )
+    override_token: Optional[str] = Field(None, description="Optional token for verification")
+    granted_by: str = Field(default="owner", description="Who granted override")
+    granted_at: datetime = Field(default_factory=datetime.utcnow)
+    expires_at: Optional[datetime] = Field(None, description="Auto-computed expiration")
+
+    # Single-use flag
+    consumed: bool = Field(default=False, description="Override already used")
+    consumed_at: Optional[datetime] = Field(None, description="When override was used")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "reason": "Emergency maintenance window - network verification failed but infrastructure team on-site",
+                "duration_seconds": 3600,
+                "override_token": None,
+                "granted_by": "owner",
+                "granted_at": "2025-12-25T12:00:00Z",
+                "expires_at": "2025-12-25T13:00:00Z",
+                "consumed": False,
+                "consumed_at": None,
+            }
+        }
+
+
+class ModeChangePreflightRequest(BaseModel):
+    """Request for mode change preflight check."""
+
+    target_mode: OperationMode = Field(..., description="Desired target mode")
+    include_details: bool = Field(default=True, description="Include detailed gate results")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "target_mode": "sovereign",
+                "include_details": True,
             }
         }

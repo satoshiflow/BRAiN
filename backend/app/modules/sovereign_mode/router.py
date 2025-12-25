@@ -19,6 +19,9 @@ from backend.app.modules.sovereign_mode.schemas import (
     BundleLoadRequest,
     NetworkCheckResult,
     AuditEntry,
+    # G2: Mode Switch Governance
+    ModeChangePreflightRequest,
+    ModeChangePreflightResult,
 )
 
 
@@ -100,6 +103,69 @@ async def change_mode(request: ModeChangeRequest):
     except Exception as e:
         logger.error(f"Error changing mode: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# G2: Mode Switch Governance - Preflight Endpoint
+# =============================================================================
+
+
+@router.post(
+    "/mode/preflight",
+    response_model=ModeChangePreflightResult,
+    summary="Preflight check for mode change (G2)",
+    description="""
+    **G2 - 2-Phase Commit: Phase 1 (Preflight)**
+
+    Performs all gate checks for a mode change without actually changing the mode.
+    This allows validation before committing to the change.
+
+    **Gate Checks:**
+    - `network_gate`: Network connectivity (required for ONLINE)
+    - `ipv6_gate`: IPv6 security (required for SOVEREIGN)
+    - `dmz_gate`: DMZ status (auto-managed)
+    - `bundle_trust_gate`: Bundle validation (required for OFFLINE/SOVEREIGN)
+
+    **Preflight Results:**
+    - `PASS`: Safe to proceed without override
+    - `FAIL`: Blocking issues detected - override required
+    - `WARNING`: Non-blocking warnings
+
+    **No Side Effects:** This endpoint only checks, does not modify state.
+
+    **Use Case:** Call this before `/mode` POST to validate conditions.
+    """,
+    tags=["sovereign-mode", "governance"],
+)
+async def preflight_mode_change(request: ModeChangePreflightRequest):
+    """
+    Preflight check for mode change.
+
+    G2 Governance: Tests all gates without committing to mode change.
+    """
+    try:
+        service = get_sovereign_service()
+        result = await service.preflight_mode_change(
+            target_mode=request.target_mode,
+            bundle_id=None,  # Could be added to request if needed
+            request_id=None,  # Auto-generated
+        )
+
+        logger.info(
+            f"[G2] Preflight API call: {result.current_mode.value} -> {result.target_mode.value} "
+            f"Result: {result.overall_status.value} (request_id={result.request_id})"
+        )
+
+        return result
+
+    except Exception as e:
+        logger.error(f"[G2] Preflight error: {e}")
+        raise HTTPException(status_code=500, detail=f"Preflight check failed: {str(e)}")
+
+
+# =============================================================================
+# G2: End of Preflight Endpoint
+# =============================================================================
 
 
 @router.get("/bundles", response_model=List[Bundle], summary="List bundles")
