@@ -1,0 +1,232 @@
+{
+  "vertical_id": "local_business_v1",
+  "name": "Local Business",
+  "description": "Location-based businesses including retail, trades, healthcare, and hospitality",
+  "version": "1.0.0",
+  "created_at": "2025-12-25",
+
+  "business_types": [
+    "retail",
+    "restaurant",
+    "healthcare",
+    "salon",
+    "trades",
+    "local_services"
+  ],
+
+  "template_config": {
+    "website": {
+      "template_id": "local_business_v1",
+      "required_pages": ["home", "services", "about", "contact", "location"],
+      "optional_pages": ["gallery", "testimonials", "booking", "menu"],
+      "features": [
+        "contact_form",
+        "location_map",
+        "hours_of_operation",
+        "booking_system",
+        "gallery"
+      ],
+      "seo_focus": [
+        "local_seo",
+        "google_my_business",
+        "location_keywords",
+        "service_area_keywords"
+      ]
+    },
+
+    "erp": {
+      "required_modules": [
+        "crm",
+        "contacts",
+        "calendar",
+        "account",
+        "point_of_sale"
+      ],
+      "optional_modules": [
+        "stock",
+        "purchase",
+        "website",
+        "hr_attendance",
+        "project"
+      ],
+      "workflows": [
+        "appointment_booking",
+        "walk_in_customer",
+        "pos_to_accounting",
+        "inventory_management"
+      ]
+    },
+
+    "integrations": [
+      {
+        "name": "Contact Form to Customer",
+        "source": "website",
+        "target": "odoo",
+        "type": "contact_form",
+        "priority": "high",
+        "config": {
+          "create_contact": true,
+          "create_lead": false,
+          "send_confirmation": true
+        }
+      },
+      {
+        "name": "Booking to Calendar",
+        "source": "website",
+        "target": "odoo",
+        "type": "booking_integration",
+        "priority": "high",
+        "config": {
+          "create_calendar_event": true,
+          "send_reminder": true,
+          "reminder_hours_before": 24
+        }
+      },
+      {
+        "name": "Google My Business Sync",
+        "source": "odoo",
+        "target": "google_my_business",
+        "type": "external_sync",
+        "priority": "medium",
+        "config": {
+          "sync_hours": true,
+          "sync_photos": true,
+          "sync_posts": false
+        }
+      }
+    ]
+  },
+
+  "risk_profile": {
+    "overall_complexity": "low",
+    "common_risks": [
+      {
+        "risk": "Local SEO misconfiguration",
+        "severity": "high",
+        "mitigation": "Verify Google My Business setup and local citations",
+        "probability": "medium"
+      },
+      {
+        "risk": "Booking system conflicts",
+        "severity": "medium",
+        "mitigation": "Implement calendar conflict detection and double-booking prevention",
+        "probability": "low"
+      },
+      {
+        "risk": "Payment processing issues",
+        "severity": "medium",
+        "mitigation": "Set up backup payment methods and cash handling procedures",
+        "probability": "low"
+      },
+      {
+        "risk": "Seasonal demand fluctuations",
+        "severity": "low",
+        "mitigation": "Monitor analytics and adjust marketing campaigns seasonally",
+        "probability": "high"
+      }
+    ],
+    "estimated_setup_time_minutes": 20,
+    "estimated_cost_euros": 0.0,
+    "rollback_complexity": "low"
+  },
+
+  "default_parameters": {
+    "website_config": {
+      "primary_color": "#059669",
+      "secondary_color": "#64748b",
+      "tagline": "Your Trusted Local [Service] Provider",
+      "description": "Quality [service] in [location] since [year]",
+      "features": ["contact_form", "location_map", "hours_of_operation"]
+    },
+    "erp_config": {
+      "currency": "EUR",
+      "fiscal_year_start": "01-01",
+      "language": "de_DE",
+      "timezone": "Europe/Berlin"
+    }
+  },
+
+  "location_data": {
+    "required_fields": [
+      "street_address",
+      "city",
+      "postal_code",
+      "country"
+    ],
+    "optional_fields": [
+      "region",
+      "phone_local",
+      "service_area_radius_km"
+    ]
+  },
+
+  "hours_of_operation": {
+    "format": "24h",
+    "default_schedule": {
+      "monday": {"open": "09:00", "close": "18:00"},
+      "tuesday": {"open": "09:00", "close": "18:00"},
+      "wednesday": {"open": "09:00", "close": "18:00"},
+      "thursday": {"open": "09:00", "close": "18:00"},
+      "friday": {"open": "09:00", "close": "18:00"},
+      "saturday": {"open": "10:00", "close": "14:00"},
+      "sunday": {"closed": true}
+    }
+  },
+
+  "validation_rules": {
+    "required_fields": [
+      "business_name",
+      "contact_email",
+      "location",
+      "phone"
+    ],
+    "recommended_fields": [
+      "hours_of_operation",
+      "service_area",
+      "google_my_business_id"
+    ]
+  },
+
+  "success_metrics": {
+    "kpis": [
+      "foot_traffic",
+      "appointment_bookings",
+      "repeat_customer_rate",
+      "average_transaction_value",
+      "online_reviews_rating"
+    ],
+    "dashboards": [
+      "daily_sales",
+      "appointment_calendar",
+      "customer_demographics",
+      "local_seo_performance"
+    ]
+  },
+
+  "examples": [
+    {
+      "name": "Bella Vista Salon",
+      "industry": "Hair & Beauty Salon",
+      "location": "Munich, Germany",
+      "services": ["Haircuts", "Coloring", "Treatments"],
+      "team_size": "3-5",
+      "hours": "Tue-Sat 9-18"
+    },
+    {
+      "name": "Dr. Schmidt Dental Practice",
+      "industry": "Healthcare - Dentistry",
+      "location": "Berlin, Germany",
+      "services": ["General Dentistry", "Cosmetic", "Emergency"],
+      "team_size": "5-10",
+      "hours": "Mon-Fri 8-18, Sat 9-13"
+    },
+    {
+      "name": "Handwerk Meister GmbH",
+      "industry": "Trades - Carpentry",
+      "location": "Hamburg, Germany",
+      "services": ["Custom Furniture", "Renovations", "Repairs"],
+      "team_size": "2-4",
+      "service_area": "30km radius"
+    }
+  ]
+}

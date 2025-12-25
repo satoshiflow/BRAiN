@@ -1,0 +1,111 @@
+{
+  "template_id": "modern_landing_v1",
+  "version": "1.0.0",
+  "type": "website",
+  "name": "Modern Landing Page",
+  "description": "Responsive single-page landing with hero section, features, and contact form. Perfect for startups and small businesses.",
+  "author": "BRAiN Factory",
+  "variables": [
+    {
+      "name": "business_name",
+      "type": "string",
+      "required": true,
+      "description": "Business name for title and branding",
+      "validation": {
+        "min_length": 2,
+        "max_length": 100
+      }
+    },
+    {
+      "name": "tagline",
+      "type": "string",
+      "required": true,
+      "description": "Hero section tagline",
+      "default": "Welcome to our business",
+      "validation": {
+        "max_length": 200
+      }
+    },
+    {
+      "name": "description",
+      "type": "string",
+      "required": false,
+      "description": "Meta description for SEO",
+      "default": "",
+      "validation": {
+        "max_length": 160
+      }
+    },
+    {
+      "name": "primary_color",
+      "type": "color",
+      "required": false,
+      "description": "Primary brand color",
+      "default": "#2563eb"
+    },
+    {
+      "name": "secondary_color",
+      "type": "color",
+      "required": false,
+      "description": "Secondary brand color",
+      "default": "#64748b"
+    },
+    {
+      "name": "logo_url",
+      "type": "string",
+      "required": false,
+      "description": "Logo URL or data URI",
+      "default": ""
+    },
+    {
+      "name": "domain",
+      "type": "string",
+      "required": true,
+      "description": "Website domain",
+      "validation": {
+        "pattern": "^[a-z0-9.-]+\\.[a-z]{2,}$"
+      }
+    },
+    {
+      "name": "pages",
+      "type": "list",
+      "required": false,
+      "description": "Pages to generate",
+      "default": ["home", "about", "contact"]
+    },
+    {
+      "name": "features",
+      "type": "list",
+      "required": false,
+      "description": "Features to highlight",
+      "default": []
+    }
+  ],
+  "files": [
+    {
+      "path": "modern_landing_v1/index.html.jinja2",
+      "output_path": "public/index.html",
+      "is_template": true
+    },
+    {
+      "path": "modern_landing_v1/styles.css.jinja2",
+      "output_path": "public/styles.css",
+      "is_template": true
+    },
+    {
+      "path": "modern_landing_v1/script.js",
+      "output_path": "public/script.js",
+      "is_template": false
+    }
+  ],
+  "dependencies": [
+    "nginx"
+  ],
+  "tags": [
+    "landing",
+    "modern",
+    "responsive",
+    "single-page"
+  ],
+  "preview_url": null
+}

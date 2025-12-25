@@ -335,6 +335,17 @@ class AuditEventType(str, Enum):
 
     # IPv6
     IPV6_GATE_CHECKED = "sovereign.ipv6_gate_checked"
+
+    # Business Factory events (Sprint 5)
+    FACTORY_PLAN_GENERATED = "factory.plan_generated"
+    FACTORY_EXECUTION_STARTED = "factory.execution_started"
+    FACTORY_STEP_STARTED = "factory.step_started"
+    FACTORY_STEP_COMPLETED = "factory.step_completed"
+    FACTORY_STEP_FAILED = "factory.step_failed"
+    FACTORY_EXECUTION_COMPLETED = "factory.execution_completed"
+    FACTORY_EXECUTION_FAILED = "factory.execution_failed"
+    FACTORY_ROLLBACK_STARTED = "factory.rollback_started"
+    FACTORY_ROLLBACK_COMPLETED = "factory.rollback_completed"
     IPV6_GATE_PASSED = "sovereign.ipv6_gate_passed"
     IPV6_GATE_FAILED = "sovereign.ipv6_gate_failed"
     IPV6_GATE_BLOCKED = "sovereign.ipv6_gate_blocked"
