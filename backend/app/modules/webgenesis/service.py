@@ -743,6 +743,157 @@ class WebGenesisService:
 </section>
         """
 
+    # ========================================================================
+    # Build System
+    # ========================================================================
+
+    def build_project(
+        self, site_id: str, force: bool = False
+    ) -> BuildResult:
+        """
+        Build website artifacts from generated source.
+
+        For static HTML: Copy source to build directory and hash.
+        For Next.js (future): Run npm build.
+
+        Args:
+            site_id: Site identifier
+            force: Force rebuild if already exists
+
+        Returns:
+            BuildResult with artifact info
+
+        Raises:
+            ValueError: If site_id is invalid or source not generated
+            FileNotFoundError: If site not found
+        """
+        if not validate_site_id(site_id):
+            raise ValueError(f"Invalid site ID: {site_id}")
+
+        # Load spec and manifest
+        spec = self._load_spec(site_id)
+        manifest = self._load_manifest(site_id)
+
+        # Ensure source exists
+        if manifest.status not in [SiteStatus.GENERATED, SiteStatus.BUILT, SiteStatus.DEPLOYED]:
+            raise ValueError(
+                f"Cannot build site {site_id}: source not generated (status: {manifest.status})"
+            )
+
+        # Update status
+        manifest.status = SiteStatus.BUILDING
+        self._save_manifest(site_id, manifest)
+
+        errors = []
+        warnings = []
+        build_log = []
+
+        try:
+            site_dir = safe_path_join(self.storage_base, site_id)
+            source_dir = site_dir / "source"
+            build_dir = site_dir / "build"
+
+            if not source_dir.exists():
+                raise FileNotFoundError(f"Source directory not found: {source_dir}")
+
+            # Check if build already exists
+            if build_dir.exists() and not force:
+                raise ValueError(
+                    f"Build already exists for site: {site_id}. Use force=True to rebuild."
+                )
+
+            # Remove existing build if force
+            if build_dir.exists():
+                build_log.append("Removing existing build directory...")
+                shutil.rmtree(build_dir)
+                warnings.append("Previous build artifacts removed")
+
+            build_log.append(f"Building site: {site_id}")
+            build_log.append(f"Template: {spec.template}")
+
+            # Build based on template type
+            if spec.template == TemplateType.STATIC_HTML:
+                build_log.append("Building static HTML site...")
+                self._build_static_html(source_dir, build_dir, build_log)
+            else:
+                raise ValueError(f"Unsupported template type for build: {spec.template}")
+
+            # Compute artifact hash
+            build_log.append("Computing artifact hash...")
+            artifact_hash = compute_directory_hash(build_dir)
+            build_log.append(f"Artifact hash: {artifact_hash[:16]}...")
+
+            # Update manifest
+            manifest.status = SiteStatus.BUILT
+            manifest.built_at = datetime.utcnow()
+            manifest.build_path = str(build_dir.relative_to(self.storage_base))
+            manifest.artifact_hash = artifact_hash
+            self._save_manifest(site_id, manifest)
+
+            self.total_built += 1
+
+            build_result = BuildResult(
+                success=True,
+                site_id=site_id,
+                artifact_path=str(build_dir),
+                artifact_hash=artifact_hash,
+                timestamp=datetime.utcnow(),
+                errors=errors,
+                warnings=warnings,
+                build_log="\n".join(build_log),
+            )
+
+            logger.info(f"✅ Built site: {site_id} (hash: {artifact_hash[:8]}...)")
+
+            return build_result
+
+        except Exception as e:
+            # Update manifest with error
+            manifest.status = SiteStatus.FAILED
+            manifest.last_error = f"Build failed: {str(e)}"
+            manifest.error_count += 1
+            self._save_manifest(site_id, manifest)
+
+            self.total_errors += 1
+            logger.error(f"❌ Build failed for site {site_id}: {e}")
+
+            errors.append(str(e))
+
+            return BuildResult(
+                success=False,
+                site_id=site_id,
+                timestamp=datetime.utcnow(),
+                errors=errors,
+                warnings=warnings,
+                build_log="\n".join(build_log),
+            )
+
+    def _build_static_html(
+        self, source_dir: Path, build_dir: Path, build_log: List[str]
+    ):
+        """
+        Build static HTML site (copy source to build).
+
+        Args:
+            source_dir: Source directory
+            build_dir: Build output directory
+            build_log: Build log accumulator
+
+        Raises:
+            Exception: If build fails
+        """
+        build_log.append(f"Copying source: {source_dir} -> {build_dir}")
+
+        # Copy entire source tree to build
+        shutil.copytree(source_dir, build_dir)
+
+        # Count files
+        file_count = sum(1 for _ in build_dir.rglob("*") if _.is_file())
+        build_log.append(f"Copied {file_count} files to build directory")
+
+        # Optional: Minification could go here (future enhancement)
+        build_log.append("Build complete (no minification for MVP)")
+
 
 # ============================================================================
 # Singleton
