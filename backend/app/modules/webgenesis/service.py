@@ -894,6 +894,366 @@ class WebGenesisService:
         # Optional: Minification could go here (future enhancement)
         build_log.append("Build complete (no minification for MVP)")
 
+    # ========================================================================
+    # Deployment System
+    # ========================================================================
+
+    def deploy_project(
+        self, site_id: str, force: bool = False
+    ) -> DeployResult:
+        """
+        Deploy website using Docker Compose.
+
+        Creates docker-compose.yml with Nginx serving static files.
+
+        Args:
+            site_id: Site identifier
+            force: Force redeploy if already deployed
+
+        Returns:
+            DeployResult with deployment info
+
+        Raises:
+            ValueError: If site_id is invalid or build not ready
+            FileNotFoundError: If site not found
+        """
+        if not validate_site_id(site_id):
+            raise ValueError(f"Invalid site ID: {site_id}")
+
+        # Load spec and manifest
+        spec = self._load_spec(site_id)
+        manifest = self._load_manifest(site_id)
+
+        # Ensure build exists
+        if manifest.status not in [SiteStatus.BUILT, SiteStatus.DEPLOYED]:
+            raise ValueError(
+                f"Cannot deploy site {site_id}: build not ready (status: {manifest.status})"
+            )
+
+        # Update status
+        manifest.status = SiteStatus.DEPLOYING
+        self._save_manifest(site_id, manifest)
+
+        errors = []
+        warnings = []
+        deploy_log = []
+
+        try:
+            site_dir = safe_path_join(self.storage_base, site_id)
+            build_dir = site_dir / "build"
+
+            if not build_dir.exists():
+                raise FileNotFoundError(f"Build directory not found: {build_dir}")
+
+            deploy_log.append(f"Deploying site: {site_id}")
+            deploy_log.append(f"Build path: {build_dir}")
+
+            # Determine port
+            if spec.deploy.ports:
+                port = spec.deploy.ports[0]
+                deploy_log.append(f"Using specified port: {port}")
+            else:
+                port = self._find_available_port()
+                deploy_log.append(f"Auto-assigned port: {port}")
+
+            # Generate docker-compose.yml
+            deploy_log.append("Generating docker-compose.yml...")
+            compose_file = self._generate_docker_compose_yml(
+                site_id, spec, build_dir, port
+            )
+            deploy_log.append(f"Compose file: {compose_file}")
+
+            # Check if already deployed
+            container_name = f"webgenesis-{site_id}"
+            is_running = self._check_container_running(container_name)
+
+            if is_running and not force:
+                raise ValueError(
+                    f"Site already deployed: {site_id}. Use force=True to redeploy."
+                )
+
+            if is_running:
+                deploy_log.append("Stopping existing deployment...")
+                self._stop_deployment(site_dir)
+                warnings.append("Previous deployment stopped")
+
+            # Deploy with docker-compose
+            deploy_log.append("Starting Docker Compose deployment...")
+            container_id = self._deploy_with_docker_compose(site_dir, deploy_log)
+            deploy_log.append(f"Container ID: {container_id[:12]}...")
+
+            # Wait and check health
+            deploy_log.append("Checking deployment health...")
+            health_ok, health_msg = self._check_deployment_health(port, spec.deploy.healthcheck_path)
+
+            if not health_ok:
+                warnings.append(f"Health check failed: {health_msg}")
+                deploy_log.append(f"WARNING: {health_msg}")
+
+            # Determine URL
+            url = f"http://localhost:{port}"
+            if spec.deploy.domain:
+                url = f"https://{spec.deploy.domain}" if spec.deploy.ssl_enabled else f"http://{spec.deploy.domain}"
+
+            # Update manifest
+            manifest.status = SiteStatus.DEPLOYED
+            manifest.deployed_at = datetime.utcnow()
+            manifest.deployed_url = url
+            manifest.deployed_ports = [port]
+            manifest.docker_container_id = container_id
+            manifest.docker_image_tag = "nginx:alpine"
+            manifest.deploy_path = str(site_dir.relative_to(self.storage_base))
+            self._save_manifest(site_id, manifest)
+
+            self.total_deployed += 1
+
+            deploy_result = DeployResult(
+                success=True,
+                site_id=site_id,
+                url=url,
+                container_id=container_id,
+                container_name=container_name,
+                ports=[port],
+                timestamp=datetime.utcnow(),
+                errors=errors,
+                warnings=warnings,
+                deploy_log="\n".join(deploy_log),
+            )
+
+            logger.info(f"✅ Deployed site: {site_id} at {url}")
+
+            return deploy_result
+
+        except Exception as e:
+            # Update manifest with error
+            manifest.status = SiteStatus.FAILED
+            manifest.last_error = f"Deployment failed: {str(e)}"
+            manifest.error_count += 1
+            self._save_manifest(site_id, manifest)
+
+            self.total_errors += 1
+            logger.error(f"❌ Deployment failed for site {site_id}: {e}")
+
+            errors.append(str(e))
+
+            return DeployResult(
+                success=False,
+                site_id=site_id,
+                timestamp=datetime.utcnow(),
+                errors=errors,
+                warnings=warnings,
+                deploy_log="\n".join(deploy_log),
+            )
+
+    def _find_available_port(self, start_port: int = COMPOSE_BASE_PORT) -> int:
+        """
+        Find available port starting from base port.
+
+        Args:
+            start_port: Starting port number
+
+        Returns:
+            Available port number
+        """
+        import socket
+
+        port = start_port
+        while port < start_port + 100:  # Try up to 100 ports
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                result = sock.connect_ex(("localhost", port))
+                if result != 0:  # Port is available
+                    return port
+            port += 1
+
+        # Fallback: return start_port (will fail if already in use)
+        logger.warning(f"No available port found in range {start_port}-{start_port+100}, using {start_port}")
+        return start_port
+
+    def _generate_docker_compose_yml(
+        self, site_id: str, spec: WebsiteSpec, build_dir: Path, port: int
+    ) -> Path:
+        """
+        Generate docker-compose.yml for site deployment.
+
+        Args:
+            site_id: Site identifier
+            spec: Website spec
+            build_dir: Build directory path
+            port: Port to expose
+
+        Returns:
+            Path to generated docker-compose.yml
+        """
+        site_dir = build_dir.parent
+        compose_file = site_dir / "docker-compose.yml"
+
+        # Nginx container serving static files
+        compose_content = f"""version: '3.8'
+
+services:
+  web:
+    image: nginx:alpine
+    container_name: webgenesis-{site_id}
+    ports:
+      - "{port}:80"
+    volumes:
+      - ./build:/usr/share/nginx/html:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost{spec.deploy.healthcheck_path}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    labels:
+      - "webgenesis.site_id={site_id}"
+      - "webgenesis.site_name={spec.name}"
+      - "webgenesis.template={spec.template}"
+"""
+
+        with open(compose_file, "w") as f:
+            f.write(compose_content)
+
+        logger.debug(f"Generated docker-compose.yml: {compose_file}")
+
+        return compose_file
+
+    def _check_container_running(self, container_name: str) -> bool:
+        """
+        Check if Docker container is running.
+
+        Args:
+            container_name: Container name
+
+        Returns:
+            True if running, False otherwise
+        """
+        try:
+            result = subprocess.run(
+                ["docker", "ps", "--filter", f"name={container_name}", "--format", "{{.Names}}"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+
+            return container_name in result.stdout
+
+        except Exception as e:
+            logger.warning(f"Failed to check container status: {e}")
+            return False
+
+    def _stop_deployment(self, site_dir: Path):
+        """
+        Stop existing deployment.
+
+        Args:
+            site_dir: Site directory containing docker-compose.yml
+        """
+        try:
+            subprocess.run(
+                ["docker-compose", "down"],
+                cwd=str(site_dir),
+                capture_output=True,
+                timeout=30,
+                check=True,
+            )
+            logger.info("Stopped existing deployment")
+
+        except subprocess.CalledProcessError as e:
+            logger.warning(f"Failed to stop deployment: {e.stderr}")
+        except Exception as e:
+            logger.warning(f"Failed to stop deployment: {e}")
+
+    def _deploy_with_docker_compose(
+        self, site_dir: Path, deploy_log: List[str]
+    ) -> str:
+        """
+        Deploy using docker-compose up -d.
+
+        Args:
+            site_dir: Site directory containing docker-compose.yml
+            deploy_log: Deploy log accumulator
+
+        Returns:
+            Container ID
+
+        Raises:
+            Exception: If deployment fails
+        """
+        try:
+            # Run docker-compose up -d
+            result = subprocess.run(
+                ["docker-compose", "up", "-d"],
+                cwd=str(site_dir),
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=True,
+            )
+
+            deploy_log.append(f"Docker Compose output: {result.stdout.strip()}")
+
+            # Get container ID
+            ps_result = subprocess.run(
+                ["docker-compose", "ps", "-q"],
+                cwd=str(site_dir),
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=True,
+            )
+
+            container_id = ps_result.stdout.strip()
+
+            if not container_id:
+                raise Exception("Failed to get container ID after deployment")
+
+            return container_id
+
+        except subprocess.CalledProcessError as e:
+            error_msg = f"Docker Compose failed: {e.stderr}"
+            deploy_log.append(error_msg)
+            raise Exception(error_msg)
+
+        except subprocess.TimeoutExpired:
+            raise Exception("Docker Compose command timed out")
+
+    def _check_deployment_health(
+        self, port: int, health_path: str = "/", timeout: int = 10
+    ) -> Tuple[bool, str]:
+        """
+        Check if deployed site is responding.
+
+        Args:
+            port: Port to check
+            health_path: Health check path
+            timeout: Timeout in seconds
+
+        Returns:
+            Tuple of (is_healthy, message)
+        """
+        import time
+        import urllib.request
+        import urllib.error
+
+        url = f"http://localhost:{port}{health_path}"
+
+        # Wait a bit for container to start
+        time.sleep(2)
+
+        try:
+            req = urllib.request.Request(url, method="GET")
+            with urllib.request.urlopen(req, timeout=timeout) as response:
+                if response.status == 200:
+                    return True, "Health check passed"
+                else:
+                    return False, f"Health check failed: HTTP {response.status}"
+
+        except urllib.error.URLError as e:
+            return False, f"Health check failed: {e.reason}"
+        except Exception as e:
+            return False, f"Health check failed: {str(e)}"
+
 
 # ============================================================================
 # Singleton
