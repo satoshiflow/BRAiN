@@ -10,7 +10,7 @@ Trust Tier Enforcement:
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from loguru import logger
 
 from app.modules.axe_governance import (
@@ -40,6 +40,12 @@ from .schemas import (
     RollbackRequest,
     RollbackResponse,
     ReleasesListResponse,
+    # Sprint III - Site List & Audit
+    SiteListItem,
+    SitesListResponse,
+    AuditEvent,
+    AuditEventSeverity,
+    SiteAuditResponse,
 )
 
 
@@ -1024,4 +1030,176 @@ async def list_releases(site_id: str):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to list releases: {str(e)}",
+        )
+
+
+# ============================================================================
+# Sprint III - Site List & Audit (Control Center UI)
+# ============================================================================
+
+
+@router.get("/sites", response_model=SitesListResponse)
+async def list_sites():
+    """
+    List all WebGenesis sites.
+
+    **Trust Tier:** Any (no restriction - read-only)
+
+    **Sprint III:** Control Center UI endpoint for site list view.
+
+    Scans storage directory and returns all sites with current status,
+    health, and lifecycle information.
+
+    **Fail-Safe:**
+    - Broken manifests → status="failed", health="unknown"
+    - Missing containers → lifecycle="unknown"
+    - No exceptions leaked (empty list on fatal error)
+
+    Returns:
+        List of sites with metadata
+
+    Example:
+        ```
+        GET /api/webgenesis/sites
+        ```
+
+        Response:
+        ```json
+        {
+          "sites": [
+            {
+              "site_id": "my-site_20250101120000",
+              "name": "My Awesome Site",
+              "domain": "example.com",
+              "status": "deployed",
+              "lifecycle_status": "running",
+              "health_status": "healthy",
+              "current_release_id": "rel_1735747200_a1b2c3d4",
+              "deployed_url": "http://localhost:8080",
+              "dns_enabled": true,
+              "last_action": "deploy",
+              "updated_at": "2025-01-01T12:00:00Z"
+            }
+          ],
+          "total_count": 1
+        }
+        ```
+    """
+    try:
+        service = get_webgenesis_service()
+        sites_data = service.list_all_sites()
+
+        # Convert to SiteListItem models
+        sites = [SiteListItem(**site) for site in sites_data]
+
+        logger.info(f"📋 Returning {len(sites)} sites")
+
+        return SitesListResponse(
+            sites=sites,
+            total_count=len(sites),
+        )
+
+    except Exception as e:
+        # Log error but return empty list (fail-safe)
+        logger.error(f"❌ Error listing sites: {e}")
+        return SitesListResponse(
+            sites=[],
+            total_count=0,
+        )
+
+
+@router.get("/{site_id}/audit", response_model=SiteAuditResponse)
+async def get_site_audit(
+    site_id: str,
+    limit: int = Query(100, ge=1, le=500, description="Max events to return"),
+    severity: Optional[AuditEventSeverity] = Query(
+        None, description="Filter by severity (INFO, WARNING, ERROR, CRITICAL)"
+    ),
+    types: Optional[str] = Query(
+        None, description="Comma-separated event types to filter"
+    ),
+):
+    """
+    Get audit events for a specific site.
+
+    **Trust Tier:** Any (no restriction - read-only)
+
+    **Sprint III:** Control Center UI endpoint for site audit timeline.
+
+    Returns chronologically descending audit events for the specified site
+    with optional filtering by severity and event types.
+
+    **Fail-Safe:**
+    - Invalid site_id → empty events list
+    - Missing audit file → empty events list
+    - Malformed events → skipped (logged as warning)
+    - No exceptions leaked
+
+    Args:
+        site_id: Site ID to query
+        limit: Maximum events to return (1-500, default 100)
+        severity: Filter by severity level (optional)
+        types: Comma-separated event types to filter (optional)
+
+    Returns:
+        Audit events matching filters
+
+    Example:
+        GET /api/webgenesis/my-site_20250101120000/audit?limit=50&severity=ERROR
+
+        Response:
+        {
+          "site_id": "my-site_20250101120000",
+          "events": [
+            {
+              "id": "evt_1735747200_my-site_",
+              "timestamp": "2025-01-01T12:00:00Z",
+              "site_id": "my-site_20250101120000",
+              "event_type": "deploy_failed",
+              "severity": "ERROR",
+              "source": "webgenesis.deploy",
+              "description": "Docker Compose failed to start container",
+              "metadata": {"exit_code": 1}
+            }
+          ],
+          "total_count": 1,
+          "filtered_count": 1
+        }
+    """
+    try:
+        service = get_webgenesis_service()
+
+        # Parse event types (comma-separated)
+        event_types_list = None
+        if types:
+            event_types_list = [t.strip() for t in types.split(",") if t.strip()]
+
+        # Query audit events
+        events, total_matching = service.get_site_audit_events(
+            site_id=site_id,
+            limit=limit,
+            severity=severity,
+            event_types=event_types_list,
+        )
+
+        logger.info(
+            f"📋 Returning {len(events)} audit events for site {site_id} "
+            f"(severity={severity}, types={event_types_list})"
+        )
+
+        return SiteAuditResponse(
+            site_id=site_id,
+            events=events,
+            total_count=len(events),
+            filtered_count=total_matching,
+        )
+
+    except Exception as e:
+        # Log error but return empty (fail-safe)
+        logger.error(f"❌ Error fetching audit events for {site_id}: {e}")
+        return SiteAuditResponse(
+            site_id=site_id,
+            events=[],
+            total_count=0,
+            filtered_count=0,
         )

@@ -16,6 +16,7 @@ import {
   restartSite,
   removeSite,
 } from "@/lib/webgenesisApi";
+import { ConfirmModal } from "./ConfirmModal";
 
 interface SiteOverviewProps {
   siteId: string;
@@ -33,6 +34,7 @@ export function SiteOverview({
   onRefresh,
 }: SiteOverviewProps) {
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
 
   async function handleAction(action: "start" | "stop" | "restart" | "remove") {
     setIsProcessing(true);
@@ -48,19 +50,10 @@ export function SiteOverview({
           await restartSite(siteId);
           break;
         case "remove":
-          if (
-            confirm(
-              `Are you sure you want to remove site ${siteId}? This will stop and remove the container.`
-            )
-          ) {
-            await removeSite(siteId, false);
-            // Redirect to sites list after removal
-            window.location.href = "/webgenesis";
-          } else {
-            setIsProcessing(false);
-            return;
-          }
-          break;
+          // Show confirmation modal instead of browser confirm
+          setIsProcessing(false);
+          setIsConfirmOpen(true);
+          return;
       }
 
       if (onRefresh) {
@@ -70,6 +63,19 @@ export function SiteOverview({
       console.error(`Failed to ${action} site:`, error);
       alert(`Failed to ${action} site: ${error}`);
     } finally {
+      setIsProcessing(false);
+    }
+  }
+
+  async function handleRemoveConfirm() {
+    setIsProcessing(true);
+    try {
+      await removeSite(siteId, false);
+      // Redirect to sites list after removal
+      window.location.href = "/webgenesis";
+    } catch (error) {
+      console.error("Failed to remove site:", error);
+      alert(`Failed to remove site: ${error}`);
       setIsProcessing(false);
     }
   }
@@ -243,6 +249,16 @@ export function SiteOverview({
           </pre>
         </section>
       )}
+
+      <ConfirmModal
+        isOpen={isConfirmOpen}
+        onClose={() => setIsConfirmOpen(false)}
+        onConfirm={handleRemoveConfirm}
+        title="Remove Site"
+        message={`Are you sure you want to remove site ${siteId}? This will stop and remove the container.`}
+        confirmLabel="Remove"
+        variant="danger"
+      />
     </div>
   );
 }

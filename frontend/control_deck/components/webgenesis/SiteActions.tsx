@@ -17,6 +17,7 @@ import {
   rollbackSite,
   removeSite,
 } from "@/lib/webgenesisApi";
+import { ConfirmModal } from "./ConfirmModal";
 
 interface SiteActionsProps {
   site: SiteListItem;
@@ -26,6 +27,7 @@ interface SiteActionsProps {
 export function SiteActions({ site, onRefresh }: SiteActionsProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
 
   async function handleAction(
     action: "start" | "stop" | "restart" | "rollback" | "remove"
@@ -47,17 +49,10 @@ export function SiteActions({ site, onRefresh }: SiteActionsProps) {
           await rollbackSite(site.site_id);
           break;
         case "remove":
-          if (
-            confirm(
-              `Are you sure you want to remove site ${site.site_id}? This will stop and remove the container and optionally delete site data.`
-            )
-          ) {
-            await removeSite(site.site_id, false); // keep_data = false by default
-          } else {
-            setIsProcessing(false);
-            return;
-          }
-          break;
+          // Show confirmation modal instead of browser confirm
+          setIsProcessing(false);
+          setIsConfirmOpen(true);
+          return;
       }
 
       // Refresh site list after action
@@ -67,6 +62,22 @@ export function SiteActions({ site, onRefresh }: SiteActionsProps) {
     } catch (error) {
       console.error(`Failed to ${action} site:`, error);
       alert(`Failed to ${action} site: ${error}`);
+    } finally {
+      setIsProcessing(false);
+      setIsOpen(false);
+    }
+  }
+
+  async function handleRemoveConfirm() {
+    setIsProcessing(true);
+    try {
+      await removeSite(site.site_id, false); // keep_data = false by default
+      if (onRefresh) {
+        onRefresh();
+      }
+    } catch (error) {
+      console.error("Failed to remove site:", error);
+      alert(`Failed to remove site: ${error}`);
     } finally {
       setIsProcessing(false);
       setIsOpen(false);
@@ -127,6 +138,16 @@ export function SiteActions({ site, onRefresh }: SiteActionsProps) {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={isConfirmOpen}
+        onClose={() => setIsConfirmOpen(false)}
+        onConfirm={handleRemoveConfirm}
+        title="Remove Site"
+        message={`Are you sure you want to remove site ${site.site_id}? This will stop and remove the container and optionally delete site data.`}
+        confirmLabel="Remove"
+        variant="danger"
+      />
     </div>
   );
 }

@@ -12,6 +12,7 @@ import { History, RotateCcw, CheckCircle2, Package, Clock } from "lucide-react";
 import type { ReleaseMetadata } from "@/types/webgenesis";
 import { fetchReleases, rollbackSite } from "@/lib/webgenesisApi";
 import { HealthBadge } from "./HealthBadge";
+import { ConfirmModal } from "./ConfirmModal";
 
 type LoadState<T> = {
   data?: T;
@@ -29,6 +30,8 @@ export function ReleaseList({ siteId, onRefresh }: ReleaseListProps) {
     loading: true,
   });
   const [isRollingBack, setIsRollingBack] = useState<string | null>(null);
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [selectedReleaseId, setSelectedReleaseId] = useState<string | null>(null);
 
   useEffect(() => {
     loadReleases();
@@ -44,18 +47,18 @@ export function ReleaseList({ siteId, onRefresh }: ReleaseListProps) {
     }
   }
 
-  async function handleRollback(releaseId: string) {
-    if (
-      !confirm(
-        `Are you sure you want to rollback to release ${releaseId.slice(0, 12)}?`
-      )
-    ) {
-      return;
-    }
+  function handleRollback(releaseId: string) {
+    // Show confirmation modal instead of browser confirm
+    setSelectedReleaseId(releaseId);
+    setIsConfirmOpen(true);
+  }
 
-    setIsRollingBack(releaseId);
+  async function handleRollbackConfirm() {
+    if (!selectedReleaseId) return;
+
+    setIsRollingBack(selectedReleaseId);
     try {
-      await rollbackSite(siteId, releaseId);
+      await rollbackSite(siteId, selectedReleaseId);
       await loadReleases();
       if (onRefresh) {
         onRefresh();
@@ -65,6 +68,7 @@ export function ReleaseList({ siteId, onRefresh }: ReleaseListProps) {
       alert(`Failed to rollback: ${error}`);
     } finally {
       setIsRollingBack(null);
+      setSelectedReleaseId(null);
     }
   }
 
@@ -130,6 +134,23 @@ export function ReleaseList({ siteId, onRefresh }: ReleaseListProps) {
           />
         ))}
       </div>
+
+      <ConfirmModal
+        isOpen={isConfirmOpen}
+        onClose={() => {
+          setIsConfirmOpen(false);
+          setSelectedReleaseId(null);
+        }}
+        onConfirm={handleRollbackConfirm}
+        title="Rollback to Release"
+        message={
+          selectedReleaseId
+            ? `Are you sure you want to rollback to release ${selectedReleaseId.slice(0, 12)}?`
+            : "Confirm rollback?"
+        }
+        confirmLabel="Rollback"
+        variant="warning"
+      />
     </div>
   );
 }

@@ -37,6 +37,8 @@ from .schemas import (
     TemplateType,
     PageSpec,
     PageSection,
+    AuditEvent,
+    AuditEventSeverity,
 )
 
 # Sprint II - DNS integration
@@ -55,6 +57,9 @@ except ImportError:
 
 # Storage base path (allowlist - only this path is allowed)
 STORAGE_BASE = Path("storage/webgenesis")
+
+# Audit log path (JSONL format)
+AUDIT_LOG_PATH = Path("storage/audit/webgenesis.jsonl")
 
 # Allowed site ID pattern (prevent path traversal)
 SITE_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
@@ -191,6 +196,10 @@ class WebGenesisService:
         """
         self.storage_base = storage_base or STORAGE_BASE
         self.storage_base.mkdir(parents=True, exist_ok=True)
+
+        # Audit log
+        self.audit_log_path = AUDIT_LOG_PATH
+        self.audit_log_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Templates
         self.templates_dir = TEMPLATES_DIR
@@ -1376,6 +1385,304 @@ services:
             return False, f"Health check failed: {e.reason}"
         except Exception as e:
             return False, f"Health check failed: {str(e)}"
+
+    # ========================================================================
+    # Sprint III - Site List & Audit
+    # ========================================================================
+
+    def list_all_sites(self) -> List[Dict[str, Any]]:
+        """
+        List all sites from storage directory.
+
+        Fail-safe implementation:
+        - Broken manifests → status=error, health=unknown
+        - Missing container → lifecycle=unknown
+        - No exceptions leaked to caller
+
+        Returns:
+            List of SiteListItem dictionaries
+
+        Example:
+            ```python
+            service = get_webgenesis_service()
+            sites = service.list_all_sites()
+            # [
+            #   {
+            #     "site_id": "my-site_123",
+            #     "name": "My Site",
+            #     "domain": "example.com",
+            #     "status": "deployed",
+            #     "lifecycle_status": "running",
+            #     "health_status": "healthy",
+            #     ...
+            #   }
+            # ]
+            ```
+        """
+        sites = []
+
+        try:
+            # Scan storage directory for site directories
+            if not self.storage_base.exists():
+                logger.warning(f"Storage directory does not exist: {self.storage_base}")
+                return []
+
+            for site_dir in self.storage_base.iterdir():
+                if not site_dir.is_dir():
+                    continue
+
+                site_id = site_dir.name
+
+                # Skip non-site directories (e.g., .gitkeep)
+                if site_id.startswith("."):
+                    continue
+
+                try:
+                    # Load manifest (fail-safe)
+                    manifest = self._load_manifest(site_id)
+
+                    # Extract basic info
+                    site_item = {
+                        "site_id": site_id,
+                        "name": manifest.name,
+                        "domain": getattr(manifest, "domain", None),
+                        "status": manifest.status.value if isinstance(manifest.status, Enum) else manifest.status,
+                        "lifecycle_status": None,
+                        "health_status": None,
+                        "current_release_id": manifest.metadata.get("current_release_id"),
+                        "deployed_url": manifest.deployed_url,
+                        "dns_enabled": manifest.metadata.get("dns_enabled", False),
+                        "last_action": manifest.metadata.get("last_action"),
+                        "updated_at": manifest.updated_at,
+                    }
+
+                    # Check container status if deployed
+                    if manifest.docker_container_id:
+                        container_name = f"webgenesis-{site_id}"
+                        is_running = self._check_container_running(container_name)
+
+                        if is_running:
+                            site_item["lifecycle_status"] = "running"
+
+                            # Check health if running and has ports
+                            if manifest.deployed_ports:
+                                port = manifest.deployed_ports[0]
+                                health_path = manifest.metadata.get("healthcheck_path", "/")
+                                health_ok, _ = self._check_deployment_health(
+                                    port=port,
+                                    health_path=health_path,
+                                    timeout=3,  # Quick check
+                                )
+                                site_item["health_status"] = "healthy" if health_ok else "unhealthy"
+                            else:
+                                site_item["health_status"] = "unknown"
+                        else:
+                            site_item["lifecycle_status"] = "stopped"
+                            site_item["health_status"] = "unknown"
+                    else:
+                        # No container deployed yet
+                        site_item["lifecycle_status"] = "unknown"
+                        site_item["health_status"] = "unknown"
+
+                    sites.append(site_item)
+
+                except FileNotFoundError:
+                    # Manifest missing - mark as error
+                    logger.warning(f"Site {site_id} missing manifest - marking as error")
+                    sites.append({
+                        "site_id": site_id,
+                        "name": site_id,
+                        "domain": None,
+                        "status": "failed",
+                        "lifecycle_status": "unknown",
+                        "health_status": "unknown",
+                        "current_release_id": None,
+                        "deployed_url": None,
+                        "dns_enabled": False,
+                        "last_action": None,
+                        "updated_at": datetime.utcnow(),
+                    })
+
+                except Exception as e:
+                    # Broken manifest or other error - mark as error
+                    logger.error(f"Error loading site {site_id}: {e}")
+                    sites.append({
+                        "site_id": site_id,
+                        "name": site_id,
+                        "domain": None,
+                        "status": "failed",
+                        "lifecycle_status": "unknown",
+                        "health_status": "unknown",
+                        "current_release_id": None,
+                        "deployed_url": None,
+                        "dns_enabled": False,
+                        "last_action": None,
+                        "updated_at": datetime.utcnow(),
+                    })
+
+        except Exception as e:
+            # Fatal error scanning directory - log but return empty
+            logger.error(f"Fatal error listing sites: {e}")
+            return []
+
+        # Sort by updated_at descending (newest first)
+        sites.sort(key=lambda s: s["updated_at"], reverse=True)
+
+        logger.info(f"📋 Listed {len(sites)} sites")
+        return sites
+
+    # ========================================================================
+    # Sprint III - Audit Events
+    # ========================================================================
+
+    def _log_audit_event(
+        self,
+        site_id: str,
+        event_type: str,
+        severity: AuditEventSeverity,
+        description: str,
+        source: str = "webgenesis",
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> AuditEvent:
+        """
+        Log an audit event to JSONL storage.
+
+        Internal method for recording all WebGenesis operations.
+
+        Args:
+            site_id: Site ID
+            event_type: Event type (deploy, rollback, error, etc.)
+            severity: Event severity (INFO, WARNING, ERROR, CRITICAL)
+            description: Human-readable description
+            source: Event source (default: webgenesis)
+            metadata: Additional metadata
+
+        Returns:
+            Created audit event
+        """
+        # Generate event ID
+        timestamp = datetime.utcnow()
+        event_id = f"evt_{int(timestamp.timestamp())}_{site_id[:8]}"
+
+        # Create event
+        event = AuditEvent(
+            id=event_id,
+            timestamp=timestamp,
+            site_id=site_id,
+            event_type=event_type,
+            severity=severity,
+            source=source,
+            description=description,
+            metadata=metadata or {},
+        )
+
+        # Append to JSONL file
+        try:
+            with open(self.audit_log_path, "a") as f:
+                f.write(event.model_dump_json() + "\n")
+
+            logger.debug(
+                f"Audit event logged: {event_type} | site={site_id} | severity={severity}"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to write audit event: {e}")
+
+        return event
+
+    def get_site_audit_events(
+        self,
+        site_id: str,
+        limit: int = 100,
+        severity: Optional[AuditEventSeverity] = None,
+        event_types: Optional[List[str]] = None,
+    ) -> Tuple[List[AuditEvent], int]:
+        """
+        Get audit events for a specific site.
+
+        **Sprint III:** Control Center UI endpoint for site audit timeline.
+
+        Filters audit events by site_id with optional filters for severity
+        and event types.
+
+        Args:
+            site_id: Site ID to filter by
+            limit: Maximum events to return (default 100, max 500)
+            severity: Optional severity filter (INFO, WARNING, ERROR, CRITICAL)
+            event_types: Optional list of event types to filter
+
+        Returns:
+            Tuple of (events_list, total_count)
+
+        Fail-Safe:
+        - Missing audit file → return ([], 0)
+        - Malformed events → skip and log warning
+        - No exceptions leaked
+        """
+        # Validate limit
+        limit = min(max(1, limit), 500)
+
+        # Validate site_id
+        if not validate_site_id(site_id):
+            logger.warning(f"Invalid site_id for audit query: {site_id}")
+            return [], 0
+
+        # Check if audit log exists
+        if not self.audit_log_path.exists():
+            logger.debug(f"Audit log not found: {self.audit_log_path}")
+            return [], 0
+
+        events = []
+        total_matching = 0
+
+        try:
+            # Read JSONL file in reverse (newest first)
+            with open(self.audit_log_path, "r") as f:
+                lines = f.readlines()
+
+            # Process lines in reverse order (newest events first)
+            for line in reversed(lines):
+                if not line.strip():
+                    continue
+
+                try:
+                    # Parse event
+                    event_dict = json.loads(line)
+                    event = AuditEvent(**event_dict)
+
+                    # Filter by site_id
+                    if event.site_id != site_id:
+                        continue
+
+                    # Filter by severity (if specified)
+                    if severity and event.severity != severity:
+                        continue
+
+                    # Filter by event types (if specified)
+                    if event_types and event.event_type not in event_types:
+                        continue
+
+                    # Count matching event
+                    total_matching += 1
+
+                    # Add to results if under limit
+                    if len(events) < limit:
+                        events.append(event)
+
+                except Exception as e:
+                    logger.warning(f"Failed to parse audit event: {e}")
+                    continue
+
+        except Exception as e:
+            logger.error(f"Error reading audit log: {e}")
+            return [], 0
+
+        logger.info(
+            f"📋 Retrieved {len(events)} audit events for site {site_id} "
+            f"(total matching: {total_matching})"
+        )
+
+        return events, total_matching
 
 
 # ============================================================================

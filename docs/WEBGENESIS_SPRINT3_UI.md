@@ -809,15 +809,29 @@ const isLocalTier = trustTier === "LOCAL";
 
 **Example (SiteOverview):**
 ```tsx
+// ✅ Updated to use ConfirmModal instead of browser confirm()
+const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+
 async function handleAction(action: "remove") {
-  if (confirm(`Are you sure you want to remove site ${siteId}?`)) {
-    await removeSite(siteId, false);
-    window.location.href = "/webgenesis";
-  }
+  setIsConfirmOpen(true); // Show ConfirmModal
 }
+
+async function handleRemoveConfirm() {
+  await removeSite(siteId, false);
+  window.location.href = "/webgenesis";
+}
+
+<ConfirmModal
+  isOpen={isConfirmOpen}
+  onClose={() => setIsConfirmOpen(false)}
+  onConfirm={handleRemoveConfirm}
+  title="Remove Site"
+  message={`Are you sure you want to remove site ${siteId}?`}
+  variant="danger"
+/>
 ```
 
-**Future Enhancement:** Replace `confirm()` with `ConfirmModal` for better UX.
+**Status:** ✅ All browser `confirm()` dialogs replaced with `ConfirmModal` for better UX.
 
 ---
 
@@ -1275,7 +1289,8 @@ POST   /api/webgenesis/{site_id}/restart       # Restart site
 POST   /api/webgenesis/{site_id}/rollback      # Rollback release
 DELETE /api/webgenesis/{site_id}               # Remove site
 GET    /api/webgenesis/{site_id}/releases      # List releases
-GET    /api/webgenesis/sites                   # List all sites (NOT YET IMPLEMENTED)
+GET    /api/webgenesis/sites                   # ✅ List all sites (IMPLEMENTED)
+GET    /api/webgenesis/{site_id}/audit         # ✅ Fetch audit events (IMPLEMENTED)
 ```
 
 **DNS Endpoints (LOCAL only):**
@@ -1284,20 +1299,17 @@ GET    /api/dns/hetzner/zones                  # Fetch DNS zones
 POST   /api/dns/hetzner/apply                  # Apply DNS record
 ```
 
-**Audit Endpoints (NOT YET IMPLEMENTED):**
-```
-GET    /api/webgenesis/{site_id}/audit         # Fetch audit events
-```
-
 ---
 
-### Missing Backend Endpoints
+### ✅ Newly Implemented Endpoints (Sprint III Finalization)
 
 **1. GET /api/webgenesis/sites**
 
 **Purpose:** List all WebGenesis sites for site list view
 
-**Expected Response:**
+**Status:** ✅ **IMPLEMENTED**
+
+**Response:**
 ```json
 {
   "sites": [
@@ -1318,15 +1330,17 @@ GET    /api/webgenesis/{site_id}/audit         # Fetch audit events
 }
 ```
 
-**Current Workaround:**
-- `fetchAllSites()` returns empty array with console.warn
-- UI shows "Backend Endpoint Required" notice
-- User can still create sites via wizard
+**Implementation:**
+- Scans storage directory for site manifests
+- Parses manifest.json files
+- Returns SiteListItem[] array
+- Fail-safe: broken manifests marked as "failed" status
+- Includes health checks and container status
 
-**Implementation Needed:**
-- Scan storage directory for site manifests
-- Parse manifest.json files
-- Return SiteListItem[] array
+**Backend Files:**
+- `backend/app/modules/webgenesis/service.py` - `list_all_sites()` method
+- `backend/app/modules/webgenesis/router.py` - GET /sites endpoint
+- `backend/app/modules/webgenesis/schemas.py` - SiteListItem, SitesListResponse DTOs
 
 ---
 
@@ -1334,13 +1348,22 @@ GET    /api/webgenesis/{site_id}/audit         # Fetch audit events
 
 **Purpose:** Fetch audit events for audit timeline
 
-**Expected Response:**
+**Status:** ✅ **IMPLEMENTED**
+
+**Query Parameters:**
+- `limit`: Maximum events to return (1-500, default 100)
+- `severity`: Filter by severity (INFO, WARNING, ERROR, CRITICAL)
+- `types`: Comma-separated event types to filter
+
+**Response:**
 ```json
 {
+  "site_id": "abc123...",
   "events": [
     {
       "id": "evt_123",
       "timestamp": "2025-12-25T10:00:00Z",
+      "site_id": "abc123...",
       "event_type": "site.deployed",
       "severity": "INFO",
       "source": "webgenesis.deploy",
@@ -1356,49 +1379,56 @@ GET    /api/webgenesis/{site_id}/audit         # Fetch audit events
 }
 ```
 
-**Current Workaround:**
-- `AuditTimeline` shows empty state
-- Message: "Audit events are automatically created by the backend"
+**Implementation:**
+- Stores audit events in JSONL format (`storage/audit/webgenesis.jsonl`)
+- Filters events by site_id
+- Supports severity and event type filtering
+- Chronological descending order (newest first)
+- Fail-safe: returns empty array for invalid/missing site_id
 
-**Implementation Needed:**
-- Store audit events in database
-- Create endpoint to query events by site_id
-- Filter by severity, event type, date range
+**Backend Files:**
+- `backend/app/modules/webgenesis/service.py` - `_log_audit_event()` and `get_site_audit_events()` methods
+- `backend/app/modules/webgenesis/router.py` - GET /{site_id}/audit endpoint
+- `backend/app/modules/webgenesis/schemas.py` - AuditEvent, AuditEventSeverity, SiteAuditResponse DTOs
 
 ---
 
 ## Future Enhancements
 
-### Priority 1: Complete Missing Endpoints
+### ✅ Priority 1: Complete Missing Endpoints (COMPLETED)
 
-1. **Implement GET /api/webgenesis/sites**
-   - Enable site list view
-   - Remove backend endpoint notice
-   - Allow users to browse existing sites
+1. **✅ Implement GET /api/webgenesis/sites**
+   - ✅ Enable site list view
+   - ✅ Remove backend endpoint notice
+   - ✅ Allow users to browse existing sites
 
-2. **Implement GET /api/webgenesis/{site_id}/audit**
-   - Enable audit timeline
-   - Show deployment history, errors, warnings
-   - Compliance and debugging
+2. **✅ Implement GET /api/webgenesis/{site_id}/audit**
+   - ✅ Enable audit timeline
+   - ✅ Show deployment history, errors, warnings
+   - ✅ Compliance and debugging
+
+**Status:** All endpoints implemented with full fail-safe error handling and comprehensive tests.
 
 ---
 
-### Priority 2: Upgrade Modals
+### ✅ Priority 2: Upgrade Modals (COMPLETED)
 
-**Current:** Uses browser `confirm()` for destructive actions
+**Previous:** Used browser `confirm()` for destructive actions
 
-**Enhancement:** Replace with `ConfirmModal` component
+**Enhancement:** Replaced with `ConfirmModal` component ✅
 
-**Benefits:**
-- Better UX
-- Consistent styling
-- More information in dialog
-- Accessibility improvements
+**Benefits Achieved:**
+- ✅ Better UX with branded modal dialogs
+- ✅ Consistent styling with Tailwind CSS
+- ✅ More information in dialog
+- ✅ Accessibility improvements
 
-**Components to Update:**
-- `SiteActions.tsx`
-- `SiteOverview.tsx`
-- `ReleaseList.tsx`
+**Components Updated:**
+- ✅ `SiteActions.tsx` - Remove site confirmation
+- ✅ `SiteOverview.tsx` - Remove site confirmation
+- ✅ `ReleaseList.tsx` - Rollback confirmation
+
+**Status:** All browser confirm() dialogs replaced with ConfirmModal component.
 
 ---
 
