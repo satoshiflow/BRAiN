@@ -1,0 +1,30 @@
+# -*- coding: utf-8 -*-
+{
+    'name': '{{ module.display_name or module.name }}',
+    'version': '{{ module.version }}',
+    'summary': '{{ module.summary or "" }}',
+    'description': """
+{{ module.description or module.summary or "" }}
+    """,
+    'author': '{{ module.author }}',
+    'website': '{{ module.website }}',
+    'category': '{{ module.category }}',
+    'license': '{{ module.license }}',
+    'depends': {{ module.depends }},
+    'data': [
+        {%- if module.access_rights %}
+        'security/ir.model.access.csv',
+        {%- endif %}
+        {%- for view in module.views %}
+        'views/{{ view.model.replace(".", "_") }}_views.xml',
+        {%- endfor %}
+    ],
+    {%- if module.demo_data %}
+    'demo': [
+        # Demo data files
+    ],
+    {%- endif %}
+    'installable': {{ module.installable|lower }},
+    'application': {{ module.application|lower }},
+    'auto_install': {{ module.auto_install|lower }},
+}

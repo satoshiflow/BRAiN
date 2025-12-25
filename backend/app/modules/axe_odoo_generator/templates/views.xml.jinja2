@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    {%- for view in views %}
+
+    <!-- {{ view.name }} -->
+    <record id="{{ view.name }}" model="ir.ui.view">
+        <field name="name">{{ view.name }}</field>
+        <field name="model">{{ view.model }}</field>
+        <field name="priority">{{ view.priority }}</field>
+        <field name="arch" type="xml">
+            {%- if view.view_type.value == 'tree' %}
+            <tree>
+                {%- if view.fields %}
+                {%- for field_name in view.fields %}
+                <field name="{{ field_name }}"/>
+                {%- endfor %}
+                {%- else %}
+                <!-- Auto-generated: All fields -->
+                {%- for field in model.fields %}
+                <field name="{{ field.name }}"/>
+                {%- endfor %}
+                {%- endif %}
+            </tree>
+            {%- elif view.view_type.value == 'form' %}
+            <form>
+                <sheet>
+                    <group>
+                        {%- if view.fields %}
+                        {%- for field_name in view.fields %}
+                        <field name="{{ field_name }}"/>
+                        {%- endfor %}
+                        {%- else %}
+                        <!-- Auto-generated: All fields -->
+                        {%- for field in model.fields %}
+                        <field name="{{ field.name }}"/>
+                        {%- endfor %}
+                        {%- endif %}
+                    </group>
+                </sheet>
+            </form>
+            {%- elif view.view_type.value == 'kanban' %}
+            <kanban>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_card">
+                            <div class="oe_kanban_content">
+                                {%- if view.fields %}
+                                {%- for field_name in view.fields %}
+                                <field name="{{ field_name }}"/>
+                                {%- endfor %}
+                                {%- else %}
+                                <!-- Auto-generated: First field -->
+                                {%- if model.fields %}
+                                <field name="{{ model.fields[0].name }}"/>
+                                {%- endif %}
+                                {%- endif %}
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+            {%- elif view.view_type.value == 'search' %}
+            <search>
+                {%- if view.fields %}
+                {%- for field_name in view.fields %}
+                <field name="{{ field_name }}"/>
+                {%- endfor %}
+                {%- else %}
+                <!-- Auto-generated: All char/text fields -->
+                {%- for field in model.fields %}
+                {%- if field.field_type.value in ['char', 'text'] %}
+                <field name="{{ field.name }}"/>
+                {%- endif %}
+                {%- endfor %}
+                {%- endif %}
+            </search>
+            {%- endif %}
+        </field>
+    </record>
+    {%- endfor %}
+
+    <!-- Actions -->
+    <record id="action_{{ model.name.replace('.', '_') }}" model="ir.actions.act_window">
+        <field name="name">{{ model.description or model.name }}</field>
+        <field name="res_model">{{ model.name }}</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+</odoo>
