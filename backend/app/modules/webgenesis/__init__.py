@@ -51,6 +51,11 @@ from .schemas import (
     WebGenesisAuditEvent,
 )
 
+from .service import (
+    WebGenesisService,
+    get_webgenesis_service,
+)
+
 __all__ = [
     # Enums
     "DeployTarget",
@@ -76,6 +81,9 @@ __all__ = [
     "SiteStatusResponse",
     # Audit
     "WebGenesisAuditEvent",
+    # Service
+    "WebGenesisService",
+    "get_webgenesis_service",
 ]
 
 __version__ = "1.0.0"
