@@ -37,6 +37,9 @@ from backend.app.modules.sovereign_mode.schemas import (
     AuditEventType,
     AuditSeverity,
 )
+from backend.app.modules.sovereign_mode.governance_metrics import (
+    get_governance_metrics,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -169,6 +172,13 @@ async def validate_axe_request(
             success=False,
             reason=f"EXTERNAL request blocked - source: {context.source_ip}",
         )
+
+        # G4: Record AXE trust tier violation metric
+        try:
+            metrics = get_governance_metrics()
+            metrics.record_axe_trust_violation(context.trust_tier.value)
+        except Exception as e:
+            logger.warning(f"[G4] Failed to record AXE trust violation metric: {e}")
 
         raise HTTPException(
             status_code=403,

@@ -399,6 +399,9 @@ class AuditEventType(str, Enum):
     MODE_COMMIT_FAILED = "sovereign.mode_commit_failed"
     MODE_ROLLBACK = "sovereign.mode_rollback"
 
+    # G4: Governance Monitoring
+    GOVERNANCE_AUDIT_EXPORTED = "sovereign.governance_audit_exported"
+
 
 class AuditEntry(BaseModel):
     """Audit log entry for sovereign mode operations."""
@@ -611,5 +614,173 @@ class ModeChangePreflightRequest(BaseModel):
             "example": {
                 "target_mode": "sovereign",
                 "include_details": True,
+            }
+        }
+
+
+# =============================================================================
+# G4.3: Audit Export Schemas
+# =============================================================================
+
+
+class AuditExportRequest(BaseModel):
+    """
+    Request for audit log export.
+
+    **G4.3 - Audit Snapshot Export**
+
+    Exports audit events in JSONL format with optional SHA256 hash.
+    """
+
+    start_time: Optional[datetime] = Field(
+        None,
+        description="Start time for audit log filter (inclusive)"
+    )
+    end_time: Optional[datetime] = Field(
+        None,
+        description="End time for audit log filter (inclusive)"
+    )
+    event_types: Optional[List[str]] = Field(
+        default=None,
+        description="Filter by event types (e.g., ['mode_changed', 'bundle_quarantined'])"
+    )
+    include_hash: bool = Field(
+        default=True,
+        description="Include SHA256 hash of export at the end"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "start_time": "2025-12-01T00:00:00Z",
+                "end_time": "2025-12-31T23:59:59Z",
+                "event_types": ["mode_changed", "mode_override_created", "bundle_quarantined"],
+                "include_hash": True,
+            }
+        }
+
+
+class AuditExportResponse(BaseModel):
+    """
+    Response for audit log export.
+
+    Contains export metadata and download information.
+    """
+
+    success: bool = Field(..., description="Export success status")
+    export_id: str = Field(..., description="Unique export identifier")
+    event_count: int = Field(..., description="Number of events exported")
+    format: str = Field(default="jsonl", description="Export format (jsonl)")
+    hash_algorithm: Optional[str] = Field(None, description="Hash algorithm if include_hash=True")
+    content_hash: Optional[str] = Field(None, description="SHA256 hash of exported content")
+    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Export timestamp")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": True,
+                "export_id": "export_2025-12-25_15-30-45_abc123",
+                "event_count": 127,
+                "format": "jsonl",
+                "hash_algorithm": "SHA256",
+                "content_hash": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
+                "timestamp": "2025-12-25T15:30:45.123456Z",
+            }
+        }
+
+
+# =============================================================================
+# G4.4: Governance Status Schemas
+# =============================================================================
+
+
+class GovernanceHealthStatus(str, Enum):
+    """Health status for governance components."""
+
+    HEALTHY = "healthy"
+    WARNING = "warning"
+    CRITICAL = "critical"
+
+
+class G1BundleTrustStatus(BaseModel):
+    """G1 Bundle Trust governance status."""
+
+    status: GovernanceHealthStatus = Field(..., description="Overall bundle trust health")
+    bundles_total: int = Field(..., description="Total bundles discovered")
+    bundles_validated: int = Field(0, description="Successfully validated bundles")
+    bundles_quarantined: int = Field(0, description="Quarantined bundles")
+    signature_failures_24h: int = Field(0, description="Signature failures in last 24 hours")
+
+
+class G2ModeGovernanceStatus(BaseModel):
+    """G2 Mode Switch Governance status."""
+
+    status: GovernanceHealthStatus = Field(..., description="Overall mode governance health")
+    current_mode: str = Field(..., description="Current operation mode")
+    override_active: bool = Field(False, description="Whether an override is currently active")
+    preflight_failures_24h: int = Field(0, description="Preflight failures in last 24 hours")
+    mode_switches_24h: int = Field(0, description="Mode switches in last 24 hours")
+
+
+class G3AXESecurityStatus(BaseModel):
+    """G3 AXE Security governance status."""
+
+    status: GovernanceHealthStatus = Field(..., description="Overall AXE security health")
+    dmz_running: bool = Field(False, description="Whether DMZ gateway is running")
+    trust_violations_24h: int = Field(0, description="Trust tier violations in last 24 hours")
+    external_requests_blocked_24h: int = Field(0, description="EXTERNAL requests blocked in last 24 hours")
+
+
+class CriticalAuditEvent(BaseModel):
+    """Critical audit event summary."""
+
+    timestamp: datetime = Field(..., description="Event timestamp")
+    event_type: str = Field(..., description="Event type")
+    severity: str = Field(..., description="Event severity")
+    reason: str = Field(..., description="Event reason/description")
+
+
+class GovernanceStatusResponse(BaseModel):
+    """
+    Aggregated governance status response.
+
+    **G4.4 - Governance Status Endpoint**
+
+    Provides health overview across all governance layers (G1, G2, G3).
+    """
+
+    overall_governance: GovernanceHealthStatus = Field(..., description="Overall governance health")
+    g1_bundle_trust: G1BundleTrustStatus = Field(..., description="G1 Bundle Trust status")
+    g2_mode_governance: G2ModeGovernanceStatus = Field(..., description="G2 Mode Governance status")
+    g3_axe_security: G3AXESecurityStatus = Field(..., description="G3 AXE Security status")
+    critical_events_24h: List[CriticalAuditEvent] = Field(default_factory=list, description="Critical events in last 24h")
+    last_update: datetime = Field(default_factory=datetime.utcnow, description="Status update timestamp")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "overall_governance": "healthy",
+                "g1_bundle_trust": {
+                    "status": "healthy",
+                    "bundles_total": 5,
+                    "bundles_validated": 5,
+                    "bundles_quarantined": 0,
+                    "signature_failures_24h": 0
+                },
+                "g2_mode_governance": {
+                    "status": "healthy",
+                    "current_mode": "sovereign",
+                    "override_active": False,
+                    "preflight_failures_24h": 1,
+                    "mode_switches_24h": 2
+                },
+                "g3_axe_security": {
+                    "status": "healthy",
+                    "dmz_running": False,
+                    "trust_violations_24h": 12,
+                    "external_requests_blocked_24h": 12
+                },
+                "critical_events_24h": [],
+                "last_update": "2025-12-25T15:45:00.123456Z"
             }
         }

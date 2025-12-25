@@ -22,6 +22,20 @@ from backend.app.modules.sovereign_mode.schemas import (
     # G2: Mode Switch Governance
     ModeChangePreflightRequest,
     ModeChangePreflightResult,
+    # G4: Governance Monitoring
+    AuditExportRequest,
+    AuditExportResponse,
+    AuditEventType,
+    GovernanceStatusResponse,
+    GovernanceHealthStatus,
+    G1BundleTrustStatus,
+    G2ModeGovernanceStatus,
+    G3AXESecurityStatus,
+    CriticalAuditEvent,
+    AuditSeverity,
+)
+from backend.app.modules.sovereign_mode.governance_metrics import (
+    get_governance_metrics,
 )
 
 
@@ -903,3 +917,409 @@ async def remove_trusted_key(key_id: str, revoke: bool = False):
     except Exception as e:
         logger.error(f"Failed to remove/revoke key {key_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to remove key: {str(e)}")
+
+
+# =============================================================================
+# G4: GOVERNANCE METRICS ENDPOINTS
+# =============================================================================
+
+
+@router.get(
+    "/metrics",
+    summary="Get governance metrics (Prometheus format)",
+    response_class=HTTPException.__bases__[0],  # PlainTextResponse
+)
+async def get_governance_metrics_prometheus():
+    """
+    Get governance metrics in Prometheus text format.
+
+    **G4.1 - Governance Metrics**
+
+    Returns Prometheus-compatible metrics for:
+    - Mode switches (counter with target_mode label)
+    - Preflight failures (counter with gate label)
+    - Override usage (counter)
+    - Bundle signature failures (counter)
+    - Bundle quarantines (counter)
+    - AXE trust violations (counter with trust_tier label)
+    - Override active status (gauge: 0 or 1)
+
+    **No Business Data:**
+    - Only governance signals
+    - No payloads, no PII
+    - Counts and gauges only
+
+    Example output:
+    ```
+    # HELP sovereign_mode_switch_total Total mode switches by target mode
+    # TYPE sovereign_mode_switch_total counter
+    sovereign_mode_switch_total{target_mode="sovereign"} 5
+    sovereign_mode_switch_total{target_mode="online"} 3
+    ```
+    """
+    try:
+        from fastapi.responses import PlainTextResponse
+
+        metrics = get_governance_metrics()
+        prometheus_text = metrics.get_prometheus_metrics()
+
+        return PlainTextResponse(content=prometheus_text, media_type="text/plain")
+
+    except Exception as e:
+        logger.error(f"Failed to export Prometheus metrics: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to export metrics: {str(e)}")
+
+
+@router.get(
+    "/metrics/summary",
+    summary="Get governance metrics summary (JSON)",
+)
+async def get_governance_metrics_summary():
+    """
+    Get governance metrics summary as JSON.
+
+    **G4.1 - Governance Metrics**
+
+    Returns JSON summary with:
+    - Mode switches (by target mode)
+    - Preflight failures (by gate)
+    - Override usage total
+    - Bundle signature failures
+    - Bundle quarantines
+    - AXE trust violations (by trust tier)
+    - Override active status (boolean)
+    - Last update timestamp
+
+    Example:
+    ```json
+    {
+      "mode_switches": {
+        "sovereign": 5,
+        "online": 3
+      },
+      "preflight_failures": {
+        "network_gate": 2,
+        "ipv6_gate": 1
+      },
+      "override_usage_total": 1,
+      "bundle_signature_failures": 0,
+      "bundle_quarantines": 0,
+      "axe_trust_violations": {
+        "external": 12
+      },
+      "override_active": false,
+      "last_update": "2025-12-25T10:30:45.123456"
+    }
+    ```
+    """
+    try:
+        metrics = get_governance_metrics()
+        summary = metrics.get_summary()
+
+        return summary
+
+    except Exception as e:
+        logger.error(f"Failed to get metrics summary: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get metrics: {str(e)}")
+
+
+# =============================================================================
+# G4.3: AUDIT EXPORT ENDPOINT
+# =============================================================================
+
+
+@router.post(
+    "/audit/export",
+    response_model=AuditExportResponse,
+    summary="Export audit log snapshot (JSONL)",
+)
+async def export_audit_log(request: AuditExportRequest):
+    """
+    Export audit log in JSONL format with optional SHA256 hash.
+
+    **G4.3 - Audit Snapshot Export**
+
+    Exports audit events matching the filter criteria in JSONL format
+    (one JSON object per line). Optionally includes a SHA256 hash of
+    the exported content for integrity verification.
+
+    **Filters:**
+    - `start_time`: Include events after this timestamp (inclusive)
+    - `end_time`: Include events before this timestamp (inclusive)
+    - `event_types`: Include only these event types
+
+    **Format:**
+    ```
+    {"timestamp":"2025-12-25T10:00:00Z","event_type":"mode_changed",...}
+    {"timestamp":"2025-12-25T10:15:00Z","event_type":"bundle_loaded",...}
+    ...
+    SHA256:a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2
+    ```
+
+    **Use Cases:**
+    - Compliance audit trail export
+    - Forensic analysis
+    - SIEM ingestion
+    - Long-term archival
+
+    **Security:**
+    - No sensitive data in exports (no PII, no payloads)
+    - SHA256 hash provides integrity proof
+    - Exports are audited (GOVERNANCE_AUDIT_EXPORTED event)
+    """
+    try:
+        import json
+        import hashlib
+        import uuid
+        from datetime import datetime
+        from fastapi.responses import PlainTextResponse
+
+        service = get_sovereign_service()
+
+        # Generate unique export ID
+        export_id = f"export_{datetime.utcnow().strftime('%Y-%m-%d_%H-%M-%S')}_{uuid.uuid4().hex[:8]}"
+
+        # Get audit log with filters
+        audit_log = await service.get_audit_log()
+
+        # Apply filters
+        filtered_events = audit_log
+
+        if request.start_time:
+            filtered_events = [
+                e for e in filtered_events
+                if e.timestamp >= request.start_time
+            ]
+
+        if request.end_time:
+            filtered_events = [
+                e for e in filtered_events
+                if e.timestamp <= request.end_time
+            ]
+
+        if request.event_types:
+            filtered_events = [
+                e for e in filtered_events
+                if e.event_type in request.event_types
+            ]
+
+        # Build JSONL content
+        jsonl_lines = []
+        for event in filtered_events:
+            # Convert to dict and serialize
+            event_dict = event.model_dump(mode='json')
+            jsonl_lines.append(json.dumps(event_dict, separators=(',', ':')))
+
+        jsonl_content = "\n".join(jsonl_lines)
+
+        # Compute hash if requested
+        content_hash = None
+        hash_algorithm = None
+        if request.include_hash:
+            hash_algorithm = "SHA256"
+            hasher = hashlib.sha256()
+            hasher.update(jsonl_content.encode('utf-8'))
+            content_hash = hasher.hexdigest()
+
+            # Append hash to content
+            jsonl_content += f"\nSHA256:{content_hash}"
+
+        # Emit audit event for export
+        service._audit(
+            event_type=AuditEventType.GOVERNANCE_AUDIT_EXPORTED.value,
+            success=True,
+            severity="INFO",
+            reason=f"Audit log exported: {len(filtered_events)} events",
+            metadata={
+                "export_id": export_id,
+                "event_count": len(filtered_events),
+                "start_time": request.start_time.isoformat() if request.start_time else None,
+                "end_time": request.end_time.isoformat() if request.end_time else None,
+                "event_types": request.event_types,
+                "include_hash": request.include_hash,
+                "content_hash": content_hash,
+            },
+        )
+
+        logger.info(
+            f"[G4.3] Audit log exported: {export_id} "
+            f"({len(filtered_events)} events, hash={request.include_hash})"
+        )
+
+        # Return JSONL as plain text with metadata in response object
+        # Note: For actual download, this would be better as a streaming response
+        # For now, return metadata only (content would be too large for JSON response)
+        return AuditExportResponse(
+            success=True,
+            export_id=export_id,
+            event_count=len(filtered_events),
+            format="jsonl",
+            hash_algorithm=hash_algorithm,
+            content_hash=content_hash,
+            timestamp=datetime.utcnow(),
+        )
+
+    except Exception as e:
+        logger.error(f"[G4.3] Failed to export audit log: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to export audit log: {str(e)}")
+
+
+# =============================================================================
+# G4.4: GOVERNANCE STATUS ENDPOINT
+# =============================================================================
+
+
+@router.get(
+    "/governance/status",
+    response_model=GovernanceStatusResponse,
+    summary="Get aggregated governance status",
+)
+async def get_governance_status():
+    """
+    Get aggregated governance status across all governance layers.
+
+    **G4.4 - Governance Status Endpoint**
+
+    Provides a unified view of governance health across:
+    - **G1**: Bundle Trust (signatures, quarantines, validation)
+    - **G2**: Mode Governance (mode switches, overrides, preflight)
+    - **G3**: AXE Security (DMZ, trust tiers, violations)
+
+    **Health Status Logic:**
+    - `healthy`: All systems normal, no critical events
+    - `warning`: Minor issues detected (e.g., override active, preflight failures)
+    - `critical`: Severe issues (quarantines, trust violations, signature failures)
+
+    **Use Cases:**
+    - Governance dashboard overview
+    - Health monitoring/alerting
+    - Compliance status checking
+    - Security posture assessment
+
+    **Data Sources:**
+    - Governance metrics (G4.1)
+    - Audit log (last 24h)
+    - Current system state
+    """
+    try:
+        from datetime import datetime, timedelta
+
+        service = get_sovereign_service()
+        metrics = get_governance_metrics()
+
+        # Get current state
+        status = await service.get_status()
+        audit_log = await service.get_audit_log()
+
+        # Calculate 24h window
+        now = datetime.utcnow()
+        last_24h = now - timedelta(hours=24)
+
+        # Filter events from last 24h
+        recent_events = [
+            e for e in audit_log
+            if e.timestamp >= last_24h
+        ]
+
+        # G1: Bundle Trust Status
+        bundle_stats = service.bundle_manager.get_stats()
+        signature_failures_24h = len([
+            e for e in recent_events
+            if e.event_type in ["sovereign.bundle_signature_invalid", "sovereign.bundle_quarantined"]
+        ])
+
+        g1_status = GovernanceHealthStatus.HEALTHY
+        if bundle_stats["quarantined"] > 0 or signature_failures_24h > 0:
+            g1_status = GovernanceHealthStatus.CRITICAL
+        elif bundle_stats["failed"] > 0:
+            g1_status = GovernanceHealthStatus.WARNING
+
+        g1_bundle_trust = G1BundleTrustStatus(
+            status=g1_status,
+            bundles_total=bundle_stats["total"],
+            bundles_validated=bundle_stats["validated"],
+            bundles_quarantined=bundle_stats["quarantined"],
+            signature_failures_24h=signature_failures_24h,
+        )
+
+        # G2: Mode Governance Status
+        preflight_failures_24h = len([
+            e for e in recent_events
+            if e.event_type == "sovereign.mode_preflight_failed"
+        ])
+        mode_switches_24h = len([
+            e for e in recent_events
+            if e.event_type == "sovereign.mode_changed"
+        ])
+        override_active = metrics.override_active_gauge.get() == 1.0
+
+        g2_status = GovernanceHealthStatus.HEALTHY
+        if override_active:
+            g2_status = GovernanceHealthStatus.WARNING
+        if preflight_failures_24h > 10:  # Threshold for critical
+            g2_status = GovernanceHealthStatus.CRITICAL
+
+        g2_mode_governance = G2ModeGovernanceStatus(
+            status=g2_status,
+            current_mode=status.mode.value,
+            override_active=override_active,
+            preflight_failures_24h=preflight_failures_24h,
+            mode_switches_24h=mode_switches_24h,
+        )
+
+        # G3: AXE Security Status
+        trust_violations_24h = len([
+            e for e in recent_events
+            if e.event_type == "axe.trust_tier_violation"
+        ])
+        external_blocked_24h = len([
+            e for e in recent_events
+            if e.event_type == "axe.request_blocked"
+        ])
+
+        g3_status = GovernanceHealthStatus.HEALTHY
+        if trust_violations_24h > 50:  # Threshold for warning
+            g3_status = GovernanceHealthStatus.WARNING
+        if trust_violations_24h > 200:  # Threshold for critical
+            g3_status = GovernanceHealthStatus.CRITICAL
+
+        g3_axe_security = G3AXESecurityStatus(
+            status=g3_status,
+            dmz_running=status.dmz_gateway_running,
+            trust_violations_24h=trust_violations_24h,
+            external_requests_blocked_24h=external_blocked_24h,
+        )
+
+        # Critical events (last 24h, ERROR or CRITICAL severity)
+        critical_events = [
+            CriticalAuditEvent(
+                timestamp=e.timestamp,
+                event_type=e.event_type,
+                severity=e.severity.value,
+                reason=e.reason or "No reason provided",
+            )
+            for e in recent_events
+            if e.severity in [AuditSeverity.ERROR, AuditSeverity.CRITICAL]
+        ][:10]  # Limit to 10 most recent
+
+        # Overall governance health (worst of all components)
+        overall_statuses = [g1_status, g2_status, g3_status]
+        if GovernanceHealthStatus.CRITICAL in overall_statuses:
+            overall_governance = GovernanceHealthStatus.CRITICAL
+        elif GovernanceHealthStatus.WARNING in overall_statuses:
+            overall_governance = GovernanceHealthStatus.WARNING
+        else:
+            overall_governance = GovernanceHealthStatus.HEALTHY
+
+        return GovernanceStatusResponse(
+            overall_governance=overall_governance,
+            g1_bundle_trust=g1_bundle_trust,
+            g2_mode_governance=g2_mode_governance,
+            g3_axe_security=g3_axe_security,
+            critical_events_24h=critical_events,
+            last_update=now,
+        )
+
+    except Exception as e:
+        logger.error(f"[G4.4] Failed to get governance status: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get governance status: {str(e)}")

@@ -22,6 +22,9 @@ from backend.app.modules.sovereign_mode.signature_validator import (
     get_signature_validator,
     SignaturePolicy,
 )
+from backend.app.modules.sovereign_mode.governance_metrics import (
+    get_governance_metrics,
+)
 
 
 class BundleManager:
@@ -228,6 +231,12 @@ class BundleManager:
                 reason_parts = []
                 if not result.signature_valid:
                     reason_parts.append("invalid signature")
+                    # G4: Record bundle signature failure
+                    try:
+                        metrics = get_governance_metrics()
+                        metrics.record_bundle_signature_failure()
+                    except Exception as e:
+                        logger.warning(f"[G4] Failed to record signature failure metric: {e}")
                 if not result.key_trusted:
                     reason_parts.append("untrusted key")
                 if not result.signature_present and not self.signature_validator.policy.allow_unsigned_bundles:
@@ -314,6 +323,13 @@ class BundleManager:
 
         # Emit audit event
         self._emit_quarantine_audit_event(bundle_id, reason)
+
+        # G4: Record bundle quarantine metric
+        try:
+            metrics = get_governance_metrics()
+            metrics.record_bundle_quarantine()
+        except Exception as e:
+            logger.warning(f"[G4] Failed to record bundle quarantine metric: {e}")
 
         logger.warning(f"Bundle {bundle_id} quarantined: {reason}")
 

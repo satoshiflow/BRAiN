@@ -49,6 +49,9 @@ from backend.app.modules.sovereign_mode.ipv6_gate import (
     get_ipv6_gate_checker,
     IPv6GateResult,
 )
+from backend.app.modules.sovereign_mode.governance_metrics import (
+    get_governance_metrics,
+)
 
 
 # Import DMZ control (lazy to avoid circular imports)
@@ -626,6 +629,14 @@ class SovereignModeService:
         for check in checks:
             if check.blocking and check.status == "fail":
                 blocking_reasons.append(f"{check.gate_name}: {check.reason}")
+
+                # G4: Record preflight failure metrics
+                try:
+                    metrics = get_governance_metrics()
+                    metrics.record_preflight_failure(check.gate_name)
+                except Exception as e:
+                    logger.warning(f"[G4] Failed to record preflight failure metric: {e}")
+
             elif check.status == "warning":
                 warnings.append(f"{check.gate_name}: {check.reason}")
 
@@ -695,6 +706,13 @@ class SovereignModeService:
         with self.override_lock:
             self.active_override = override
 
+        # G4: Set override active gauge
+        try:
+            metrics = get_governance_metrics()
+            metrics.set_override_active(True)
+        except Exception as e:
+            logger.warning(f"[G4] Failed to set override active metric: {e}")
+
         logger.info(
             f"[G2] Owner override created: reason='{reason[:50]}...', "
             f"expires_at={override.expires_at}"
@@ -760,6 +778,14 @@ class SovereignModeService:
             logger.info(
                 f"[G2] Override consumed: reason='{override.reason[:50]}...'"
             )
+
+            # G4: Record override usage and clear active gauge
+            try:
+                metrics = get_governance_metrics()
+                metrics.record_override_usage()
+                metrics.set_override_active(False)
+            except Exception as e:
+                logger.warning(f"[G4] Failed to record override consumption metrics: {e}")
 
             # Clear from active state
             self.active_override = None
@@ -1039,6 +1065,13 @@ class SovereignModeService:
                         "preflight_status": preflight_result.overall_status.value,
                     },
                 )
+
+                # G4: Record mode switch metric
+                try:
+                    metrics = get_governance_metrics()
+                    metrics.record_mode_switch(new_mode.value)
+                except Exception as e:
+                    logger.warning(f"[G4] Failed to record mode switch metric: {e}")
 
                 logger.info(
                     f"[G2] Mode change COMMITTED: {old_mode.value} -> {new_mode.value} "
