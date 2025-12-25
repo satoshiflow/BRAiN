@@ -1,0 +1,90 @@
+# Docker Compose for Prometheus Governance Monitoring
+#
+# Purpose: Prometheus sensor for BRAiN governance metrics
+# Usage: docker compose -f ops/prometheus/docker-compose.prometheus.yml up -d
+# Network: Joins existing brain_internal network (read-only)
+# Port: 9090 (localhost only, not publicly exposed)
+#
+# Last Updated: 2025-12-25
+# Version: 1.0.0
+
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: brain-prometheus
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Command-line flags
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=90d'  # 90 days retention for compliance
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'  # Enable reload via /-/reload
+      - '--web.enable-admin-api'  # Enable admin API for management
+
+    # Volumes
+    volumes:
+      # Configuration file
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+      # Persistent storage for metrics data
+      - brain_prometheus_data:/prometheus
+
+      # Optional: Alert rules directory (not used yet)
+      # - ./rules:/etc/prometheus/rules:ro
+
+    # Ports (localhost only for security)
+    ports:
+      - "127.0.0.1:9090:9090"  # Bind to localhost only
+
+    # Networks
+    networks:
+      - brain_internal  # Join existing BRAiN internal network
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    # Resource limits (optional, adjust as needed)
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+    # Environment variables (optional)
+    environment:
+      - TZ=UTC
+
+    # Labels for identification
+    labels:
+      com.brain.component: prometheus
+      com.brain.layer: observability
+      com.brain.module: governance-monitoring
+
+# Networks
+networks:
+  # Join existing BRAiN internal network
+  brain_internal:
+    external: true
+    name: brain_brain_internal
+
+# Volumes
+volumes:
+  # Persistent storage for Prometheus data
+  brain_prometheus_data:
+    driver: local
+    labels:
+      com.brain.component: prometheus
+      com.brain.retention: 90d
