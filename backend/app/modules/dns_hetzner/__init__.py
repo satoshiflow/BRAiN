@@ -34,6 +34,18 @@ from .schemas import (
     RecordsListResponse,
 )
 
+from .client import (
+    HetznerDNSClient,
+)
+
+from .service import (
+    HetznerDNSService,
+    get_dns_service,
+    load_config_from_env,
+)
+
+from .router import router
+
 __all__ = [
     # Enums
     "DNSRecordType",
@@ -50,4 +62,12 @@ __all__ = [
     "DNSApplyResult",
     "ZonesListResponse",
     "RecordsListResponse",
+    # Client
+    "HetznerDNSClient",
+    # Service
+    "HetznerDNSService",
+    "get_dns_service",
+    "load_config_from_env",
+    # Router
+    "router",
 ]
