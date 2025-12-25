@@ -39,6 +39,15 @@ from .schemas import (
     PageSection,
 )
 
+# Sprint II - DNS integration
+try:
+    from app.modules.dns_hetzner import get_dns_service
+    from app.modules.dns_hetzner.schemas import DNSRecordType
+    DNS_AVAILABLE = True
+except ImportError:
+    DNS_AVAILABLE = False
+    logger.warning("DNS module not available - DNS automation disabled")
+
 
 # ============================================================================
 # Constants
@@ -990,6 +999,19 @@ class WebGenesisService:
                 warnings.append(f"Health check failed: {health_msg}")
                 deploy_log.append(f"WARNING: {health_msg}")
 
+            # Sprint II: DNS automation (after health check passes)
+            if DNS_AVAILABLE and spec.deploy.dns and spec.deploy.dns.enable:
+                deploy_log.append("DNS automation enabled - applying DNS records...")
+                dns_success, dns_warnings = self._apply_dns_records(site_id, spec, port)
+
+                if dns_success:
+                    deploy_log.append("✅ DNS records applied successfully")
+                else:
+                    deploy_log.append("⚠️ DNS automation failed (deployment continues)")
+
+                # Add DNS warnings to deployment warnings (non-blocking)
+                warnings.extend(dns_warnings)
+
             # Determine URL
             url = f"http://localhost:{port}"
             if spec.deploy.domain:
@@ -1163,6 +1185,107 @@ services:
             logger.warning(f"Failed to stop deployment: {e.stderr}")
         except Exception as e:
             logger.warning(f"Failed to stop deployment: {e}")
+
+    def _apply_dns_records(
+        self, site_id: str, spec: WebsiteSpec, port: int
+    ) -> Tuple[bool, List[str]]:
+        """
+        Apply DNS records for deployed site (Sprint II).
+
+        NON-BLOCKING: DNS failures do NOT fail the deployment.
+        All errors are logged and returned as warnings.
+
+        Args:
+            site_id: Site identifier
+            spec: Website specification with DNS config
+            port: Deployed port
+
+        Returns:
+            Tuple of (success: bool, warnings: List[str])
+        """
+        warnings = []
+
+        try:
+            if not DNS_AVAILABLE:
+                warnings.append("DNS module not available - skipping DNS automation")
+                logger.warning(f"DNS module not available for site {site_id}")
+                return False, warnings
+
+            if not spec.deploy.dns or not spec.deploy.dns.enable:
+                logger.debug(f"DNS automation not enabled for site {site_id}")
+                return False, []
+
+            dns_config = spec.deploy.dns
+            dns_service = get_dns_service()
+
+            logger.info(
+                f"Applying DNS records for {site_id}: "
+                f"{dns_config.record_type} {dns_config.name}.{dns_config.zone}"
+            )
+
+            # Determine record value
+            # If value not specified, DNS service will use ENV defaults (BRAIN_PUBLIC_IPV4/IPv6)
+            record_value = dns_config.value
+
+            # For A/AAAA records pointing to localhost, try to use public IP from ENV
+            if not record_value and dns_config.record_type in ["A", "AAAA"]:
+                logger.debug(
+                    f"No DNS value specified for {dns_config.record_type} record, "
+                    "DNS service will use BRAIN_PUBLIC_IPV4/IPv6 from ENV"
+                )
+
+            # Apply DNS record (idempotent upsert)
+            import asyncio
+            result = asyncio.run(
+                dns_service.apply_dns_record(
+                    zone=dns_config.zone,
+                    record_type=DNSRecordType(dns_config.record_type),
+                    name=dns_config.name,
+                    value=record_value,
+                    ttl=dns_config.ttl,
+                )
+            )
+
+            if result.success:
+                logger.info(
+                    f"✅ DNS record {result.action}: "
+                    f"{result.record_type} {result.name}.{result.zone} -> {result.value} "
+                    f"(ttl={result.ttl})"
+                )
+
+                # Add informational warning about DNS propagation
+                if result.action == "created":
+                    warnings.append(
+                        f"DNS record created: {result.name}.{result.zone} -> {result.value} "
+                        f"(may take up to 5 minutes to propagate)"
+                    )
+                elif result.action == "updated":
+                    warnings.append(
+                        f"DNS record updated: {result.name}.{result.zone} -> {result.value} "
+                        f"(may take up to 5 minutes to propagate)"
+                    )
+
+                return True, warnings
+
+            else:
+                # DNS apply failed
+                error_msg = f"DNS automation failed: {result.message}"
+                warnings.append(error_msg)
+
+                if result.errors:
+                    for err in result.errors:
+                        warnings.append(f"DNS error: {err}")
+                        logger.error(f"DNS error for {site_id}: {err}")
+
+                logger.error(f"❌ DNS automation failed for {site_id}: {result.message}")
+                return False, warnings
+
+        except Exception as e:
+            # Catch all exceptions to prevent DNS failures from blocking deployment
+            error_msg = f"DNS automation exception: {str(e)}"
+            warnings.append(error_msg)
+            logger.error(f"❌ DNS automation exception for {site_id}: {e}")
+            return False, warnings
 
     def _deploy_with_docker_compose(
         self, site_dir: Path, deploy_log: List[str]
