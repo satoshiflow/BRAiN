@@ -1,10 +1,11 @@
 """
-Course Factory Service - Sprint 12
+Course Factory Service - Sprint 12 + Sprint 13
 
-Orchestrates course generation with IR governance.
+Orchestrates course generation with IR governance, workflow management,
+content enhancements, and WebGenesis integration.
 """
 
-from typing import Optional
+from typing import Optional, List
 import time
 from pathlib import Path
 import json
@@ -17,12 +18,33 @@ from app.modules.course_factory.schemas import (
     CourseQuiz,
     CourseLandingPage,
     CourseMetadata,
+    CourseLesson,
 )
 from app.modules.course_factory.generators import (
     OutlineGenerator,
     LessonGenerator,
     QuizGenerator,
     LandingPageGenerator,
+)
+from app.modules.course_factory.enhanced_schemas import (
+    WorkflowState,
+    WorkflowTransition,
+    EnhancementType,
+    EnhancementRequest,
+    EnhancementResult,
+    EnhancedCourseMetadata,
+    WebGenesisTheme,
+    WebGenesisSection,
+    SEOPack,
+    FlashcardDeck,
+)
+from app.modules.course_factory.workflow import WorkflowStateMachine
+from app.modules.course_factory.enhancements import get_enhancement_service
+from app.modules.course_factory.webgenesis_integration import (
+    get_theme_registry,
+    SectionBuilder,
+    SEOGenerator,
+    PreviewURLGenerator,
 )
 from app.modules.ir_governance import (
     IR,
@@ -44,10 +66,19 @@ class CourseFactoryService:
     """
 
     def __init__(self):
+        # Sprint 12 generators
         self.outline_gen = OutlineGenerator()
         self.lesson_gen = LessonGenerator()
         self.quiz_gen = QuizGenerator()
         self.landing_gen = LandingPageGenerator()
+
+        # Sprint 13 services
+        self.workflow_machine = WorkflowStateMachine()
+        self.enhancement_service = get_enhancement_service()
+        self.theme_registry = get_theme_registry()
+        self.section_builder = SectionBuilder()
+        self.seo_generator = SEOGenerator()
+        self.preview_generator = PreviewURLGenerator()
 
         # Storage paths
         self.storage_base = Path("storage/courses")
@@ -394,6 +425,386 @@ class CourseFactoryService:
         )
 
         return staging_url
+
+    # ========================================
+    # Sprint 13: Workflow Management
+    # ========================================
+
+    async def transition_workflow(
+        self,
+        course_id: str,
+        from_state: WorkflowState,
+        to_state: WorkflowState,
+        actor: str,
+        reason: Optional[str] = None,
+        hitl_approval: bool = False,
+    ) -> WorkflowTransition:
+        """
+        Transition course workflow state.
+
+        Args:
+            course_id: Course ID
+            from_state: Current state
+            to_state: Target state
+            actor: Who triggered the transition
+            reason: Optional reason for transition
+            hitl_approval: Whether human approved (for review→publish_ready)
+
+        Returns:
+            WorkflowTransition
+
+        Raises:
+            ValueError: If transition is invalid
+        """
+        logger.info(
+            f"[CourseFactory] Workflow transition requested: {course_id} "
+            f"{from_state.value} → {to_state.value} (actor={actor})"
+        )
+
+        # Perform transition
+        transition = self.workflow_machine.transition(
+            current_state=from_state,
+            target_state=to_state,
+            actor=actor,
+            reason=reason,
+            hitl_approval=hitl_approval,
+        )
+
+        # Save transition to evidence pack
+        self._save_workflow_transition(course_id, transition)
+
+        logger.info(
+            f"[CourseFactory] Workflow transition completed: {transition.transition_id}"
+        )
+
+        return transition
+
+    async def rollback_workflow(
+        self,
+        course_id: str,
+        transition_id: str,
+        actor: str,
+        reason: str,
+    ) -> WorkflowTransition:
+        """
+        Rollback a workflow transition.
+
+        Args:
+            course_id: Course ID
+            transition_id: Transition to rollback
+            actor: Who triggered the rollback
+            reason: Reason for rollback
+
+        Returns:
+            WorkflowTransition (rollback)
+        """
+        logger.info(
+            f"[CourseFactory] Workflow rollback requested: {course_id} "
+            f"(transition={transition_id}, actor={actor})"
+        )
+
+        # Load original transition (from evidence pack)
+        original_transition = self._load_workflow_transition(course_id, transition_id)
+
+        # Perform rollback
+        rollback_transition = self.workflow_machine.rollback_transition(
+            original_transition=original_transition,
+            actor=actor,
+            reason=reason,
+        )
+
+        # Save rollback transition
+        self._save_workflow_transition(course_id, rollback_transition)
+
+        logger.info(
+            f"[CourseFactory] Workflow rollback completed: {rollback_transition.transition_id}"
+        )
+
+        return rollback_transition
+
+    # ========================================
+    # Sprint 13: Content Enhancements
+    # ========================================
+
+    async def enhance_content(
+        self,
+        request: EnhancementRequest,
+        lessons: List[CourseLesson],
+    ) -> EnhancementResult:
+        """
+        Enhance course content with LLM-generated additions.
+
+        Args:
+            request: Enhancement request
+            lessons: Lessons to enhance
+
+        Returns:
+            EnhancementResult
+        """
+        logger.info(
+            f"[CourseFactory] Content enhancement requested: {request.course_id} "
+            f"(types={[t.value for t in request.enhancement_types]})"
+        )
+
+        # Process enhancement request
+        result = await self.enhancement_service.process_enhancement_request(
+            request=request,
+            lessons=lessons,
+        )
+
+        # Save enhancements to evidence pack (if not dry-run)
+        if not request.dry_run:
+            self._save_enhancements(request.course_id, result)
+
+        logger.info(
+            f"[CourseFactory] Content enhancement completed: {result.total_enhancements} "
+            f"enhancements generated (validated: {result.validated_count})"
+        )
+
+        return result
+
+    # ========================================
+    # Sprint 13: WebGenesis Integration
+    # ========================================
+
+    async def bind_theme(
+        self,
+        course_id: str,
+        theme_id: str,
+        custom_colors: Optional[dict] = None,
+    ) -> WebGenesisTheme:
+        """
+        Bind WebGenesis theme to course.
+
+        Args:
+            course_id: Course ID
+            theme_id: Theme ID from registry
+            custom_colors: Optional color overrides
+
+        Returns:
+            WebGenesisTheme
+
+        Raises:
+            ValueError: If theme not found
+        """
+        logger.info(
+            f"[CourseFactory] Binding theme to course: {course_id} (theme={theme_id})"
+        )
+
+        # Get theme from registry
+        theme = self.theme_registry.get_theme(theme_id)
+
+        if not theme:
+            raise ValueError(f"Theme '{theme_id}' not found in registry")
+
+        # Apply custom colors (if provided)
+        if custom_colors:
+            theme.primary_color = custom_colors.get("primary", theme.primary_color)
+            theme.secondary_color = custom_colors.get("secondary", theme.secondary_color)
+            theme.accent_color = custom_colors.get("accent", theme.accent_color)
+
+        # Save theme binding to evidence pack
+        self._save_theme_binding(course_id, theme)
+
+        logger.info(f"[CourseFactory] Theme bound successfully: {theme_id}")
+
+        return theme
+
+    async def build_sections(
+        self,
+        course_id: str,
+        outline: CourseOutline,
+        landing_page: Optional[CourseLandingPage] = None,
+    ) -> List[WebGenesisSection]:
+        """
+        Build WebGenesis sections from course data.
+
+        Args:
+            course_id: Course ID
+            outline: Course outline
+            landing_page: Optional landing page data
+
+        Returns:
+            List of WebGenesisSection
+        """
+        logger.info(
+            f"[CourseFactory] Building WebGenesis sections: {course_id}"
+        )
+
+        # Build sections
+        sections = self.section_builder.build_sections(outline, landing_page)
+
+        # Save sections to evidence pack
+        self._save_sections(course_id, sections)
+
+        logger.info(
+            f"[CourseFactory] Sections built: {len(sections)} sections"
+        )
+
+        return sections
+
+    async def generate_seo_pack(
+        self,
+        course_id: str,
+        outline: CourseOutline,
+        keywords: Optional[List[str]] = None,
+    ) -> SEOPack:
+        """
+        Generate SEO pack for course.
+
+        Args:
+            course_id: Course ID
+            outline: Course outline
+            keywords: Optional additional keywords
+
+        Returns:
+            SEOPack
+        """
+        logger.info(
+            f"[CourseFactory] Generating SEO pack: {course_id}"
+        )
+
+        # Generate SEO metadata
+        seo_pack = self.seo_generator.generate_seo_pack(outline, keywords)
+
+        # Save SEO pack to evidence pack
+        self._save_seo_pack(course_id, seo_pack)
+
+        logger.info(
+            f"[CourseFactory] SEO pack generated: {len(seo_pack.keywords)} keywords"
+        )
+
+        return seo_pack
+
+    async def generate_preview_url(
+        self,
+        course_id: str,
+        version: str = "latest",
+    ) -> str:
+        """
+        Generate preview URL for course.
+
+        Args:
+            course_id: Course ID
+            version: Version identifier (default: "latest")
+
+        Returns:
+            Preview URL
+        """
+        logger.info(
+            f"[CourseFactory] Generating preview URL: {course_id} (version={version})"
+        )
+
+        # Generate preview URL
+        preview_url = self.preview_generator.generate_preview_url(
+            course_id=course_id,
+            version=version,
+        )
+
+        logger.info(f"[CourseFactory] Preview URL: {preview_url}")
+
+        return preview_url
+
+    # ========================================
+    # Sprint 13: Evidence Pack Helpers
+    # ========================================
+
+    def _save_workflow_transition(
+        self,
+        course_id: str,
+        transition: WorkflowTransition,
+    ):
+        """Save workflow transition to evidence pack."""
+        course_dir = self.storage_base / course_id
+        transitions_dir = course_dir / "workflow_transitions"
+        transitions_dir.mkdir(parents=True, exist_ok=True)
+
+        transition_path = transitions_dir / f"{transition.transition_id}.json"
+        with open(transition_path, "w", encoding="utf-8") as f:
+            json.dump(transition.model_dump(), f, indent=2, ensure_ascii=False, default=str)
+
+        logger.debug(f"[CourseFactory] Workflow transition saved: {transition_path}")
+
+    def _load_workflow_transition(
+        self,
+        course_id: str,
+        transition_id: str,
+    ) -> WorkflowTransition:
+        """Load workflow transition from evidence pack."""
+        transition_path = (
+            self.storage_base / course_id / "workflow_transitions" / f"{transition_id}.json"
+        )
+
+        if not transition_path.exists():
+            raise ValueError(f"Transition '{transition_id}' not found")
+
+        with open(transition_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        return WorkflowTransition(**data)
+
+    def _save_enhancements(
+        self,
+        course_id: str,
+        result: EnhancementResult,
+    ):
+        """Save enhancement result to evidence pack."""
+        course_dir = self.storage_base / course_id
+        enhancements_dir = course_dir / "enhancements"
+        enhancements_dir.mkdir(parents=True, exist_ok=True)
+
+        result_path = enhancements_dir / f"enhancement_{int(time.time())}.json"
+        with open(result_path, "w", encoding="utf-8") as f:
+            json.dump(result.model_dump(), f, indent=2, ensure_ascii=False, default=str)
+
+        logger.debug(f"[CourseFactory] Enhancements saved: {result_path}")
+
+    def _save_theme_binding(
+        self,
+        course_id: str,
+        theme: WebGenesisTheme,
+    ):
+        """Save theme binding to evidence pack."""
+        course_dir = self.storage_base / course_id
+        course_dir.mkdir(parents=True, exist_ok=True)
+
+        theme_path = course_dir / "webgenesis_theme.json"
+        with open(theme_path, "w", encoding="utf-8") as f:
+            json.dump(theme.model_dump(), f, indent=2, ensure_ascii=False, default=str)
+
+        logger.debug(f"[CourseFactory] Theme binding saved: {theme_path}")
+
+    def _save_sections(
+        self,
+        course_id: str,
+        sections: List[WebGenesisSection],
+    ):
+        """Save WebGenesis sections to evidence pack."""
+        course_dir = self.storage_base / course_id
+        course_dir.mkdir(parents=True, exist_ok=True)
+
+        sections_path = course_dir / "webgenesis_sections.json"
+        sections_data = [s.model_dump() for s in sections]
+
+        with open(sections_path, "w", encoding="utf-8") as f:
+            json.dump(sections_data, f, indent=2, ensure_ascii=False, default=str)
+
+        logger.debug(f"[CourseFactory] Sections saved: {sections_path}")
+
+    def _save_seo_pack(
+        self,
+        course_id: str,
+        seo_pack: SEOPack,
+    ):
+        """Save SEO pack to evidence pack."""
+        course_dir = self.storage_base / course_id
+        course_dir.mkdir(parents=True, exist_ok=True)
+
+        seo_path = course_dir / "seo_pack.json"
+        with open(seo_path, "w", encoding="utf-8") as f:
+            json.dump(seo_pack.model_dump(), f, indent=2, ensure_ascii=False, default=str)
+
+        logger.debug(f"[CourseFactory] SEO pack saved: {seo_path}")
 
 
 # Singleton

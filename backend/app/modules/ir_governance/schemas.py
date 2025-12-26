@@ -50,6 +50,18 @@ class IRAction(str, Enum):
     COURSE_GENERATE_LANDING = "course.generate_landing"
     COURSE_DEPLOY_STAGING = "course.deploy_staging"
 
+    # CourseFactory enhancement actions (Sprint 13)
+    COURSE_ENHANCE_EXAMPLES = "course.enhance_examples"
+    COURSE_ENHANCE_SUMMARIES = "course.enhance_summaries"
+    COURSE_GENERATE_FLASHCARDS = "course.generate_flashcards"
+    COURSE_WORKFLOW_TRANSITION = "course.workflow_transition"
+
+    # WebGenesis integration actions (Sprint 13)
+    WEBGENESIS_BIND_THEME = "webgenesis.bind_theme"
+    WEBGENESIS_BUILD_SECTIONS = "webgenesis.build_sections"
+    WEBGENESIS_APPLY_SEO = "webgenesis.apply_seo"
+    WEBGENESIS_PREVIEW = "webgenesis.preview"
+
     # Infrastructure actions
     INFRA_PROVISION = "infra.provision"
     INFRA_DESTROY = "infra.destroy"

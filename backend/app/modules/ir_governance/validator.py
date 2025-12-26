@@ -298,6 +298,22 @@ class IRValidator:
         if action == IRAction.COURSE_DEPLOY_STAGING:
             return RiskTier.TIER_1
 
+        # CourseFactory enhancements (Sprint 13) → Tier 0 (content generation)
+        if action.value.startswith("course.enhance") or action.value.startswith("course.generate_flashcards"):
+            return RiskTier.TIER_0
+
+        # CourseFactory workflow transitions → Tier 0 (state management)
+        if action == IRAction.COURSE_WORKFLOW_TRANSITION:
+            return RiskTier.TIER_0
+
+        # WebGenesis theme/SEO → Tier 0 (metadata)
+        if action.value.startswith("webgenesis.bind") or action.value.startswith("webgenesis.apply_seo"):
+            return RiskTier.TIER_0
+
+        # WebGenesis build/preview → Tier 1 (staging deployment)
+        if action.value.startswith("webgenesis.build") or action.value.startswith("webgenesis.preview"):
+            return RiskTier.TIER_1
+
         # Default: Tier 0
         return RiskTier.TIER_0
 
