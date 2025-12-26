@@ -33,9 +33,14 @@ class IRAction(str, Enum):
     ODOO_UPDATE_RECORD = "odoo.update_record"
     ODOO_DELETE_RECORD = "odoo.delete_record"
 
-    # WebGenesis actions
+    # WebGenesis actions (Sprint 8)
     WEBGEN_GENERATE_SITE = "webgen.generate_site"
     WEBGEN_UPDATE_CONTENT = "webgen.update_content"
+
+    # WebGenesis actions (Sprint 10 - opt-in IR integration)
+    WEBGENESIS_SITE_CREATE = "webgenesis.site.create"
+    WEBGENESIS_SITE_UPDATE = "webgenesis.site.update"
+    WEBGENESIS_DEPLOY_TRIGGER = "webgenesis.deploy.trigger"
 
     # Infrastructure actions
     INFRA_PROVISION = "infra.provision"
@@ -60,8 +65,9 @@ class IRProvider(str, Enum):
     ODOO_V16 = "odoo.v16"
     ODOO_V17 = "odoo.v17"
 
-    # WebGenesis provider
-    WEBGEN_V1 = "webgen.v1"
+    # WebGenesis providers
+    WEBGEN_V1 = "webgen.v1"  # Sprint 8
+    WEBGENESIS_V1 = "webgenesis.v1"  # Sprint 10
 
     # Infrastructure providers
     INFRA_TERRAFORM = "infra.terraform"

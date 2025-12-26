@@ -439,20 +439,26 @@ class ExecutionGraph:
         Raises:
             ExecutionGraphError: If instantiation fails
         """
-        # For now, we return a placeholder
-        # In the actual implementation, this would:
-        # 1. Import the executor class dynamically
-        # 2. Instantiate it with executor_params
-        # 3. Return the instance
+        # Import node types dynamically
+        from backend.app.modules.autonomous_pipeline.schemas import ExecutionNodeType
 
-        # Placeholder implementation:
-        # from backend.app.modules.autonomous_pipeline.nodes import WebGenesisNode
-        # return WebGenesisNode(node_spec)
+        # Map node types to executor classes
+        if node_spec.node_type == ExecutionNodeType.WEBGENESIS:
+            from backend.app.modules.autonomous_pipeline.nodes.webgenesis_node import WebGenesisNode
+            return WebGenesisNode(node_spec)
 
-        # For Sprint 8.2, we'll just raise an error if called
-        # (will be implemented when we create actual node executors in S8.3-S8.5)
-        raise NotImplementedError(
-            f"Node executor instantiation not yet implemented for: {node_spec.executor_class}"
+        # Add other node types as they're implemented
+        # elif node_spec.node_type == ExecutionNodeType.DNS:
+        #     from backend.app.modules.autonomous_pipeline.nodes.dns_node import DNSNode
+        #     return DNSNode(node_spec)
+        # elif node_spec.node_type == ExecutionNodeType.ODOO_MODULE:
+        #     from backend.app.modules.autonomous_pipeline.nodes.odoo_module_node import OdooModuleNode
+        #     return OdooModuleNode(node_spec)
+
+        # Fallback for unsupported node types
+        raise ExecutionGraphError(
+            f"Node type not supported: {node_spec.node_type}. "
+            f"Available: WEBGENESIS"
         )
 
 
