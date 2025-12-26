@@ -104,6 +104,9 @@ jobs:
 
   test-coverage-report:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     services:
       postgres:
         image: ankane/pgvector:latest
@@ -160,7 +163,7 @@ jobs:
           path: backend/htmlcov/
       
       - name: Comment PR with coverage
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/github-script@v7
         with:
           script: |

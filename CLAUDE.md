@@ -1,7 +1,7 @@
 # CLAUDE.md - AI Assistant Guide for BRAiN
 
-**Version:** 0.3.1
-**Last Updated:** 2025-12-11
+**Version:** 0.5.0
+**Last Updated:** 2025-12-20
 **Purpose:** Comprehensive guide for AI assistants working with the BRAiN codebase
 
 ---
@@ -29,8 +29,13 @@
 - **Multi-Agent System** with supervisor orchestration
 - **Mission Queue System** with Redis-based priority scheduling
 - **Conversational Interface** with multiple frontend applications
-- **Modular Architecture** with plugin-based extensibility
+- **Modular Architecture** with 17+ specialized modules
 - **LLM Integration** with runtime-configurable providers
+- **Fleet Management** for multi-robot coordination (RYR integration)
+- **Policy Engine** for rule-based governance and authorization
+- **Generic API Client Framework** for external integrations
+- **Real-time Updates** via WebSocket support
+- **Database Migrations** with Alembic version control
 
 **Core Philosophy:**
 - Async-first design for high concurrency
@@ -38,6 +43,7 @@
 - Modular and extensible by design
 - Event-driven architecture
 - Observable with comprehensive health checks
+- Enterprise-grade resilience patterns (circuit breaker, retry, rate limiting)
 
 ---
 
@@ -50,6 +56,7 @@
 | Language | Python | 3.11+ | Backend logic |
 | ASGI Server | Uvicorn | Latest | ASGI web server |
 | Database | PostgreSQL | 15+ (pgvector) | Persistent storage + vectors |
+| Migrations | Alembic | Latest | Database schema versioning |
 | Cache/Queue | Redis | 7+ | Mission queue, state management |
 | Vector DB | Qdrant | Latest | Embeddings and semantic memory |
 | Schema | Pydantic | 2.0+ | Data validation |
@@ -84,14 +91,72 @@
 ```
 BRAiN/
 ├── backend/                    # Python FastAPI backend
-│   ├── main.py                # FastAPI entry point with auto-discovery
-│   ├── api/routes/            # API endpoint modules (auto-discovered)
+│   ├── main.py                # UNIFIED FastAPI entry point (v0.3.0+)
+│   │                          # Single entry point with auto-discovery
+│   ├── api/routes/            # Legacy API routes (auto-discovered)
 │   │   ├── agent_manager.py   # /api/agents/* endpoints
-│   │   ├── missions.py        # /api/missions/* endpoints
+│   │   ├── missions.py        # /api/missions/* endpoints (legacy)
 │   │   ├── axe.py            # /api/axe/* endpoints
 │   │   ├── connectors.py      # /api/connectors/* endpoints
 │   │   ├── debug_llm.py       # /api/debug/* endpoints
 │   │   └── llm_config.py      # /api/llm/config endpoints
+│   │
+│   ├── app/                   # NEW: Modern app structure (v0.3.0+)
+│   │   ├── main.py            # Deprecated entry point (backward compat)
+│   │   ├── core/              # Core infrastructure
+│   │   │   ├── config.py      # Settings management
+│   │   │   ├── logging.py     # Structured logging setup
+│   │   │   ├── redis_client.py # Async Redis client
+│   │   │   └── lifecycle.py   # App startup/shutdown
+│   │   │
+│   │   ├── modules/           # 17+ Specialized modules
+│   │   │   ├── policy/        # 🆕 Policy Engine (Phase 2)
+│   │   │   │   ├── service.py    # Rule evaluation, ALLOW/DENY/WARN
+│   │   │   │   ├── router.py     # /api/policy/* endpoints
+│   │   │   │   ├── schemas.py    # PolicyRule, PolicyEffect models
+│   │   │   │   └── README.md     # Full documentation
+│   │   │   │
+│   │   │   ├── fleet/         # 🆕 Fleet Management (Phase 2)
+│   │   │   │   ├── service.py    # Multi-robot coordination
+│   │   │   │   ├── router.py     # /api/fleet/* endpoints
+│   │   │   │   └── schemas.py    # Robot, Fleet models
+│   │   │   │
+│   │   │   ├── foundation/    # 🆕 Foundation Layer (Phase 2)
+│   │   │   │   ├── service.py    # Safety verification, auth checks
+│   │   │   │   ├── router.py     # /api/foundation/* endpoints
+│   │   │   │   ├── schemas.py    # SafetyCheck, Authorization models
+│   │   │   │   └── README.md
+│   │   │   │
+│   │   │   ├── karma/         # 🆕 KARMA Framework (Phase 2)
+│   │   │   │   ├── router.py     # /api/karma/* endpoints
+│   │   │   │   └── schemas.py    # Reasoning models
+│   │   │   │
+│   │   │   ├── integrations/  # 🆕 Generic API Client (Phase 5.1)
+│   │   │   │   ├── base_client.py  # BaseAPIClient abstract class
+│   │   │   │   ├── auth.py         # Multi-auth (OAuth, API Key, etc.)
+│   │   │   │   ├── retry.py        # Exponential backoff + jitter
+│   │   │   │   ├── circuit_breaker.py # Cascading failure prevention
+│   │   │   │   ├── rate_limit.py   # Token bucket algorithm
+│   │   │   │   ├── schemas.py      # Integration models
+│   │   │   │   ├── exceptions.py   # Custom exceptions
+│   │   │   │   └── examples/       # OAuth, rate-limited clients
+│   │   │   │
+│   │   │   ├── missions/      # Mission system v2
+│   │   │   ├── supervisor/    # Supervisor v2
+│   │   │   ├── dna/           # Genetic optimization
+│   │   │   ├── immune/        # Security & threat detection
+│   │   │   ├── credits/       # Resource management
+│   │   │   ├── threats/       # Threat detection
+│   │   │   ├── telemetry/     # System monitoring
+│   │   │   ├── metrics/       # Performance metrics
+│   │   │   ├── hardware/      # Hardware resource mgmt
+│   │   │   ├── ros2_bridge/   # ROS2 integration
+│   │   │   ├── slam/          # Localization & mapping
+│   │   │   └── vision/        # Computer vision
+│   │   │
+│   │   └── api/routes/        # Modern API routes
+│   │       └── *.py           # Auto-discovered route modules
+│   │
 │   ├── brain/agents/          # Agent system
 │   │   ├── base_agent.py      # BaseAgent abstract class
 │   │   ├── agent_manager.py   # Agent CRUD operations
@@ -100,33 +165,96 @@ BRAiN/
 │   │   ├── ops_agent.py       # Operations specialist
 │   │   ├── architect_agent.py # Architecture decisions
 │   │   ├── axe_agent.py       # Auxiliary Execution Engine
+│   │   │
+│   │   ├── fleet_agent.py     # 🆕 Fleet coordinator (Phase 3 - RYR)
+│   │   ├── safety_agent.py    # 🆕 Safety monitor (Phase 3 - RYR)
+│   │   ├── navigation_agent.py # 🆕 Path planner (Phase 3 - RYR)
+│   │   │
 │   │   ├── agent_blueprints/  # Predefined agent configs
+│   │   │   ├── default.py
+│   │   │   ├── code_specialist.py
+│   │   │   ├── ops_specialist.py
+│   │   │   ├── fleet_coordinator.py  # 🆕
+│   │   │   ├── navigation_planner.py # 🆕
+│   │   │   └── safety_monitor.py     # 🆕
+│   │   │
+│   │   ├── webdev/            # 🆕 WebDev Agent Cluster
+│   │   │   ├── cli.py         # Command-line interface
+│   │   │   ├── coding/        # Code generation & review
+│   │   │   │   ├── code_generator.py
+│   │   │   │   ├── code_completer.py
+│   │   │   │   └── code_reviewer.py
+│   │   │   ├── core/          # Core utilities
+│   │   │   │   ├── error_handler.py
+│   │   │   │   ├── self_healing.py
+│   │   │   │   └── token_manager.py
+│   │   │   ├── integration_core/ # External integrations
+│   │   │   │   ├── claude_bridge.py
+│   │   │   │   ├── github_connector.py
+│   │   │   │   └── language_parser.py
+│   │   │   ├── server_admin/  # Infrastructure
+│   │   │   │   ├── deployment_agent.py
+│   │   │   │   ├── infrastructure_agent.py
+│   │   │   │   └── monitoring_agent.py
+│   │   │   └── web_grafik/    # UI/UX design
+│   │   │       ├── component_generator.py
+│   │   │       └── ui_designer.py
+│   │   │
 │   │   └── repositories*.py   # Agent storage abstraction
-│   ├── modules/               # Core modules
-│   │   ├── missions/          # Mission system
-│   │   │   ├── models.py      # Mission, MissionStatus, MissionPriority
-│   │   │   ├── queue.py       # MissionQueue (Redis ZSET)
-│   │   │   ├── worker.py      # MissionWorker background task
-│   │   │   ├── schemas.py     # API response schemas
-│   │   │   └── mission_control_runtime.py
-│   │   ├── supervisor/        # Supervisor module
-│   │   │   ├── router.py      # Supervisor API routes
-│   │   │   ├── service.py     # SupervisorService singleton
-│   │   │   └── schemas.py     # Supervisor models
+│   │
+│   ├── modules/               # Legacy modules (still used)
+│   │   ├── missions/          # Mission system v1 (legacy)
+│   │   ├── supervisor/        # Supervisor v1 (legacy)
 │   │   ├── connector_hub/     # External integrations gateway
 │   │   ├── llm_client.py      # LLMClient (Ollama-compatible)
 │   │   └── llm_config.py      # LLMConfig runtime configuration
-│   ├── core/                  # Core utilities
+│   │
+│   ├── alembic/               # 🆕 Database Migrations
+│   │   ├── versions/          # Migration scripts
+│   │   │   └── 001_initial_schema.py
+│   │   ├── env.py             # Migration environment
+│   │   └── alembic.ini        # Alembic configuration
+│   │
+│   ├── mission_control_core/  # 🆕 Mission Control Core
+│   │   ├── api/routes.py      # REST + WebSocket endpoints
+│   │   ├── core/              # Core services
+│   │   └── README.md          # Documentation
+│   │
+│   ├── brain_api/             # 🆕 Separate API server
+│   │   └── app/               # Independent FastAPI instance
+│   │
+│   ├── brain_cli/             # 🆕 CLI utilities
+│   │
+│   ├── core/                  # Legacy core utilities
 │   │   ├── module_loader.py   # Module auto-discovery
 │   │   └── app.py             # App initialization
+│   │
 │   ├── tests/                 # pytest test suite
 │   │   ├── test_axe_endpoints.py
 │   │   ├── test_connectors_and_agents.py
 │   │   └── test_mission_system.py
+│   │
 │   ├── Dockerfile
 │   └── requirements.txt
 │
 ├── frontend/                  # Frontend applications
+│   ├── control_deck/          # 🆕 NEW Control Dashboard (Next.js)
+│   │   ├── app/               # App Router (14 pages)
+│   │   │   ├── page.tsx           # Landing page
+│   │   │   ├── dashboard/page.tsx # Main dashboard
+│   │   │   ├── core/
+│   │   │   │   ├── agents/page.tsx       # Agent management
+│   │   │   │   ├── agents/[agentId]/page.tsx # Agent details
+│   │   │   │   └── modules/page.tsx      # Module registry
+│   │   │   ├── missions/page.tsx  # Mission control
+│   │   │   ├── supervisor/page.tsx # Supervisor panel
+│   │   │   ├── immune/page.tsx     # Security dashboard
+│   │   │   └── settings/page.tsx   # Settings
+│   │   ├── components/        # React components
+│   │   ├── lib/               # Utilities
+│   │   ├── Dockerfile
+│   │   └── package.json
+│   │
 │   ├── brain_control_ui/      # Admin/Control Center (Next.js)
 │   │   ├── src/
 │   │   │   ├── app/           # App Router pages
@@ -157,21 +285,25 @@ BRAiN/
 │   │   ├── package.json
 │   │   └── tsconfig.json
 │   │
-│   └── brain_ui/              # Chat Interface (Next.js)
+│   ├── brain_ui/              # Chat Interface (Next.js)
+│   │   ├── app/               # App Router pages
+│   │   ├── src/
+│   │   │   ├── brain-ui/
+│   │   │   │   ├── components/
+│   │   │   │   │   ├── BrainPresence.tsx  # Avatar/circle
+│   │   │   │   │   ├── ChatShell.tsx      # Chat container
+│   │   │   │   │   ├── CanvasPanel.tsx    # Context panel
+│   │   │   │   │   └── ChatSidebar.tsx    # Navigation
+│   │   │   │   └── state/
+│   │   │   │       └── presenceStore.ts   # Zustand store
+│   │   │   └── lib/
+│   │   │       └── brainApi.ts # API client
+│   │   ├── package.json
+│   │   └── tsconfig.json
+│   │
+│   └── axe_ui/                # AXE Interface (Next.js)
 │       ├── app/               # App Router pages
-│       ├── src/
-│       │   ├── brain-ui/
-│       │   │   ├── components/
-│       │   │   │   ├── BrainPresence.tsx  # Avatar/circle
-│       │   │   │   ├── ChatShell.tsx      # Chat container
-│       │   │   │   ├── CanvasPanel.tsx    # Context panel
-│       │   │   │   └── ChatSidebar.tsx    # Navigation
-│       │   │   └── state/
-│       │   │       └── presenceStore.ts   # Zustand store
-│       │   └── lib/
-│       │       └── brainApi.ts # API client
-│       ├── package.json
-│       └── tsconfig.json
+│       └── package.json
 │
 ├── docs/                      # Documentation
 │   ├── BRAIN_SERVER_DATASHEET_FOR_CHATGPT.md
@@ -190,9 +322,14 @@ BRAiN/
 ├── nginx.conf                 # Nginx config
 ├── requirements.txt           # Root Python requirements
 ├── CHANGELOG.md               # Version history
+├── CLAUDE.md                  # This file - AI assistant guide
 ├── README.md                  # User-facing documentation
 └── README.dev.md              # Developer documentation
 ```
+
+**Legend:**
+- 🆕 = New in v0.3.0 or later
+- **(Phase X)** = Development phase identifier
 
 ---
 
@@ -720,6 +857,452 @@ def get_llm_config() -> LLMConfig:
     return _config_manager.get()
 ```
 
+### Policy Engine (Phase 2)
+
+**Purpose:** Rule-based governance system for agent permissions and action authorization.
+
+**Location:** `backend/app/modules/policy/`
+
+**Core Concepts:**
+
+```python
+from enum import Enum
+from pydantic import BaseModel
+
+class PolicyEffect(str, Enum):
+    ALLOW = "allow"
+    DENY = "deny"
+    WARN = "warn"
+    AUDIT = "audit"
+
+class PolicyRule(BaseModel):
+    id: str
+    name: str
+    description: str
+    effect: PolicyEffect
+    priority: int = 100
+    conditions: Dict[str, Any]
+    enabled: bool = True
+```
+
+**Rule Evaluation:**
+```python
+from backend.app.modules.policy.service import PolicyService
+
+policy_service = PolicyService()
+
+# Evaluate action against policies
+result = await policy_service.evaluate(
+    agent_id="ops_agent",
+    action="deploy_application",
+    context={"environment": "production"}
+)
+
+if result.effect == PolicyEffect.DENY:
+    raise PermissionError(f"Action denied: {result.reason}")
+```
+
+**Operators Supported:**
+- `==`, `!=` - Equality checks
+- `>`, `<`, `>=`, `<=` - Numeric comparisons
+- `contains` - Substring/list membership
+- `matches` - Regex pattern matching
+- `in` - List membership
+
+**Example Policy:**
+```python
+{
+    "id": "prod-deploy-restriction",
+    "name": "Production Deployment Restriction",
+    "description": "Only senior agents can deploy to production",
+    "effect": "deny",
+    "priority": 200,
+    "conditions": {
+        "action": {"==": "deploy_application"},
+        "context.environment": {"==": "production"},
+        "agent_role": {"!=": "senior"}
+    },
+    "enabled": true
+}
+```
+
+### Fleet Management System (Phase 2 & 3 - RYR Integration)
+
+**Purpose:** Multi-robot fleet coordination and management.
+
+**Location:** `backend/app/modules/fleet/`
+
+**Architecture:**
+
+```
+Fleet Module (Phase 2)         RYR Agents (Phase 3)
+├── service.py                 ├── fleet_agent.py
+├── router.py                  ├── safety_agent.py
+└── schemas.py                 └── navigation_agent.py
+```
+
+**Fleet Service:**
+```python
+from backend.app.modules.fleet.service import FleetService
+
+fleet_service = FleetService()
+
+# Register robot in fleet
+robot = await fleet_service.register_robot({
+    "id": "robot_001",
+    "name": "Delivery Bot Alpha",
+    "capabilities": ["navigation", "package_delivery"],
+    "max_payload": 50.0,  # kg
+    "battery_capacity": 100.0
+})
+
+# Get fleet statistics
+stats = await fleet_service.get_fleet_stats()
+# {
+#   "total_robots": 10,
+#   "active": 7,
+#   "idle": 2,
+#   "charging": 1,
+#   "total_tasks_completed": 453
+# }
+
+# Assign task to optimal robot
+assignment = await fleet_service.assign_task({
+    "task_id": "delivery_123",
+    "requirements": ["navigation", "package_delivery"],
+    "priority": "high"
+})
+```
+
+**RYR Agents:**
+
+1. **FleetAgent** (`backend/brain/agents/fleet_agent.py`)
+   - Fleet-level coordination
+   - Task distribution and load balancing
+   - Health monitoring across robots
+
+2. **SafetyAgent** (`backend/brain/agents/safety_agent.py`)
+   - Real-time safety rule enforcement
+   - Collision avoidance validation
+   - Risk assessment for operations
+
+3. **NavigationAgent** (`backend/brain/agents/navigation_agent.py`)
+   - Path planning and optimization
+   - Real-time obstacle avoidance
+   - Route coordination across fleet
+
+**Usage Example:**
+```python
+from backend.brain.agents.fleet_agent import FleetAgent
+from backend.brain.agents.safety_agent import SafetyAgent
+from backend.brain.agents.navigation_agent import NavigationAgent
+
+# Initialize agents
+fleet_agent = FleetAgent()
+safety_agent = SafetyAgent()
+nav_agent = NavigationAgent()
+
+# Fleet coordination
+result = await fleet_agent.run("Coordinate delivery of 5 packages")
+
+# Safety check before movement
+safety_check = await safety_agent.run(
+    "Validate path from warehouse to customer location"
+)
+
+# Navigate robot
+path = await nav_agent.run(
+    "Plan optimal route avoiding construction zone"
+)
+```
+
+### Generic API Client Framework (Phase 5.1)
+
+**Purpose:** Enterprise-grade framework for external API integrations with resilience patterns.
+
+**Location:** `backend/app/modules/integrations/`
+
+**Components:**
+
+```
+integrations/
+├── base_client.py       # BaseAPIClient abstract class
+├── auth.py              # AuthenticationManager
+├── retry.py             # RetryHandler with exponential backoff
+├── circuit_breaker.py   # CircuitBreaker pattern
+├── rate_limit.py        # RateLimiter (token bucket)
+├── schemas.py           # Integration models
+├── exceptions.py        # Custom exceptions
+└── examples/            # Example implementations
+    ├── oauth_client.py
+    ├── rate_limited_client.py
+    └── simple_rest_client.py
+```
+
+**BaseAPIClient Usage:**
+
+```python
+from backend.app.modules.integrations.base_client import BaseAPIClient
+from backend.app.modules.integrations.auth import APIKeyAuth
+
+class GitHubAPIClient(BaseAPIClient):
+    def __init__(self, api_key: str):
+        super().__init__(
+            base_url="https://api.github.com",
+            auth_manager=APIKeyAuth(
+                api_key=api_key,
+                header_name="Authorization",
+                prefix="Bearer"
+            ),
+            timeout=30.0,
+            max_retries=3,
+            enable_circuit_breaker=True,
+            enable_rate_limiter=True,
+            rate_limit_calls=5000,  # GitHub API limit
+            rate_limit_period=3600.0  # 1 hour
+        )
+
+    async def get_user(self, username: str) -> dict:
+        """Get GitHub user information."""
+        return await self.get(f"/users/{username}")
+
+    async def create_issue(self, repo: str, data: dict) -> dict:
+        """Create GitHub issue."""
+        return await self.post(f"/repos/{repo}/issues", json=data)
+
+# Usage
+client = GitHubAPIClient(api_key="ghp_xxxxx")
+user = await client.get_user("octocat")
+```
+
+**Resilience Patterns:**
+
+1. **Retry with Exponential Backoff:**
+```python
+from backend.app.modules.integrations.retry import RetryHandler
+
+retry_handler = RetryHandler(
+    max_retries=3,
+    base_delay=1.0,
+    max_delay=60.0,
+    exponential_base=2.0,
+    jitter=True  # Add randomness to prevent thundering herd
+)
+```
+
+2. **Circuit Breaker:**
+```python
+from backend.app.modules.integrations.circuit_breaker import CircuitBreaker
+
+circuit_breaker = CircuitBreaker(
+    failure_threshold=5,      # Open after 5 failures
+    recovery_timeout=60.0,    # Try again after 60s
+    expected_exception=Exception
+)
+
+# Circuit states: CLOSED → OPEN → HALF_OPEN → CLOSED
+```
+
+3. **Rate Limiting:**
+```python
+from backend.app.modules.integrations.rate_limit import RateLimiter
+
+rate_limiter = RateLimiter(
+    max_calls=100,
+    time_period=60.0,  # 100 calls per minute
+    burst_size=10      # Allow bursts up to 10
+)
+```
+
+**Authentication Support:**
+- API Key (header or query parameter)
+- OAuth 2.0 (authorization code, client credentials)
+- Bearer Token
+- Basic Auth
+- Custom auth schemes
+
+### Database Migrations (Alembic)
+
+**Purpose:** Version-controlled database schema management.
+
+**Location:** `backend/alembic/`
+
+**Structure:**
+```
+alembic/
+├── versions/
+│   └── 001_initial_schema.py
+├── env.py          # Migration environment config
+└── alembic.ini     # Alembic configuration
+```
+
+**Creating a Migration:**
+
+```bash
+# Generate migration from models
+cd backend
+alembic revision --autogenerate -m "Add user_roles table"
+
+# Apply migrations
+alembic upgrade head
+
+# Rollback one migration
+alembic downgrade -1
+
+# View migration history
+alembic history
+
+# Current version
+alembic current
+```
+
+**Migration File Example:**
+
+```python
+# alembic/versions/002_add_user_roles.py
+from alembic import op
+import sqlalchemy as sa
+
+def upgrade():
+    op.create_table(
+        'user_roles',
+        sa.Column('id', sa.Integer(), primary_key=True),
+        sa.Column('user_id', sa.String(50), nullable=False),
+        sa.Column('role', sa.String(50), nullable=False),
+        sa.Column('created_at', sa.DateTime(), server_default=sa.func.now())
+    )
+    op.create_index('idx_user_roles_user_id', 'user_roles', ['user_id'])
+
+def downgrade():
+    op.drop_index('idx_user_roles_user_id')
+    op.drop_table('user_roles')
+```
+
+### Mission Control Core with WebSocket Support
+
+**Purpose:** Enhanced mission control with real-time updates.
+
+**Location:** `backend/mission_control_core/`
+
+**WebSocket Endpoint:**
+
+```python
+# mission_control_core/api/routes.py
+from fastapi import WebSocket, WebSocketDisconnect
+
+class MissionControlWS:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    async def broadcast(self, message: dict):
+        for connection in self.active_connections:
+            await connection.send_json(message)
+
+ws_manager = MissionControlWS()
+
+@router.websocket("/ws/missions")
+async def mission_updates(websocket: WebSocket):
+    await ws_manager.connect(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+    except WebSocketDisconnect:
+        ws_manager.active_connections.remove(websocket)
+```
+
+**Frontend WebSocket Consumer:**
+
+```typescript
+// hooks/useMissionUpdates.ts
+export function useMissionUpdates() {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const ws = new WebSocket("ws://localhost:8000/ws/missions");
+
+    ws.onmessage = (event) => {
+      const update = JSON.parse(event.data);
+
+      // Invalidate queries to refetch
+      queryClient.invalidateQueries({
+        queryKey: ["missions", "queue"]
+      });
+    };
+
+    return () => ws.close();
+  }, [queryClient]);
+}
+```
+
+### WebDev Agent Cluster
+
+**Purpose:** Full-stack web development agent system with specialized sub-agents.
+
+**Location:** `backend/brain/agents/webdev/`
+
+**Architecture:**
+
+```
+webdev/
+├── cli.py                     # Command-line interface
+├── coding/                    # Code generation & review
+│   ├── code_generator.py
+│   ├── code_completer.py
+│   └── code_reviewer.py
+├── core/                      # Core utilities
+│   ├── error_handler.py
+│   ├── self_healing.py
+│   └── token_manager.py
+├── integration_core/          # External integrations
+│   ├── claude_bridge.py       # Claude API integration
+│   ├── github_connector.py    # GitHub operations
+│   └── language_parser.py     # AST parsing
+├── server_admin/              # Infrastructure
+│   ├── deployment_agent.py
+│   ├── infrastructure_agent.py
+│   └── monitoring_agent.py
+└── web_grafik/                # UI/UX design
+    ├── component_generator.py
+    └── ui_designer.py
+```
+
+**Usage Example:**
+
+```python
+from backend.brain.agents.webdev.coding.code_generator import CodeGenerator
+from backend.brain.agents.webdev.coding.code_reviewer import CodeReviewer
+
+# Generate code
+generator = CodeGenerator()
+result = await generator.run(
+    "Create a React component for user authentication form"
+)
+
+# Review generated code
+reviewer = CodeReviewer()
+review = await reviewer.run(result.code)
+
+if review.has_issues:
+    print(f"Issues found: {review.issues}")
+```
+
+**Sub-Agent Capabilities:**
+
+| Sub-Agent | Purpose | Tools |
+|-----------|---------|-------|
+| CodeGenerator | Generate code from specs | AST, Templates, LLM |
+| CodeCompleter | Auto-completion | Language models, Context |
+| CodeReviewer | Code quality review | Linters, Security scanners |
+| DeploymentAgent | Deploy applications | Docker, K8s, Cloud APIs |
+| InfrastructureAgent | Manage infrastructure | Terraform, Ansible |
+| MonitoringAgent | Monitor systems | Prometheus, Logs |
+| ComponentGenerator | Generate UI components | React, Vue templates |
+| UIDesigner | Design interfaces | Design systems, A11y |
+
 ---
 
 ## Frontend Architecture
@@ -1028,6 +1611,110 @@ export const usePresenceStore = create<PresenceState>((set) => ({
 | GET | `/api/axe/info` | AXE engine info |
 | POST | `/api/axe/message` | Execute via gateway or LLM fallback |
 
+### Policy Engine (`/api/policy`) 🆕
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/policy/evaluate` | Evaluate action against policies |
+| POST | `/api/policy/test-rule` | Test rule evaluation (no exceptions) |
+| GET | `/api/policy/stats` | Policy system statistics |
+| GET | `/api/policy/policies` | List all policies |
+| POST | `/api/policy/policies` | Create new policy |
+| GET | `/api/policy/policies/{id}` | Get policy by ID |
+| PUT | `/api/policy/policies/{id}` | Update policy |
+| DELETE | `/api/policy/policies/{id}` | Delete policy |
+
+**Evaluate Request:**
+```json
+{
+  "agent_id": "ops_agent",
+  "action": "deploy_application",
+  "context": {
+    "environment": "production",
+    "version": "1.2.3"
+  }
+}
+```
+
+**Evaluate Response:**
+```json
+{
+  "effect": "deny",
+  "reason": "Production deployment requires senior agent role",
+  "matched_rule": "prod-deploy-restriction"
+}
+```
+
+### Fleet Management (`/api/fleet`) 🆕
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/fleet/info` | Fleet system information |
+| GET | `/api/fleet/stats` | Fleet statistics |
+| GET | `/api/fleet/robots` | List all robots |
+| POST | `/api/fleet/robots` | Register new robot |
+| GET | `/api/fleet/robots/{id}` | Get robot details |
+| PUT | `/api/fleet/robots/{id}` | Update robot |
+| DELETE | `/api/fleet/robots/{id}` | Deregister robot |
+| POST | `/api/fleet/assign-task` | Assign task to robot |
+| GET | `/api/fleet/zones` | List coordination zones |
+
+**Register Robot Request:**
+```json
+{
+  "id": "robot_001",
+  "name": "Delivery Bot Alpha",
+  "capabilities": ["navigation", "package_delivery"],
+  "max_payload": 50.0,
+  "battery_capacity": 100.0,
+  "location": {"x": 0.0, "y": 0.0, "z": 0.0}
+}
+```
+
+### Foundation Layer (`/api/foundation`) 🆕
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/foundation/info` | Foundation system info |
+| POST | `/api/foundation/safety-check` | Perform safety verification |
+| POST | `/api/foundation/authorize` | Check action authorization |
+| GET | `/api/foundation/audit-log` | Retrieve audit trail |
+
+**Safety Check Request:**
+```json
+{
+  "action": "move_robot",
+  "parameters": {
+    "robot_id": "robot_001",
+    "target_position": {"x": 10.0, "y": 5.0}
+  }
+}
+```
+
+### KARMA Framework (`/api/karma`) 🆕
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/karma/info` | KARMA system information |
+| POST | `/api/karma/reason` | Execute reasoning task |
+| GET | `/api/karma/reasoning-history` | Get reasoning history |
+
+### Mission Control WebSocket 🆕
+
+| Protocol | Endpoint | Description |
+|----------|----------|-------------|
+| WS | `/ws/missions` | Real-time mission updates |
+
+**WebSocket Message Format:**
+```json
+{
+  "type": "mission_update",
+  "mission_id": "mission_123",
+  "status": "completed",
+  "timestamp": 1703001234.56
+}
+```
+
 ---
 
 ## Development Workflow
@@ -1121,10 +1808,44 @@ npm install --save-dev @types/new-package
 
 ### Database Migrations
 
-**Currently:** No formal migration system
-**Pattern:** Manual schema updates in PostgreSQL
+**Framework:** Alembic (version-controlled migrations)
 
-**Future:** Alembic for migrations
+**Location:** `backend/alembic/`
+
+**Common Operations:**
+
+```bash
+# Generate new migration
+cd backend
+alembic revision --autogenerate -m "Description of change"
+
+# Apply all pending migrations
+alembic upgrade head
+
+# Rollback one migration
+alembic downgrade -1
+
+# View migration history
+alembic history
+
+# Check current version
+alembic current
+
+# Rollback to specific version
+alembic downgrade <revision_id>
+```
+
+**Migration File Structure:**
+```python
+# backend/alembic/versions/xxx_description.py
+def upgrade():
+    # Apply changes
+    op.create_table(...)
+
+def downgrade():
+    # Rollback changes
+    op.drop_table(...)
+```
 
 ### Git Workflow
 
@@ -2215,6 +2936,39 @@ OLLAMA_MODEL=llama3.2:latest
 ---
 
 ## Version History
+
+**0.5.0** (2025-12-20)
+- **Phase 5.1:** Generic API Client Framework with enterprise-grade resilience patterns
+  - BaseAPIClient abstract class for all external integrations
+  - Multi-authentication support (OAuth 2.0, API Key, Bearer, Basic, Custom)
+  - Automatic retry with exponential backoff and jitter
+  - Circuit breaker pattern for cascading failure prevention
+  - Rate limiting with token bucket algorithm
+  - Comprehensive examples and documentation
+- **Phase 3:** RYR Core Integration - Multi-robot fleet coordination
+  - FleetAgent for fleet-level coordination and task distribution
+  - SafetyAgent for real-time safety rule enforcement
+  - NavigationAgent for path planning and obstacle avoidance
+  - Agent blueprints for fleet operations
+- **Phase 2:** Foundation modules for governance and safety
+  - Policy Engine with rule-based governance (ALLOW/DENY/WARN/AUDIT)
+  - Fleet Management module for multi-robot coordination
+  - Foundation Layer for safety verification and authorization
+  - KARMA Framework for knowledge-aware reasoning
+- **Database Migrations:** Alembic integration for version-controlled schema management
+- **Mission Control Core:** WebSocket support for real-time mission updates
+- **WebDev Agent Cluster:** Full-stack development agent system with 11 specialized sub-agents
+- **Control Deck Frontend:** New comprehensive dashboard with 14 pages
+- **Module Expansion:** 17+ specialized modules in app/modules/
+- **API Expansion:** 60+ new API endpoints across new modules
+- **Documentation:** Comprehensive updates with examples for all new features
+
+**0.4.0** (2025-12-12)
+- Comprehensive documentation overhaul
+- Updated all README files for clarity and completeness
+- Enhanced architecture documentation
+- Improved developer onboarding documentation
+- Synchronized version across all documentation files
 
 **0.3.1** (2025-12-11)
 - Added comprehensive Server Deployment section

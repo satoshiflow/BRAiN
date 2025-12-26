@@ -1,0 +1,174 @@
+[
+  {
+    "id": "sovereign-block-external-api",
+    "name": "Block External API Calls in Sovereign Mode",
+    "description": "Deny all external API calls when system is in sovereign mode",
+    "effect": "deny",
+    "priority": 200,
+    "conditions": {
+      "action": {"==": "external_api_call"},
+      "environment.sovereign_mode": {"in": ["sovereign", "offline", "quarantine"]}
+    },
+    "enabled": true,
+    "metadata": {
+      "category": "network_security",
+      "severity": "critical",
+      "auto_created": false
+    }
+  },
+  {
+    "id": "sovereign-block-llm-external",
+    "name": "Block External LLM Providers in Offline Mode",
+    "description": "Prevent use of external LLM APIs when in offline mode",
+    "effect": "deny",
+    "priority": 190,
+    "conditions": {
+      "action": {"==": "llm_generate"},
+      "environment.sovereign_mode": {"in": ["offline", "sovereign", "quarantine"]},
+      "llm_provider": {"!=": "local"}
+    },
+    "enabled": true,
+    "metadata": {
+      "category": "llm_security",
+      "severity": "high"
+    }
+  },
+  {
+    "id": "sovereign-require-validation",
+    "name": "Require Bundle Validation",
+    "description": "Enforce bundle validation before loading in strict mode",
+    "effect": "deny",
+    "priority": 180,
+    "conditions": {
+      "action": {"==": "load_bundle"},
+      "environment.sovereign_mode": {"==": "sovereign"},
+      "bundle_validated": {"==": false}
+    },
+    "enabled": true,
+    "metadata": {
+      "category": "bundle_security",
+      "severity": "high"
+    }
+  },
+  {
+    "id": "sovereign-quarantine-failed-validation",
+    "name": "Auto-Quarantine Failed Validations",
+    "description": "Automatically quarantine bundles that fail validation",
+    "effect": "audit",
+    "priority": 170,
+    "conditions": {
+      "action": {"==": "validate_bundle"},
+      "validation_result": {"==": "failed"}
+    },
+    "enabled": true,
+    "metadata": {
+      "category": "bundle_security",
+      "severity": "medium",
+      "action_on_trigger": "quarantine_bundle"
+    }
+  },
+  {
+    "id": "sovereign-warn-mode-change",
+    "name": "Warn on Mode Changes",
+    "description": "Warn when operation mode is changed",
+    "effect": "warn",
+    "priority": 100,
+    "conditions": {
+      "action": {"==": "change_mode"},
+      "triggered_by": {"!=": "auto_detect"}
+    },
+    "enabled": true,
+    "metadata": {
+      "category": "operational",
+      "severity": "low"
+    }
+  },
+  {
+    "id": "sovereign-deny-quarantine-bypass",
+    "name": "Deny Quarantine Bypass",
+    "description": "Prevent loading quarantined bundles without proper authorization",
+    "effect": "deny",
+    "priority": 250,
+    "conditions": {
+      "action": {"==": "load_bundle"},
+      "bundle_status": {"==": "quarantined"},
+      "skip_quarantine_check": {"==": true},
+      "user_role": {"!=": "admin"}
+    },
+    "enabled": true,
+    "metadata": {
+      "category": "access_control",
+      "severity": "critical"
+    }
+  },
+  {
+    "id": "sovereign-audit-network-blocks",
+    "name": "Audit Network Blocks",
+    "description": "Log all blocked network requests in offline modes",
+    "effect": "audit",
+    "priority": 150,
+    "conditions": {
+      "action": {"==": "http_request"},
+      "environment.sovereign_mode": {"in": ["offline", "sovereign", "quarantine"]},
+      "domain": {"!in": ["localhost", "127.0.0.1"]}
+    },
+    "enabled": true,
+    "metadata": {
+      "category": "network_security",
+      "severity": "medium",
+      "action_on_trigger": "log_threat"
+    }
+  },
+  {
+    "id": "sovereign-allow-localhost",
+    "name": "Allow Localhost Access",
+    "description": "Always allow localhost and loopback addresses",
+    "effect": "allow",
+    "priority": 300,
+    "conditions": {
+      "action": {"==": "http_request"},
+      "domain": {"in": ["localhost", "127.0.0.1", "::1", "0.0.0.0"]}
+    },
+    "enabled": true,
+    "metadata": {
+      "category": "network_security",
+      "severity": "low"
+    }
+  },
+  {
+    "id": "sovereign-warn-unsigned-bundle",
+    "name": "Warn on Unsigned Bundle",
+    "description": "Warn when loading unsigned bundles (if signatures enabled in future)",
+    "effect": "warn",
+    "priority": 160,
+    "conditions": {
+      "action": {"==": "load_bundle"},
+      "bundle_signed": {"==": false},
+      "environment.allow_unsigned_bundles": {"==": false}
+    },
+    "enabled": false,
+    "metadata": {
+      "category": "bundle_security",
+      "severity": "medium",
+      "future_feature": true
+    }
+  },
+  {
+    "id": "sovereign-deny-online-without-network",
+    "name": "Deny Online Mode Without Network",
+    "description": "Prevent switching to online mode when network is unavailable",
+    "effect": "deny",
+    "priority": 210,
+    "conditions": {
+      "action": {"==": "change_mode"},
+      "target_mode": {"==": "online"},
+      "network_available": {"==": false},
+      "force": {"==": false}
+    },
+    "enabled": true,
+    "metadata": {
+      "category": "operational",
+      "severity": "medium"
+    }
+  }
+]

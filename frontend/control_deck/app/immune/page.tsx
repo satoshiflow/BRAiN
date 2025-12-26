@@ -13,6 +13,8 @@ import { NewThreatForm } from "@/components/NewThreatForm"
 import { ThreatTable, Threat } from "@/components/ThreatTable"
 import { fetchJson } from "@/lib/api"
 
+export const dynamic = "force-dynamic"
+
 type ThreatListResponse = {
   threats: Threat[]
 }
@@ -48,10 +50,12 @@ export default async function ImmunePage() {
             <Separator orientation="vertical" className="mr-2 h-5" />
             <Breadcrumb>
               <BreadcrumbList>
-                <BreadcrumbItem className="hidden md:block">
-                  <BreadcrumbLink href="/">BRAiN</BreadcrumbLink>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator className="hidden md:block" />
+                <div className="hidden md:block">
+                  <BreadcrumbItem>
+                    <BreadcrumbLink href="/">BRAiN</BreadcrumbLink>
+                  </BreadcrumbItem>
+                  <BreadcrumbSeparator />
+                </div>
                 <BreadcrumbItem>
                   <BreadcrumbPage>Immune</BreadcrumbPage>
                 </BreadcrumbItem>
