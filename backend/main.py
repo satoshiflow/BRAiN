@@ -49,6 +49,7 @@ from app.modules.foundation.router import router as foundation_router
 from app.modules.sovereign_mode.router import router as sovereign_mode_router
 from app.modules.dmz_control.router import router as dmz_control_router
 from app.modules.course_factory.router import router as course_factory_router
+from app.modules.course_factory.monetization_router import router as monetization_router
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -172,6 +173,7 @@ def create_app() -> FastAPI:
     app.include_router(sovereign_mode_router, tags=["sovereign-mode"])  # NEW: Sovereign Mode
     app.include_router(dmz_control_router, tags=["dmz-control"])  # NEW: DMZ Control
     app.include_router(course_factory_router, tags=["course-factory"])  # NEW: CourseFactory (Sprint 12)
+    app.include_router(monetization_router, tags=["course-monetization"])  # NEW: CourseFactory Monetization (Sprint 14)
     app.include_router(dna_router, tags=["dna"])
     app.include_router(karma_router, tags=["karma"])
     app.include_router(immune_router, tags=["immune"])
