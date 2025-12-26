@@ -377,6 +377,22 @@ class AuditEventType(str, Enum):
     SYSTEM_SAFE_MODE_DISABLED = "system.safe_mode_disabled"
     SYSTEM_SAFE_MODE_EXECUTION_BLOCKED = "system.safe_mode_execution_blocked"
 
+    # Sprint 8: Autonomous Business Pipeline
+    PIPELINE_GRAPH_STARTED = "pipeline.graph_started"
+    PIPELINE_GRAPH_COMPLETED = "pipeline.graph_completed"
+    PIPELINE_GRAPH_FAILED = "pipeline.graph_failed"
+    PIPELINE_GRAPH_ROLLBACK_STARTED = "pipeline.graph_rollback_started"
+    PIPELINE_GRAPH_ROLLBACK_COMPLETED = "pipeline.graph_rollback_completed"
+    PIPELINE_NODE_STARTED = "pipeline.node_started"
+    PIPELINE_NODE_COMPLETED = "pipeline.node_completed"
+    PIPELINE_NODE_FAILED = "pipeline.node_failed"
+    PIPELINE_NODE_ROLLBACK_STARTED = "pipeline.node_rollback_started"
+    PIPELINE_NODE_ROLLBACK_COMPLETED = "pipeline.node_rollback_completed"
+    PIPELINE_NODE_ROLLBACK_FAILED = "pipeline.node_rollback_failed"
+    PIPELINE_INTENT_RESOLVED = "pipeline.intent_resolved"
+    PIPELINE_DRY_RUN_STARTED = "pipeline.dry_run_started"
+    PIPELINE_DRY_RUN_COMPLETED = "pipeline.dry_run_completed"
+
 
 class AuditEntry(BaseModel):
     """Audit log entry for sovereign mode operations."""
