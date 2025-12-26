@@ -1,5 +1,5 @@
 """
-HITL Approvals Service - Sprint 9 (P0)
+HITL Approvals Service - Sprint 9 (P0) + Sprint 11
 
 Human-in-the-Loop approval workflow for high-risk IR execution.
 
@@ -12,7 +12,12 @@ Security Requirements:
 
 Stores:
 - In-memory (default, no external dependencies)
-- Redis (optional, feature-flagged)
+- Redis (Sprint 11, feature-flagged via APPROVAL_STORE env var)
+
+Sprint 11 Enhancements:
+- Redis backend for restart-safe approval storage
+- Automatic TTL cleanup via Redis expiration
+- Horizontal scaling support
 """
 
 from typing import Dict, Optional
@@ -20,6 +25,7 @@ from datetime import datetime, timedelta
 import hashlib
 import secrets
 import time
+import os
 from loguru import logger
 
 from backend.app.modules.ir_governance.schemas import (
@@ -386,8 +392,46 @@ _approvals_service: Optional[ApprovalsService] = None
 
 
 def get_approvals_service() -> ApprovalsService:
-    """Get singleton approvals service."""
+    """
+    Get singleton approvals service.
+
+    Store selection (Sprint 11):
+    - APPROVAL_STORE=redis -> RedisApprovalStore
+    - APPROVAL_STORE=memory (or not set) -> InMemoryApprovalStore
+
+    Environment variables:
+    - APPROVAL_STORE: Store type (redis|memory, default: memory)
+    - REDIS_URL: Redis connection URL (default: redis://localhost:6379/0)
+    """
     global _approvals_service
+
     if _approvals_service is None:
-        _approvals_service = ApprovalsService()
+        # Determine store type from environment
+        store_type = os.getenv("APPROVAL_STORE", "memory").lower()
+
+        if store_type == "redis":
+            # Import Redis store
+            try:
+                from backend.app.modules.ir_governance.redis_approval_store import (
+                    RedisApprovalStore,
+                )
+
+                redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+                store = RedisApprovalStore(redis_url=redis_url)
+                logger.info(
+                    f"[ApprovalsService] Using RedisApprovalStore (url={redis_url})"
+                )
+            except ImportError as e:
+                logger.error(
+                    f"[ApprovalsService] Failed to import RedisApprovalStore: {e}. "
+                    f"Falling back to InMemoryApprovalStore"
+                )
+                store = InMemoryApprovalStore()
+        else:
+            # Default to in-memory store
+            store = InMemoryApprovalStore()
+            logger.info("[ApprovalsService] Using InMemoryApprovalStore")
+
+        _approvals_service = ApprovalsService(store=store)
+
     return _approvals_service
