@@ -23,6 +23,20 @@ from backend.app.modules.autonomous_pipeline.execution_node import (
     RollbackError,
 )
 
+# Sprint 9: Governor integration (optional)
+try:
+    from backend.app.modules.autonomous_pipeline.governor import (
+        ExecutionGovernor,
+        BudgetExceededException,
+        ApprovalRequiredException,
+    )
+    from backend.app.modules.autonomous_pipeline.governor_schemas import (
+        GovernorDecisionType,
+    )
+    GOVERNOR_AVAILABLE = True
+except ImportError:
+    GOVERNOR_AVAILABLE = False
+
 
 class ExecutionGraphError(Exception):
     """Raised when graph construction or execution fails."""
@@ -46,12 +60,13 @@ class ExecutionGraph:
     - Comprehensive audit trail
     """
 
-    def __init__(self, spec: ExecutionGraphSpec):
+    def __init__(self, spec: ExecutionGraphSpec, governor: Optional['ExecutionGovernor'] = None):
         """
         Initialize execution graph.
 
         Args:
             spec: Graph specification with nodes and dependencies
+            governor: Optional execution governor for budget/policy enforcement (Sprint 9)
 
         Raises:
             ExecutionGraphError: If graph is invalid
@@ -60,6 +75,9 @@ class ExecutionGraph:
         self.spec = spec
         self.graph_id = spec.graph_id
         self.business_intent_id = spec.business_intent_id
+
+        # Sprint 9: Governor integration
+        self.governor = governor
 
         # Build dependency graph
         self.nodes: Dict[str, ExecutionNode] = {}
@@ -70,6 +88,7 @@ class ExecutionGraph:
         self.completed_nodes: Set[str] = set()
         self.failed_nodes: Set[str] = set()
         self.node_results: Dict[str, ExecutionNodeResult] = {}
+        self.skipped_nodes: Set[str] = set()  # Sprint 9: Degraded nodes
 
         # Build graph
         self._build_graph()
@@ -155,6 +174,10 @@ class ExecutionGraph:
         """
         start_time = time.time()
 
+        # Sprint 9: Start governor (if available)
+        if self.governor:
+            self.governor.start_execution()
+
         # Create execution context
         context = ExecutionContext(
             graph_id=self.graph_id,
@@ -170,11 +193,13 @@ class ExecutionGraph:
             "dry_run": self.spec.dry_run,
             "node_count": len(self.spec.nodes),
             "execution_order": self.execution_order,
+            "governor_enabled": self.governor is not None,
         })
 
         logger.info(
             f"[{self.graph_id}] Starting graph execution "
-            f"(dry_run={self.spec.dry_run}, nodes={len(self.execution_order)})"
+            f"(dry_run={self.spec.dry_run}, nodes={len(self.execution_order)}, "
+            f"governor={'enabled' if self.governor else 'disabled'})"
         )
 
         # Execute nodes in order
@@ -185,16 +210,76 @@ class ExecutionGraph:
             for node_id in self.execution_order:
                 node_spec = self._get_node_spec(node_id)
 
+                # Sprint 9: Check governor before execution
+                if self.governor and GOVERNOR_AVAILABLE:
+                    try:
+                        decision = self.governor.check_node_execution(
+                            node_spec,
+                            is_dry_run=self.spec.dry_run
+                        )
+
+                        # Handle degradation (skip node)
+                        if decision.decision_type == GovernorDecisionType.DEGRADE:
+                            self.skipped_nodes.add(node_id)
+                            logger.warning(
+                                f"[{self.graph_id}] Node {node_id} SKIPPED (degraded): "
+                                f"{decision.deny_reason}"
+                            )
+                            context.emit_audit_event({
+                                "event_type": "execution_graph_node_degraded",
+                                "node_id": node_id,
+                                "reason": decision.deny_reason,
+                            })
+                            continue  # Skip this node
+
+                        # Handle denial
+                        if decision.decision_type == GovernorDecisionType.DENY:
+                            self.failed_nodes.add(node_id)
+                            error_message = f"Node {node_id} denied by governor: {decision.deny_reason}"
+                            logger.error(f"[{self.graph_id}] {error_message}")
+                            success = False
+                            break
+
+                        # Handle approval requirement
+                        if decision.decision_type == GovernorDecisionType.REQUIRE_APPROVAL:
+                            self.failed_nodes.add(node_id)
+                            error_message = f"Node {node_id} requires approval: {decision.deny_reason}"
+                            logger.error(f"[{self.graph_id}] {error_message}")
+                            success = False
+                            break
+
+                    except (BudgetExceededException, ApprovalRequiredException) as e:
+                        # Budget exceeded or approval required
+                        self.failed_nodes.add(node_id)
+                        error_message = f"Node {node_id} blocked by governor: {e}"
+                        logger.error(f"[{self.graph_id}] {error_message}")
+                        success = False
+                        break
+
                 # Instantiate node executor
                 node = self._instantiate_node(node_spec)
 
                 try:
                     # Execute node
                     logger.info(f"[{self.graph_id}] Executing node: {node_id}")
+                    node_start = time.time()
                     result = await node.execute_node(context)
+                    node_duration = time.time() - node_start
 
                     self.node_results[node_id] = result
                     self.completed_nodes.add(node_id)
+
+                    # Sprint 9: Record execution in governor
+                    if self.governor:
+                        # TODO: Track external calls properly
+                        external_calls = 0
+                        if node_spec.node_type.value in ['dns', 'odoo_module']:
+                            external_calls = 1
+                        self.governor.record_node_execution(
+                            node_id,
+                            duration_seconds=node_duration,
+                            external_calls=external_calls
+                        )
 
                     logger.info(
                         f"[{self.graph_id}] Node {node_id} completed successfully "
@@ -375,12 +460,16 @@ class ExecutionGraph:
 _execution_graphs: Dict[str, ExecutionGraph] = {}
 
 
-def create_execution_graph(spec: ExecutionGraphSpec) -> ExecutionGraph:
+def create_execution_graph(
+    spec: ExecutionGraphSpec,
+    governor: Optional['ExecutionGovernor'] = None
+) -> ExecutionGraph:
     """
     Create and register execution graph.
 
     Args:
         spec: Graph specification
+        governor: Optional execution governor (Sprint 9)
 
     Returns:
         ExecutionGraph instance
@@ -388,7 +477,7 @@ def create_execution_graph(spec: ExecutionGraphSpec) -> ExecutionGraph:
     Raises:
         ExecutionGraphError: If graph construction fails
     """
-    graph = ExecutionGraph(spec)
+    graph = ExecutionGraph(spec, governor=governor)
     _execution_graphs[spec.graph_id] = graph
     return graph
 

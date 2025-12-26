@@ -21,6 +21,12 @@ from backend.app.modules.autonomous_pipeline.evidence_generator import (
     PipelineEvidencePack,
 )
 
+# Sprint 9-B: Run contracts
+from backend.app.modules.autonomous_pipeline.run_contract import (
+    get_run_contract_service,
+    RunContract,
+)
+
 
 router = APIRouter(prefix="/api/pipeline", tags=["autonomous-pipeline"])
 
@@ -147,6 +153,13 @@ async def execute_pipeline(
         if not graph_spec.nodes:
             raise HTTPException(status_code=400, detail="Graph must have at least one node")
 
+        # Sprint 9-B: Create run contract before execution
+        run_contract_service = get_run_contract_service()
+        run_contract = run_contract_service.create_contract(
+            graph_spec=graph_spec,
+            dry_run=False
+        )
+
         # Create execution graph
         graph = create_execution_graph(graph_spec)
 
@@ -154,12 +167,23 @@ async def execute_pipeline(
         logger.info(f"Executing pipeline graph: {graph_spec.graph_id} (LIVE mode)")
         result = await graph.execute()
 
+        # Sprint 9-B: Finalize and save run contract
+        run_contract = run_contract_service.finalize_contract(run_contract, result)
+        contract_path = run_contract_service.save_contract(run_contract)
+
         logger.info(
             f"Pipeline execution completed: {result.graph_id} "
-            f"(status={result.status.value}, success={result.success})"
+            f"(status={result.status.value}, success={result.success}, "
+            f"contract={run_contract.contract_id})"
         )
 
-        return result
+        # Return both result and contract
+        return {
+            "execution_result": result.model_dump(),
+            "run_contract": run_contract.model_dump(),
+            "contract_id": run_contract.contract_id,
+            "contract_path": str(contract_path),
+        }
 
     except Exception as e:
         logger.error(f"Pipeline execution failed: {e}")
@@ -203,27 +227,50 @@ async def dry_run_pipeline(
         logger.info(f"Executing pipeline graph: {graph_spec.graph_id} (DRY-RUN mode)")
         result = await graph.execute()
 
-        # Generate evidence pack
+        # Sprint 9-B: Create run contract
+        run_contract_service = get_run_contract_service()
+        run_contract = run_contract_service.create_contract(
+            graph_spec=graph_spec,
+            dry_run=True
+        )
+        run_contract = run_contract_service.finalize_contract(run_contract, result)
+        contract_path = run_contract_service.save_contract(run_contract)
+
+        logger.info(f"Run contract created: {run_contract.contract_id} -> {contract_path}")
+
+        # Generate evidence pack (with run contract)
         evidence_generator = get_evidence_generator()
         evidence_pack = evidence_generator.generate_evidence_pack(
             execution_result=result,
             graph_spec=graph_spec,
+            run_contract=run_contract,  # Sprint 9-B
         )
+
+        # Save evidence pack
+        evidence_path = evidence_generator.save_evidence_pack(evidence_pack)
+
+        # Save contract separately
+        contract_evidence_path = evidence_generator.save_contract_separately(evidence_pack)
 
         logger.info(
             f"Dry-run completed: {result.graph_id} "
-            f"(nodes={len(result.execution_order)}, evidence={evidence_pack.pack_id})"
+            f"(nodes={len(result.execution_order)}, evidence={evidence_pack.pack_id}, "
+            f"contract={run_contract.contract_id})"
         )
 
         return {
             "execution_result": result.model_dump(),
             "evidence_pack": evidence_pack.model_dump(),
+            "run_contract": run_contract.model_dump(),  # Sprint 9-B
             "dry_run_report": {
                 "graph_id": result.graph_id,
                 "nodes_simulated": len(result.execution_order),
                 "estimated_duration": result.duration_seconds,
                 "would_succeed": result.success,
                 "simulated_artifacts": result.artifacts,
+                "contract_id": run_contract.contract_id,  # Sprint 9-B
+                "contract_path": str(contract_path),  # Sprint 9-B
+                "evidence_path": str(evidence_path),  # Sprint 9-B
             },
         }
 
@@ -330,4 +377,149 @@ async def verify_evidence_pack(
         raise HTTPException(
             status_code=500,
             detail=f"Evidence pack verification failed: {str(e)}"
+        )
+
+
+@router.post("/replay/{contract_id}")
+async def replay_contract(
+    contract_id: str
+) -> Dict[str, Any]:
+    """
+    Replay pipeline execution from contract (dry-run only).
+
+    **Deterministic Replay:**
+    - Loads contract from storage
+    - Verifies contract integrity
+    - Re-executes graph in dry-run mode
+    - Compares results with original execution
+
+    **Use Cases:**
+    - Audit and compliance verification
+    - Bug reproduction
+    - Contract validation
+    - Legal proof of execution
+
+    **Returns:**
+    - replay_result: New execution result
+    - original_result: Original execution result (if available)
+    - contract_verified: bool
+    - hashes_match: bool
+    - replay_contract_id: ID of the new replay contract
+
+    **Example Request:**
+    ```bash
+    POST /api/pipeline/replay/contract_1703001234000_graph_abc123
+    ```
+    """
+    try:
+        run_contract_service = get_run_contract_service()
+
+        # 1. Load contract
+        contract = run_contract_service.load_contract(contract_id)
+        if not contract:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Contract not found: {contract_id}"
+            )
+
+        logger.info(f"[Replay] Loaded contract {contract_id}")
+
+        # 2. Verify contract integrity
+        contract_verified = run_contract_service.verify_contract(contract)
+        if not contract_verified:
+            logger.error(f"[Replay] Contract verification FAILED: {contract_id}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Contract verification failed: {contract_id}. Contract may be corrupted."
+            )
+
+        logger.info(f"[Replay] Contract {contract_id} verified successfully")
+
+        # 3. Create replay graph spec (force dry-run)
+        replay_graph_spec = contract.graph_spec.model_copy(deep=True)
+        replay_graph_spec.dry_run = True  # ALWAYS dry-run for replay
+        replay_graph_spec.graph_id = f"replay_{replay_graph_spec.graph_id}"
+
+        # 4. Create execution graph with governor (if policy exists)
+        governor = None
+        if contract.policy:
+            try:
+                from backend.app.modules.autonomous_pipeline.governor import ExecutionGovernor
+                governor = ExecutionGovernor(contract.policy)
+                logger.info(f"[Replay] Governor enabled with policy: {contract.policy.policy_name}")
+            except ImportError:
+                logger.warning("[Replay] Governor not available, proceeding without")
+
+        graph = create_execution_graph(replay_graph_spec, governor=governor)
+
+        # 5. Execute replay (dry-run)
+        logger.info(f"[Replay] Starting dry-run execution for contract {contract_id}")
+        replay_result = await graph.execute()
+
+        logger.info(
+            f"[Replay] Execution completed: {replay_result.graph_id} "
+            f"(status={replay_result.status.value}, success={replay_result.success})"
+        )
+
+        # 6. Create replay contract
+        replay_contract = run_contract_service.create_contract(
+            graph_spec=replay_graph_spec,
+            business_intent_input=contract.business_intent_input,
+            resolved_intent=contract.resolved_intent,
+            policy=contract.policy,
+            dry_run=True,
+            replay_of=contract_id,  # Link to original contract
+        )
+
+        # 7. Finalize replay contract with result
+        replay_contract = run_contract_service.finalize_contract(replay_contract, replay_result)
+
+        # 8. Save replay contract
+        replay_path = run_contract_service.save_contract(replay_contract)
+        logger.info(f"[Replay] Replay contract saved: {replay_contract.contract_id} -> {replay_path}")
+
+        # 9. Compare with original result (if available)
+        original_result_data = None
+        hashes_match = False
+
+        if contract.result:
+            original_result_data = contract.result.model_dump()
+
+            # Compare critical fields
+            original_hash = contract.graph_hash
+            replay_hash = replay_contract.graph_hash
+
+            hashes_match = (original_hash == replay_hash)
+
+            if hashes_match:
+                logger.info(f"[Replay] Graph hashes MATCH: {original_hash[:16]}...")
+            else:
+                logger.warning(
+                    f"[Replay] Graph hashes DIFFER: "
+                    f"original={original_hash[:16]}..., replay={replay_hash[:16]}..."
+                )
+
+        # 10. Build response
+        return {
+            "replay_result": replay_result.model_dump(),
+            "original_result": original_result_data,
+            "contract_verified": contract_verified,
+            "hashes_match": hashes_match,
+            "replay_contract_id": replay_contract.contract_id,
+            "original_contract_id": contract_id,
+            "replay_path": str(replay_path),
+            "message": (
+                "Replay successful. Graph hashes match." if hashes_match
+                else "Replay successful. Graph hashes differ (graph may have been modified)."
+            ),
+        }
+
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions
+
+    except Exception as e:
+        logger.error(f"Replay failed for contract {contract_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Replay failed: {str(e)}"
         )

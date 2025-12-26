@@ -19,6 +19,14 @@ from backend.app.modules.autonomous_pipeline.schemas import (
     ExecutionGraphSpec,
 )
 
+# Sprint 9-B: Run Contracts
+try:
+    from backend.app.modules.autonomous_pipeline.run_contract import RunContract
+    RUN_CONTRACT_AVAILABLE = True
+except ImportError:
+    RUN_CONTRACT_AVAILABLE = False
+    RunContract = None
+
 
 class PipelineEvidencePack(BaseModel):
     """Evidence pack for pipeline execution."""
@@ -36,6 +44,10 @@ class PipelineEvidencePack(BaseModel):
 
     # Execution result
     execution_result: ExecutionGraphResult = Field(..., description="Execution result")
+
+    # Sprint 9-B: Run Contract
+    run_contract: Optional[Any] = Field(None, description="Run contract (Sprint 9-B)")
+    contract_id: Optional[str] = Field(None, description="Contract ID if available")
 
     # Summary
     summary: Dict[str, Any] = Field(..., description="Execution summary")
@@ -100,6 +112,7 @@ class PipelineEvidenceGenerator:
         business_intent: Optional[ResolvedBusinessIntent] = None,
         graph_spec: Optional[ExecutionGraphSpec] = None,
         governance_decisions: Optional[list[Dict[str, Any]]] = None,
+        run_contract: Optional[Any] = None,  # Sprint 9-B: RunContract
     ) -> PipelineEvidencePack:
         """
         Generate evidence pack from execution result.
@@ -109,6 +122,7 @@ class PipelineEvidenceGenerator:
             business_intent: Resolved business intent (optional)
             graph_spec: Graph specification (optional)
             governance_decisions: Governance check results (optional)
+            run_contract: Run contract (Sprint 9-B, optional)
 
         Returns:
             PipelineEvidencePack
@@ -130,6 +144,12 @@ class PipelineEvidenceGenerator:
         # Extract audit events
         audit_events = execution_result.audit_events or []
 
+        # Sprint 9-B: Extract contract ID if available
+        contract_id = None
+        if run_contract:
+            contract_id = getattr(run_contract, 'contract_id', None)
+            logger.info(f"Evidence pack includes run contract: {contract_id}")
+
         # Build evidence pack (without hash first)
         pack = PipelineEvidencePack(
             pack_id=pack_id,
@@ -138,6 +158,8 @@ class PipelineEvidenceGenerator:
             graph_id=execution_result.graph_id,
             graph_spec=graph_spec,
             execution_result=execution_result,
+            run_contract=run_contract,  # Sprint 9-B
+            contract_id=contract_id,  # Sprint 9-B
             summary=summary,
             governance_decisions=governance_decisions or [],
             artifacts=artifacts,
@@ -232,6 +254,35 @@ class PipelineEvidenceGenerator:
             "execution_order": result.execution_order,
         }
 
+    def save_contract_separately(self, pack: PipelineEvidencePack) -> Optional[Path]:
+        """
+        Save run contract separately as contract.json (Sprint 9-B).
+
+        Args:
+            pack: Evidence pack containing run contract
+
+        Returns:
+            Path to saved contract file, or None if no contract
+        """
+        if not pack.run_contract or not pack.contract_id:
+            return None
+
+        # Create filename based on contract ID
+        filename = f"{pack.contract_id}.json"
+        file_path = self.EVIDENCE_DIR / filename
+
+        # Save contract as JSON
+        try:
+            contract_dict = pack.run_contract.model_dump() if hasattr(pack.run_contract, 'model_dump') else pack.run_contract
+            with open(file_path, "w") as f:
+                json.dump(contract_dict, f, indent=2, default=str)
+
+            logger.info(f"Run contract saved separately: {file_path}")
+            return file_path
+        except Exception as e:
+            logger.warning(f"Failed to save contract separately: {e}")
+            return None
+
     def _compute_content_hash(self, pack: PipelineEvidencePack) -> str:
         """
         Compute deterministic SHA256 hash of evidence pack.
@@ -252,6 +303,7 @@ class PipelineEvidenceGenerator:
             "completed_nodes": sorted(pack.execution_result.completed_nodes),
             "failed_nodes": sorted(pack.execution_result.failed_nodes),
             "artifacts": sorted(pack.artifacts),
+            "contract_id": pack.contract_id,  # Sprint 9-B: Include contract ID
             # Note: Exclude timestamps and generated_at for determinism
         }
 
