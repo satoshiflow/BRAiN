@@ -50,6 +50,14 @@ from backend.app.modules.sovereign_mode.ipv6_gate import (
     IPv6GateResult,
 )
 
+# Sprint 7: Metrics integration
+try:
+    from backend.app.modules.monitoring.metrics import get_metrics_collector
+    METRICS_AVAILABLE = True
+except ImportError:
+    METRICS_AVAILABLE = False
+    logger.warning("Metrics module not available")
+
 
 # Import DMZ control (lazy to avoid circular imports)
 def _get_dmz_service():
@@ -425,6 +433,14 @@ class SovereignModeService:
             self.config.current_mode = new_mode
             self.guard.set_mode(new_mode)
             self.last_mode_change = datetime.utcnow()
+
+            # Sprint 7: Record mode switch in metrics (fail-safe)
+            if METRICS_AVAILABLE:
+                try:
+                    metrics = get_metrics_collector()
+                    metrics.record_mode_switch(new_mode)
+                except Exception as e:
+                    logger.warning(f"Failed to record mode switch metric: {e}")
 
             # Save config
             self._save_config()

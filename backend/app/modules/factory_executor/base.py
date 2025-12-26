@@ -24,6 +24,20 @@ from backend.app.modules.business_factory.schemas import (
     StepStatus,
 )
 
+# Sprint 7: Metrics integration
+try:
+    from backend.app.modules.monitoring.metrics import get_metrics_collector
+    METRICS_AVAILABLE = True
+except ImportError:
+    METRICS_AVAILABLE = False
+
+# Sprint 7.4: Safe mode integration
+try:
+    from backend.app.modules.safe_mode.service import get_safe_mode_service
+    SAFE_MODE_AVAILABLE = True
+except ImportError:
+    SAFE_MODE_AVAILABLE = False
+
 
 class ExecutionMode(str, Enum):
     """Execution mode for safety controls"""
@@ -163,6 +177,18 @@ class ExecutorBase(ABC):
             f"(mode={context.execution_mode}, retry={context.retry_count})"
         )
 
+        # Sprint 7.4: Safe Mode Check
+        if SAFE_MODE_AVAILABLE:
+            try:
+                safe_mode = get_safe_mode_service()
+                safe_mode.check_and_block(f"executor_{self.name}_step_{step.step_id}")
+            except RuntimeError:
+                # Safe mode is enabled - block execution
+                raise
+            except Exception as e:
+                # Safe mode check failed - log but continue (fail-open for safety check)
+                logger.warning(f"Safe mode check failed: {e}")
+
         try:
             # 1. Input Validation
             self._validate_input_strict(step, context)
@@ -185,11 +211,28 @@ class ExecutorBase(ABC):
                 result = await self._execute_with_timeout(step, context, timeout)
             except TimeoutError as e:
                 logger.error(f"[{self.name}] Execution timeout after {timeout}s")
+
+                # Sprint 7: Record executor failure (fail-safe)
+                if METRICS_AVAILABLE:
+                    try:
+                        metrics = get_metrics_collector()
+                        metrics.record_executor_failure()
+                    except Exception:
+                        pass  # Fail-safe: do not block on metrics
+
                 raise ExecutionError(f"Execution timeout: {str(e)}")
 
             # 5. Record Success
             duration = time.time() - start_time
             self._record_execution(step, context, result, duration)
+
+            # Sprint 7: Record successful execution (fail-safe)
+            if METRICS_AVAILABLE:
+                try:
+                    metrics = get_metrics_collector()
+                    metrics.record_success()
+                except Exception:
+                    pass  # Fail-safe: do not block on metrics
 
             logger.info(
                 f"[{self.name}] Step completed: {step.step_id} "
@@ -217,6 +260,15 @@ class ExecutorBase(ABC):
 
         except Exception as e:
             logger.error(f"[{self.name}] Unexpected error: {e}")
+
+            # Sprint 7: Record executor failure (fail-safe)
+            if METRICS_AVAILABLE:
+                try:
+                    metrics = get_metrics_collector()
+                    metrics.record_executor_failure()
+                except Exception:
+                    pass  # Fail-safe: do not block on metrics
+
             raise ExecutionError(f"Unexpected error: {str(e)}")
 
     async def rollback_step(

@@ -19,6 +19,8 @@ from backend.app.modules.sovereign_mode.schemas import (
     BundleLoadRequest,
     NetworkCheckResult,
     AuditEntry,
+    EvidenceExportRequest,
+    EvidencePack,
 )
 
 
@@ -837,3 +839,125 @@ async def remove_trusted_key(key_id: str, revoke: bool = False):
     except Exception as e:
         logger.error(f"Failed to remove/revoke key {key_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to remove key: {str(e)}")
+
+
+# ============================================================================
+# Sprint 7.2: Evidence Pack Export
+# ============================================================================
+
+
+@router.post("/evidence/export", summary="Export governance evidence pack")
+async def export_evidence(request: EvidenceExportRequest) -> EvidencePack:
+    """
+    Generate auditor/investor-ready governance evidence pack.
+    
+    **Sprint 7.2: Evidence Pack Automation**
+    
+    One-click generation of cryptographically verifiable evidence for:
+    - Auditors (compliance focus)
+    - Investors (operational focus)
+    - Internal review (full detail)
+    
+    **Features:**
+    - Time-bounded (filter by date range)
+    - Read-only (no state modifications)
+    - Deterministic (same input → same output)
+    - Cryptographically verifiable (SHA256 hash)
+    - Privacy-preserving (no secrets, no PII)
+    
+    **Evidence Includes:**
+    - Current governance configuration
+    - Filtered audit events within time range
+    - Mode change history
+    - Override usage statistics
+    - Bundle trust & quarantine summary
+    - Executor activity summary (optional)
+    
+    **Security:**
+    - No secrets exposed
+    - No payload data
+    - No bundle content
+    - No user PII
+    
+    **Example Request:**
+    ```json
+    {
+      "from_timestamp": "2025-12-01T00:00:00Z",
+      "to_timestamp": "2025-12-25T23:59:59Z",
+      "scope": "audit",
+      "include_bundle_details": true,
+      "include_executor_summary": true
+    }
+    ```
+    
+    **Returns:** EvidencePack with SHA256 content hash for verification
+    """
+    from backend.app.modules.sovereign_mode.evidence_export import get_evidence_exporter
+    
+    try:
+        # Get sovereign service
+        service = get_sovereign_service()
+        
+        # Get current state
+        status = await service.get_status()
+        bundle_stats = service.bundle_manager.get_statistics()
+        
+        # Get evidence exporter
+        exporter = get_evidence_exporter()
+        
+        # Generate evidence pack
+        pack = exporter.export_evidence(
+            request=request,
+            current_mode=status.mode,
+            config=status.config,
+            bundle_stats=bundle_stats,
+        )
+        
+        logger.info(
+            f"Evidence pack exported: {pack.pack_id} "
+            f"(scope={pack.scope.value}, events={len(pack.audit_events)})"
+        )
+        
+        return pack
+        
+    except Exception as e:
+        logger.error(f"Failed to export evidence pack: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to export evidence: {str(e)}")
+
+
+@router.post("/evidence/verify", summary="Verify evidence pack integrity")
+async def verify_evidence(pack: EvidencePack) -> dict:
+    """
+    Verify integrity of an evidence pack.
+    
+    **Cryptographic Verification**
+    
+    Recomputes the SHA256 hash and verifies it matches the pack's content_hash.
+    
+    **Returns:**
+    - is_valid: True if hash matches
+    - original_hash: Hash from pack
+    - computed_hash: Recomputed hash
+    - pack_id: Evidence pack identifier
+    """
+    from backend.app.modules.sovereign_mode.evidence_export import get_evidence_exporter
+    
+    try:
+        exporter = get_evidence_exporter()
+        
+        is_valid = exporter.verify_pack_integrity(pack)
+        
+        # Recompute hash for comparison
+        computed_hash = exporter._compute_content_hash(pack)
+        
+        return {
+            "is_valid": is_valid,
+            "original_hash": pack.content_hash,
+            "computed_hash": computed_hash,
+            "pack_id": pack.pack_id,
+            "message": "Evidence pack integrity verified" if is_valid else "Evidence pack integrity FAILED"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to verify evidence pack: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to verify evidence: {str(e)}")
