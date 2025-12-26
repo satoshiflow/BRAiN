@@ -286,6 +286,18 @@ class IRValidator:
         if action.value.startswith("webgen."):
             return RiskTier.TIER_1
 
+        # CourseFactory content generation → Tier 0 (no side effects)
+        if action.value.startswith("course.generate"):
+            return RiskTier.TIER_0
+
+        # CourseFactory metadata creation → Tier 0
+        if action == IRAction.COURSE_CREATE:
+            return RiskTier.TIER_0
+
+        # CourseFactory staging deployment → Tier 1 (low risk, staging only)
+        if action == IRAction.COURSE_DEPLOY_STAGING:
+            return RiskTier.TIER_1
+
         # Default: Tier 0
         return RiskTier.TIER_0
 
