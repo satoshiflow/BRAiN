@@ -52,6 +52,8 @@ from app.modules.course_factory.router import router as course_factory_router
 from app.modules.course_factory.monetization_router import router as monetization_router
 from app.modules.course_distribution.distribution_router import router as distribution_router
 from app.modules.governance.governance_router import router as governance_router
+from app.modules.licensing.licensing_router import router as licensing_router
+from app.modules.certificates.certificate_router import router as certificates_router
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -178,6 +180,8 @@ def create_app() -> FastAPI:
     app.include_router(monetization_router, tags=["course-monetization"])  # NEW: CourseFactory Monetization (Sprint 14)
     app.include_router(distribution_router, tags=["course-distribution"])  # NEW: Course Distribution (Sprint 15)
     app.include_router(governance_router, tags=["governance"])  # NEW: Governance & HITL Approvals (Sprint 16)
+    app.include_router(licensing_router, tags=["licensing"])  # NEW: Licensing & Rights Management (Sprint 17)
+    app.include_router(certificates_router, tags=["certificates-v2"])  # NEW: Enhanced Certificates (Sprint 17)
     app.include_router(dna_router, tags=["dna"])
     app.include_router(karma_router, tags=["karma"])
     app.include_router(immune_router, tags=["immune"])
