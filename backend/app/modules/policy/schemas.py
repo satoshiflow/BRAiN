@@ -155,6 +155,7 @@ class PolicyEvaluationContext(BaseModel):
     Context provided for policy evaluation.
 
     Contains information about the agent, action, environment, etc.
+    Optionally enriched with ML risk scores.
     """
 
     agent_id: str = Field(..., description="ID of agent requesting action")
@@ -166,6 +167,20 @@ class PolicyEvaluationContext(BaseModel):
     )
     params: Dict[str, Any] = Field(
         default_factory=dict, description="Action parameters"
+    )
+
+    # ML Enrichment (optional)
+    ml_risk_score: Optional[float] = Field(
+        None, ge=0.0, le=1.0, description="ML-computed risk score (0=safe, 1=critical)"
+    )
+    ml_confidence: Optional[float] = Field(
+        None, ge=0.0, le=1.0, description="ML confidence in risk score"
+    )
+    ml_model_version: Optional[str] = Field(
+        None, description="ML model version used"
+    )
+    ml_is_fallback: Optional[bool] = Field(
+        None, description="Whether ML score is fallback value"
     )
 
     class Config:

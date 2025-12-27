@@ -41,6 +41,16 @@ except ImportError:
     FOUNDATION_AVAILABLE = False
     logger.warning("Foundation module not available - Policy will work standalone")
 
+# Optional: Integrate with ML Gateway for risk scoring
+try:
+    from app.modules.ml_gateway.service import get_ml_gateway_service
+    from app.modules.ml_gateway.schemas import RiskScoreRequest
+
+    ML_GATEWAY_AVAILABLE = True
+except ImportError:
+    ML_GATEWAY_AVAILABLE = False
+    logger.warning("ML Gateway not available - Policy will work without ML enrichment")
+
 
 MODULE_NAME = "brain.policy"
 MODULE_VERSION = "2.0.0"  # Upgraded from 1.0.0
@@ -160,13 +170,14 @@ class PolicyEngine:
         logger.info(f"✅ Loaded {len(self.policies)} default policies")
 
     async def evaluate(
-        self, context: PolicyEvaluationContext
+        self, context: PolicyEvaluationContext, enable_ml: bool = True
     ) -> PolicyEvaluationResult:
         """
         Evaluate if an action is allowed based on policies.
 
         Args:
             context: Evaluation context (agent, action, resource, etc.)
+            enable_ml: Whether to enrich context with ML risk scores (default: True)
 
         Returns:
             PolicyEvaluationResult with decision and reason
@@ -176,6 +187,10 @@ class PolicyEngine:
         logger.debug(
             f"🔍 Evaluating: agent={context.agent_id}, action={context.action}"
         )
+
+        # Optionally enrich context with ML risk scores
+        if enable_ml and ML_GATEWAY_AVAILABLE:
+            context = await self._enrich_with_ml(context)
 
         # Step 1: Collect all active policies
         active_policies = [p for p in self.policies.values() if p.enabled]
@@ -435,6 +450,64 @@ class PolicyEngine:
         except Exception as e:
             logger.error(f"Foundation check failed: {e}")
             return True  # Don't block on Foundation errors
+
+    async def _enrich_with_ml(
+        self, context: PolicyEvaluationContext
+    ) -> PolicyEvaluationContext:
+        """
+        Enrich context with ML risk scores.
+
+        Calls ML Gateway to compute risk score and adds it to context.
+        If ML Gateway fails, context is returned unchanged.
+
+        Args:
+            context: Original evaluation context
+
+        Returns:
+            Context enriched with ML risk scores (if available)
+        """
+        if not ML_GATEWAY_AVAILABLE:
+            return context  # ML Gateway not available
+
+        try:
+            ml_gateway = get_ml_gateway_service()
+
+            # Build request context for ML scoring
+            ml_context = {
+                "agent_id": context.agent_id,
+                "agent_role": context.agent_role,
+                "action": context.action,
+                "resource": context.resource,
+                "params": context.params,
+                "environment": context.environment,
+            }
+
+            request = RiskScoreRequest(
+                context=ml_context,
+                agent_id=context.agent_id,
+                action=context.action,
+            )
+
+            # Get risk score (with automatic fallback)
+            score_response = await ml_gateway.get_risk_score(request)
+
+            # Enrich context
+            context.ml_risk_score = score_response.risk_score
+            context.ml_confidence = score_response.confidence
+            context.ml_model_version = score_response.model_version
+            context.ml_is_fallback = score_response.is_fallback
+
+            logger.debug(
+                f"🤖 ML enrichment: risk_score={score_response.risk_score:.3f}, "
+                f"confidence={score_response.confidence:.3f}, "
+                f"fallback={score_response.is_fallback}"
+            )
+
+            return context
+
+        except Exception as e:
+            logger.warning(f"ML enrichment failed: {e} - continuing without ML")
+            return context  # Return original context on error
 
     def _update_metrics(self, result: PolicyEvaluationResult):
         """Update metrics based on evaluation result"""

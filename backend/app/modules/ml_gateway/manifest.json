@@ -1,0 +1,9 @@
+{
+  "name": "ml_gateway",
+  "version": "1.0.0",
+  "description": "ML Gateway for governance augmentation with fail-closed architecture",
+  "enabled": true,
+  "routes_prefix": "/api/ml",
+  "dependencies": [],
+  "optional_dependencies": ["policy", "missions"]
+}

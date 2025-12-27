@@ -926,6 +926,126 @@ if result.effect == PolicyEffect.DENY:
 }
 ```
 
+### ML Gateway & Risk Scoring (Sprint 17)
+
+**Purpose:** Machine Learning integration for governance augmentation with fail-closed architecture.
+
+**Location:** `backend/app/modules/ml_gateway/`, `backend/app/modules/risk_scoring/`
+
+**Design Principles:**
+1. **Determinism First:** ML scores are INPUTS to policy decisions, never decisions themselves
+2. **Fail-Closed:** Service unavailability doesn't compromise safety (uses fallback scores)
+3. **Optional Provider:** BRAiN Core functions fully without ML
+4. **Auditability:** All ML outputs are logged, versioned, and reproducible
+
+**Architecture:**
+
+```
+BRAiN Core (Governance Kernel)
+    ↓
+ML Gateway (Optional Provider)
+    ↓
+Risk Scoring Sidecar (Baseline→PyTorch)
+```
+
+**ML Gateway Service:**
+
+```python
+from app.modules.ml_gateway.service import get_ml_gateway_service
+from app.modules.ml_gateway.schemas import RiskScoreRequest
+
+ml_gateway = get_ml_gateway_service()
+
+# Get risk score (with automatic fallback)
+request = RiskScoreRequest(
+    context={
+        "action": "deploy_application",
+        "environment": "production",
+        "dag": {"nodes": [...], "edges": [...]},
+    },
+    agent_id="ops_agent",
+    action="deploy_application"
+)
+
+score_response = await ml_gateway.get_risk_score(request)
+# Returns: RiskScoreResponse(
+#     risk_score=0.82,
+#     confidence=0.75,
+#     top_factors=[...],
+#     model_version="baseline-v1",
+#     is_fallback=False
+# )
+```
+
+**Risk Scoring Features:**
+
+- **DAG/IR Anomaly Detection:** Detects unusual execution patterns (excessive nodes, depth, branching)
+- **Payload Analysis:** Analyzes payload size, nesting depth, complexity
+- **Resource Validation:** Checks budget realism, retry limits
+- **Baseline Implementation:** Pure Python heuristics (upgrade path to PyTorch models)
+
+**Policy Integration:**
+
+ML scores automatically enrich policy evaluation context:
+
+```python
+# Policy rule using ML risk score
+{
+    "id": "high-risk-escalation",
+    "name": "Escalate High-Risk Operations",
+    "effect": "audit",
+    "conditions": {
+        "ml_risk_score": {">": 0.75},
+        "ml_confidence": {">": 0.6}
+    },
+    "priority": 150
+}
+```
+
+**PolicyEvaluationContext** now includes optional ML fields:
+- `ml_risk_score`: float [0.0, 1.0]
+- `ml_confidence`: float [0.0, 1.0]
+- `ml_model_version`: str
+- `ml_is_fallback`: bool
+
+**Failure Modes (Fail-Closed):**
+
+| Scenario | Behavior |
+|----------|----------|
+| Sidecar Down | Use fallback score (0.5), confidence=0.0 |
+| Timeout (>200ms) | Cancel request, use fallback |
+| Invalid Output | Reject score, use fallback |
+| Model Version Mismatch | Warn and continue (don't block) |
+
+**API Endpoints:**
+
+```python
+GET  /api/ml/health       # ML Gateway health status
+GET  /api/ml/info         # Configuration and version
+POST /api/ml/score        # Get risk score for context
+POST /api/ml/enrich       # Enrich context with ML scores
+```
+
+**Environment Configuration:**
+
+```bash
+# .env
+ENABLE_ML_GATEWAY=true   # Enable ML Gateway (default: true)
+```
+
+**Metrics & Monitoring:**
+
+```python
+health = await ml_gateway.get_health()
+# Returns: MLGatewayHealth(
+#     status="available",
+#     total_requests=1523,
+#     successful_requests=1489,
+#     fallback_requests=34,
+#     avg_inference_time_ms=42.3
+# )
+```
+
 ### Fleet Management System (Phase 2 & 3 - RYR Integration)
 
 **Purpose:** Multi-robot fleet coordination and management.
@@ -1642,6 +1762,65 @@ export const usePresenceStore = create<PresenceState>((set) => ({
   "effect": "deny",
   "reason": "Production deployment requires senior agent role",
   "matched_rule": "prod-deploy-restriction"
+}
+```
+
+### ML Gateway (`/api/ml`) 🆕
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/ml/health` | ML Gateway health status with metrics |
+| GET | `/api/ml/info` | ML Gateway system information |
+| POST | `/api/ml/score` | Get risk score for context |
+| POST | `/api/ml/enrich` | Enrich context with ML scores |
+
+**Score Request:**
+```json
+{
+  "context": {
+    "action": "deploy_application",
+    "priority": "HIGH",
+    "dag": {
+      "nodes": ["node1", "node2", "node3"],
+      "edges": ["edge1", "edge2"]
+    }
+  },
+  "agent_id": "ops_agent",
+  "action": "deploy_application"
+}
+```
+
+**Score Response:**
+```json
+{
+  "risk_score": 0.82,
+  "confidence": 0.75,
+  "top_factors": [
+    {
+      "factor": "dag_complexity",
+      "weight": 0.65,
+      "description": "High DAG complexity detected"
+    }
+  ],
+  "model_version": "baseline-v1",
+  "inference_time_ms": 42.3,
+  "is_fallback": false,
+  "timestamp": "2025-12-27T14:30:00Z"
+}
+```
+
+**Health Response:**
+```json
+{
+  "status": "available",
+  "provider_available": true,
+  "model_version": "baseline-v1",
+  "uptime_seconds": 3600.5,
+  "total_requests": 1523,
+  "successful_requests": 1489,
+  "failed_requests": 0,
+  "fallback_requests": 34,
+  "avg_inference_time_ms": 42.3
 }
 ```
 

@@ -52,6 +52,11 @@ from app.modules.course_factory.router import router as course_factory_router
 from app.modules.course_factory.monetization_router import router as monetization_router
 from app.modules.course_distribution.distribution_router import router as distribution_router
 from app.modules.governance.governance_router import router as governance_router
+from app.modules.ml_gateway.router import router as ml_gateway_router
+
+# ML Gateway & Risk Scoring
+from app.modules.ml_gateway.service import get_ml_gateway_service
+from app.modules.risk_scoring.service import get_risk_scoring_service
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -81,6 +86,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if os.getenv("ENABLE_MISSION_WORKER", "true").lower() == "true":
         mission_worker_task = await start_mission_worker()
         logger.info("✅ Mission worker started")
+
+    # Initialize ML Gateway & Risk Scoring (if enabled)
+    if os.getenv("ENABLE_ML_GATEWAY", "true").lower() == "true":
+        ml_gateway = get_ml_gateway_service()
+        risk_scorer = get_risk_scoring_service()
+        ml_gateway.set_risk_scorer(risk_scorer)
+        logger.info("✅ ML Gateway initialized with risk scoring sidecar")
 
     logger.info("✅ All systems operational")
 
@@ -178,6 +190,7 @@ def create_app() -> FastAPI:
     app.include_router(monetization_router, tags=["course-monetization"])  # NEW: CourseFactory Monetization (Sprint 14)
     app.include_router(distribution_router, tags=["course-distribution"])  # NEW: Course Distribution (Sprint 15)
     app.include_router(governance_router, tags=["governance"])  # NEW: Governance & HITL Approvals (Sprint 16)
+    app.include_router(ml_gateway_router, tags=["ml-gateway"])  # NEW: ML Gateway (Sprint 17)
     app.include_router(dna_router, tags=["dna"])
     app.include_router(karma_router, tags=["karma"])
     app.include_router(immune_router, tags=["immune"])
