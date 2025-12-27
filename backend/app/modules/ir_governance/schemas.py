@@ -42,6 +42,26 @@ class IRAction(str, Enum):
     WEBGENESIS_SITE_UPDATE = "webgenesis.site.update"
     WEBGENESIS_DEPLOY_TRIGGER = "webgenesis.deploy.trigger"
 
+    # CourseFactory actions (Sprint 12)
+    COURSE_CREATE = "course.create"
+    COURSE_GENERATE_OUTLINE = "course.generate_outline"
+    COURSE_GENERATE_LESSONS = "course.generate_lessons"
+    COURSE_GENERATE_QUIZ = "course.generate_quiz"
+    COURSE_GENERATE_LANDING = "course.generate_landing"
+    COURSE_DEPLOY_STAGING = "course.deploy_staging"
+
+    # CourseFactory enhancement actions (Sprint 13)
+    COURSE_ENHANCE_EXAMPLES = "course.enhance_examples"
+    COURSE_ENHANCE_SUMMARIES = "course.enhance_summaries"
+    COURSE_GENERATE_FLASHCARDS = "course.generate_flashcards"
+    COURSE_WORKFLOW_TRANSITION = "course.workflow_transition"
+
+    # WebGenesis integration actions (Sprint 13)
+    WEBGENESIS_BIND_THEME = "webgenesis.bind_theme"
+    WEBGENESIS_BUILD_SECTIONS = "webgenesis.build_sections"
+    WEBGENESIS_APPLY_SEO = "webgenesis.apply_seo"
+    WEBGENESIS_PREVIEW = "webgenesis.preview"
+
     # Infrastructure actions
     INFRA_PROVISION = "infra.provision"
     INFRA_DESTROY = "infra.destroy"
@@ -68,6 +88,9 @@ class IRProvider(str, Enum):
     # WebGenesis providers
     WEBGEN_V1 = "webgen.v1"  # Sprint 8
     WEBGENESIS_V1 = "webgenesis.v1"  # Sprint 10
+
+    # CourseFactory providers
+    COURSE_FACTORY_V1 = "course_factory.v1"  # Sprint 12
 
     # Infrastructure providers
     INFRA_TERRAFORM = "infra.terraform"
