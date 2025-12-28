@@ -1,26 +1,28 @@
 # Charter v1.0 Compliance - Impact Report
 
 **Date:** 2025-12-28
-**Version:** Post Phase 1-4 Analysis
-**Status:** TEIL A — Impact Scan
+**Version:** Post Phase 1-4 + TEIL B Complete
+**Status:** ✅ **ALL PRODUCERS CHARTER COMPLIANT**
 
 ---
 
 ## Executive Summary
 
-**Charter Compliance Status After Phase 1-4:**
+**Charter Compliance Status After Phase 1-4 + TEIL B:**
 - ✅ ADR-001 enforced (EventStream is required)
 - ✅ Feature flags consolidated (BRAIN_EVENTSTREAM_MODE)
 - ✅ Event envelope meta.* fields added
 - ✅ EventConsumer with stream_message_id dedup implemented
+- ✅ **ALL event producers Charter compliant**
 
 **Findings:**
-- **1 Producer NOT Charter compliant:** MissionControl (mission_control_core)
-- **1 Producer Charter compliant:** MissionQueueManager (missions module)
-- **1 Consumer Charter compliant:** EventConsumer (created in Phase 4)
-- **No active consumers yet deployed** (EventConsumer is infrastructure only)
+- ✅ **2 Producers Charter compliant:**
+  - MissionQueueManager (missions module) — fixed Phase 1-3
+  - MissionControl (mission_control_core) — fixed TEIL B
+- ✅ **1 Consumer Charter compliant:** EventConsumer (created in Phase 4)
+- ⚠️ **No active consumers yet deployed** (EventConsumer is infrastructure only)
 
-**Recommendation:** **GO** for MissionControl producer migration (TEIL B analog)
+**Status:** ✅ **TEIL B COMPLETE** — All BRAiN event producers are Charter v1.0 compliant
 
 ---
 
@@ -31,7 +33,7 @@
 | Producer | File | Event Types | Stream | Charter Compliant | Fix Needed |
 |----------|------|-------------|--------|-------------------|------------|
 | **MissionQueueManager** | `backend/modules/mission_system/queue.py` | MISSION_CREATED, TASK_CREATED, TASK_COMPLETED, TASK_FAILED | `brain:events:stream` | ✅ YES | ❌ NO (fixed Phase 1-3) |
-| **MissionControl** | `backend/mission_control_core/core/mission_control.py` | MISSION_CREATED, MISSION_STARTED, MISSION_CANCELLED, MISSION_COMPLETED (likely) | `brain:events:stream` | ❌ NO | ✅ YES (dict → Event dataclass) |
+| **MissionControl** | `backend/mission_control_core/core/mission_control.py` | MISSION_CREATED, MISSION_STARTED, MISSION_CANCELLED, MISSION_COMPLETED/FAILED | `brain:events:stream` | ✅ YES | ❌ NO (fixed TEIL B) |
 | ImmuneSystem | `backend/app/modules/immune/` | ImmuneEvent (separate system) | N/A (in-memory) | N/A | ❌ NO (different system) |
 
 ---
@@ -468,5 +470,89 @@ pytest backend/tests/test_event_stream_consolidated.py -v
 
 ---
 
+## TEIL B — MissionControl Producer Migration (✅ COMPLETE)
+
+**Executed:** 2025-12-28
+**Commit:** 6c57440
+**Status:** ✅ **COMPLETE**
+
+### Migration Summary
+
+**Scope:** 4 event publications in `backend/mission_control_core/core/mission_control.py`
+
+**Changes Made:**
+
+1. **Import Event dataclass:**
+   ```python
+   # BEFORE:
+   from .event_stream import EventStream, EventType, emit_task_event
+
+   # AFTER:
+   from .event_stream import EventStream, Event, EventType, emit_task_event
+   ```
+
+2. **Migrated all 4 event publications from dict to Event dataclass:**
+
+| Event Type | Line | Method | Status |
+|------------|------|--------|--------|
+| MISSION_CREATED | 191 | `create_mission()` | ✅ Fixed |
+| MISSION_STARTED | 297 | `start_mission()` | ✅ Fixed |
+| MISSION_CANCELLED | 363 | `cancel_mission()` | ✅ Fixed |
+| MISSION_COMPLETED/FAILED | 574 | `_check_mission_completion()` | ✅ Fixed |
+
+3. **Added meta.* fields to all events:**
+   ```python
+   meta={
+       'schema_version': 1,
+       'producer': 'mission_controller',
+       'source_module': 'mission_control_core'
+   }
+   ```
+
+**Example Migration:**
+
+```python
+# ❌ BEFORE (dict format, no meta):
+await self.event_stream.publish_event({
+    'id': str(uuid.uuid4()),
+    'type': EventType.MISSION_CREATED,
+    'source': 'mission_controller',
+    'target': None,
+    'payload': {...},
+    'timestamp': datetime.utcnow(),
+    'mission_id': mission_id
+})
+
+# ✅ AFTER (Event dataclass, with meta):
+event = Event(
+    id=str(uuid.uuid4()),
+    type=EventType.MISSION_CREATED,
+    source='mission_controller',
+    target=None,
+    payload={...},
+    timestamp=datetime.utcnow(),
+    mission_id=mission_id,
+    meta={
+        'schema_version': 1,
+        'producer': 'mission_controller',
+        'source_module': 'mission_control_core'
+    }
+)
+await self.event_stream.publish_event(event)
+```
+
+**Testing:**
+- ✅ Syntax validation passed
+- ✅ Backward compatible at serialization level
+- ✅ Same pattern as tested MissionQueueManager
+
+**File Changes:**
+- `backend/mission_control_core/core/mission_control.py`: +65 lines, -40 lines
+
+**Result:** ✅ **MissionControl producer is now Charter v1.0 compliant**
+
+---
+
 **Report Completed:** 2025-12-28
-**Next Action:** Proceed with TEIL B (MissionControl Producer Migration)
+**Status:** ✅ **Phase 1-4 + TEIL A + TEIL B COMPLETE**
+**Next Action:** TEIL C (CI Guardrail) — Optional CI enforcement
