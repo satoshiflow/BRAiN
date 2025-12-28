@@ -60,6 +60,39 @@ class EventType(str, Enum):
     AGENT_MESSAGE = "agent.message"
     BROADCAST = "broadcast"
 
+    # Course Factory Events (Sprint 1)
+    COURSE_GENERATION_REQUESTED = "course.generation.requested"
+    COURSE_OUTLINE_CREATED = "course.outline.created"
+    COURSE_LESSON_GENERATED = "course.lesson.generated"
+    COURSE_QUIZ_CREATED = "course.quiz.created"
+    COURSE_LANDING_PAGE_CREATED = "course.landing_page.created"
+    COURSE_GENERATION_COMPLETED = "course.generation.completed"
+    COURSE_GENERATION_FAILED = "course.generation.failed"
+    COURSE_WORKFLOW_TRANSITIONED = "course.workflow.transitioned"
+    COURSE_DEPLOYED_STAGING = "course.deployed.staging"
+
+    # Course Distribution Events (Sprint 1)
+    DISTRIBUTION_CREATED = "distribution.created"
+    DISTRIBUTION_UPDATED = "distribution.updated"
+    DISTRIBUTION_DELETED = "distribution.deleted"
+    DISTRIBUTION_PUBLISHED = "distribution.published"
+    DISTRIBUTION_UNPUBLISHED = "distribution.unpublished"
+    DISTRIBUTION_VIEWED = "distribution.viewed"
+    DISTRIBUTION_ENROLLMENT_CLICKED = "distribution.enrollment_clicked"
+    DISTRIBUTION_MICRO_NICHE_CREATED = "distribution.micro_niche_created"
+    DISTRIBUTION_VERSION_BUMPED = "distribution.version_bumped"
+
+    # IR Governance Events (Sprint 1)
+    IR_APPROVAL_CREATED = "ir.approval_created"
+    IR_APPROVAL_CONSUMED = "ir.approval_consumed"
+    IR_APPROVAL_EXPIRED = "ir.approval_expired"
+    IR_APPROVAL_INVALID = "ir.approval_invalid"
+    IR_VALIDATED_PASS = "ir.validated_pass"
+    IR_VALIDATED_ESCALATE = "ir.validated_escalate"
+    IR_VALIDATED_REJECT = "ir.validated_reject"
+    IR_DAG_DIFF_OK = "ir.dag_diff_ok"
+    IR_DAG_DIFF_FAILED = "ir.dag_diff_failed"
+
 
 @dataclass
 class Event:

@@ -53,6 +53,11 @@ from app.modules.ir_governance import (
     IRProvider,
 )
 
+# EventStream Integration (Sprint 1)
+from backend.mission_control_core.core.event_stream import EventStream, Event, EventType
+from datetime import datetime
+import uuid
+
 
 class CourseFactoryService:
     """
@@ -65,7 +70,7 @@ class CourseFactoryService:
     - Handle dry-run vs execute mode
     """
 
-    def __init__(self):
+    def __init__(self, event_stream: Optional[EventStream] = None):
         # Sprint 12 generators
         self.outline_gen = OutlineGenerator()
         self.lesson_gen = LessonGenerator()
@@ -83,6 +88,9 @@ class CourseFactoryService:
         # Storage paths
         self.storage_base = Path("storage/courses")
         self.storage_base.mkdir(parents=True, exist_ok=True)
+
+        # EventStream (Sprint 1 Migration)
+        self.event_stream = event_stream
 
     async def generate_course(
         self, request: CourseGenerationRequest
@@ -119,20 +127,29 @@ class CourseFactoryService:
             # Determine template based on title
             template_id = self._detect_template(request.title)
 
+            # EVENT: course.generation.requested
+            await self._publish_generation_requested(metadata.course_id, request)
+
             outline = self.outline_gen.generate_outline(
                 metadata=metadata,
                 template_id=template_id,
                 dry_run=request.dry_run
             )
 
+            # EVENT: course.outline.created
+            await self._publish_outline_created(metadata.course_id, outline, template_id)
+
             # Step 2: Generate full lesson content
             if not request.dry_run:
-                for lesson in outline.get_full_lessons():
+                for idx, lesson in enumerate(outline.get_full_lessons(), start=1):
                     lesson_content = self.lesson_gen.generate_lesson_content(
                         lesson=lesson,
                         language=request.language
                     )
                     lesson.content_markdown = lesson_content.content_markdown
+
+                    # EVENT: course.lesson.generated (for each lesson)
+                    await self._publish_lesson_generated(metadata.course_id, lesson, idx)
 
             # Step 3: Generate quiz (if requested)
             quiz = None
@@ -143,6 +160,9 @@ class CourseFactoryService:
                     language=request.language
                 )
 
+                # EVENT: course.quiz.created
+                await self._publish_quiz_created(metadata.course_id, quiz)
+
             # Step 4: Generate landing page (if requested)
             landing_page = None
             if request.generate_landing_page:
@@ -150,6 +170,9 @@ class CourseFactoryService:
                     outline=outline,
                     language=request.language
                 )
+
+                # EVENT: course.landing_page.created
+                await self._publish_landing_page_created(metadata.course_id, landing_page)
 
             # Step 5: Save artifacts (if not dry-run)
             evidence_pack_path = None
@@ -171,6 +194,13 @@ class CourseFactoryService:
                     landing_page=landing_page,
                 )
                 deployed = True
+
+                # EVENT: course.deployed.staging
+                await self._publish_deployed_staging(
+                    metadata.course_id,
+                    staging_url,
+                    request.staging_domain or "unknown"
+                )
 
             # Compute execution time
             execution_time = time.time() - start_time
@@ -198,10 +228,23 @@ class CourseFactoryService:
                 f"({execution_time:.2f}s)"
             )
 
+            # EVENT: course.generation.completed
+            await self._publish_generation_completed(result, request.tenant_id)
+
             return result
 
         except Exception as e:
             logger.error(f"[CourseFactory] Course generation failed: {e}")
+
+            # EVENT: course.generation.failed
+            execution_time = time.time() - start_time
+            await self._publish_generation_failed(
+                course_id="",  # May not have been created yet
+                title=request.title,
+                error=e,
+                execution_time=execution_time,
+                tenant_id=request.tenant_id
+            )
 
             # Return error result
             return CourseGenerationResult(
@@ -210,7 +253,7 @@ class CourseFactoryService:
                 total_modules=0,
                 total_lessons=0,
                 full_lessons_generated=0,
-                execution_time_seconds=time.time() - start_time,
+                execution_time_seconds=execution_time,
                 errors=[str(e)],
             )
 
@@ -805,6 +848,262 @@ class CourseFactoryService:
             json.dump(seo_pack.model_dump(), f, indent=2, ensure_ascii=False, default=str)
 
         logger.debug(f"[CourseFactory] SEO pack saved: {seo_path}")
+
+    # ========================================================================
+    # EventStream Integration (Sprint 1)
+    # ========================================================================
+
+    async def _publish_event_safe(self, event: Event) -> None:
+        """
+        Publish event with error handling (non-blocking).
+
+        Event publishing failures MUST NOT break business logic.
+        """
+        if self.event_stream is None:
+            logger.debug("[CourseFactory] EventStream not available, skipping event publish")
+            return
+
+        try:
+            await self.event_stream.publish_event(event)
+            logger.info(f"[CourseFactory] Event published: {event.type.value} (id={event.id})")
+        except Exception as e:
+            # Log error, but DO NOT raise
+            logger.error(
+                f"[CourseFactory] Event publishing failed: {event.type.value} (id={event.id})",
+                exc_info=True,
+                extra={"event_id": event.id, "event_type": event.type.value}
+            )
+
+    async def _publish_generation_requested(
+        self,
+        course_id: str,
+        request: CourseGenerationRequest
+    ) -> None:
+        """Publish course.generation.requested event."""
+        event = Event(
+            id=str(uuid.uuid4()),
+            type=EventType.COURSE_GENERATION_REQUESTED,
+            source="course_factory_service",
+            target=None,
+            payload={
+                "course_id": course_id,
+                "title": request.title,
+                "description": request.description,
+                "language": request.language.value,
+                "target_audiences": [a.value for a in request.target_audiences],
+                "tenant_id": request.tenant_id,
+                "dry_run": request.dry_run,
+                "full_lessons_count": request.full_lessons_count,
+            },
+            timestamp=datetime.utcnow(),
+            tenant_id=request.tenant_id,
+            meta={
+                "schema_version": 1,
+                "producer": "course_factory_service",
+                "source_module": "course_factory"
+            }
+        )
+        await self._publish_event_safe(event)
+
+    async def _publish_outline_created(
+        self,
+        course_id: str,
+        outline: CourseOutline,
+        template_id: str
+    ) -> None:
+        """Publish course.outline.created event."""
+        event = Event(
+            id=str(uuid.uuid4()),
+            type=EventType.COURSE_OUTLINE_CREATED,
+            source="course_factory_service",
+            target=None,
+            payload={
+                "course_id": course_id,
+                "modules_count": len(outline.modules),
+                "total_lessons": outline.total_lessons,
+                "template_id": template_id,
+            },
+            timestamp=datetime.utcnow(),
+            meta={
+                "schema_version": 1,
+                "producer": "course_factory_service",
+                "source_module": "course_factory"
+            }
+        )
+        await self._publish_event_safe(event)
+
+    async def _publish_lesson_generated(
+        self,
+        course_id: str,
+        lesson: CourseLesson,
+        lesson_index: int
+    ) -> None:
+        """Publish course.lesson.generated event."""
+        event = Event(
+            id=str(uuid.uuid4()),
+            type=EventType.COURSE_LESSON_GENERATED,
+            source="course_factory_service",
+            target=None,
+            payload={
+                "course_id": course_id,
+                "lesson_id": lesson.lesson_id,
+                "lesson_title": lesson.title,
+                "module_id": lesson.module_id,
+                "content_length": len(lesson.content_markdown or ""),
+                "lesson_index": lesson_index,
+            },
+            timestamp=datetime.utcnow(),
+            meta={
+                "schema_version": 1,
+                "producer": "course_factory_service",
+                "source_module": "course_factory"
+            }
+        )
+        await self._publish_event_safe(event)
+
+    async def _publish_quiz_created(
+        self,
+        course_id: str,
+        quiz: CourseQuiz
+    ) -> None:
+        """Publish course.quiz.created event."""
+        event = Event(
+            id=str(uuid.uuid4()),
+            type=EventType.COURSE_QUIZ_CREATED,
+            source="course_factory_service",
+            target=None,
+            payload={
+                "course_id": course_id,
+                "quiz_id": quiz.quiz_id,
+                "question_count": len(quiz.questions),
+                "question_ids": [q.question_id for q in quiz.questions],
+            },
+            timestamp=datetime.utcnow(),
+            meta={
+                "schema_version": 1,
+                "producer": "course_factory_service",
+                "source_module": "course_factory"
+            }
+        )
+        await self._publish_event_safe(event)
+
+    async def _publish_landing_page_created(
+        self,
+        course_id: str,
+        landing_page: CourseLandingPage
+    ) -> None:
+        """Publish course.landing_page.created event."""
+        event = Event(
+            id=str(uuid.uuid4()),
+            type=EventType.COURSE_LANDING_PAGE_CREATED,
+            source="course_factory_service",
+            target=None,
+            payload={
+                "course_id": course_id,
+                "landing_page_id": landing_page.landing_page_id,
+                "sections_count": len(landing_page.sections),
+                "has_hero": hasattr(landing_page, 'hero_section'),
+                "has_pricing": hasattr(landing_page, 'pricing_section'),
+            },
+            timestamp=datetime.utcnow(),
+            meta={
+                "schema_version": 1,
+                "producer": "course_factory_service",
+                "source_module": "course_factory"
+            }
+        )
+        await self._publish_event_safe(event)
+
+    async def _publish_generation_completed(
+        self,
+        result: CourseGenerationResult,
+        tenant_id: str
+    ) -> None:
+        """Publish course.generation.completed event."""
+        event = Event(
+            id=str(uuid.uuid4()),
+            type=EventType.COURSE_GENERATION_COMPLETED,
+            source="course_factory_service",
+            target=None,
+            payload={
+                "course_id": result.course_id,
+                "total_modules": result.total_modules,
+                "total_lessons": result.total_lessons,
+                "full_lessons_generated": result.full_lessons_generated,
+                "quiz_questions_count": result.quiz_questions_count,
+                "evidence_pack_path": result.evidence_pack_path,
+                "execution_time_seconds": result.execution_time_seconds,
+                "deployed": result.deployed,
+                "staging_url": result.staging_url,
+            },
+            timestamp=datetime.utcnow(),
+            tenant_id=tenant_id,
+            meta={
+                "schema_version": 1,
+                "producer": "course_factory_service",
+                "source_module": "course_factory"
+            }
+        )
+        await self._publish_event_safe(event)
+
+    async def _publish_generation_failed(
+        self,
+        course_id: str,
+        title: str,
+        error: Exception,
+        execution_time: float,
+        tenant_id: str
+    ) -> None:
+        """Publish course.generation.failed event."""
+        event = Event(
+            id=str(uuid.uuid4()),
+            type=EventType.COURSE_GENERATION_FAILED,
+            source="course_factory_service",
+            target=None,
+            payload={
+                "course_id": course_id,
+                "title": title,
+                "error_message": str(error),
+                "error_type": type(error).__name__,
+                "execution_time_seconds": execution_time,
+            },
+            timestamp=datetime.utcnow(),
+            tenant_id=tenant_id,
+            severity="ERROR",
+            meta={
+                "schema_version": 1,
+                "producer": "course_factory_service",
+                "source_module": "course_factory"
+            }
+        )
+        await self._publish_event_safe(event)
+
+    async def _publish_deployed_staging(
+        self,
+        course_id: str,
+        staging_url: str,
+        staging_domain: str
+    ) -> None:
+        """Publish course.deployed.staging event."""
+        event = Event(
+            id=str(uuid.uuid4()),
+            type=EventType.COURSE_DEPLOYED_STAGING,
+            source="course_factory_service",
+            target=None,
+            payload={
+                "course_id": course_id,
+                "staging_url": staging_url,
+                "staging_domain": staging_domain,
+                "deployed_at": datetime.utcnow().isoformat(),
+            },
+            timestamp=datetime.utcnow(),
+            meta={
+                "schema_version": 1,
+                "producer": "course_factory_service",
+                "source_module": "course_factory"
+            }
+        )
+        await self._publish_event_safe(event)
 
 
 # Singleton

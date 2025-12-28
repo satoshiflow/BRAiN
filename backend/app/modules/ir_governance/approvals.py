@@ -26,6 +26,7 @@ import hashlib
 import secrets
 import time
 import os
+import uuid
 from loguru import logger
 
 from backend.app.modules.ir_governance.schemas import (
@@ -34,6 +35,15 @@ from backend.app.modules.ir_governance.schemas import (
     ApprovalConsumeRequest,
     ApprovalConsumeResult,
 )
+
+# EventStream integration (Sprint 1)
+try:
+    from backend.mission_control_core.core.event_stream import EventStream, Event, EventType
+except ImportError:
+    EventStream = None
+    Event = None
+    EventType = None
+    logger.warning("[IRGovernance] EventStream not available (mission_control_core not installed)")
 
 
 class ApprovalStore:
@@ -132,16 +142,52 @@ class ApprovalsService:
     # Default TTL: 1 hour
     DEFAULT_TTL_SECONDS = 3600
 
-    def __init__(self, store: Optional[ApprovalStore] = None):
+    def __init__(
+        self,
+        store: Optional[ApprovalStore] = None,
+        event_stream: Optional["EventStream"] = None,
+    ):
         """
         Initialize approvals service.
 
         Args:
             store: Approval storage (default: InMemoryApprovalStore)
+            event_stream: EventStream for event publishing (optional)
         """
         self.store = store or InMemoryApprovalStore()
+        self.event_stream = event_stream
 
-    def create_approval(
+    async def _publish_event_safe(self, event: "Event") -> None:
+        """
+        Publish event with error handling (non-blocking).
+
+        Charter v1.0 Compliance:
+        - Event publishing MUST NOT block business logic
+        - Failures are logged but NOT raised
+        - Business operations continue regardless of event success
+
+        Args:
+            event: Event to publish
+        """
+        if self.event_stream is None:
+            logger.debug("[IRGovernance] EventStream not available, skipping event publish")
+            return
+
+        if Event is None or EventType is None:
+            logger.debug("[IRGovernance] EventStream classes not imported, skipping")
+            return
+
+        try:
+            await self.event_stream.publish_event(event)
+            logger.info(f"[IRGovernance] Event published: {event.type.value} (id={event.id})")
+        except Exception as e:
+            logger.error(
+                f"[IRGovernance] Event publishing failed: {event.type.value if hasattr(event, 'type') else 'unknown'}",
+                exc_info=True,
+            )
+            # DO NOT raise - business logic must continue
+
+    async def create_approval(
         self,
         tenant_id: str,
         ir_hash: str,
@@ -183,7 +229,34 @@ class ApprovalsService:
         # Store approval
         self.store.create(approval)
 
-        # Emit audit event (NO RAW TOKEN in logs)
+        # EVENT: ir.approval_created
+        if Event is not None and EventType is not None:
+            await self._publish_event_safe(
+                Event(
+                    id=str(uuid.uuid4()),
+                    type=EventType.IR_APPROVAL_CREATED,
+                    source="ir_governance",
+                    target=None,
+                    timestamp=datetime.utcnow(),
+                    payload={
+                        "approval_id": approval.approval_id,
+                        "tenant_id": tenant_id,
+                        "ir_hash": ir_hash,
+                        "ttl_seconds": ttl,
+                        "expires_at": expires_at.isoformat() + "Z",
+                        "created_by": created_by,
+                        "created_at": datetime.utcnow().isoformat() + "Z",
+                    },
+                    meta={
+                        "schema_version": "1.0",
+                        "producer": "ir_governance",
+                        "source_module": "ir_governance",
+                        "tenant_id": tenant_id,
+                    },
+                )
+            )
+
+        # Legacy logging (kept for backward compatibility)
         logger.info(
             f"[Approvals] ir.approval_created: "
             f"approval_id={approval.approval_id}, "
@@ -196,7 +269,7 @@ class ApprovalsService:
         # Return approval and raw token (ONLY TIME raw token is exposed)
         return approval, raw_token
 
-    def consume_approval(
+    async def consume_approval(
         self,
         request: ApprovalConsumeRequest,
         consumed_by: Optional[str] = None,
@@ -231,6 +304,32 @@ class ApprovalsService:
 
         # Check: approval exists
         if not approval:
+            # EVENT: ir.approval_invalid (token not found)
+            if Event is not None and EventType is not None:
+                await self._publish_event_safe(
+                    Event(
+                        id=str(uuid.uuid4()),
+                        type=EventType.IR_APPROVAL_INVALID,
+                        source="ir_governance",
+                        target=None,
+                        timestamp=datetime.utcnow(),
+                        payload={
+                            "tenant_id": request.tenant_id,
+                            "ir_hash": request.ir_hash,
+                            "reason": "token_not_found",
+                            "attempted_by": consumed_by,
+                            "attempted_at": datetime.utcnow().isoformat() + "Z",
+                            "approval_id": None,
+                        },
+                        meta={
+                            "schema_version": "1.0",
+                            "producer": "ir_governance",
+                            "source_module": "ir_governance",
+                            "tenant_id": request.tenant_id,
+                        },
+                    )
+                )
+
             logger.warning(
                 f"[Approvals] ir.approval_invalid: token not found "
                 f"(tenant_id={request.tenant_id}, ir_hash={request.ir_hash[:16]}...)"
@@ -243,6 +342,32 @@ class ApprovalsService:
 
         # Check: tenant_id matches
         if approval.tenant_id != request.tenant_id:
+            # EVENT: ir.approval_invalid (tenant mismatch)
+            if Event is not None and EventType is not None:
+                await self._publish_event_safe(
+                    Event(
+                        id=str(uuid.uuid4()),
+                        type=EventType.IR_APPROVAL_INVALID,
+                        source="ir_governance",
+                        target=None,
+                        timestamp=datetime.utcnow(),
+                        payload={
+                            "tenant_id": request.tenant_id,
+                            "ir_hash": request.ir_hash,
+                            "reason": "tenant_mismatch",
+                            "attempted_by": consumed_by,
+                            "attempted_at": datetime.utcnow().isoformat() + "Z",
+                            "approval_id": approval.approval_id,
+                        },
+                        meta={
+                            "schema_version": "1.0",
+                            "producer": "ir_governance",
+                            "source_module": "ir_governance",
+                            "tenant_id": request.tenant_id,
+                        },
+                    )
+                )
+
             logger.warning(
                 f"[Approvals] ir.approval_invalid: tenant_id mismatch "
                 f"(approval={approval.approval_id}, "
@@ -256,6 +381,32 @@ class ApprovalsService:
 
         # Check: ir_hash matches
         if approval.ir_hash != request.ir_hash:
+            # EVENT: ir.approval_invalid (ir_hash mismatch)
+            if Event is not None and EventType is not None:
+                await self._publish_event_safe(
+                    Event(
+                        id=str(uuid.uuid4()),
+                        type=EventType.IR_APPROVAL_INVALID,
+                        source="ir_governance",
+                        target=None,
+                        timestamp=datetime.utcnow(),
+                        payload={
+                            "tenant_id": request.tenant_id,
+                            "ir_hash": request.ir_hash,
+                            "reason": "ir_hash_mismatch",
+                            "attempted_by": consumed_by,
+                            "attempted_at": datetime.utcnow().isoformat() + "Z",
+                            "approval_id": approval.approval_id,
+                        },
+                        meta={
+                            "schema_version": "1.0",
+                            "producer": "ir_governance",
+                            "source_module": "ir_governance",
+                            "tenant_id": request.tenant_id,
+                        },
+                    )
+                )
+
             logger.warning(
                 f"[Approvals] ir.approval_invalid: ir_hash mismatch "
                 f"(approval={approval.approval_id}, "
@@ -272,6 +423,33 @@ class ApprovalsService:
             approval.status = ApprovalStatus.EXPIRED
             self.store.update(approval)
 
+            # EVENT: ir.approval_expired
+            if Event is not None and EventType is not None:
+                await self._publish_event_safe(
+                    Event(
+                        id=str(uuid.uuid4()),
+                        type=EventType.IR_APPROVAL_EXPIRED,
+                        source="ir_governance",
+                        target=None,
+                        timestamp=datetime.utcnow(),
+                        payload={
+                            "approval_id": approval.approval_id,
+                            "tenant_id": approval.tenant_id,
+                            "ir_hash": approval.ir_hash,
+                            "expired_at": approval.expires_at.isoformat() + "Z",
+                            "created_at": approval.created_at.isoformat() + "Z",
+                            "ttl_seconds": int((approval.expires_at - approval.created_at).total_seconds()),
+                            "was_consumed": False,
+                        },
+                        meta={
+                            "schema_version": "1.0",
+                            "producer": "ir_governance",
+                            "source_module": "ir_governance",
+                            "tenant_id": approval.tenant_id,
+                        },
+                    )
+                )
+
             logger.warning(
                 f"[Approvals] ir.approval_expired: "
                 f"approval_id={approval.approval_id}, "
@@ -287,6 +465,32 @@ class ApprovalsService:
 
         # Check: not already consumed
         if approval.status == ApprovalStatus.CONSUMED:
+            # EVENT: ir.approval_invalid (already consumed)
+            if Event is not None and EventType is not None:
+                await self._publish_event_safe(
+                    Event(
+                        id=str(uuid.uuid4()),
+                        type=EventType.IR_APPROVAL_INVALID,
+                        source="ir_governance",
+                        target=None,
+                        timestamp=datetime.utcnow(),
+                        payload={
+                            "tenant_id": approval.tenant_id,
+                            "ir_hash": approval.ir_hash,
+                            "reason": "already_consumed",
+                            "attempted_by": consumed_by,
+                            "attempted_at": datetime.utcnow().isoformat() + "Z",
+                            "approval_id": approval.approval_id,
+                        },
+                        meta={
+                            "schema_version": "1.0",
+                            "producer": "ir_governance",
+                            "source_module": "ir_governance",
+                            "tenant_id": approval.tenant_id,
+                        },
+                    )
+                )
+
             logger.warning(
                 f"[Approvals] ir.approval_invalid: already consumed "
                 f"(approval={approval.approval_id}, "
@@ -300,9 +504,40 @@ class ApprovalsService:
 
         # SUCCESS: Consume approval
         approval.status = ApprovalStatus.CONSUMED
-        approval.consumed_at = datetime.utcnow()
+        consumed_at = datetime.utcnow()
+        approval.consumed_at = consumed_at
         approval.consumed_by = consumed_by
         self.store.update(approval)
+
+        # Calculate time to consume
+        time_to_consume_seconds = int((consumed_at - approval.created_at).total_seconds())
+
+        # EVENT: ir.approval_consumed (SUCCESS)
+        if Event is not None and EventType is not None:
+            await self._publish_event_safe(
+                Event(
+                    id=str(uuid.uuid4()),
+                    type=EventType.IR_APPROVAL_CONSUMED,
+                    source="ir_governance",
+                    target=None,
+                    timestamp=consumed_at,
+                    payload={
+                        "approval_id": approval.approval_id,
+                        "tenant_id": approval.tenant_id,
+                        "ir_hash": approval.ir_hash,
+                        "consumed_by": consumed_by,
+                        "consumed_at": consumed_at.isoformat() + "Z",
+                        "time_to_consume_seconds": time_to_consume_seconds,
+                        "was_expired": False,
+                    },
+                    meta={
+                        "schema_version": "1.0",
+                        "producer": "ir_governance",
+                        "source_module": "ir_governance",
+                        "tenant_id": approval.tenant_id,
+                    },
+                )
+            )
 
         logger.info(
             f"[Approvals] ir.approval_consumed: "

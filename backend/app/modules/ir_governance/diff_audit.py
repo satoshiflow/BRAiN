@@ -11,7 +11,9 @@ Ensures:
 On mismatch: BLOCK execution + emit audit event
 """
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
+from datetime import datetime
+import uuid
 from loguru import logger
 
 from backend.app.modules.ir_governance.schemas import (
@@ -24,6 +26,15 @@ from backend.app.modules.ir_governance.canonicalization import (
     compute_dag_hash,
 )
 
+# EventStream integration (Sprint 1)
+try:
+    from backend.mission_control_core.core.event_stream import EventStream, Event, EventType
+except ImportError:
+    EventStream = None
+    Event = None
+    EventType = None
+    logger.warning("[IRGovernance] EventStream not available (mission_control_core not installed)")
+
 
 class DiffAuditGate:
     """
@@ -32,7 +43,46 @@ class DiffAuditGate:
     Fail-closed: Any mismatch blocks execution.
     """
 
-    def audit_ir_dag_mapping(
+    def __init__(self, event_stream: Optional["EventStream"] = None):
+        """
+        Initialize diff-audit gate.
+
+        Args:
+            event_stream: EventStream for event publishing (optional)
+        """
+        self.event_stream = event_stream
+
+    async def _publish_event_safe(self, event: "Event") -> None:
+        """
+        Publish event with error handling (non-blocking).
+
+        Charter v1.0 Compliance:
+        - Event publishing MUST NOT block business logic
+        - Failures are logged but NOT raised
+        - Business operations continue regardless of event success
+
+        Args:
+            event: Event to publish
+        """
+        if self.event_stream is None:
+            logger.debug("[IRGovernance] EventStream not available, skipping event publish")
+            return
+
+        if Event is None or EventType is None:
+            logger.debug("[IRGovernance] EventStream classes not imported, skipping")
+            return
+
+        try:
+            await self.event_stream.publish_event(event)
+            logger.info(f"[IRGovernance] Event published: {event.type.value} (id={event.id})")
+        except Exception as e:
+            logger.error(
+                f"[IRGovernance] Event publishing failed: {event.type.value if hasattr(event, 'type') else 'unknown'}",
+                exc_info=True,
+            )
+            # DO NOT raise - business logic must continue
+
+    async def audit_ir_dag_mapping(
         self,
         ir: IR,
         dag_nodes: List[Dict[str, Any]],
@@ -140,6 +190,35 @@ class DiffAuditGate:
 
         # Emit audit event
         if success:
+            # EVENT: ir.dag_diff_ok
+            if Event is not None and EventType is not None:
+                await self._publish_event_safe(
+                    Event(
+                        id=str(uuid.uuid4()),
+                        type=EventType.IR_DAG_DIFF_OK,
+                        source="ir_governance",
+                        target=None,
+                        timestamp=datetime.utcnow(),
+                        payload={
+                            "tenant_id": ir.tenant_id,
+                            "request_id": ir.request_id,
+                            "ir_hash": computed_ir_hash,
+                            "dag_hash": computed_dag_hash,
+                            "step_count": len(ir.steps),
+                            "dag_node_count": len(dag_nodes),
+                            "all_hashes_match": True,
+                            "verified_at": datetime.utcnow().isoformat() + "Z",
+                        },
+                        meta={
+                            "schema_version": "1.0",
+                            "producer": "ir_governance",
+                            "source_module": "ir_governance",
+                            "tenant_id": ir.tenant_id,
+                            "correlation_id": ir.request_id,
+                        },
+                    )
+                )
+
             logger.info(
                 f"[DiffAudit] ir.dag_diff_ok: "
                 f"tenant_id={ir.tenant_id}, "
@@ -149,6 +228,40 @@ class DiffAuditGate:
                 f"steps={len(ir.steps)}"
             )
         else:
+            # EVENT: ir.dag_diff_failed
+            if Event is not None and EventType is not None:
+                await self._publish_event_safe(
+                    Event(
+                        id=str(uuid.uuid4()),
+                        type=EventType.IR_DAG_DIFF_FAILED,
+                        source="ir_governance",
+                        target=None,
+                        timestamp=datetime.utcnow(),
+                        payload={
+                            "tenant_id": ir.tenant_id,
+                            "request_id": ir.request_id,
+                            "ir_hash": computed_ir_hash,
+                            "dag_hash": computed_dag_hash,
+                            "step_count": len(ir.steps),
+                            "dag_node_count": len(dag_nodes),
+                            "all_hashes_match": False,
+                            "mismatch_details": {
+                                "missing_ir_steps": missing_ir_steps,
+                                "extra_dag_nodes": extra_dag_nodes,
+                                "hash_mismatches": hash_mismatches,
+                            },
+                            "verified_at": datetime.utcnow().isoformat() + "Z",
+                        },
+                        meta={
+                            "schema_version": "1.0",
+                            "producer": "ir_governance",
+                            "source_module": "ir_governance",
+                            "tenant_id": ir.tenant_id,
+                            "correlation_id": ir.request_id,
+                        },
+                    )
+                )
+
             logger.error(
                 f"[DiffAudit] ir.dag_diff_failed: "
                 f"tenant_id={ir.tenant_id}, "
@@ -175,9 +288,14 @@ class DiffAuditGate:
 _diff_audit_gate: Optional['DiffAuditGate'] = None
 
 
-def get_diff_audit_gate() -> DiffAuditGate:
-    """Get singleton diff-audit gate."""
+def get_diff_audit_gate(event_stream: Optional["EventStream"] = None) -> DiffAuditGate:
+    """
+    Get singleton diff-audit gate.
+
+    Args:
+        event_stream: EventStream for event publishing (optional, only used on first call)
+    """
     global _diff_audit_gate
     if _diff_audit_gate is None:
-        _diff_audit_gate = DiffAuditGate()
+        _diff_audit_gate = DiffAuditGate(event_stream=event_stream)
     return _diff_audit_gate
