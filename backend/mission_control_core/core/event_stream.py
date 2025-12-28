@@ -547,8 +547,337 @@ async def emit_agent_event(event_stream: EventStream, agent_id: str,
     return event_id
 
 
+# Charter v1.0: Idempotent Event Consumer Infrastructure
+# ========================================================
+
+class EventConsumer:
+    """
+    Charter-compliant event consumer with idempotent processing.
+
+    Primary dedup key: (subscriber_name, stream_message_id)
+    event.id is SECONDARY (audit/trace only)
+
+    Usage:
+        consumer = EventConsumer(
+            subscriber_name="course_access_handler",
+            event_stream=event_stream,
+            db_session_factory=get_db_session
+        )
+        await consumer.start()
+    """
+
+    def __init__(
+        self,
+        subscriber_name: str,
+        event_stream: EventStream,
+        db_session_factory: Callable,
+        stream_name: str = "brain:events:stream",
+        consumer_group: Optional[str] = None,
+        batch_size: int = 10,
+        block_ms: int = 5000
+    ):
+        self.subscriber_name = subscriber_name
+        self.event_stream = event_stream
+        self.db_session_factory = db_session_factory
+        self.stream_name = stream_name
+        self.consumer_group = consumer_group or f"group_{subscriber_name}"
+        self.batch_size = batch_size
+        self.block_ms = block_ms
+
+        self._running = False
+        self._consumer_task: Optional[asyncio.Task] = None
+        self._handlers: Dict[EventType, Callable] = {}
+
+        logger.info(
+            f"EventConsumer '{subscriber_name}' initialized "
+            f"(group={self.consumer_group}, stream={stream_name})"
+        )
+
+    def register_handler(self, event_type: EventType, handler: Callable) -> None:
+        """Register handler for specific event type"""
+        self._handlers[event_type] = handler
+        logger.debug(f"Handler registered: {event_type.value} → {handler.__name__}")
+
+    async def start(self) -> None:
+        """Start consumer loop"""
+        if self._running:
+            logger.warning(f"Consumer '{self.subscriber_name}' already running")
+            return
+
+        # Ensure consumer group exists
+        try:
+            await self.event_stream.redis.xgroup_create(
+                self.stream_name,
+                self.consumer_group,
+                id='0',
+                mkstream=True
+            )
+            logger.info(f"Created consumer group '{self.consumer_group}'")
+        except Exception as e:
+            # Group might already exist
+            logger.debug(f"Consumer group exists or creation failed: {e}")
+
+        self._running = True
+        self._consumer_task = asyncio.create_task(self._consume_loop())
+        logger.info(f"EventConsumer '{self.subscriber_name}' started")
+
+    async def stop(self) -> None:
+        """Stop consumer loop gracefully"""
+        self._running = False
+        if self._consumer_task:
+            self._consumer_task.cancel()
+            try:
+                await self._consumer_task
+            except asyncio.CancelledError:
+                pass
+        logger.info(f"EventConsumer '{self.subscriber_name}' stopped")
+
+    async def _consume_loop(self) -> None:
+        """Main consumer loop (Charter-compliant)"""
+        logger.info(f"Consumer loop started: {self.subscriber_name}")
+
+        try:
+            while self._running:
+                try:
+                    # Read from stream (consumer group pattern)
+                    messages = await self.event_stream.redis.xreadgroup(
+                        groupname=self.consumer_group,
+                        consumername=self.subscriber_name,
+                        streams={self.stream_name: '>'},
+                        count=self.batch_size,
+                        block=self.block_ms
+                    )
+
+                    if not messages:
+                        continue  # Timeout, retry
+
+                    # Process each message
+                    for stream_name, message_list in messages:
+                        for stream_message_id, fields in message_list:
+                            await self._process_message(
+                                stream_message_id=stream_message_id,
+                                fields=fields
+                            )
+
+                except asyncio.CancelledError:
+                    break
+                except Exception as e:
+                    logger.error(f"Consumer loop error: {e}", exc_info=True)
+                    await asyncio.sleep(5)  # Backoff on error
+
+        except Exception as e:
+            logger.error(f"Fatal consumer error: {e}", exc_info=True)
+        finally:
+            logger.info(f"Consumer loop exited: {self.subscriber_name}")
+
+    async def _process_message(
+        self,
+        stream_message_id: str,
+        fields: Dict[str, Any]
+    ) -> None:
+        """
+        Process single message with idempotent dedup (Charter v1.0)
+
+        Args:
+            stream_message_id: Redis Stream Message ID (PRIMARY dedup key)
+            fields: Event data fields
+        """
+        try:
+            # Parse event
+            event = Event.from_dict(fields)
+
+            # CHARTER COMPLIANCE: Check dedup (stream_message_id PRIMARY)
+            db_session = self.db_session_factory()
+            try:
+                is_duplicate = await self._check_duplicate(
+                    db_session,
+                    stream_message_id,
+                    event.id  # SECONDARY, audit only
+                )
+
+                if is_duplicate:
+                    logger.debug(
+                        f"Skipping duplicate message: {stream_message_id} "
+                        f"(event_id={event.id})"
+                    )
+                    # ACK duplicate (idempotent: no effect)
+                    await self._ack_message(stream_message_id)
+                    return
+
+                # Find handler for this event type
+                handler = self._handlers.get(event.type)
+                if not handler:
+                    logger.warning(
+                        f"No handler for {event.type.value}, skipping "
+                        f"(stream_msg={stream_message_id})"
+                    )
+                    await self._ack_message(stream_message_id)
+                    return
+
+                # Execute handler
+                logger.debug(
+                    f"Processing {event.type.value}: {stream_message_id} "
+                    f"(event_id={event.id})"
+                )
+
+                if asyncio.iscoroutinefunction(handler):
+                    await handler(event)
+                else:
+                    handler(event)
+
+                # Mark as processed (DEDUP)
+                await self._mark_processed(
+                    db_session,
+                    stream_message_id,
+                    event
+                )
+
+                # ACK message
+                await self._ack_message(stream_message_id)
+
+                logger.debug(f"Successfully processed: {stream_message_id}")
+
+            finally:
+                await db_session.close()
+
+        except Exception as e:
+            # ERROR HANDLING (Charter compliance)
+            if self._is_permanent_error(e):
+                # Permanent error: ACK + Log (avoid infinite retry)
+                logger.error(
+                    f"PERMANENT ERROR processing {stream_message_id}: {e}",
+                    exc_info=True
+                )
+                await self._ack_message(stream_message_id)
+                # Optional: Send to DLQ (not implemented yet)
+            else:
+                # Transient error: NO ACK (will retry)
+                logger.warning(
+                    f"TRANSIENT ERROR processing {stream_message_id}: {e}. "
+                    f"Will retry."
+                )
+                # Do NOT ack, let retry happen
+
+    async def _check_duplicate(
+        self,
+        db_session,
+        stream_message_id: str,
+        event_id: str
+    ) -> bool:
+        """
+        Check if message already processed (Charter PRIMARY key)
+
+        Returns:
+            True if duplicate (already processed)
+        """
+        from sqlalchemy import text
+
+        query = text("""
+            SELECT 1 FROM processed_events
+            WHERE subscriber_name = :subscriber
+            AND stream_message_id = :stream_msg_id
+            LIMIT 1
+        """)
+
+        result = await db_session.execute(
+            query,
+            {
+                "subscriber": self.subscriber_name,
+                "stream_msg_id": stream_message_id
+            }
+        )
+
+        return result.scalar() is not None
+
+    async def _mark_processed(
+        self,
+        db_session,
+        stream_message_id: str,
+        event: Event
+    ) -> None:
+        """Mark message as processed (idempotency tracking)"""
+        from sqlalchemy import text
+
+        query = text("""
+            INSERT INTO processed_events (
+                subscriber_name,
+                stream_name,
+                stream_message_id,
+                event_id,
+                event_type,
+                tenant_id,
+                metadata
+            ) VALUES (
+                :subscriber,
+                :stream,
+                :stream_msg_id,
+                :event_id,
+                :event_type,
+                :tenant_id,
+                :metadata
+            )
+            ON CONFLICT (subscriber_name, stream_message_id) DO NOTHING
+        """)
+
+        await db_session.execute(
+            query,
+            {
+                "subscriber": self.subscriber_name,
+                "stream": self.stream_name,
+                "stream_msg_id": stream_message_id,
+                "event_id": event.id,
+                "event_type": event.type.value,
+                "tenant_id": event.tenant_id,
+                "metadata": json.dumps(event.meta)
+            }
+        )
+        await db_session.commit()
+
+    async def _ack_message(self, stream_message_id: str) -> None:
+        """Acknowledge message (remove from pending)"""
+        try:
+            await self.event_stream.redis.xack(
+                self.stream_name,
+                self.consumer_group,
+                stream_message_id
+            )
+        except Exception as e:
+            logger.warning(f"Failed to ACK {stream_message_id}: {e}")
+
+    def _is_permanent_error(self, error: Exception) -> bool:
+        """
+        Determine if error is permanent (ACK) or transient (retry)
+
+        Permanent: ValidationError, KeyError, TypeError, etc.
+        Transient: ConnectionError, TimeoutError, etc.
+        """
+        permanent_types = (
+            KeyError,
+            TypeError,
+            ValueError,
+            AttributeError,
+            # Add more as needed
+        )
+
+        transient_types = (
+            ConnectionError,
+            TimeoutError,
+            asyncio.TimeoutError,
+            # Add more as needed
+        )
+
+        if isinstance(error, permanent_types):
+            return True
+        if isinstance(error, transient_types):
+            return False
+
+        # Default: transient (safer, will retry)
+        return False
+
+
 # Export public interface
 __all__ = [
-    'EventStream', 'Event', 'EventType', 
+    'EventStream', 'Event', 'EventType',
+    'EventConsumer',  # NEW
     'emit_task_event', 'emit_agent_event'
 ]

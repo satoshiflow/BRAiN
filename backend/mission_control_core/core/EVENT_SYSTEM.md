@@ -502,7 +502,152 @@ For legacy mode (not recommended), set `USE_EVENT_STREAM=false`.
 
 ---
 
+## Idempotent Event Consumption (v1.3+ Charter Compliant)
+
+### Charter v1.0: Primary Dedup Key = Stream Message ID
+
+**CRITICAL:** event.id is **NOT** the primary dedup key. Redis Stream Message ID is.
+
+**Why?**
+- event.id (UUID v4) is regenerated on retry → non-idempotent
+- Redis Stream Message ID is stable across retries → idempotent
+
+### EventConsumer Architecture
+
+```python
+from backend.mission_control_core.core.event_stream import EventConsumer, EventType
+
+# Initialize consumer
+consumer = EventConsumer(
+    subscriber_name="course_access_handler",
+    event_stream=event_stream,
+    db_session_factory=get_db_session,  # SQLAlchemy session factory
+    stream_name="brain:events:stream",
+    consumer_group="group_course_access"
+)
+
+# Register event handlers
+async def handle_payment_completed(event: Event):
+    # Grant course access
+    course_id = event.payload["course_id"]
+    user_id = event.payload["user_id"]
+    await grant_access(course_id, user_id)
+
+consumer.register_handler(EventType.PAYMENT_COMPLETED, handle_payment_completed)
+
+# Start consumer
+await consumer.start()
+```
+
+### Dedup Mechanism
+
+**Primary Key:** `(subscriber_name, stream_message_id)`
+
+**DB Table:** `processed_events`
+- `subscriber_name`: Unique consumer name
+- `stream_message_id`: Redis Stream Message ID (e.g. `1735390000000-0`)
+- `event_id`: UUID (SECONDARY, audit/trace only)
+- `processed_at`: Timestamp for TTL enforcement
+
+**Replay Behavior:**
+```python
+# First delivery
+stream_message_id = "1735390000000-0"
+event.id = "abc-123-def"
+→ Processed, stored in DB
+
+# Retry/Replay (same stream_message_id)
+stream_message_id = "1735390000000-0"  # SAME
+event.id = "xyz-456-ghi"  # DIFFERENT (regenerated)
+→ Skipped (duplicate detected by stream_message_id)
+```
+
+### Error Handling (Charter Compliant)
+
+**Permanent Errors** (ACK + Log):
+- `ValueError`, `TypeError`, `KeyError`
+- Validation failures
+- Business logic violations
+
+**Transient Errors** (NO ACK, will retry):
+- `ConnectionError`, `TimeoutError`
+- DB connection failures
+- External API timeouts
+
+**Example:**
+```python
+try:
+    await handler(event)
+except ValueError as e:
+    # PERMANENT: ACK message, log error, optional DLQ
+    logger.error(f"Validation failed: {e}")
+    await ack_message()
+except ConnectionError as e:
+    # TRANSIENT: DO NOT ACK, will retry
+    logger.warning(f"Connection failed, retrying: {e}")
+    # No ACK → Redis will redeliver
+```
+
+### Database Migration
+
+**Run migration:**
+```bash
+cd backend
+alembic upgrade head
+```
+
+**Creates table:**
+```sql
+CREATE TABLE processed_events (
+    id SERIAL PRIMARY KEY,
+    subscriber_name VARCHAR(255) NOT NULL,
+    stream_name VARCHAR(255) NOT NULL,
+    stream_message_id VARCHAR(50) NOT NULL,  -- PRIMARY dedup key
+    event_id VARCHAR(50),                     -- SECONDARY (audit)
+    event_type VARCHAR(100),
+    processed_at TIMESTAMPTZ DEFAULT NOW(),
+    tenant_id VARCHAR(100),
+    metadata JSONB,
+    UNIQUE (subscriber_name, stream_message_id)
+);
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BRAIN_EVENTSTREAM_MODE` | `required` | `required` or `degraded` (dev/CI only) |
+| `DATABASE_URL` | - | PostgreSQL connection string (for dedup store) |
+| `REDIS_URL` | `redis://localhost:6379` | Redis connection string |
+
+### Testing Idempotency
+
+```bash
+# Run idempotency tests
+pytest backend/tests/test_event_consumer_idempotency.py -v
+```
+
+**Key Tests:**
+- ✅ Dedup key is stream_message_id (NOT event.id)
+- ✅ Replay same message → no duplicate effect
+- ✅ New message with same payload → processed
+- ✅ Permanent error → ACK
+- ✅ Transient error → NO ACK (retry)
+
+---
+
 ## Changelog
+
+### v1.3.0 (2025-12-28) - Charter v1.0 Idempotency
+- ✅ **EventConsumer with Charter-compliant idempotency**
+- ✅ Primary dedup key: `(subscriber_name, stream_message_id)`
+- ✅ event.id demoted to SECONDARY (audit/trace only)
+- ✅ DB-based dedup store (`processed_events` table)
+- ✅ Alembic migration: `002_event_dedup_stream_message_id.py`
+- ✅ Error handling: permanent → ACK, transient → NO ACK
+- ✅ Consumer group pattern (Redis Streams XREADGROUP)
+- ✅ Comprehensive test suite (7 tests)
+- ✅ Documentation: Idempotency section added
 
 ### v1.2.0 (2025-12-28) - Mission System Integration
 - ✅ **MissionQueueManager integrated with EventStream**
@@ -531,6 +676,6 @@ For legacy mode (not recommended), set `USE_EVENT_STREAM=false`.
 
 ---
 
-**Version:** 1.2.0 (Mission System Integrated)
+**Version:** 1.3.0 (Charter v1.0 Compliant - Idempotent Consumers)
 **Last Updated:** 2025-12-28
 **Maintainer:** BRAiN Core Team
