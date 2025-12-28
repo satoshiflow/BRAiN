@@ -60,6 +60,17 @@ class EventType(str, Enum):
     AGENT_MESSAGE = "agent.message"
     BROADCAST = "broadcast"
 
+    # Course Factory Events (Sprint 1)
+    COURSE_GENERATION_REQUESTED = "course.generation.requested"
+    COURSE_OUTLINE_CREATED = "course.outline.created"
+    COURSE_LESSON_GENERATED = "course.lesson.generated"
+    COURSE_QUIZ_CREATED = "course.quiz.created"
+    COURSE_LANDING_PAGE_CREATED = "course.landing_page.created"
+    COURSE_GENERATION_COMPLETED = "course.generation.completed"
+    COURSE_GENERATION_FAILED = "course.generation.failed"
+    COURSE_WORKFLOW_TRANSITIONED = "course.workflow.transitioned"
+    COURSE_DEPLOYED_STAGING = "course.deployed.staging"
+
 
 @dataclass
 class Event:
