@@ -33,6 +33,25 @@ from app.core.redis_client import get_redis
 # Mission worker (from old backend/main.py)
 from backend.modules.missions.worker import start_mission_worker, stop_mission_worker
 
+# Event Stream (ADR-001: REQUIRED core infrastructure)
+try:
+    from backend.mission_control_core.core.event_stream import EventStream
+except ImportError as e:
+    # Check if degraded mode is explicitly allowed (Dev/CI only)
+    if os.getenv("BRAIN_EVENTSTREAM_MODE", "required").lower() == "degraded":
+        EventStream = None  # type: ignore
+        import warnings
+        warnings.warn(
+            "DEGRADED MODE: EventStream unavailable. This violates ADR-001 in production.",
+            RuntimeWarning
+        )
+    else:
+        # FATAL: EventStream is required per ADR-001
+        raise RuntimeError(
+            f"EventStream is required core infrastructure (ADR-001). "
+            f"mission_control_core must be available. ImportError: {e}"
+        ) from e
+
 # Legacy supervisor router (from old backend/main.py)
 from backend.modules.supervisor.router import router as supervisor_router
 
@@ -76,6 +95,40 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await redis.ping()
     logger.info("✅ Redis connection established")
 
+    # Start Event Stream (ADR-001: required by default)
+    event_stream = None
+    eventstream_mode = os.getenv("BRAIN_EVENTSTREAM_MODE", "required").lower()
+
+    if eventstream_mode == "required":
+        # REQUIRED MODE: EventStream MUST start
+        if EventStream is None:
+            raise RuntimeError(
+                "EventStream is None in required mode. This should not happen. "
+                "Check import logic."
+            )
+
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+        event_stream = EventStream(redis_url)
+        await event_stream.initialize()
+        await event_stream.start()
+        logger.info("✅ Event Stream started (required mode)")
+        app.state.event_stream = event_stream
+
+    elif eventstream_mode == "degraded":
+        # DEGRADED MODE: EventStream disabled, explicit log
+        logger.warning(
+            "⚠️ DEGRADED MODE: EventStream disabled. "
+            "This violates ADR-001 and should ONLY be used in Dev/CI."
+        )
+        event_stream = None
+        app.state.event_stream = None
+
+    else:
+        raise ValueError(
+            f"Invalid BRAIN_EVENTSTREAM_MODE='{eventstream_mode}'. "
+            f"Must be 'required' (default) or 'degraded' (Dev/CI only)."
+        )
+
     # Start mission worker (if enabled)
     mission_worker_task = None
     if os.getenv("ENABLE_MISSION_WORKER", "true").lower() == "true":
@@ -87,6 +140,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
     # Shutdown
+    if event_stream:
+        await event_stream.stop()
+        logger.info("🛑 Event Stream stopped")
+
     if mission_worker_task:
         await stop_mission_worker()
         logger.info("🛑 Mission worker stopped")
