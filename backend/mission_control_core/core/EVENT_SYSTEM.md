@@ -413,7 +413,106 @@ A: event_bus.py was removed - use EventStream instead (see Migration Guide)
 
 ---
 
+## MissionQueueManager Integration (v1.2+)
+
+The Mission System V1 (`backend/modules/mission_system/queue.py`) has been integrated with EventStream as part of the consolidation effort.
+
+### Migration Overview
+
+**Before (Legacy):**
+- Used separate `brain:missions:stream` (XADD)
+- No unified event trail
+- No status change events
+
+**After (v1.2+):**
+- Uses unified EventStream
+- Publishes MISSION_CREATED, MISSION_STARTED, MISSION_COMPLETED, MISSION_FAILED, MISSION_CANCELLED events
+- Full audit trail in `brain:events:stream`
+- Backward compatible with feature flag
+
+### Feature Flag
+
+Set environment variable to enable/disable EventStream integration:
+
+```bash
+# Enable EventStream (default)
+USE_EVENT_STREAM=true
+
+# Disable EventStream (use legacy MISSION_STREAM)
+USE_EVENT_STREAM=false
+```
+
+### Published Events
+
+| Trigger | Event Type | Payload |
+|---------|------------|---------|
+| `enqueue_mission()` | `MISSION_CREATED` | mission_id, mission_name, priority, type, agent_requirements |
+| Status → RUNNING | `MISSION_STARTED` | mission_id, old_status, new_status |
+| Status → COMPLETED | `MISSION_COMPLETED` | mission_id, result |
+| Status → FAILED | `MISSION_FAILED` | mission_id, error_message |
+| Status → CANCELLED | `MISSION_CANCELLED` | mission_id, old_status |
+
+### Code Example
+
+```python
+from backend.modules.mission_system.queue import MissionQueueManager
+
+# MissionQueueManager automatically uses EventStream if enabled
+queue_manager = MissionQueueManager(redis_url="redis://localhost:6379")
+await queue_manager.connect()  # Initializes EventStream
+
+# Enqueue mission → publishes MISSION_CREATED event
+await queue_manager.enqueue_mission(mission)
+
+# Status updates → publish lifecycle events
+await queue_manager.update_mission_status(mission.id, MissionStatus.RUNNING)  # MISSION_STARTED
+await queue_manager.update_mission_status(mission.id, MissionStatus.COMPLETED)  # MISSION_COMPLETED
+
+# Statistics include EventStream metrics
+stats = await queue_manager.get_queue_statistics()
+# {
+#   "event_stream_enabled": true,
+#   "event_stream_stats": {...},
+#   "queue_lengths": {...}
+# }
+```
+
+### Testing
+
+Comprehensive test suite: `backend/tests/test_mission_queue_eventstream.py`
+
+```bash
+# Run MissionQueueManager integration tests
+pytest backend/tests/test_mission_queue_eventstream.py -v
+```
+
+**Test Coverage:**
+- ✅ EventStream initialization
+- ✅ MISSION_CREATED event publishing
+- ✅ All lifecycle events (STARTED, COMPLETED, FAILED, CANCELLED)
+- ✅ Statistics integration
+- ✅ Backward compatibility with legacy mode
+- ✅ Fallback on EventStream failure
+
+### Deprecation Notice
+
+**DEPRECATED:** Direct usage of `brain:missions:stream` is deprecated as of v1.2. All mission events are now published to the unified `brain:events:stream` via EventStream.
+
+For legacy mode (not recommended), set `USE_EVENT_STREAM=false`.
+
+---
+
 ## Changelog
+
+### v1.2.0 (2025-12-28) - Mission System Integration
+- ✅ **MissionQueueManager integrated with EventStream**
+- ✅ Migrated from separate `brain:missions:stream` to unified `brain:events:stream`
+- ✅ Added mission lifecycle events: MISSION_CREATED, MISSION_STARTED, MISSION_COMPLETED, MISSION_FAILED, MISSION_CANCELLED
+- ✅ Feature flag `USE_EVENT_STREAM` for backward compatibility
+- ✅ Fallback to legacy MISSION_STREAM if EventStream fails
+- ✅ Updated statistics to include EventStream metrics
+- ✅ Comprehensive test suite (9 tests)
+- ✅ Full backward compatibility maintained
 
 ### v1.1.0 (2025-12-28) - Multi-Tenancy & Audit Extensions
 - ✅ Added `tenant_id` field for multi-tenant event isolation
@@ -432,6 +531,6 @@ A: event_bus.py was removed - use EventStream instead (see Migration Guide)
 
 ---
 
-**Version:** 1.1.0 (Multi-Tenancy Ready)
+**Version:** 1.2.0 (Mission System Integrated)
 **Last Updated:** 2025-12-28
 **Maintainer:** BRAiN Core Team

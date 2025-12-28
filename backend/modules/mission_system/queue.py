@@ -25,15 +25,28 @@ Project: BRAIN Framework by FalkLabs / Olaf Falk
 import json
 import asyncio
 import logging
+import uuid
+import os
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Tuple
 import redis.asyncio as redis
 from redis.exceptions import RedisError
 
 from .models import (
-    Mission, MissionQueue, MissionStatus, MissionPriority, 
+    Mission, MissionQueue, MissionStatus, MissionPriority,
     MissionTask, MissionLog
 )
+
+# EventStream integration (consolidation v1.1+)
+try:
+    from backend.mission_control_core.core.event_stream import (
+        EventStream, Event, EventType
+    )
+    EVENT_STREAM_AVAILABLE = True
+except ImportError:
+    EVENT_STREAM_AVAILABLE = False
+    logger_temp = logging.getLogger(__name__)
+    logger_temp.warning("EventStream not available - using legacy MISSION_STREAM")
 
 
 logger = logging.getLogger(__name__)
@@ -48,28 +61,33 @@ class MissionQueueManager:
     def __init__(self, redis_url: str = "redis://localhost:6379"):
         """
         Initialize the queue manager with Redis connection.
-        
+
         Args:
             redis_url: Redis connection URL
         """
         self.redis_url = redis_url
         self.redis_client: Optional[redis.Redis] = None
-        
+
+        # EventStream integration (v1.1+ consolidation)
+        self.event_stream: Optional[EventStream] = None
+        self.use_event_stream = EVENT_STREAM_AVAILABLE and \
+            os.getenv("USE_EVENT_STREAM", "true").lower() == "true"
+
         # Queue names following BRAIN naming convention
         self.MISSION_QUEUE = "brain:missions:queue"
         self.MISSION_STATE = "brain:missions:state"
-        self.MISSION_STREAM = "brain:missions:stream"
+        self.MISSION_STREAM = "brain:missions:stream"  # DEPRECATED: Use EventStream instead
         self.AGENT_ASSIGNMENTS = "brain:agents:assignments"
         self.DEAD_LETTER_QUEUE = "brain:missions:dlq"
         self.QUEUE_STATS = "brain:missions:stats"
-        
+
         # Configuration
         self.MAX_RETRIES = 3
         self.VISIBILITY_TIMEOUT = 300  # 5 minutes
         self.DLQ_THRESHOLD = 5  # Move to DLQ after 5 failures
         
     async def connect(self) -> None:
-        """Establish connection to Redis"""
+        """Establish connection to Redis and EventStream"""
         try:
             self.redis_client = redis.from_url(
                 self.redis_url,
@@ -79,13 +97,32 @@ class MissionQueueManager:
             # Test connection
             await self.redis_client.ping()
             logger.info("Successfully connected to Redis")
-            
+
+            # Initialize EventStream if enabled
+            if self.use_event_stream:
+                try:
+                    self.event_stream = EventStream(redis_url=self.redis_url)
+                    await self.event_stream.initialize()
+                    await self.event_stream.start()
+                    logger.info("✅ EventStream initialized and started")
+                except Exception as e:
+                    logger.warning(f"⚠️ EventStream init failed, using legacy MISSION_STREAM: {e}")
+                    self.use_event_stream = False
+                    self.event_stream = None
+
         except RedisError as e:
             logger.error(f"Failed to connect to Redis: {e}")
             raise
     
     async def disconnect(self) -> None:
-        """Close Redis connection"""
+        """Close Redis connection and EventStream"""
+        if self.event_stream:
+            try:
+                await self.event_stream.stop()
+                logger.info("EventStream stopped")
+            except Exception as e:
+                logger.warning(f"Error stopping EventStream: {e}")
+
         if self.redis_client:
             await self.redis_client.close()
             logger.info("Redis connection closed")
@@ -125,16 +162,50 @@ class MissionQueueManager:
                 {mission.id: priority_score}
             )
             
-            # Add to stream for real-time processing
-            stream_data = {
-                "mission_id": mission.id,
-                "priority": mission.priority.value,
-                "type": mission.mission_type.value,
-                "created_at": mission.created_at.isoformat(),
-                "agent_requirements": json.dumps(mission.agent_requirements.dict())
-            }
-            
-            await self.redis_client.xadd(self.MISSION_STREAM, stream_data)
+            # Publish to EventStream (v1.1+ consolidation) or legacy MISSION_STREAM
+            if self.use_event_stream and self.event_stream:
+                # NEW: Use EventStream for unified event trail
+                event = Event(
+                    id=str(uuid.uuid4()),
+                    type=EventType.MISSION_CREATED,
+                    source="mission_queue_manager",
+                    target=None,
+                    payload={
+                        "mission_id": mission.id,
+                        "mission_name": mission.name,
+                        "priority": mission.priority.value,
+                        "type": mission.mission_type.value,
+                        "created_at": mission.created_at.isoformat(),
+                        "agent_requirements": mission.agent_requirements.dict()
+                    },
+                    timestamp=datetime.utcnow(),
+                    mission_id=mission.id
+                )
+                try:
+                    await self.event_stream.publish_event(event)
+                    logger.debug(f"Mission {mission.id} published to EventStream")
+                except Exception as e:
+                    logger.error(f"Failed to publish to EventStream: {e}")
+                    # Fallback to legacy stream if EventStream fails
+                    stream_data = {
+                        "mission_id": mission.id,
+                        "priority": mission.priority.value,
+                        "type": mission.mission_type.value,
+                        "created_at": mission.created_at.isoformat(),
+                        "agent_requirements": json.dumps(mission.agent_requirements.dict())
+                    }
+                    await self.redis_client.xadd(self.MISSION_STREAM, stream_data)
+            else:
+                # LEGACY: Use old MISSION_STREAM (DEPRECATED)
+                stream_data = {
+                    "mission_id": mission.id,
+                    "priority": mission.priority.value,
+                    "type": mission.mission_type.value,
+                    "created_at": mission.created_at.isoformat(),
+                    "agent_requirements": json.dumps(mission.agent_requirements.dict())
+                }
+                await self.redis_client.xadd(self.MISSION_STREAM, stream_data)
+                logger.debug(f"Mission {mission.id} published to legacy MISSION_STREAM")
             
             # Update statistics
             await self._update_queue_stats("enqueued", mission.mission_type.value)
@@ -303,7 +374,40 @@ class MissionQueueManager:
                 "INFO",
                 f"Mission status changed from {old_status.value} to {status.value}"
             )
-            
+
+            # Publish status change events to EventStream (v1.1+ consolidation)
+            if self.use_event_stream and self.event_stream:
+                event_type_map = {
+                    MissionStatus.RUNNING: EventType.MISSION_STARTED,
+                    MissionStatus.COMPLETED: EventType.MISSION_COMPLETED,
+                    MissionStatus.FAILED: EventType.MISSION_FAILED,
+                    MissionStatus.CANCELLED: EventType.MISSION_CANCELLED
+                }
+
+                event_type = event_type_map.get(status)
+                if event_type:
+                    event = Event(
+                        id=str(uuid.uuid4()),
+                        type=event_type,
+                        source="mission_queue_manager",
+                        target=None,
+                        payload={
+                            "mission_id": mission_id,
+                            "mission_name": mission.name,
+                            "old_status": old_status.value,
+                            "new_status": status.value,
+                            "result": result,
+                            "error_message": error_message
+                        },
+                        timestamp=datetime.utcnow(),
+                        mission_id=mission_id
+                    )
+                    try:
+                        await self.event_stream.publish_event(event)
+                        logger.debug(f"Mission {mission_id} status event published to EventStream")
+                    except Exception as e:
+                        logger.error(f"Failed to publish status event to EventStream: {e}")
+
             logger.info(f"Mission {mission_id} status updated to {status.value}")
             return True
             
@@ -329,13 +433,28 @@ class MissionQueueManager:
             # Active assignments
             active_assignments = await self.redis_client.hlen(self.AGENT_ASSIGNMENTS)
             
-            # Stream length
-            stream_info = await self.redis_client.xinfo_stream(self.MISSION_STREAM)
-            stream_length = stream_info.get("length", 0)
-            
+            # Stream length (EventStream or legacy MISSION_STREAM)
+            stream_length = 0
+            event_stream_stats = {}
+
+            if self.use_event_stream and self.event_stream:
+                # NEW: Get EventStream statistics
+                try:
+                    event_stream_stats = await self.event_stream.get_stream_stats()
+                    stream_length = event_stream_stats.get("stream_length", 0)
+                except Exception as e:
+                    logger.warning(f"Failed to get EventStream stats: {e}")
+            else:
+                # LEGACY: Get MISSION_STREAM length (DEPRECATED)
+                try:
+                    stream_info = await self.redis_client.xinfo_stream(self.MISSION_STREAM)
+                    stream_length = stream_info.get("length", 0)
+                except Exception:
+                    stream_length = 0
+
             # Get stored statistics
             stats_data = await self.redis_client.hgetall(self.QUEUE_STATS)
-            
+
             return {
                 "queue_lengths": {
                     "pending": pending_count,
@@ -344,6 +463,8 @@ class MissionQueueManager:
                 },
                 "active_assignments": active_assignments,
                 "statistics": stats_data,
+                "event_stream_enabled": self.use_event_stream,
+                "event_stream_stats": event_stream_stats if self.use_event_stream else None,
                 "timestamp": datetime.utcnow().isoformat()
             }
             
