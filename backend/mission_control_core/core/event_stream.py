@@ -82,6 +82,17 @@ class EventType(str, Enum):
     DISTRIBUTION_MICRO_NICHE_CREATED = "distribution.micro_niche_created"
     DISTRIBUTION_VERSION_BUMPED = "distribution.version_bumped"
 
+    # IR Governance Events (Sprint 1)
+    IR_APPROVAL_CREATED = "ir.approval_created"
+    IR_APPROVAL_CONSUMED = "ir.approval_consumed"
+    IR_APPROVAL_EXPIRED = "ir.approval_expired"
+    IR_APPROVAL_INVALID = "ir.approval_invalid"
+    IR_VALIDATED_PASS = "ir.validated_pass"
+    IR_VALIDATED_ESCALATE = "ir.validated_escalate"
+    IR_VALIDATED_REJECT = "ir.validated_reject"
+    IR_DAG_DIFF_OK = "ir.dag_diff_ok"
+    IR_DAG_DIFF_FAILED = "ir.dag_diff_failed"
+
 
 @dataclass
 class Event:
