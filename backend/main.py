@@ -33,6 +33,11 @@ from app.core.redis_client import get_redis
 # Mission worker (from old backend/main.py)
 from backend.modules.missions.worker import start_mission_worker, stop_mission_worker
 
+# Event consumer and subscribers
+from app.core.events.consumer import start_event_consumer, stop_event_consumer
+from app.core.events.registry import get_subscriber_registry
+from app.modules.course_factory.events import CoursePaymentSubscriber
+
 # Legacy supervisor router (from old backend/main.py)
 from backend.modules.supervisor.router import router as supervisor_router
 
@@ -82,11 +87,26 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         mission_worker_task = await start_mission_worker()
         logger.info("✅ Mission worker started")
 
+    # Register event subscribers
+    registry = get_subscriber_registry()
+    registry.register(CoursePaymentSubscriber())
+    logger.info("✅ Event subscribers registered")
+
+    # Start event consumer (if enabled)
+    event_consumer = None
+    if os.getenv("ENABLE_EVENT_CONSUMER", "true").lower() == "true":
+        event_consumer = await start_event_consumer()
+        logger.info("✅ Event consumer started")
+
     logger.info("✅ All systems operational")
 
     yield
 
     # Shutdown
+    if event_consumer:
+        await stop_event_consumer()
+        logger.info("🛑 Event consumer stopped")
+
     if mission_worker_task:
         await stop_mission_worker()
         logger.info("🛑 Mission worker stopped")
