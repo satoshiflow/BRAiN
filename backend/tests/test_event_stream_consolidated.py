@@ -260,5 +260,213 @@ class TestEventStreamIntegration:
         # (no assertion needed - just verify no crash)
 
 
+class TestEventSchemaExtensions:
+    """Tests for Event schema extensions (tenant_id, actor_id, severity)"""
+
+    @pytest.mark.asyncio
+    async def test_event_with_tenant_id(self, event_stream):
+        """Test event creation and retrieval with tenant_id"""
+        event = Event(
+            id=str(uuid.uuid4()),
+            type=EventType.MISSION_CREATED,
+            source="test_agent",
+            target=None,
+            payload={"test": "data"},
+            timestamp=datetime.utcnow(),
+            tenant_id="tenant_123",
+            actor_id="user_456",
+            severity="INFO"
+        )
+
+        # Publish event
+        result = await event_stream.publish_event(event)
+        assert result is True
+
+        # Small delay for Redis processing
+        await asyncio.sleep(0.1)
+
+        # Retrieve and verify
+        events = await event_stream.get_event_history(limit=10)
+        our_event = next((e for e in events if e.id == event.id), None)
+
+        assert our_event is not None
+        assert our_event.tenant_id == "tenant_123"
+        assert our_event.actor_id == "user_456"
+        assert our_event.severity == "INFO"
+
+    @pytest.mark.asyncio
+    async def test_event_filtering_by_tenant_id(self, event_stream):
+        """Test filtering events by tenant_id"""
+        # Publish events for different tenants
+        tenant_a_event = Event(
+            id=str(uuid.uuid4()),
+            type=EventType.TASK_CREATED,
+            source="agent_a",
+            target=None,
+            payload={"task": "A"},
+            timestamp=datetime.utcnow(),
+            tenant_id="tenant_a"
+        )
+
+        tenant_b_event = Event(
+            id=str(uuid.uuid4()),
+            type=EventType.TASK_CREATED,
+            source="agent_b",
+            target=None,
+            payload={"task": "B"},
+            timestamp=datetime.utcnow(),
+            tenant_id="tenant_b"
+        )
+
+        await event_stream.publish_event(tenant_a_event)
+        await event_stream.publish_event(tenant_b_event)
+
+        await asyncio.sleep(0.1)
+
+        # Filter by tenant_a
+        tenant_a_events = await event_stream.get_event_history(
+            tenant_id="tenant_a",
+            limit=100
+        )
+
+        # Should only contain tenant_a events
+        for event in tenant_a_events:
+            if event.tenant_id is not None:
+                assert event.tenant_id == "tenant_a", \
+                    f"Found event with tenant_id={event.tenant_id}, expected tenant_a"
+
+    @pytest.mark.asyncio
+    async def test_event_filtering_by_actor_id(self, event_stream):
+        """Test filtering events by actor_id"""
+        # Publish events by different actors
+        user1_event = Event(
+            id=str(uuid.uuid4()),
+            type=EventType.SYSTEM_HEALTH,
+            source="system",
+            target=None,
+            payload={"health": "ok"},
+            timestamp=datetime.utcnow(),
+            actor_id="user_001"
+        )
+
+        user2_event = Event(
+            id=str(uuid.uuid4()),
+            type=EventType.SYSTEM_ALERT,
+            source="system",
+            target=None,
+            payload={"alert": "warning"},
+            timestamp=datetime.utcnow(),
+            actor_id="user_002"
+        )
+
+        await event_stream.publish_event(user1_event)
+        await event_stream.publish_event(user2_event)
+
+        await asyncio.sleep(0.1)
+
+        # Filter by user_001
+        user1_events = await event_stream.get_event_history(
+            actor_id="user_001",
+            limit=100
+        )
+
+        # Should only contain user_001 events
+        for event in user1_events:
+            if event.actor_id is not None:
+                assert event.actor_id == "user_001", \
+                    f"Found event with actor_id={event.actor_id}, expected user_001"
+
+    @pytest.mark.asyncio
+    async def test_event_with_severity(self, event_stream):
+        """Test event severity field"""
+        severities = ["INFO", "WARNING", "ERROR", "CRITICAL"]
+
+        for severity in severities:
+            event = Event(
+                id=str(uuid.uuid4()),
+                type=EventType.SYSTEM_ALERT,
+                source="system",
+                target=None,
+                payload={"message": f"{severity} level event"},
+                timestamp=datetime.utcnow(),
+                severity=severity
+            )
+
+            result = await event_stream.publish_event(event)
+            assert result is True
+
+        await asyncio.sleep(0.1)
+
+        # Retrieve all events
+        events = await event_stream.get_event_history(limit=10)
+
+        # Verify severity levels
+        severity_events = [e for e in events if e.severity in severities]
+        assert len(severity_events) >= len(severities)
+
+    @pytest.mark.asyncio
+    async def test_event_backward_compatibility(self, event_stream):
+        """Test events without new fields still work (backward compatibility)"""
+        # Create event without tenant_id, actor_id, severity
+        event = Event(
+            id=str(uuid.uuid4()),
+            type=EventType.MISSION_COMPLETED,
+            source="legacy_agent",
+            target=None,
+            payload={"status": "success"},
+            timestamp=datetime.utcnow()
+            # No tenant_id, actor_id, severity
+        )
+
+        # Should publish successfully
+        result = await event_stream.publish_event(event)
+        assert result is True
+
+        await asyncio.sleep(0.1)
+
+        # Should retrieve successfully
+        events = await event_stream.get_event_history(limit=10)
+        legacy_event = next((e for e in events if e.id == event.id), None)
+
+        assert legacy_event is not None
+        assert legacy_event.tenant_id is None
+        assert legacy_event.actor_id is None
+        assert legacy_event.severity is None
+
+    @pytest.mark.asyncio
+    async def test_multi_filter_combination(self, event_stream):
+        """Test combining multiple filters (tenant_id + actor_id + event_type)"""
+        # Create event with all fields
+        event = Event(
+            id=str(uuid.uuid4()),
+            type=EventType.MISSION_STARTED,
+            source="test_agent",
+            target=None,
+            payload={"mission": "test"},
+            timestamp=datetime.utcnow(),
+            tenant_id="tenant_xyz",
+            actor_id="user_admin",
+            severity="INFO"
+        )
+
+        await event_stream.publish_event(event)
+        await asyncio.sleep(0.1)
+
+        # Filter by tenant_id + actor_id + event_type
+        filtered_events = await event_stream.get_event_history(
+            tenant_id="tenant_xyz",
+            actor_id="user_admin",
+            event_types={EventType.MISSION_STARTED},
+            limit=100
+        )
+
+        # Should find the event
+        matching_event = next((e for e in filtered_events if e.id == event.id), None)
+        assert matching_event is not None
+        assert matching_event.tenant_id == "tenant_xyz"
+        assert matching_event.actor_id == "user_admin"
+        assert matching_event.type == EventType.MISSION_STARTED
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--asyncio-mode=auto"])

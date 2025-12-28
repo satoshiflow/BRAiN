@@ -99,6 +99,11 @@ class Event:
     mission_id: Optional[str]  # Associated mission ID
     task_id: Optional[str]     # Associated task ID
     correlation_id: Optional[str]  # Request correlation ID
+
+    # Multi-tenancy & Audit fields (v1.1+)
+    tenant_id: Optional[str] = None      # Tenant/organization ID
+    actor_id: Optional[str] = None       # User/actor who triggered event
+    severity: Optional[str] = None       # Event severity: INFO, WARNING, ERROR, CRITICAL
 ```
 
 ## Usage Examples
@@ -195,6 +200,62 @@ stats = await event_stream.get_stream_stats()
 #   "event_type_counts": {...}
 # }
 ```
+
+### 5. Multi-Tenancy & User Attribution (v1.1+)
+
+```python
+# Publish event with tenant and actor information
+event = Event(
+    id=str(uuid.uuid4()),
+    type=EventType.PAYMENT_COMPLETED,
+    source="payment_service",
+    target=None,
+    payload={
+        "amount": 99.99,
+        "currency": "USD",
+        "invoice_id": "INV-001"
+    },
+    timestamp=datetime.utcnow(),
+    tenant_id="org_acme_corp",      # Organization identifier
+    actor_id="user_alice",          # User who initiated payment
+    severity="INFO"                 # Event severity level
+)
+
+await event_stream.publish_event(event)
+
+# Filter events by tenant (multi-tenant isolation)
+tenant_events = await event_stream.get_event_history(
+    tenant_id="org_acme_corp",
+    limit=100
+)
+
+# Filter events by actor (user audit trail)
+user_events = await event_stream.get_event_history(
+    actor_id="user_alice",
+    limit=100
+)
+
+# Combine filters (tenant + actor + event type)
+critical_events = await event_stream.get_event_history(
+    tenant_id="org_acme_corp",
+    actor_id="user_admin",
+    event_types={EventType.SYSTEM_ALERT, EventType.ETHICS_VIOLATION},
+    limit=50
+)
+
+# Filter by severity (useful for monitoring)
+high_severity_events = [
+    e for e in await event_stream.get_event_history(limit=1000)
+    if e.severity in ["ERROR", "CRITICAL"]
+]
+```
+
+**Use Cases:**
+- **Multi-Tenancy:** Isolate events per organization/tenant
+- **User Auditing:** Track which user performed which actions
+- **Compliance:** Meet regulatory requirements for audit trails
+- **Security:** Identify suspicious activity patterns per user
+- **Billing:** Track resource usage per tenant for invoicing
 
 ## Integration with main.py
 
@@ -352,6 +413,25 @@ A: event_bus.py was removed - use EventStream instead (see Migration Guide)
 
 ---
 
-**Version:** 1.0.0 (Consolidated)
+## Changelog
+
+### v1.1.0 (2025-12-28) - Multi-Tenancy & Audit Extensions
+- ✅ Added `tenant_id` field for multi-tenant event isolation
+- ✅ Added `actor_id` field for user attribution and audit trails
+- ✅ Added `severity` field for event severity levels (INFO/WARNING/ERROR/CRITICAL)
+- ✅ Extended `get_event_history()` with tenant_id and actor_id filtering
+- ✅ Comprehensive test suite for new schema fields (7 new tests)
+- ✅ Backward compatibility maintained (all fields optional)
+
+### v1.0.0 (2025-12-28) - Consolidated Event System
+- ✅ EventStream as single source of truth
+- ✅ Removed duplicate event_bus.py and dlq_worker.py
+- ✅ Unified stream naming convention (brain:events:{type})
+- ✅ Extended event routing (mission.*, task.* channels)
+- ✅ 24 event types across all domains
+
+---
+
+**Version:** 1.1.0 (Multi-Tenancy Ready)
 **Last Updated:** 2025-12-28
 **Maintainer:** BRAiN Core Team

@@ -63,7 +63,7 @@ class EventType(str, Enum):
 
 @dataclass
 class Event:
-    """Event data structure"""
+    """Event data structure with multi-tenancy and audit support"""
     id: str
     type: EventType
     source: str              # Agent ID or system component
@@ -73,14 +73,19 @@ class Event:
     mission_id: Optional[str] = None
     task_id: Optional[str] = None
     correlation_id: Optional[str] = None
-    
+
+    # Multi-tenancy & Audit fields (added in consolidation v1.1)
+    tenant_id: Optional[str] = None      # Tenant/organization ID for multi-tenancy
+    actor_id: Optional[str] = None       # User/actor who triggered the event
+    severity: Optional[str] = None       # Event severity: INFO, WARNING, ERROR, CRITICAL
+
     def to_dict(self) -> Dict[str, Any]:
         """Serialize event for Redis"""
         data = asdict(self)
         data['timestamp'] = self.timestamp.isoformat()
         data['type'] = self.type.value
         return data
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Event':
         """Deserialize event from Redis"""
@@ -300,10 +305,24 @@ class EventStream:
         self._event_handlers[event_type].append(handler)
         logger.debug(f"Handler registered for event type {event_type.value}")
 
-    async def get_event_history(self, agent_id: Optional[str] = None, 
+    async def get_event_history(self, agent_id: Optional[str] = None,
                                event_types: Optional[Set[EventType]] = None,
+                               tenant_id: Optional[str] = None,
+                               actor_id: Optional[str] = None,
                                limit: int = 100) -> List[Event]:
-        """Get recent event history with optional filtering"""
+        """
+        Get recent event history with optional filtering.
+
+        Args:
+            agent_id: Filter by source or target agent ID
+            event_types: Filter by event types
+            tenant_id: Filter by tenant ID (multi-tenancy support)
+            actor_id: Filter by actor ID (user attribution)
+            limit: Maximum number of events to return
+
+        Returns:
+            List of Event objects matching filters
+        """
         try:
             # Get events from main stream
             events_data = await self.redis.xrevrange(
@@ -312,19 +331,25 @@ class EventStream:
                 min='-',
                 count=limit
             )
-            
+
             events = []
             for event_id, fields in events_data:
                 try:
                     event = Event.from_dict(fields)
-                    
+
                     # Apply filters
                     if agent_id and event.source != agent_id and event.target != agent_id:
                         continue
-                        
+
                     if event_types and event.type not in event_types:
                         continue
-                        
+
+                    if tenant_id and event.tenant_id != tenant_id:
+                        continue
+
+                    if actor_id and event.actor_id != actor_id:
+                        continue
+
                     events.append(event)
                     
                 except Exception as e:
