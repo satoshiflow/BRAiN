@@ -63,7 +63,7 @@ from app.modules.credits.router import router as credits_router
 from app.modules.policy.router import router as policy_router
 from app.modules.threats.router import router as threats_router
 from app.modules.supervisor.router import router as app_supervisor_router
-from app.modules.missions.router import router as app_missions_router
+# DISABLED: from app.modules.missions.router import router as app_missions_router  # Sprint 2: Using LEGACY instead
 from app.modules.foundation.router import router as foundation_router
 from app.modules.sovereign_mode.router import router as sovereign_mode_router
 from app.modules.dmz_control.router import router as dmz_control_router
@@ -129,11 +129,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             f"Must be 'required' (default) or 'degraded' (Dev/CI only)."
         )
 
-    # Start mission worker (if enabled)
+    # Start mission worker (if enabled) with EventStream integration (Sprint 2)
     mission_worker_task = None
     if os.getenv("ENABLE_MISSION_WORKER", "true").lower() == "true":
-        mission_worker_task = await start_mission_worker()
-        logger.info("✅ Mission worker started")
+        mission_worker_task = await start_mission_worker(event_stream=event_stream)
+        logger.info("✅ Mission worker started (EventStream: %s)", "enabled" if event_stream else "disabled")
 
     logger.info("✅ All systems operational")
 
@@ -242,7 +242,12 @@ def create_app() -> FastAPI:
     app.include_router(policy_router, tags=["policy"])
     app.include_router(threats_router, tags=["threats"])
     app.include_router(app_supervisor_router, tags=["supervisor"])
-    app.include_router(app_missions_router, tags=["missions"])
+
+    # DISABLED: app.include_router(app_missions_router, tags=["missions"])
+    # Reason: Route collision with LEGACY missions implementation
+    # Decision: Sprint 2 - Migrate LEGACY instead (see SPRINT2_MISSIONS_ARCHITECTURE_DECISION.md)
+    # NEW missions router creates orphaned missions (no worker integration)
+    # LEGACY missions router is functional (queue + worker + partial EventStream)
 
     # 3. Auto-discover routes from backend/api/routes/*
     _include_legacy_routers(app)
