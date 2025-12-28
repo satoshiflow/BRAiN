@@ -165,7 +165,6 @@ class DistributionService:
                     "producer": "course_distribution",
                     "source_module": "course_distribution",
                 },
-                target=None,
             )
         )
 
@@ -201,7 +200,6 @@ class DistributionService:
                     "producer": "course_distribution",
                     "source_module": "course_distribution",
                 },
-                target=None,
             )
         )
 
@@ -227,7 +225,6 @@ class DistributionService:
                     "producer": "course_distribution",
                     "source_module": "course_distribution",
                 },
-                target=None,
             )
         )
 
@@ -254,7 +251,6 @@ class DistributionService:
                     "producer": "course_distribution",
                     "source_module": "course_distribution",
                 },
-                target=None,
             )
         )
 
@@ -281,7 +277,6 @@ class DistributionService:
                     "producer": "course_distribution",
                     "source_module": "course_distribution",
                 },
-                target=None,
             )
         )
 
@@ -313,7 +308,6 @@ class DistributionService:
                     "producer": "course_distribution",
                     "source_module": "course_distribution",
                 },
-                target=None,
             )
         )
 
@@ -341,7 +335,6 @@ class DistributionService:
                     "producer": "course_distribution",
                     "source_module": "course_distribution",
                 },
-                target=None,
             )
         )
 
