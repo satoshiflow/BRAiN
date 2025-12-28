@@ -5,10 +5,13 @@ FastAPI endpoints for course generation with IR governance,
 workflow management, content enhancements, and WebGenesis integration.
 """
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import JSONResponse
 from typing import Dict, Any, List, Optional
 from loguru import logger
+
+# EventStream Integration (Sprint 1)
+from backend.mission_control_core.core.event_stream import EventStream
 
 from app.modules.course_factory.schemas import (
     CourseGenerationRequest,
@@ -41,6 +44,17 @@ from app.modules.autonomous_pipeline.ir_gateway import (
 )
 
 router = APIRouter(prefix="/api/course-factory", tags=["course-factory"])
+
+
+# Dependency Injection (Sprint 1)
+def get_course_factory_service_with_events(request: Request) -> CourseFactoryService:
+    """
+    Get CourseFactoryService with EventStream injection.
+
+    EventStream is retrieved from app.state (set in main.py startup).
+    """
+    event_stream: Optional[EventStream] = getattr(request.app.state, "event_stream", None)
+    return CourseFactoryService(event_stream=event_stream)
 
 
 @router.get("/info")
@@ -109,7 +123,7 @@ async def get_info() -> Dict[str, Any]:
 @router.post("/generate-ir")
 async def generate_ir_only(
     request: CourseGenerationRequest,
-    service: CourseFactoryService = Depends(get_course_factory_service),
+    service: CourseFactoryService = Depends(get_course_factory_service_with_events),
 ) -> IR:
     """
     Generate IR for course creation (dry-run mode).
@@ -174,7 +188,7 @@ async def validate_ir(
 async def generate_course(
     request: CourseGenerationRequest,
     approval_token: str | None = None,
-    service: CourseFactoryService = Depends(get_course_factory_service),
+    service: CourseFactoryService = Depends(get_course_factory_service_with_events),
 ) -> CourseGenerationResult:
     """
     Generate complete course with IR governance.
@@ -261,7 +275,7 @@ async def generate_course(
 @router.post("/dry-run")
 async def dry_run_course(
     request: CourseGenerationRequest,
-    service: CourseFactoryService = Depends(get_course_factory_service),
+    service: CourseFactoryService = Depends(get_course_factory_service_with_events),
 ) -> CourseGenerationResult:
     """
     Dry-run course generation (no actual execution, no IR validation).
@@ -318,7 +332,7 @@ async def transition_workflow(
     actor: str,
     reason: Optional[str] = None,
     hitl_approval: bool = False,
-    service: CourseFactoryService = Depends(get_course_factory_service),
+    service: CourseFactoryService = Depends(get_course_factory_service_with_events),
 ) -> WorkflowTransition:
     """
     Transition course workflow state.
@@ -368,7 +382,7 @@ async def rollback_workflow(
     transition_id: str,
     actor: str,
     reason: str,
-    service: CourseFactoryService = Depends(get_course_factory_service),
+    service: CourseFactoryService = Depends(get_course_factory_service_with_events),
 ) -> WorkflowTransition:
     """
     Rollback a workflow transition.
@@ -415,7 +429,7 @@ async def rollback_workflow(
 @router.post("/enhance")
 async def enhance_content(
     request: EnhancementRequest,
-    service: CourseFactoryService = Depends(get_course_factory_service),
+    service: CourseFactoryService = Depends(get_course_factory_service_with_events),
 ) -> EnhancementResult:
     """
     Enhance course content with LLM-generated additions.
@@ -470,7 +484,7 @@ async def bind_theme(
     course_id: str,
     theme_id: str,
     custom_colors: Optional[Dict[str, str]] = None,
-    service: CourseFactoryService = Depends(get_course_factory_service),
+    service: CourseFactoryService = Depends(get_course_factory_service_with_events),
 ) -> WebGenesisTheme:
     """
     Bind WebGenesis theme to course.
@@ -520,7 +534,7 @@ async def build_sections(
     course_id: str,
     outline: CourseOutline,
     landing_page: Optional[CourseLandingPage] = None,
-    service: CourseFactoryService = Depends(get_course_factory_service),
+    service: CourseFactoryService = Depends(get_course_factory_service_with_events),
 ) -> List[WebGenesisSection]:
     """
     Build WebGenesis sections from course data.
@@ -565,7 +579,7 @@ async def generate_seo_pack(
     course_id: str,
     outline: CourseOutline,
     keywords: Optional[List[str]] = None,
-    service: CourseFactoryService = Depends(get_course_factory_service),
+    service: CourseFactoryService = Depends(get_course_factory_service_with_events),
 ) -> SEOPack:
     """
     Generate SEO pack for course.
@@ -608,7 +622,7 @@ async def generate_seo_pack(
 async def generate_preview_url(
     course_id: str,
     version: str = "latest",
-    service: CourseFactoryService = Depends(get_course_factory_service),
+    service: CourseFactoryService = Depends(get_course_factory_service_with_events),
 ) -> Dict[str, str]:
     """
     Generate preview URL for course.
