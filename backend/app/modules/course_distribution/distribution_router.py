@@ -3,16 +3,23 @@ Course Distribution Router
 
 Sprint 15: Course Distribution & Growth Layer
 Public API endpoints for course distribution.
+
+EventStream Integration (Sprint 1):
+- Dependency injection for EventStream
+- All endpoints use EventStream-enabled service
 """
 
 from __future__ import annotations
 
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse
 from loguru import logger
 from pydantic import BaseModel, Field
+
+# EventStream Integration (Sprint 1)
+from backend.mission_control_core.core.event_stream import EventStream
 
 from .distribution_models import (
     CourseCTA,
@@ -29,6 +36,20 @@ from .template_renderer import TemplateRenderer
 
 
 router = APIRouter(prefix="/api/courses", tags=["course-distribution"])
+
+
+# =========================================================================
+# EventStream Dependency Injection (Sprint 1)
+# =========================================================================
+
+def get_distribution_service_with_events(request: Request) -> DistributionService:
+    """
+    Get DistributionService with EventStream injection.
+
+    EventStream is retrieved from request.app.state (set in main.py).
+    """
+    event_stream: Optional[EventStream] = getattr(request.app.state, "event_stream", None)
+    return DistributionService(event_stream=event_stream)
 
 
 # =========================================================================
@@ -98,12 +119,16 @@ class HealthResponse(BaseModel):
 
 
 # =========================================================================
-# Dependency Injection
+# Dependency Injection (Legacy - kept for backward compatibility)
 # =========================================================================
 
-def get_distribution_service() -> DistributionService:
-    """Get distribution service instance."""
-    return DistributionService()
+def get_distribution_service(request: Request) -> DistributionService:
+    """
+    Get distribution service instance (with EventStream).
+
+    Delegates to get_distribution_service_with_events for EventStream injection.
+    """
+    return get_distribution_service_with_events(request)
 
 
 # =========================================================================
