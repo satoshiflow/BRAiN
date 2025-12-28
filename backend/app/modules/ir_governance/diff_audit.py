@@ -11,7 +11,7 @@ Ensures:
 On mismatch: BLOCK execution + emit audit event
 """
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from loguru import logger
 
 from backend.app.modules.ir_governance.schemas import (

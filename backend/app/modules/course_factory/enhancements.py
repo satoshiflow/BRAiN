@@ -7,7 +7,7 @@ MVP: Placeholder generators (no actual LLM calls)
 Future: Integrate with LLM client for real enhancements
 """
 
-from typing import List
+from typing import List, Optional
 from loguru import logger
 
 from app.modules.course_factory.schemas import CourseLesson
