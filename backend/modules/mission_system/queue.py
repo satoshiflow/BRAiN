@@ -37,16 +37,29 @@ from .models import (
     MissionTask, MissionLog
 )
 
-# EventStream integration (consolidation v1.1+)
+# EventStream integration (ADR-001: EventStream is REQUIRED core infrastructure)
+# No optional fallback. Degraded mode only via explicit ENV flag.
 try:
     from backend.mission_control_core.core.event_stream import (
         EventStream, Event, EventType
     )
-    EVENT_STREAM_AVAILABLE = True
-except ImportError:
-    EVENT_STREAM_AVAILABLE = False
-    logger_temp = logging.getLogger(__name__)
-    logger_temp.warning("EventStream not available - using legacy MISSION_STREAM")
+except ImportError as e:
+    # Check if degraded mode is explicitly allowed (Dev/CI only)
+    if os.getenv("BRAIN_EVENTSTREAM_MODE", "required").lower() == "degraded":
+        EventStream = None  # type: ignore
+        Event = None  # type: ignore
+        EventType = None  # type: ignore
+        import warnings
+        warnings.warn(
+            "DEGRADED MODE: EventStream unavailable. This violates ADR-001 in production.",
+            RuntimeWarning
+        )
+    else:
+        # FATAL: EventStream is required per ADR-001
+        raise RuntimeError(
+            f"EventStream is required core infrastructure (ADR-001). "
+            f"mission_control_core must be available. ImportError: {e}"
+        ) from e
 
 
 logger = logging.getLogger(__name__)
@@ -68,10 +81,16 @@ class MissionQueueManager:
         self.redis_url = redis_url
         self.redis_client: Optional[redis.Redis] = None
 
-        # EventStream integration (v1.1+ consolidation)
+        # EventStream integration (ADR-001: required by default, degraded only explicit)
         self.event_stream: Optional[EventStream] = None
-        self.use_event_stream = EVENT_STREAM_AVAILABLE and \
-            os.getenv("USE_EVENT_STREAM", "true").lower() == "true"
+        self.eventstream_mode = os.getenv("BRAIN_EVENTSTREAM_MODE", "required").lower()
+
+        # Validate mode
+        if self.eventstream_mode not in ("required", "degraded"):
+            raise ValueError(
+                f"Invalid BRAIN_EVENTSTREAM_MODE='{self.eventstream_mode}'. "
+                f"Must be 'required' (default) or 'degraded' (Dev/CI only)."
+            )
 
         # Queue names following BRAIN naming convention
         self.MISSION_QUEUE = "brain:missions:queue"
@@ -87,7 +106,7 @@ class MissionQueueManager:
         self.DLQ_THRESHOLD = 5  # Move to DLQ after 5 failures
         
     async def connect(self) -> None:
-        """Establish connection to Redis and EventStream"""
+        """Establish connection to Redis and EventStream (ADR-001 compliant)"""
         try:
             self.redis_client = redis.from_url(
                 self.redis_url,
@@ -98,17 +117,28 @@ class MissionQueueManager:
             await self.redis_client.ping()
             logger.info("Successfully connected to Redis")
 
-            # Initialize EventStream if enabled
-            if self.use_event_stream:
-                try:
-                    self.event_stream = EventStream(redis_url=self.redis_url)
-                    await self.event_stream.initialize()
-                    await self.event_stream.start()
-                    logger.info("✅ EventStream initialized and started")
-                except Exception as e:
-                    logger.warning(f"⚠️ EventStream init failed, using legacy MISSION_STREAM: {e}")
-                    self.use_event_stream = False
-                    self.event_stream = None
+            # EventStream initialization (ADR-001)
+            if self.eventstream_mode == "required":
+                # REQUIRED MODE: EventStream MUST initialize
+                if EventStream is None:
+                    raise RuntimeError(
+                        "EventStream is None in required mode. This should not happen. "
+                        "Check import logic."
+                    )
+
+                self.event_stream = EventStream(redis_url=self.redis_url)
+                await self.event_stream.initialize()
+                await self.event_stream.start()
+                logger.info("✅ EventStream initialized and started (required mode)")
+
+            elif self.eventstream_mode == "degraded":
+                # DEGRADED MODE: EventStream disabled, explicit log
+                logger.warning(
+                    "⚠️ DEGRADED MODE: EventStream disabled. "
+                    "This violates ADR-001 and should ONLY be used in Dev/CI. "
+                    "Using legacy MISSION_STREAM as fallback."
+                )
+                self.event_stream = None
 
         except RedisError as e:
             logger.error(f"Failed to connect to Redis: {e}")
@@ -162,9 +192,9 @@ class MissionQueueManager:
                 {mission.id: priority_score}
             )
             
-            # Publish to EventStream (v1.1+ consolidation) or legacy MISSION_STREAM
-            if self.use_event_stream and self.event_stream:
-                # NEW: Use EventStream for unified event trail
+            # Publish to EventStream (ADR-001) or legacy MISSION_STREAM (degraded mode only)
+            if self.event_stream is not None:
+                # EventStream (required mode, Charter compliant)
                 event = Event(
                     id=str(uuid.uuid4()),
                     type=EventType.MISSION_CREATED,
@@ -179,7 +209,12 @@ class MissionQueueManager:
                         "agent_requirements": mission.agent_requirements.dict()
                     },
                     timestamp=datetime.utcnow(),
-                    mission_id=mission.id
+                    mission_id=mission.id,
+                    meta={
+                        "schema_version": 1,
+                        "producer": "mission_queue_manager",
+                        "source_module": "missions"
+                    }
                 )
                 try:
                     await self.event_stream.publish_event(event)
@@ -375,8 +410,8 @@ class MissionQueueManager:
                 f"Mission status changed from {old_status.value} to {status.value}"
             )
 
-            # Publish status change events to EventStream (v1.1+ consolidation)
-            if self.use_event_stream and self.event_stream:
+            # Publish status change events to EventStream (ADR-001)
+            if self.event_stream is not None:
                 event_type_map = {
                     MissionStatus.RUNNING: EventType.MISSION_STARTED,
                     MissionStatus.COMPLETED: EventType.MISSION_COMPLETED,
@@ -400,7 +435,12 @@ class MissionQueueManager:
                             "error_message": error_message
                         },
                         timestamp=datetime.utcnow(),
-                        mission_id=mission_id
+                        mission_id=mission_id,
+                        meta={
+                            "schema_version": 1,
+                            "producer": "mission_queue_manager",
+                            "source_module": "missions"
+                        }
                     )
                     try:
                         await self.event_stream.publish_event(event)
@@ -433,12 +473,12 @@ class MissionQueueManager:
             # Active assignments
             active_assignments = await self.redis_client.hlen(self.AGENT_ASSIGNMENTS)
             
-            # Stream length (EventStream or legacy MISSION_STREAM)
+            # Stream length (EventStream in required mode, legacy in degraded mode)
             stream_length = 0
             event_stream_stats = {}
 
-            if self.use_event_stream and self.event_stream:
-                # NEW: Get EventStream statistics
+            if self.event_stream is not None:
+                # EventStream statistics (required mode)
                 try:
                     event_stream_stats = await self.event_stream.get_stream_stats()
                     stream_length = event_stream_stats.get("stream_length", 0)
@@ -463,8 +503,8 @@ class MissionQueueManager:
                 },
                 "active_assignments": active_assignments,
                 "statistics": stats_data,
-                "event_stream_enabled": self.use_event_stream,
-                "event_stream_stats": event_stream_stats if self.use_event_stream else None,
+                "eventstream_mode": self.eventstream_mode,
+                "event_stream_stats": event_stream_stats if self.event_stream is not None else None,
                 "timestamp": datetime.utcnow().isoformat()
             }
             

@@ -13,7 +13,7 @@ import asyncio
 import json
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Set
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from enum import Enum
 import logging
 import redis.asyncio as redis
@@ -63,7 +63,19 @@ class EventType(str, Enum):
 
 @dataclass
 class Event:
-    """Event data structure with multi-tenancy and audit support"""
+    """
+    Event data structure with multi-tenancy, audit support, and metadata (Charter v1.0)
+
+    Charter Compliance (HARD GATE):
+    - id: UUID v4 (secon dary dedup key)
+    - type: EventType enum
+    - timestamp: UTC ISO-8601
+    - tenant_id: Tenant isolation
+    - actor_id: User attribution
+    - correlation_id: Request tracing
+    - payload: Event-specific data
+    - meta: Schema version, producer, source_module (NEW in v1.3)
+    """
     id: str
     type: EventType
     source: str              # Agent ID or system component
@@ -79,6 +91,13 @@ class Event:
     actor_id: Optional[str] = None       # User/actor who triggered the event
     severity: Optional[str] = None       # Event severity: INFO, WARNING, ERROR, CRITICAL
 
+    # Metadata fields (added in Charter v1.0 compliance - v1.3)
+    meta: Dict[str, Any] = field(default_factory=lambda: {
+        "schema_version": 1,
+        "producer": "event_stream",
+        "source_module": "core"
+    })
+
     def to_dict(self) -> Dict[str, Any]:
         """Serialize event for Redis"""
         data = asdict(self)
@@ -88,10 +107,19 @@ class Event:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Event':
-        """Deserialize event from Redis"""
+        """Deserialize event from Redis (backward compatible)"""
         data = data.copy()
         data['timestamp'] = datetime.fromisoformat(data['timestamp'])
         data['type'] = EventType(data['type'])
+
+        # Backward compatibility: add default meta if missing (pre-v1.3 events)
+        if 'meta' not in data:
+            data['meta'] = {
+                "schema_version": 1,
+                "producer": "legacy",
+                "source_module": "unknown"
+            }
+
         return cls(**data)
 
 
