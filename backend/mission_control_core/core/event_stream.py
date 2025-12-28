@@ -110,7 +110,7 @@ class EventStream:
         # Subscriptions: agent_id -> set of event types
         self._subscriptions: Dict[str, Set[EventType]] = {}
         
-        # Redis key patterns
+        # Redis key patterns (unified naming: brain:events:{type})
         self.keys = {
             'event_stream': 'brain:events:stream',       # Main event stream (Redis Stream)
             'event_log': 'brain:events:log:{}',          # Event logs by date
@@ -118,6 +118,8 @@ class EventStream:
             'broadcast': 'brain:events:broadcast',       # Broadcast channel
             'system': 'brain:events:system',             # System events channel
             'ethics': 'brain:events:ethics',             # Ethics events channel
+            'missions': 'brain:events:missions',         # Mission events channel
+            'tasks': 'brain:events:tasks',               # Task events channel
         }
 
     async def initialize(self) -> None:
@@ -131,12 +133,14 @@ class EventStream:
             
             # Initialize pubsub
             self.pubsub = self.redis.pubsub()
-            
-            # Subscribe to system channels
+
+            # Subscribe to all topic channels
             await self.pubsub.subscribe(
                 self.keys['broadcast'],
-                self.keys['system'], 
-                self.keys['ethics']
+                self.keys['system'],
+                self.keys['ethics'],
+                self.keys['missions'],
+                self.keys['tasks']
             )
             
             logger.info("Event Stream initialized successfully")
@@ -389,26 +393,30 @@ class EventStream:
             logger.error(f"Event listener error: {e}")
 
     async def _route_event(self, event: Event) -> None:
-        """Route event to appropriate channels"""
+        """Route event to appropriate channels based on event type"""
         try:
             event_json = json.dumps(event.to_dict())
-            
+
             # Route to specific agent if targeted
             if event.target:
                 inbox_channel = self.keys['agent_inbox'].format(event.target)
                 await self.redis.publish(inbox_channel, event_json)
             else:
-                # Route to appropriate broadcast channel
+                # Route to appropriate topic channel based on event type
                 if event.type in [EventType.BROADCAST]:
                     await self.redis.publish(self.keys['broadcast'], event_json)
+                elif event.type.value.startswith('mission.'):
+                    await self.redis.publish(self.keys['missions'], event_json)
+                elif event.type.value.startswith('task.'):
+                    await self.redis.publish(self.keys['tasks'], event_json)
                 elif event.type.value.startswith('ethics.'):
                     await self.redis.publish(self.keys['ethics'], event_json)
                 elif event.type.value.startswith('system.'):
                     await self.redis.publish(self.keys['system'], event_json)
                 else:
-                    # General broadcast for other events
+                    # General broadcast for other events (agent.*, etc.)
                     await self.redis.publish(self.keys['broadcast'], event_json)
-                    
+
         except Exception as e:
             logger.error(f"Failed to route event {event.id}: {e}")
 

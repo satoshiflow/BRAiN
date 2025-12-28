@@ -33,6 +33,14 @@ from app.core.redis_client import get_redis
 # Mission worker (from old backend/main.py)
 from backend.modules.missions.worker import start_mission_worker, stop_mission_worker
 
+# Event Stream (optional integration)
+try:
+    from backend.mission_control_core.core.event_stream import EventStream
+    EVENT_STREAM_AVAILABLE = True
+except ImportError:
+    EVENT_STREAM_AVAILABLE = False
+    logger.warning("⚠️ EventStream not available (mission_control_core not found)")
+
 # Legacy supervisor router (from old backend/main.py)
 from backend.modules.supervisor.router import router as supervisor_router
 
@@ -76,6 +84,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await redis.ping()
     logger.info("✅ Redis connection established")
 
+    # Start Event Stream (if enabled and available)
+    event_stream = None
+    if EVENT_STREAM_AVAILABLE and os.getenv("ENABLE_EVENT_STREAM", "false").lower() == "true":
+        try:
+            redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+            event_stream = EventStream(redis_url)
+            await event_stream.initialize()
+            await event_stream.start()
+            logger.info("✅ Event Stream started")
+            app.state.event_stream = event_stream
+        except Exception as e:
+            logger.error(f"❌ Failed to start Event Stream: {e}")
+            event_stream = None
+
     # Start mission worker (if enabled)
     mission_worker_task = None
     if os.getenv("ENABLE_MISSION_WORKER", "true").lower() == "true":
@@ -87,6 +109,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
     # Shutdown
+    if event_stream:
+        await event_stream.stop()
+        logger.info("🛑 Event Stream stopped")
+
     if mission_worker_task:
         await stop_mission_worker()
         logger.info("🛑 Mission worker stopped")
