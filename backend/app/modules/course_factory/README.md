@@ -1,9 +1,10 @@
 
-# CourseFactory Module - Sprint 12
+# CourseFactory Module
 
-**Version:** 1.0.0
-**Status:** MVP (Minimum Viable Product)
-**Governance:** IR-Compliant, Fail-Closed, Dry-Run-First
+**Version:** 1.1.0 (EventStream Migration - Sprint 1)
+**Status:** Production-Ready
+**Governance:** IR-Compliant, Fail-Closed, Dry-Run-First, EventStream-Integrated
+**Last Updated:** 2025-12-28
 
 ---
 
@@ -19,6 +20,7 @@ CourseFactory generates complete online courses from a single course description
 ✅ **Landing Page Creation** (Hero, Value Prop, Target Audience)
 ✅ **Multilingual Structure** (DE/EN/FR/ES placeholders)
 ✅ **IR Governance** (Every action tracked and validated)
+✅ **EventStream Integration** (9 event types, Charter v1.0 compliant) **🆕**
 ✅ **Dry-Run Support** (Test before execute)
 ✅ **Evidence Packs** (Full audit trail)
 ✅ **Micro-Niche Ready** (Cloneable for different audiences)
@@ -39,6 +41,77 @@ course_factory/
 ├── router.py               # FastAPI endpoints
 └── README.md               # This file
 ```
+
+---
+
+## 📡 EventStream Integration (Sprint 1)
+
+**Status:** ✅ Migrated to EventStream (Charter v1.0 compliant)
+**Migration Date:** 2025-12-28
+**Role:** Producer-only (publishes 9 event types)
+
+### Event Catalog
+
+CourseFactory publishes events for all major business state changes during course generation. For complete event specifications, see [`EVENTS.md`](./EVENTS.md).
+
+**Published Events:**
+
+| Event Type | When Published | Consumers |
+|------------|----------------|-----------|
+| `course.generation.requested` | Course generation starts | Analytics, Monitoring |
+| `course.outline.created` | Outline generated | course_distribution |
+| `course.lesson.generated` | Each full lesson created | Progress Tracking |
+| `course.quiz.created` | Quiz generated | Assessment Service |
+| `course.landing_page.created` | Landing page generated | Marketing, SEO |
+| `course.generation.completed` | **CRITICAL** - Full generation success | course_distribution, Notifications |
+| `course.generation.failed` | Generation fails | Alerting, Error Tracking |
+| `course.workflow.transitioned` | Workflow state changes | HITL Dashboard, Audit |
+| `course.deployed.staging` | Staging deployment complete | WebGenesis, QA |
+
+**Key Properties:**
+- ✅ **Non-blocking**: Event failures do NOT break course generation
+- ✅ **Charter v1.0 compliant**: All events include `meta.schema_version`, `meta.producer`, `meta.source_module`
+- ✅ **Idempotent**: Safe to replay via `stream_message_id` deduplication
+- ✅ **Observable**: All events logged via loguru
+
+**EventStream Dependency Injection:**
+
+The service receives EventStream via FastAPI dependency injection:
+
+```python
+from backend.mission_control_core.core.event_stream import EventStream
+
+def get_course_factory_service_with_events(request: Request) -> CourseFactoryService:
+    """Get CourseFactoryService with EventStream injection."""
+    event_stream: Optional[EventStream] = getattr(request.app.state, "event_stream", None)
+    return CourseFactoryService(event_stream=event_stream)
+```
+
+**Error Handling:**
+
+Events are published via `_publish_event_safe()` which ensures business logic continues even if EventStream is unavailable or publishing fails:
+
+```python
+async def _publish_event_safe(self, event: Event) -> None:
+    """Publish event with error handling (non-blocking)."""
+    if self.event_stream is None:
+        logger.debug("[CourseFactory] EventStream not available, skipping event publish")
+        return
+    try:
+        await self.event_stream.publish_event(event)
+        logger.info(f"[CourseFactory] Event published: {event.type.value}")
+    except Exception as e:
+        logger.error(f"[CourseFactory] Event publishing failed: {event.type.value}", exc_info=True)
+        # DO NOT raise - business logic must continue
+```
+
+**Testing:**
+
+See `backend/tests/test_course_factory_events.py` for EventStream integration tests covering:
+- Event publishing verification
+- Payload structure validation
+- Non-blocking behavior
+- Meta fields compliance
 
 ---
 
