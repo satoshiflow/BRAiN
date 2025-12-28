@@ -456,19 +456,28 @@ class DistributionEventConsumer:
 
     def _generate_default_seo(self, payload: dict) -> CourseSEO:
         """Generate default SEO metadata from course payload."""
+        # Ensure minimum length requirements
+        title = payload["title"]
+        description = payload["description"]
+
+        # Pad if too short
+        if len(title) < 10:
+            title = title + " - Comprehensive Course"
+        if len(description) < 50:
+            description = description + " This comprehensive course provides detailed insights."
+
         return CourseSEO(
-            meta_title=payload["title"][:60],  # Limit to 60 chars for SEO
-            meta_description=payload["description"][:160],  # Limit to 160 chars
-            meta_keywords=[],  # TODO: Extract keywords from content
+            meta_title=title[:60],  # Limit to 60 chars for SEO
+            meta_description=description[:160],  # Limit to 160 chars
+            keywords=[],  # TODO: Extract keywords from content
         )
 
     def _generate_default_cta(self) -> CourseCTA:
         """Generate default call-to-action."""
         return CourseCTA(
-            primary_text="Jetzt starten",
-            primary_url="#",  # TODO: Configure enrollment URL
-            secondary_text="Mehr erfahren",
-            secondary_url="#",
+            label="Jetzt starten",
+            action="open_course",
+            url=None,  # Course URL will be set by frontend
         )
 
     async def _get_distribution_by_course_id(self, course_id: str):
