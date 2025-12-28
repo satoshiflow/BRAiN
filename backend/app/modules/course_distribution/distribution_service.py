@@ -89,7 +89,9 @@ class DistributionService:
             Event(
                 id=str(uuid.uuid4()),
                 type=EventType.DISTRIBUTION_CREATED,
-                timestamp=datetime.utcnow().isoformat() + "Z",
+                source="course_distribution",  # Required parameter
+                target=None,  # Broadcast
+                timestamp=datetime.utcnow(),  # datetime object, not string
                 payload={
                     "distribution_id": distribution.distribution_id,
                     "course_id": distribution.course_id,
@@ -100,14 +102,13 @@ class DistributionService:
                     "visibility": distribution.visibility.value,
                     "version": distribution.version,
                     "derived_from": distribution.derived_from,
-                    "created_at": distribution.created_at.isoformat() + "Z",
+                    "created_at": datetime.fromtimestamp(distribution.created_at).isoformat() + "Z" if isinstance(distribution.created_at, (int, float)) else distribution.created_at.isoformat() + "Z",
                 },
                 meta={
                     "schema_version": "1.0",
                     "producer": "course_distribution",
                     "source_module": "course_distribution",
                 },
-                target=None,  # Broadcast
             )
         )
 
@@ -123,7 +124,9 @@ class DistributionService:
             Event(
                 id=str(uuid.uuid4()),
                 type=EventType.DISTRIBUTION_UPDATED,
-                timestamp=datetime.utcnow().isoformat() + "Z",
+                source="course_distribution",
+                target=None,
+                timestamp=datetime.utcnow(),
                 payload={
                     "distribution_id": distribution_id,
                     "updated_fields": updated_fields,
@@ -136,7 +139,6 @@ class DistributionService:
                     "producer": "course_distribution",
                     "source_module": "course_distribution",
                 },
-                target=None,
             )
         )
 
@@ -148,7 +150,9 @@ class DistributionService:
             Event(
                 id=str(uuid.uuid4()),
                 type=EventType.DISTRIBUTION_DELETED,
-                timestamp=datetime.utcnow().isoformat() + "Z",
+                source="course_distribution",
+                target=None,
+                timestamp=datetime.utcnow(),
                 payload={
                     "distribution_id": distribution.distribution_id,
                     "slug": distribution.slug,
@@ -173,7 +177,9 @@ class DistributionService:
             Event(
                 id=str(uuid.uuid4()),
                 type=EventType.DISTRIBUTION_PUBLISHED,
-                timestamp=datetime.utcnow().isoformat() + "Z",
+                source="course_distribution",
+                target=None,
+                timestamp=datetime.utcnow(),
                 payload={
                     "distribution_id": distribution.distribution_id,
                     "slug": distribution.slug,
@@ -207,7 +213,9 @@ class DistributionService:
             Event(
                 id=str(uuid.uuid4()),
                 type=EventType.DISTRIBUTION_UNPUBLISHED,
-                timestamp=datetime.utcnow().isoformat() + "Z",
+                source="course_distribution",
+                target=None,
+                timestamp=datetime.utcnow(),
                 payload={
                     "distribution_id": distribution_id,
                     "slug": slug,
@@ -231,7 +239,9 @@ class DistributionService:
             Event(
                 id=str(uuid.uuid4()),
                 type=EventType.DISTRIBUTION_VIEWED,
-                timestamp=datetime.utcnow().isoformat() + "Z",
+                source="course_distribution",
+                target=None,
+                timestamp=datetime.utcnow(),
                 payload={
                     "distribution_id": distribution_id,
                     "slug": slug,
@@ -256,7 +266,9 @@ class DistributionService:
             Event(
                 id=str(uuid.uuid4()),
                 type=EventType.DISTRIBUTION_ENROLLMENT_CLICKED,
-                timestamp=datetime.utcnow().isoformat() + "Z",
+                source="course_distribution",
+                target=None,
+                timestamp=datetime.utcnow(),
                 payload={
                     "distribution_id": distribution_id,
                     "slug": slug,
@@ -284,7 +296,9 @@ class DistributionService:
             Event(
                 id=str(uuid.uuid4()),
                 type=EventType.DISTRIBUTION_MICRO_NICHE_CREATED,
-                timestamp=datetime.utcnow().isoformat() + "Z",
+                source="course_distribution",
+                target=None,
+                timestamp=datetime.utcnow(),
                 payload={
                     "child_distribution_id": child_distribution.distribution_id,
                     "parent_distribution_id": parent_distribution_id,
@@ -311,7 +325,9 @@ class DistributionService:
             Event(
                 id=str(uuid.uuid4()),
                 type=EventType.DISTRIBUTION_VERSION_BUMPED,
-                timestamp=datetime.utcnow().isoformat() + "Z",
+                source="course_distribution",
+                target=None,
+                timestamp=datetime.utcnow(),
                 payload={
                     "distribution_id": distribution_id,
                     "slug": slug,
