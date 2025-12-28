@@ -71,6 +71,17 @@ class EventType(str, Enum):
     COURSE_WORKFLOW_TRANSITIONED = "course.workflow.transitioned"
     COURSE_DEPLOYED_STAGING = "course.deployed.staging"
 
+    # Course Distribution Events (Sprint 1)
+    DISTRIBUTION_CREATED = "distribution.created"
+    DISTRIBUTION_UPDATED = "distribution.updated"
+    DISTRIBUTION_DELETED = "distribution.deleted"
+    DISTRIBUTION_PUBLISHED = "distribution.published"
+    DISTRIBUTION_UNPUBLISHED = "distribution.unpublished"
+    DISTRIBUTION_VIEWED = "distribution.viewed"
+    DISTRIBUTION_ENROLLMENT_CLICKED = "distribution.enrollment_clicked"
+    DISTRIBUTION_MICRO_NICHE_CREATED = "distribution.micro_niche_created"
+    DISTRIBUTION_VERSION_BUMPED = "distribution.version_bumped"
+
 
 @dataclass
 class Event:
