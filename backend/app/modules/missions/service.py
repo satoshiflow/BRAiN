@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 import uuid
 from typing import Any, Dict, List, Optional
@@ -17,10 +18,66 @@ from .models import (
     MissionStatus,
 )
 
+logger = logging.getLogger(__name__)
+
+# Optional EventStream import (Sprint 5: EventStream Integration)
+try:
+    from backend.app.core.event_stream import EventStream, Event
+except ImportError:
+    EventStream = None
+    Event = None
+
 MISSION_KEY_PREFIX = "brain:missions:mission:"
 MISSION_INDEX_KEY = "brain:missions:index"
 MISSION_LOG_PREFIX = "brain:missions:log:"
 MISSION_STATS_KEY = "brain:missions:stats"
+
+# Module-level EventStream (Sprint 5: EventStream Integration)
+_event_stream: Optional["EventStream"] = None
+
+
+def set_event_stream(stream: "EventStream") -> None:
+    """Initialize EventStream for Missions module (Sprint 5).
+
+    Args:
+        stream: EventStream instance for publishing events
+
+    Note:
+        This is called during application startup to inject the EventStream
+        dependency into the Missions module for event publishing.
+    """
+    global _event_stream
+    _event_stream = stream
+
+
+async def _emit_event_safe(event_type: str, payload: dict) -> None:
+    """Emit Missions event with error handling (non-blocking).
+
+    Args:
+        event_type: Event type (e.g., "mission.created", "mission.status_changed")
+        payload: Event payload dictionary
+
+    Note:
+        - Never raises exceptions (fully non-blocking)
+        - Logs failures at ERROR level with full traceback
+        - Gracefully handles missing EventStream (optional dependency)
+        - All Missions events are broadcast (target=None)
+    """
+    global _event_stream
+    if _event_stream is None or Event is None:
+        logger.debug("[MissionsService] EventStream not available, skipping event")
+        return
+
+    try:
+        event = Event(
+            type=event_type,
+            source="missions_service",
+            target=None,  # Broadcast to all subscribers
+            payload=payload
+        )
+        await _event_stream.publish(event)
+    except Exception as e:
+        logger.error(f"[MissionsService] Event publishing failed: {e}", exc_info=True)
 
 
 def _mission_key(mission_id: str) -> str:
@@ -32,6 +89,17 @@ def _mission_log_key(mission_id: str) -> str:
 
 
 async def create_mission(payload: MissionCreate) -> Mission:
+    """Create new mission in Redis.
+
+    Args:
+        payload: Mission creation payload
+
+    Returns:
+        Created Mission object
+
+    Events:
+        - mission.created (HIGH PRIORITY): Emitted after mission is created
+    """
     redis: Any = await get_redis()
     mission_id = payload.id or str(uuid.uuid4())
     now = time.time()
@@ -53,6 +121,16 @@ async def create_mission(payload: MissionCreate) -> Mission:
         data={"name": mission.name, "description": mission.description},
     )
     await append_log_entry(mission_id, entry)
+
+    # EVENT: mission.created (HIGH PRIORITY - Sprint 5)
+    await _emit_event_safe("mission.created", {
+        "mission_id": mission.id,
+        "name": mission.name,
+        "description": mission.description or "",
+        "status": mission.status.value,
+        "created_at": mission.created_at,
+    })
+
     return mission
 
 
@@ -81,8 +159,25 @@ async def list_missions(status: Optional[MissionStatus] = None) -> MissionListRe
 
 
 async def append_log_entry(mission_id: str, entry: MissionLogEntry) -> None:
+    """Append log entry to mission's log (Redis LIST).
+
+    Args:
+        mission_id: Mission ID
+        entry: Log entry to append
+
+    Events:
+        - mission.log_appended (MEDIUM PRIORITY): Emitted after log entry is appended
+    """
     redis: Any = await get_redis()
     await redis.rpush(_mission_log_key(mission_id), entry.model_dump_json())
+
+    # EVENT: mission.log_appended (MEDIUM PRIORITY - Sprint 5)
+    await _emit_event_safe("mission.log_appended", {
+        "mission_id": mission_id,
+        "log_level": entry.level,
+        "message": entry.message,
+        "appended_at": entry.timestamp,
+    })
 
 
 async def get_log(mission_id: str) -> MissionLogResponse:
@@ -96,6 +191,18 @@ async def get_log(mission_id: str) -> MissionLogResponse:
 
 
 async def update_status(mission_id: str, status: MissionStatus) -> Optional[Mission]:
+    """Update mission status.
+
+    Args:
+        mission_id: Mission ID
+        status: New status
+
+    Returns:
+        Updated Mission object, or None if not found
+
+    Events:
+        - mission.status_changed (HIGH PRIORITY): Emitted after status change
+    """
     redis: Any = await get_redis()
     mission = await get_mission(mission_id)
     if not mission:
@@ -111,6 +218,15 @@ async def update_status(mission_id: str, status: MissionStatus) -> Optional[Miss
         data={"from": old_status, "to": status},
     )
     await append_log_entry(mission_id, entry)
+
+    # EVENT: mission.status_changed (HIGH PRIORITY - Sprint 5)
+    await _emit_event_safe("mission.status_changed", {
+        "mission_id": mission.id,
+        "old_status": old_status.value,
+        "new_status": mission.status.value,
+        "changed_at": mission.updated_at,
+    })
+
     return mission
 
 

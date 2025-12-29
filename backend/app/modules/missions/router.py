@@ -5,7 +5,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.core.security import Principal, get_current_principal
+from ...core.security import Principal, get_current_principal
 from .models import (
     Mission,
     MissionCreate,
