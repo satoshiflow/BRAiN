@@ -5,7 +5,7 @@ import time
 import uuid
 from typing import Any, Dict, List, Optional
 
-from app.core.redis_client import get_redis
+from ...core.redis_client import get_redis
 from .models import (
     Mission,
     MissionCreate,
