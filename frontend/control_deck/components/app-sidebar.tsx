@@ -4,6 +4,7 @@ import * as React from "react";
 import {
   Bot,
   Command,
+  Coins,
   LayoutDashboard,
   Map,
   Shield,
@@ -93,6 +94,22 @@ const data = {
         {
           title: "New Agent",
           url: "/agents/new",
+        },
+      ],
+    },
+    {
+      title: "Credits & Governance",
+      url: "/credits",
+      icon: Coins,
+      isActive: false,
+      items: [
+        {
+          title: "Overview",
+          url: "/credits",
+        },
+        {
+          title: "Approvals",
+          url: "/governance",
         },
       ],
     },
