@@ -16,6 +16,8 @@ Exports:
 - get_event_journal: Singleton journal instance
 - EventBus: Pub/sub for event distribution
 - get_event_bus: Singleton event bus instance
+- Projections: In-memory read models (balance, ledger, approvals, synergie)
+- get_projection_manager: Singleton projection manager
 - Event creation helpers for type-safe event construction
 """
 
@@ -49,6 +51,17 @@ from backend.app.modules.credits.event_sourcing.event_bus import (
     EventBusError,
     EventHandler,
 )
+from backend.app.modules.credits.event_sourcing.projections import (
+    BalanceProjection,
+    LedgerProjection,
+    ApprovalProjection,
+    SynergieProjection,
+    ProjectionManager,
+    get_projection_manager,
+    LedgerEntry,
+    ApprovalRequest,
+    CollaborationRecord,
+)
 
 __all__ = [
     # Core types
@@ -65,6 +78,16 @@ __all__ = [
     "get_event_bus",
     "EventBusError",
     "EventHandler",
+    # Projections
+    "BalanceProjection",
+    "LedgerProjection",
+    "ApprovalProjection",
+    "SynergieProjection",
+    "ProjectionManager",
+    "get_projection_manager",
+    "LedgerEntry",
+    "ApprovalRequest",
+    "CollaborationRecord",
     # Event creators (Ledger)
     "create_credit_allocated_event",
     "create_credit_consumed_event",
