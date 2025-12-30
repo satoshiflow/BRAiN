@@ -138,3 +138,217 @@ export function useAgentDeregister() {
     },
   });
 }
+
+/* ------------------------------------------------------------------
+   CONSTITUTIONAL AGENTS HOOKS
+   → SupervisorAgent, CoderAgent, OpsAgent, ArchitectAgent, AXEAgent
+-------------------------------------------------------------------*/
+
+// ============================================================================
+// Types for Constitutional Agents
+// ============================================================================
+
+export type RiskLevel = "low" | "medium" | "high" | "critical";
+
+export interface SupervisionRequest {
+  requesting_agent: string;
+  action: string;
+  context?: Record<string, any>;
+  risk_level: RiskLevel;
+  reason?: string;
+}
+
+export interface SupervisionResponse {
+  approved: boolean;
+  reason: string;
+  human_oversight_required: boolean;
+  human_oversight_token?: string;
+  audit_id: string;
+  timestamp: string;
+  policy_violations: string[];
+}
+
+export interface CodeGenerationRequest {
+  spec: string;
+  risk_level?: RiskLevel;
+}
+
+export interface OdooModuleRequest {
+  name: string;
+  purpose: string;
+  data_types?: string[];
+  models?: string[];
+  views?: string[];
+}
+
+export interface DeploymentRequest {
+  app_name: string;
+  version: string;
+  environment: "development" | "staging" | "production";
+  config?: Record<string, any>;
+}
+
+export interface ArchitectureReviewRequest {
+  system_name: string;
+  architecture_spec: Record<string, any>;
+  high_risk_ai?: boolean;
+}
+
+export interface ChatRequest {
+  message: string;
+  context?: Record<string, any>;
+  include_history?: boolean;
+}
+
+// ============================================================================
+// SupervisorAgent Hooks
+// ============================================================================
+
+export function useSupervisor() {
+  const queryClient = useQueryClient();
+
+  const superviseAction = useMutation<SupervisionResponse, Error, SupervisionRequest>({
+    mutationKey: ["supervisor", "supervise"],
+    mutationFn: (request) => api.post("/api/agent-ops/supervisor/supervise", request),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["supervisor", "metrics"] });
+    },
+  });
+
+  const getMetrics = useQuery<any>({
+    queryKey: ["supervisor", "metrics"],
+    queryFn: () => api.get("/api/agent-ops/supervisor/metrics"),
+    refetchInterval: 30_000, // Refetch every 30s
+  });
+
+  return {
+    superviseAction,
+    getMetrics,
+    isSupervising: superviseAction.isPending,
+  };
+}
+
+// ============================================================================
+// CoderAgent Hooks
+// ============================================================================
+
+export function useCoder() {
+  const queryClient = useQueryClient();
+
+  const generateCode = useMutation<any, Error, CodeGenerationRequest>({
+    mutationKey: ["coder", "generate-code"],
+    mutationFn: (request) => api.post("/api/agent-ops/coder/generate-code", request),
+  });
+
+  const generateOdooModule = useMutation<any, Error, OdooModuleRequest>({
+    mutationKey: ["coder", "generate-odoo"],
+    mutationFn: (request) => api.post("/api/agent-ops/coder/generate-odoo-module", request),
+  });
+
+  return {
+    generateCode,
+    generateOdooModule,
+    isGenerating: generateCode.isPending || generateOdooModule.isPending,
+  };
+}
+
+// ============================================================================
+// OpsAgent Hooks
+// ============================================================================
+
+export function useOps() {
+  const queryClient = useQueryClient();
+
+  const deployApplication = useMutation<any, Error, DeploymentRequest>({
+    mutationKey: ["ops", "deploy"],
+    mutationFn: (request) => api.post("/api/agent-ops/ops/deploy", request),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["ops", "health"] });
+    },
+  });
+
+  const rollbackDeployment = useMutation<any, Error, {
+    app_name: string;
+    environment: string;
+    backup_id: string;
+  }>({
+    mutationKey: ["ops", "rollback"],
+    mutationFn: (request) => api.post("/api/agent-ops/ops/rollback", request),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["ops", "health"] });
+    },
+  });
+
+  return {
+    deployApplication,
+    rollbackDeployment,
+    isDeploying: deployApplication.isPending,
+    isRollingBack: rollbackDeployment.isPending,
+  };
+}
+
+// ============================================================================
+// ArchitectAgent Hooks
+// ============================================================================
+
+export function useArchitect() {
+  const reviewArchitecture = useMutation<any, Error, ArchitectureReviewRequest>({
+    mutationKey: ["architect", "review"],
+    mutationFn: (request) => api.post("/api/agent-ops/architect/review", request),
+  });
+
+  const checkCompliance = useMutation<any, Error, Record<string, any>>({
+    mutationKey: ["architect", "compliance"],
+    mutationFn: (spec) => api.post("/api/agent-ops/architect/compliance-check", spec),
+  });
+
+  const assessScalability = useMutation<any, Error, Record<string, any>>({
+    mutationKey: ["architect", "scalability"],
+    mutationFn: (spec) => api.post("/api/agent-ops/architect/scalability-assessment", spec),
+  });
+
+  const auditSecurity = useMutation<any, Error, Record<string, any>>({
+    mutationKey: ["architect", "security"],
+    mutationFn: (spec) => api.post("/api/agent-ops/architect/security-audit", spec),
+  });
+
+  return {
+    reviewArchitecture,
+    checkCompliance,
+    assessScalability,
+    auditSecurity,
+    isReviewing: reviewArchitecture.isPending,
+    isCheckingCompliance: checkCompliance.isPending,
+  };
+}
+
+// ============================================================================
+// AXEAgent Hooks
+// ============================================================================
+
+export function useAXE() {
+  const queryClient = useQueryClient();
+
+  const chat = useMutation<any, Error, ChatRequest>({
+    mutationKey: ["axe", "chat"],
+    mutationFn: (request) => api.post("/api/agent-ops/axe/chat", request),
+  });
+
+  const getSystemStatus = useQuery<any>({
+    queryKey: ["axe", "system-status"],
+    queryFn: () => api.get("/api/agent-ops/axe/system-status"),
+    refetchInterval: 15_000, // Refetch every 15s
+  });
+
+  const clearHistory = useMutation({
+    mutationKey: ["axe", "clear-history"],
+    mutationFn: () => api.delete("/api/agent-ops/axe/history"),
+  });
+
+  return {
+    chat,
+    getSystemStatus,
+    clearHistory,
+    isChatting: chat.isPending,
+  };
+}
