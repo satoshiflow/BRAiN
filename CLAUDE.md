@@ -629,6 +629,200 @@ class ResearchAgent(BaseAgent):
         pass
 ```
 
+### Constitutional Agents Framework
+
+**Purpose:** DSGVO and EU AI Act compliant agent system with risk-based supervision and human-in-the-loop workflows.
+
+**Location:** `backend/brain/agents/`
+
+**Core Agents (5):**
+
+| Agent | Role | Risk Management | Compliance |
+|-------|------|-----------------|------------|
+| **SupervisorAgent** | Constitutional Guardian | 4-tier risk system (LOW/MEDIUM/HIGH/CRITICAL) | DSGVO Art. 22, EU AI Act Art. 16 |
+| **CoderAgent** | Secure Code Generation | Personal data detection → HIGH risk | DSGVO Art. 25 (Privacy by Design) |
+| **OpsAgent** | Safe Operations | Production deployment → CRITICAL risk | Automatic rollback, pre-deployment checks |
+| **ArchitectAgent** | EU Compliance Auditor | High-risk AI detection | EU AI Act Art. 5, 6; DSGVO compliance |
+| **AXEAgent** | Conversational Assistant | Context-aware with history | Safe command execution |
+
+**Risk-Based Supervision:**
+
+```python
+class RiskLevel(str, Enum):
+    LOW = "low"           # Read-only operations, auto-approved after LLM check
+    MEDIUM = "medium"     # Write operations, reversible, auto-approved
+    HIGH = "high"         # Personal data, production changes → Human approval required
+    CRITICAL = "critical" # Irreversible, system-wide → Human approval required
+
+class SupervisionRequest(BaseModel):
+    requesting_agent: str
+    action: str
+    context: Dict[str, Any]
+    risk_level: RiskLevel
+    reason: Optional[str] = None
+
+class SupervisionResponse(BaseModel):
+    approved: bool
+    reason: str
+    human_oversight_required: bool
+    human_oversight_token: Optional[str] = None
+    audit_id: str
+    timestamp: str
+    policy_violations: List[str]
+```
+
+**Supervision Workflow:**
+
+```python
+from backend.brain.agents.supervisor_agent import get_supervisor_agent
+from backend.brain.agents.coder_agent import get_coder_agent
+
+# 1. CoderAgent requests supervision for HIGH-risk code
+coder = get_coder_agent()
+result = await coder.generate_odoo_module({
+    "name": "customer_portal",
+    "data_types": ["name", "email", "address"]  # Personal data → HIGH risk
+})
+
+# 2. SupervisorAgent automatically evaluates:
+# - Risk level assessment
+# - Policy Engine rules
+# - LLM constitutional check
+# - DSGVO/EU AI Act compliance
+
+# 3. HIGH/CRITICAL risk → Human-in-the-Loop
+supervisor = get_supervisor_agent()
+response = await supervisor.supervise_action(SupervisionRequest(
+    requesting_agent="CoderAgent",
+    action="generate_odoo_module",
+    context={"uses_personal_data": True},
+    risk_level=RiskLevel.HIGH
+))
+
+if response.human_oversight_required:
+    print(f"Human approval needed: {response.human_oversight_token}")
+    # Wait for human approval via Control Deck UI
+```
+
+**Example: Safe Deployment with OpsAgent:**
+
+```python
+from backend.brain.agents.ops_agent import get_ops_agent
+
+ops = get_ops_agent()
+
+# Production deployment → CRITICAL risk → Requires human approval
+result = await ops.deploy_application(
+    app_name="brain-backend",
+    version="1.2.3",
+    environment="production",  # CRITICAL risk
+    config={}
+)
+
+# Workflow:
+# 1. Risk assessment: production = CRITICAL
+# 2. Supervisor approval required (EU AI Act Art. 16)
+# 3. Pre-deployment checks (version, dependencies, environment)
+# 4. Backup creation for rollback
+# 5. Deployment execution
+# 6. Post-deployment health check
+# 7. Automatic rollback on failure
+```
+
+**Example: EU Compliance Check with ArchitectAgent:**
+
+```python
+from backend.brain.agents.architect_agent import get_architect_agent
+
+architect = get_architect_agent()
+
+# Check for prohibited practices (EU AI Act Art. 5)
+result = await architect.review_architecture(
+    system_name="Customer Analytics Platform",
+    architecture_spec={
+        "uses_ai": True,
+        "processes_personal_data": True,
+        "uses_social_scoring": False,  # Prohibited practice
+        "uses_biometric_categorization": False,  # Prohibited practice
+        "has_consent_mechanism": True,
+        "international_transfers": False
+    },
+    high_risk_ai=False
+)
+
+# Returns:
+# - EU AI Act compliance score
+# - DSGVO compliance validation
+# - Prohibited practices detection
+# - Architecture quality assessment
+# - Security audit results
+# - Scalability recommendations
+```
+
+**Frontend Integration:**
+
+```typescript
+// frontend/brain_control_ui/src/hooks/useAgents.ts
+import { useSupervisor, useCoder, useOps, useArchitect, useAXE } from "@/hooks/useAgents";
+
+export function SupervisorDashboard() {
+  const { superviseAction, getMetrics } = useSupervisor();
+
+  const handleSupervise = () => {
+    superviseAction.mutate({
+      requesting_agent: "CoderAgent",
+      action: "generate_odoo_module",
+      context: { uses_personal_data: true },
+      risk_level: "high"
+    });
+  };
+
+  // Live metrics
+  const metrics = getMetrics.data;
+  // {
+  //   total_supervision_requests: 42,
+  //   approved_actions: 35,
+  //   denied_actions: 3,
+  //   human_approvals_pending: 4
+  // }
+}
+```
+
+**UI Pages:**
+
+- **Constitutional Agents Dashboard:** `/constitutional` - Main interface for all 5 agents
+- **Components:**
+  - `SupervisorDashboard` - Supervision testing and metrics
+  - `CoderInterface` - Code generation and Odoo modules
+  - `OpsPanel` - Deployment and rollback operations
+  - `ArchitectInterface` - Architecture review and compliance checks
+  - `AXEChatInterface` - Conversational assistant with chat history
+
+**API Endpoints:**
+
+See [Constitutional Agents API Reference](#constitutional-agents-api-apiagent-ops) for complete endpoint documentation.
+
+**Key Features:**
+
+- ✅ **Risk-based supervision** with 4-tier system
+- ✅ **Human-in-the-loop** for HIGH/CRITICAL risk (DSGVO Art. 22, EU AI Act Art. 16)
+- ✅ **Policy Engine integration** for rule-based governance
+- ✅ **Constitutional LLM checks** with ethical constraints
+- ✅ **Comprehensive audit trail** for all decisions
+- ✅ **DSGVO compliance:** Privacy by Design (Art. 25), data minimization, legal basis validation
+- ✅ **EU AI Act compliance:** Prohibited practices detection, high-risk AI requirements
+- ✅ **Automatic rollback** on deployment failures
+- ✅ **Code validation:** Forbidden patterns detection (eval/exec, hardcoded secrets)
+
+**Documentation:**
+
+See `docs/CONSTITUTIONAL_AGENTS.md` for complete guide including:
+- Detailed agent documentation
+- Usage examples
+- Compliance matrix
+- Best practices
+- Troubleshooting
+
 ### Mission System
 
 **Mission Lifecycle:**
@@ -1610,6 +1804,222 @@ export const usePresenceStore = create<PresenceState>((set) => ({
 |--------|----------|-------------|
 | GET | `/api/axe/info` | AXE engine info |
 | POST | `/api/axe/message` | Execute via gateway or LLM fallback |
+
+### Constitutional Agents API (`/api/agent-ops`) 🆕
+
+**Purpose:** REST API for DSGVO and EU AI Act compliant agents with risk-based supervision.
+
+**Location:** `backend/app/api/routes/agent_ops.py`
+
+#### SupervisorAgent Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/agent-ops/supervisor/supervise` | Request supervision for agent action |
+| GET | `/api/agent-ops/supervisor/metrics` | Get supervision metrics |
+
+**Supervise Request:**
+```json
+{
+  "requesting_agent": "CoderAgent",
+  "action": "generate_odoo_module",
+  "context": {
+    "uses_personal_data": true,
+    "environment": "production"
+  },
+  "risk_level": "high",
+  "reason": "Optional explanation"
+}
+```
+
+**Supervise Response:**
+```json
+{
+  "approved": false,
+  "reason": "HIGH risk: Personal data processing requires human oversight (EU AI Act Art. 16)",
+  "human_oversight_required": true,
+  "human_oversight_token": "HITL-abc123",
+  "audit_id": "audit_20231220_143022",
+  "timestamp": "2023-12-20T14:30:22Z",
+  "policy_violations": []
+}
+```
+
+**Metrics Response:**
+```json
+{
+  "total_supervision_requests": 42,
+  "approved_actions": 35,
+  "denied_actions": 3,
+  "human_approvals_pending": 4,
+  "approval_rate": 0.833
+}
+```
+
+#### CoderAgent Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/agent-ops/coder/generate-code` | Generate code with DSGVO compliance |
+| POST | `/api/agent-ops/coder/generate-odoo-module` | Generate DSGVO-compliant Odoo module |
+
+**Generate Code Request:**
+```json
+{
+  "spec": "Create a Python function to validate email addresses",
+  "risk_level": "low"
+}
+```
+
+**Generate Odoo Module Request:**
+```json
+{
+  "name": "customer_portal",
+  "purpose": "Customer self-service portal",
+  "data_types": ["name", "email", "phone"],
+  "models": ["res.partner", "sale.order"],
+  "views": ["form", "tree", "search"]
+}
+```
+
+#### OpsAgent Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/agent-ops/ops/deploy` | Deploy application (prod requires approval) |
+| POST | `/api/agent-ops/ops/rollback` | Rollback deployment to previous version |
+| GET | `/api/agent-ops/ops/health/{app_name}/{environment}` | Check application health |
+
+**Deploy Request:**
+```json
+{
+  "app_name": "brain-backend",
+  "version": "1.2.3",
+  "environment": "production",
+  "config": {}
+}
+```
+
+**Rollback Request:**
+```json
+{
+  "app_name": "brain-backend",
+  "environment": "production",
+  "backup_id": "backup_20231220_143022"
+}
+```
+
+#### ArchitectAgent Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/agent-ops/architect/review` | Comprehensive architecture review |
+| POST | `/api/agent-ops/architect/compliance-check` | Quick EU compliance check (AI Act + DSGVO) |
+| POST | `/api/agent-ops/architect/scalability-assessment` | Assess system scalability |
+| POST | `/api/agent-ops/architect/security-audit` | Security architecture audit |
+
+**Architecture Review Request:**
+```json
+{
+  "system_name": "Customer Data Platform",
+  "architecture_spec": {
+    "uses_ai": true,
+    "processes_personal_data": true,
+    "data_types": ["names", "emails", "addresses"],
+    "international_transfers": false,
+    "components": ["api", "database", "ml_service"]
+  },
+  "high_risk_ai": false
+}
+```
+
+**Review Response:**
+```json
+{
+  "compliance_score": 85,
+  "eu_ai_act_compliant": true,
+  "dsgvo_compliant": true,
+  "prohibited_practices_detected": [],
+  "recommendations": [
+    "Add data encryption at rest",
+    "Implement privacy-enhancing technologies"
+  ],
+  "security_issues": ["Missing intrusion detection"],
+  "scalability_rating": "good"
+}
+```
+
+#### AXEAgent Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/agent-ops/axe/chat` | Chat with AXE conversational assistant |
+| GET | `/api/agent-ops/axe/system-status` | Get current system status |
+| DELETE | `/api/agent-ops/axe/history` | Clear conversation history |
+
+**Chat Request:**
+```json
+{
+  "message": "What's the system status?",
+  "context": {},
+  "include_history": true
+}
+```
+
+**Chat Response:**
+```json
+{
+  "response": "System is operational. All agents are running normally. Mission queue has 3 pending missions.",
+  "timestamp": "2023-12-20T14:30:22Z"
+}
+```
+
+#### Agent Info Endpoint
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/agent-ops/info` | Get information about all constitutional agents |
+
+**Info Response:**
+```json
+{
+  "name": "Constitutional Agents",
+  "version": "1.0.0",
+  "agents": [
+    {
+      "id": "supervisor",
+      "name": "SupervisorAgent",
+      "role": "Constitutional Guardian",
+      "capabilities": ["risk_assessment", "policy_evaluation", "human_oversight"]
+    },
+    {
+      "id": "coder",
+      "name": "CoderAgent",
+      "role": "Secure Code Generation",
+      "capabilities": ["code_generation", "odoo_modules", "dsgvo_compliance"]
+    },
+    {
+      "id": "ops",
+      "name": "OpsAgent",
+      "role": "Operations & Deployment",
+      "capabilities": ["deployment", "rollback", "health_monitoring"]
+    },
+    {
+      "id": "architect",
+      "name": "ArchitectAgent",
+      "role": "Architecture & Compliance Auditor",
+      "capabilities": ["architecture_review", "eu_compliance", "security_audit"]
+    },
+    {
+      "id": "axe",
+      "name": "AXEAgent",
+      "role": "Conversational Assistant",
+      "capabilities": ["chat", "system_monitoring", "log_analysis"]
+    }
+  ],
+  "compliance_frameworks": ["DSGVO", "EU AI Act"]
+}
+```
 
 ### Policy Engine (`/api/policy`) 🆕
 
