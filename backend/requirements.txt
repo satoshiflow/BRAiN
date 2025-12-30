@@ -39,8 +39,10 @@ python-dotenv==1.0.1
 loguru==0.7.2
 python-json-logger==2.0.7
 
-# --- Cryptography ---
+# --- Cryptography & Authentication ---
 cryptography==42.0.2                # Ed25519 signatures for bundle signing (G1)
+python-jose[cryptography]==3.3.0    # JWT token encoding/decoding
+passlib[bcrypt]==1.7.4              # Password hashing (bcrypt)
 
 # --- Background Jobs / Scheduling ---
 APScheduler==3.10.4             # Background task scheduling
