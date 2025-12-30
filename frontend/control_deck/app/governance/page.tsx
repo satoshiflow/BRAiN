@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useCurrentUser } from "@/hooks/useAuth";
 
 /**
  * Governance & HITL Approvals Dashboard
@@ -24,6 +25,9 @@ export default function GovernancePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedTab, setSelectedTab] = useState<"pending" | "approved" | "rejected" | "expired">("pending");
+
+  // Get current user for audit trail
+  const { data: currentUser } = useCurrentUser();
 
   useEffect(() => {
     fetchApprovals();
@@ -55,6 +59,9 @@ export default function GovernancePage() {
       return;
     }
 
+    // Ensure user is authenticated
+    const actorId = currentUser?.username || "anonymous";
+
     try {
       const response = await fetch(
         `http://localhost:8000/api/governance/approvals/${approvalId}/approve`,
@@ -62,7 +69,7 @@ export default function GovernancePage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            actor_id: "admin",  // TODO: Get from auth context
+            actor_id: actorId,
             notes: "Approved via dashboard",
           }),
         }
@@ -89,6 +96,9 @@ export default function GovernancePage() {
       return;
     }
 
+    // Ensure user is authenticated
+    const actorId = currentUser?.username || "anonymous";
+
     try {
       const response = await fetch(
         `http://localhost:8000/api/governance/approvals/${approvalId}/reject`,
@@ -96,7 +106,7 @@ export default function GovernancePage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            actor_id: "admin",  // TODO: Get from auth context
+            actor_id: actorId,
             reason: reason,
           }),
         }

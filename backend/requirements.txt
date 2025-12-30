@@ -39,8 +39,10 @@ python-dotenv==1.0.1
 loguru==0.7.2
 python-json-logger==2.0.7
 
-# --- Cryptography ---
+# --- Cryptography & Authentication ---
 cryptography==42.0.2                # Ed25519 signatures for bundle signing (G1)
+python-jose[cryptography]==3.3.0    # JWT token encoding/decoding
+passlib[bcrypt]==1.7.4              # Password hashing (bcrypt)
 
 # --- Background Jobs / Scheduling ---
 APScheduler==3.10.4             # Background task scheduling
@@ -81,7 +83,7 @@ types-redis==4.6.0.20240218
 # --- Advanced Features ---
 # celery[redis]==5.3.6          # Distributed task queue
 # flower==2.0.1                 # Celery monitoring
-# prometheus-client==0.20.0     # Metrics export
+prometheus-client==0.20.0       # Metrics export (ENABLED for Grafana)
 
 # ============================================================================
 # Notes:

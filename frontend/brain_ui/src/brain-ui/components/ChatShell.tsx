@@ -50,18 +50,18 @@ export function ChatShell() {
     setSpeaking(true);
 
     try {
+      const systemMessage: ChatMessage = {
+        role: "system",
+        content: "You are BRAiN, the multi-agent controller...",
+      };
 
-    const systemMessage: ChatMessage = {
-      role: "system",
-      content: "You are BRAiN, the multi-agent controller...",
-    };
+      const history: ChatMessage[] = messages.map(
+        (m): ChatMessage => ({
+          role: m.from === "user" ? "user" : "assistant",
+          content: m.text ?? "",
+        })
+      );
 
-    const history: ChatMessage[] = messages.map(
-      (m): ChatMessage => ({
-        role: m.from === "user" ? "user" : "assistant",
-        content: m.text ?? "",
-    })
-  );
       const res = await sendChat(history);
 
       const brainMsg: Message = {

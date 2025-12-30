@@ -13,18 +13,26 @@ import {
   CheckCircle2,
   XCircle,
   AlertTriangle,
-  Clock
+  Clock,
+  UserCheck,
+  FileText
 } from "lucide-react";
 import { useSupervisor, useCoder, useOps, useArchitect, useAXE } from "@/hooks/useAgents";
+import { useHITLStats } from "@/hooks/useHITL";
+import { usePolicyStats } from "@/hooks/usePolicy";
 import { SupervisorDashboard } from "@/components/control-center/constitutional/supervisor-dashboard";
 import { CoderInterface } from "@/components/control-center/constitutional/coder-interface";
 import { OpsPanel } from "@/components/control-center/constitutional/ops-panel";
 import { ArchitectInterface } from "@/components/control-center/constitutional/architect-interface";
 import { AXEChatInterface } from "@/components/control-center/constitutional/axe-chat-interface";
+import { HITLApprovalInterface } from "@/components/control-center/constitutional/hitl-approval-interface";
+import { PolicyManagementInterface } from "@/components/control-center/constitutional/policy-management-interface";
 
 export default function ConstitutionalAgentsPage() {
   const supervisor = useSupervisor();
   const axe = useAXE();
+  const hitlStats = useHITLStats();
+  const policyStats = usePolicyStats();
 
   // Get metrics for overview cards
   const supervisorMetrics = supervisor.getMetrics.data;
@@ -161,6 +169,15 @@ export default function ConstitutionalAgentsPage() {
             <Shield className="w-4 h-4 mr-2" />
             Supervisor
           </TabsTrigger>
+          <TabsTrigger value="hitl" className="data-[state=active]:bg-brain-accent">
+            <UserCheck className="w-4 h-4 mr-2" />
+            HITL Approvals
+            {hitlStats.data && hitlStats.data.pending > 0 && (
+              <Badge className="ml-2 bg-yellow-500 text-black">
+                {hitlStats.data.pending}
+              </Badge>
+            )}
+          </TabsTrigger>
           <TabsTrigger value="coder" className="data-[state=active]:bg-brain-accent">
             <Code className="w-4 h-4 mr-2" />
             Coder
@@ -173,6 +190,15 @@ export default function ConstitutionalAgentsPage() {
             <Building2 className="w-4 h-4 mr-2" />
             Architect
           </TabsTrigger>
+          <TabsTrigger value="policies" className="data-[state=active]:bg-brain-accent">
+            <FileText className="w-4 h-4 mr-2" />
+            Policies
+            {policyStats.data && policyStats.data.total_policies > 0 && (
+              <Badge className="ml-2 bg-blue-500 text-white">
+                {policyStats.data.total_policies}
+              </Badge>
+            )}
+          </TabsTrigger>
           <TabsTrigger value="axe" className="data-[state=active]:bg-brain-accent">
             <MessageSquare className="w-4 h-4 mr-2" />
             AXE Chat
@@ -181,6 +207,10 @@ export default function ConstitutionalAgentsPage() {
 
         <TabsContent value="supervisor" className="space-y-4">
           <SupervisorDashboard />
+        </TabsContent>
+
+        <TabsContent value="hitl" className="space-y-4">
+          <HITLApprovalInterface />
         </TabsContent>
 
         <TabsContent value="coder" className="space-y-4">
@@ -193,6 +223,10 @@ export default function ConstitutionalAgentsPage() {
 
         <TabsContent value="architect" className="space-y-4">
           <ArchitectInterface />
+        </TabsContent>
+
+        <TabsContent value="policies" className="space-y-4">
+          <PolicyManagementInterface />
         </TabsContent>
 
         <TabsContent value="axe" className="space-y-4">
