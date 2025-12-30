@@ -14,6 +14,8 @@ Exports:
 - EventType: Enum of all event types in the system
 - EventJournal: Append-only event storage with crash-safety
 - get_event_journal: Singleton journal instance
+- EventBus: Pub/sub for event distribution
+- get_event_bus: Singleton event bus instance
 - Event creation helpers for type-safe event construction
 """
 
@@ -41,6 +43,12 @@ from backend.app.modules.credits.event_sourcing.event_journal import (
     EventJournalPermissionError,
     EventJournalCorruptionError,
 )
+from backend.app.modules.credits.event_sourcing.event_bus import (
+    EventBus,
+    get_event_bus,
+    EventBusError,
+    EventHandler,
+)
 
 __all__ = [
     # Core types
@@ -52,6 +60,11 @@ __all__ = [
     "EventJournalError",
     "EventJournalPermissionError",
     "EventJournalCorruptionError",
+    # Event Bus
+    "EventBus",
+    "get_event_bus",
+    "EventBusError",
+    "EventHandler",
     # Event creators (Ledger)
     "create_credit_allocated_event",
     "create_credit_consumed_event",
