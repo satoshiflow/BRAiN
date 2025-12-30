@@ -4,7 +4,7 @@ Implements Myzel-Hybrid-Charta principles:
 - Skill-based matching (not competition)
 - Cooperation incentives
 - Performance evaluation for credit allocation
-- KARMA integration for semantic matching
+- KARMA integration for semantic matching (Phase 9)
 """
 
 import logging
@@ -14,6 +14,16 @@ from dataclasses import dataclass
 from enum import Enum
 
 logger = logging.getLogger(__name__)
+
+# KARMA Integration (Phase 9)
+try:
+    from backend.app.modules.karma.core.service import KarmaService
+    from backend.app.modules.karma.schemas import KarmaMetrics
+    from backend.app.modules.dna.core.service import DNAService
+    KARMA_AVAILABLE = True
+except ImportError:
+    KARMA_AVAILABLE = False
+    logger.warning("[MissionRatingSystem] KARMA module not available - semantic matching disabled")
 
 
 class MissionStatus(str, Enum):
@@ -81,15 +91,29 @@ class MissionRatingSystem:
     """Mission rating and skill-based agent matching.
 
     Responsibilities:
-    - Match agents to missions based on skills
+    - Match agents to missions based on skills (KARMA-enhanced)
     - Rate mission performance
     - Update agent skill profiles
     - Calculate credit adjustments
+    - Semantic matching via KARMA integration (Phase 9)
     """
 
-    def __init__(self):
+    def __init__(self, enable_karma: bool = True):
         self.agent_profiles: Dict[str, AgentSkills] = {}
         self.mission_ratings: List[MissionRating] = []
+
+        # KARMA Integration (Phase 9)
+        self.karma_service: Optional[KarmaService] = None
+        if enable_karma and KARMA_AVAILABLE:
+            try:
+                dna_service = DNAService()
+                self.karma_service = KarmaService(dna_service)
+                logger.info("[MissionRatingSystem] KARMA integration enabled")
+            except Exception as e:
+                logger.error(f"[MissionRatingSystem] Failed to initialize KARMA: {e}")
+                self.karma_service = None
+        else:
+            logger.info("[MissionRatingSystem] KARMA integration disabled")
 
         logger.info("[MissionRatingSystem] Initialized")
 
@@ -131,14 +155,17 @@ class MissionRatingSystem:
         self,
         requirements: MissionRequirements,
         available_agents: Optional[List[str]] = None,
+        enable_karma: bool = True,
     ) -> List[Dict]:
         """Find best agent matches for mission.
 
         Myzel-Hybrid: Skill-based matching, not competition.
+        Phase 9: KARMA-enhanced semantic matching.
 
         Args:
             requirements: Mission requirements
             available_agents: List of available agent IDs (None = all)
+            enable_karma: Use KARMA-enhanced scoring (default: True)
 
         Returns:
             List of agent matches sorted by suitability score
@@ -153,23 +180,39 @@ class MissionRatingSystem:
                 continue
 
             profile = self.agent_profiles[agent_id]
-            match_score = self._calculate_match_score(profile, requirements)
 
-            matches.append({
+            # Calculate base skill-based score
+            base_score = self._calculate_match_score(profile, requirements)
+
+            # Enhance with KARMA if enabled
+            if enable_karma and self.karma_service is not None:
+                final_score = self._calculate_karma_enhanced_score(profile, requirements, base_score)
+            else:
+                final_score = base_score
+
+            match_entry = {
                 "agent_id": agent_id,
-                "match_score": match_score["total_score"],
-                "skill_match": match_score["skill_match"],
-                "experience_match": match_score["experience_match"],
-                "collaboration_fit": match_score["collaboration_fit"],
+                "match_score": final_score["total_score"],
+                "skill_match": final_score["skill_match"],
+                "experience_match": final_score["experience_match"],
+                "collaboration_fit": final_score["collaboration_fit"],
                 "success_rate": profile.success_rate,
-                "recommended": match_score["total_score"] >= 0.6,  # Threshold
-            })
+                "recommended": final_score["total_score"] >= 0.6,  # Threshold
+            }
+
+            # Add KARMA score if available
+            if "karma_score" in final_score:
+                match_entry["karma_score"] = final_score["karma_score"]
+                match_entry["karma_enabled"] = final_score.get("karma_enabled", False)
+
+            matches.append(match_entry)
 
         # Sort by match score (descending)
         matches.sort(key=lambda m: m["match_score"], reverse=True)
 
+        karma_status = "KARMA-enhanced" if enable_karma and self.karma_service else "skill-based"
         logger.info(
-            f"[MissionRatingSystem] Found {len(matches)} matches for mission {requirements.mission_id} "
+            f"[MissionRatingSystem] Found {len(matches)} {karma_status} matches for mission {requirements.mission_id} "
             f"(best: {matches[0]['match_score']:.3f})" if matches else "No matches found"
         )
 
@@ -226,6 +269,109 @@ class MissionRatingSystem:
             "experience_match": experience_match,
             "collaboration_fit": collaboration_fit,
         }
+
+    def _calculate_karma_enhanced_score(
+        self,
+        agent: AgentSkills,
+        requirements: MissionRequirements,
+        base_score: Dict,
+    ) -> Dict:
+        """Calculate KARMA-enhanced match score (Phase 9).
+
+        Integrates KARMA semantic scoring with skill-based matching.
+
+        Args:
+            agent: Agent skill profile
+            requirements: Mission requirements
+            base_score: Base skill-based score
+
+        Returns:
+            Enhanced score with KARMA integration
+        """
+        if self.karma_service is None:
+            # No KARMA available - return base score
+            return base_score
+
+        try:
+            # Build KARMA metrics from agent profile
+            # Get recent performance data from mission ratings
+            recent_ratings = [
+                r for r in self.mission_ratings
+                if r.agent_id == agent.agent_id and r.status == MissionStatus.COMPLETED
+            ][-10:]  # Last 10 missions
+
+            if not recent_ratings:
+                # No history - use defaults
+                karma_metrics = KarmaMetrics(
+                    success_rate=agent.success_rate,
+                    avg_latency_ms=5000.0,  # Default 5s
+                    policy_violations=0,
+                    user_rating_avg=3.0,  # Neutral
+                    credit_consumption_per_task=10.0,  # Default
+                )
+            else:
+                # Calculate metrics from recent ratings
+                success_count = len([r for r in recent_ratings if r.overall_score and r.overall_score >= 0.7])
+                success_rate = success_count / len(recent_ratings) if recent_ratings else agent.success_rate
+
+                avg_duration = sum(
+                    r.actual_duration_hours for r in recent_ratings if r.actual_duration_hours
+                ) / len(recent_ratings) if recent_ratings else 1.0
+
+                avg_latency_ms = avg_duration * 3600 * 1000  # Convert hours to ms
+
+                avg_credits = sum(
+                    r.credits_consumed for r in recent_ratings if r.credits_consumed
+                ) / len(recent_ratings) if recent_ratings else 10.0
+
+                # Assume no policy violations for now (would come from immune system)
+                policy_violations = 0
+
+                # Calculate average quality as proxy for user rating
+                avg_quality = sum(
+                    r.quality_score for r in recent_ratings if r.quality_score
+                ) / len(recent_ratings) if recent_ratings else 0.7
+
+                user_rating = 3.0 + (avg_quality - 0.5) * 4  # Map 0.0-1.0 to 1.0-5.0
+
+                karma_metrics = KarmaMetrics(
+                    success_rate=success_rate,
+                    avg_latency_ms=avg_latency_ms,
+                    policy_violations=policy_violations,
+                    user_rating_avg=user_rating,
+                    credit_consumption_per_task=avg_credits,
+                )
+
+            # Compute KARMA score
+            karma_score_result = self.karma_service.compute_score(agent.agent_id, karma_metrics)
+            karma_score_normalized = karma_score_result.score / 100.0  # 0-100 -> 0.0-1.0
+
+            # Integrate KARMA score with base score
+            # KARMA contributes 15% to overall score (skill-based matching still dominates)
+            enhanced_score = (
+                base_score["total_score"] * 0.85 +  # 85% from skill-based matching
+                karma_score_normalized * 0.15        # 15% from KARMA semantic scoring
+            )
+
+            logger.info(
+                f"[MissionRatingSystem] KARMA-enhanced score for {agent.agent_id}: "
+                f"base={base_score['total_score']:.3f}, karma={karma_score_normalized:.3f}, "
+                f"enhanced={enhanced_score:.3f}"
+            )
+
+            return {
+                "total_score": enhanced_score,
+                "skill_match": base_score["skill_match"],
+                "experience_match": base_score["experience_match"],
+                "collaboration_fit": base_score["collaboration_fit"],
+                "karma_score": karma_score_normalized,
+                "karma_enabled": True,
+            }
+
+        except Exception as e:
+            logger.error(f"[MissionRatingSystem] KARMA scoring failed for {agent.agent_id}: {e}")
+            # Fallback to base score
+            return base_score
 
     def rate_mission(
         self,
