@@ -1,0 +1,37 @@
+{
+  "name": "llm_router",
+  "version": "0.1.0",
+  "description": "Unified LLM access with provider abstraction and routing",
+  "type": "core",
+  "status": "active",
+  "dependencies": [
+    "litellm",
+    "openai",
+    "httpx"
+  ],
+  "endpoints": [
+    "/api/llm-router/info",
+    "/api/llm-router/chat",
+    "/api/llm-router/providers",
+    "/api/llm-router/providers/{provider}/models",
+    "/api/llm-router/health",
+    "/api/llm-router/openwebui/compatibility",
+    "/api/llm-router/openwebui/chat/completions",
+    "/api/llm-router/openwebui/models"
+  ],
+  "features": [
+    "multi_provider_routing",
+    "local_llm_support",
+    "api_llm_support",
+    "openwebui_compatibility",
+    "automatic_fallback",
+    "agent_specific_routing",
+    "health_monitoring"
+  ],
+  "providers": [
+    "ollama",
+    "openrouter",
+    "openai",
+    "anthropic"
+  ]
+}
