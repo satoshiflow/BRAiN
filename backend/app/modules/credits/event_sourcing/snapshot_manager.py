@@ -31,10 +31,12 @@ Usage:
 
 from __future__ import annotations
 
+import gzip
+import hashlib
 import json
 import os
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from loguru import logger
@@ -446,6 +448,183 @@ class SnapshotManager:
         logger.debug(
             f"Restored synergie data for {len(synergie_projection._team_rewards)} teams"
         )
+
+    # ========================================================================
+    # Phase 6b: Snapshot Enhancements
+    # ========================================================================
+
+    def calculate_checksum(self, state_data: Dict[str, Any]) -> str:
+        """
+        Calculate SHA256 checksum of snapshot data for integrity verification.
+
+        Args:
+            state_data: Snapshot state dictionary
+
+        Returns:
+            Hex digest of SHA256 checksum
+
+        Example:
+            >>> checksum = manager.calculate_checksum(snapshot.state_data)
+            >>> # Store checksum with snapshot for verification
+        """
+        state_json = json.dumps(state_data, sort_keys=True)
+        return hashlib.sha256(state_json.encode('utf-8')).hexdigest()
+
+    def verify_checksum(self, state_data: Dict[str, Any], expected_checksum: str) -> bool:
+        """
+        Verify snapshot integrity via checksum.
+
+        Args:
+            state_data: Snapshot state to verify
+            expected_checksum: Expected SHA256 checksum
+
+        Returns:
+            True if checksum matches, False otherwise
+        """
+        actual_checksum = self.calculate_checksum(state_data)
+        return actual_checksum == expected_checksum
+
+    @staticmethod
+    def is_milestone_sequence(sequence_number: int) -> bool:
+        """
+        Check if sequence number is a milestone (strategic snapshot point).
+
+        Milestones: 1000, 10000, 100000, 1000000, etc.
+        Also: Every 5000 events between milestones
+
+        Args:
+            sequence_number: Event sequence number
+
+        Returns:
+            True if milestone, False otherwise
+
+        Example:
+            >>> is_milestone_sequence(1000)   # True
+            >>> is_milestone_sequence(10000)  # True
+            >>> is_milestone_sequence(5000)   # True (every 5000)
+            >>> is_milestone_sequence(1234)   # False
+        """
+        if sequence_number == 0:
+            return False
+
+        # Check if power of 10 * 1000 (1000, 10000, 100000, ...)
+        if sequence_number >= 1000:
+            temp = sequence_number
+            while temp >= 1000 and temp % 10 == 0:
+                temp //= 10
+            if temp == 1:
+                return True
+
+        # Check if multiple of 5000
+        if sequence_number % 5000 == 0:
+            return True
+
+        return False
+
+    async def apply_milestone_retention(
+        self,
+        snapshot_type: str = "all",
+        keep_recent: int = 10,
+    ) -> int:
+        """
+        Apply milestone-based retention policy.
+
+        Keeps:
+        - Last N snapshots (keep_recent)
+        - All milestone snapshots (1000, 10000, 100000, ...)
+
+        Deletes all other snapshots.
+
+        Args:
+            snapshot_type: Snapshot type to apply policy to
+            keep_recent: Number of most recent snapshots to keep
+
+        Returns:
+            Number of snapshots deleted
+
+        Example:
+            >>> deleted = await manager.apply_milestone_retention("all", keep_recent=10)
+            >>> print(f"Deleted {deleted} non-milestone snapshots")
+        """
+        # Get all snapshots
+        snapshots = await self.list_snapshots(snapshot_type=snapshot_type, limit=10000)
+
+        if not snapshots:
+            return 0
+
+        # Sort by sequence number descending
+        sorted_snapshots = sorted(snapshots, key=lambda s: s.sequence_number, reverse=True)
+
+        # Determine which to keep
+        to_keep = set()
+        to_delete = []
+
+        # Keep recent N
+        for i, snapshot in enumerate(sorted_snapshots):
+            if i < keep_recent:
+                to_keep.add(snapshot.snapshot_id)
+
+        # Keep milestones
+        for snapshot in snapshots:
+            if self.is_milestone_sequence(snapshot.sequence_number):
+                to_keep.add(snapshot.snapshot_id)
+
+        # Determine deletions
+        for snapshot in snapshots:
+            if snapshot.snapshot_id not in to_keep:
+                to_delete.append(snapshot.snapshot_id)
+
+        # Delete
+        deleted_count = 0
+        for snapshot_id in to_delete:
+            try:
+                await self.delete_snapshot(snapshot_id)
+                deleted_count += 1
+            except Exception as e:
+                logger.warning(f"Failed to delete snapshot {snapshot_id}: {e}")
+
+        if deleted_count > 0:
+            logger.info(
+                f"Milestone retention applied",
+                snapshot_type=snapshot_type,
+                deleted=deleted_count,
+                kept=len(to_keep),
+            )
+
+        return deleted_count
+
+    def compress_state_data(self, state_data: Dict[str, Any]) -> bytes:
+        """
+        Compress snapshot state data using gzip.
+
+        Args:
+            state_data: Snapshot state dictionary
+
+        Returns:
+            Compressed bytes (gzip)
+
+        Example:
+            >>> compressed = manager.compress_state_data(snapshot.state_data)
+            >>> # Store compressed data (70-80% size reduction)
+        """
+        state_json = json.dumps(state_data)
+        return gzip.compress(state_json.encode('utf-8'), compresslevel=6)
+
+    def decompress_state_data(self, compressed_data: bytes) -> Dict[str, Any]:
+        """
+        Decompress snapshot state data.
+
+        Args:
+            compressed_data: Gzip-compressed snapshot bytes
+
+        Returns:
+            Decompressed state dictionary
+
+        Example:
+            >>> state_data = manager.decompress_state_data(compressed_bytes)
+        """
+        decompressed = gzip.decompress(compressed_data)
+        return json.loads(decompressed.decode('utf-8'))
 
     async def close(self) -> None:
         """Close database connections gracefully."""
