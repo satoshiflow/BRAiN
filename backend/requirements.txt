@@ -83,7 +83,7 @@ types-redis==4.6.0.20240218
 # --- Advanced Features ---
 # celery[redis]==5.3.6          # Distributed task queue
 # flower==2.0.1                 # Celery monitoring
-# prometheus-client==0.20.0     # Metrics export
+prometheus-client==0.20.0       # Metrics export (ENABLED for Grafana)
 
 # ============================================================================
 # Notes:

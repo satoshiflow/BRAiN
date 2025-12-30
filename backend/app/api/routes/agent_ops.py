@@ -18,6 +18,9 @@ from backend.brain.agents.coder_agent import get_coder_agent
 from backend.brain.agents.ops_agent import get_ops_agent
 from backend.brain.agents.architect_agent import get_architect_agent
 from backend.brain.agents.axe_agent import get_axe_agent
+from backend.brain.agents.research_agent import get_research_agent, ResearchType
+from backend.brain.agents.test_agent import get_test_agent, TestType, TestEnvironment
+from backend.brain.agents.documentation_agent import get_documentation_agent, DocumentationType, DocumentationFormat
 from backend.app.modules.supervisor.schemas import (
     RiskLevel,
     SupervisionRequest,
@@ -434,6 +437,24 @@ async def get_agents_info():
                 "role": "Conversational Assistant",
                 "capabilities": ["chat", "system_monitoring", "log_analysis"],
             },
+            {
+                "id": "research",
+                "name": "ResearchAgent",
+                "role": "Information Research & Analysis",
+                "capabilities": ["web_search", "document_analysis", "source_validation", "data_gathering"],
+            },
+            {
+                "id": "test",
+                "name": "TestAgent",
+                "role": "Automated Testing & QA",
+                "capabilities": ["test_generation", "test_execution", "coverage_analysis", "bug_detection"],
+            },
+            {
+                "id": "documentation",
+                "name": "DocumentationAgent",
+                "role": "Documentation Generation",
+                "capabilities": ["api_docs", "readme", "code_comments", "user_guides"],
+            },
         ],
         "compliance_frameworks": ["DSGVO", "EU AI Act"],
         "endpoints": {
@@ -442,5 +463,142 @@ async def get_agents_info():
             "ops": ["/deploy", "/rollback", "/health"],
             "architect": ["/review", "/compliance-check", "/security-audit"],
             "axe": ["/chat", "/system-status"],
+            "research": ["/research", "/validate-source"],
+            "test": ["/generate-tests", "/run-tests"],
+            "documentation": ["/generate-docs"],
         }
     }
+
+
+# ============================================================================
+# ResearchAgent Endpoints
+# ============================================================================
+
+class ResearchRequest(BaseModel):
+    """Request to conduct research"""
+    task: str = Field(..., description="Research task description")
+    research_type: ResearchType = Field(default=ResearchType.WEB_SEARCH)
+    sources: Optional[List[str]] = None
+    max_results: int = Field(default=10, ge=1, le=50)
+    include_personal_data: bool = Field(default=False)
+
+
+@router.post("/research/research")
+async def conduct_research(request: ResearchRequest):
+    """
+    Conduct research using ResearchAgent.
+
+    Risk levels:
+    - LOW: Document analysis (read-only)
+    - MEDIUM: Web search, data gathering (validation required)
+    - HIGH: Personal data gathering (DSGVO Art. 5, 6 - Human approval required)
+    """
+    agent = get_research_agent()
+    result = await agent.run(
+        task=request.task,
+        research_type=request.research_type,
+        sources=request.sources or [],
+        max_results=request.max_results,
+        include_personal_data=request.include_personal_data
+    )
+    return result
+
+
+@router.post("/research/validate-source")
+async def validate_source(source_url: str = Body(..., embed=True)):
+    """Validate credibility of information source"""
+    agent = get_research_agent()
+    result = await agent._validate_source(source_url)
+    return result
+
+
+# ============================================================================
+# TestAgent Endpoints
+# ============================================================================
+
+class GenerateTestsRequest(BaseModel):
+    """Request to generate tests"""
+    code_path: str = Field(..., description="Path to code to test")
+    test_type: TestType = Field(default=TestType.UNIT_TEST)
+
+
+class RunTestsRequest(BaseModel):
+    """Request to run tests"""
+    task: str = Field(..., description="Testing task description")
+    test_type: TestType = Field(default=TestType.UNIT_TEST)
+    environment: TestEnvironment = Field(default=TestEnvironment.LOCAL)
+    code_path: str = Field(..., description="Path to code to test")
+    test_files: List[str] = Field(default_factory=list)
+    run_tests: bool = Field(default=True)
+
+
+@router.post("/test/generate-tests")
+async def generate_tests(request: GenerateTestsRequest):
+    """
+    Generate tests using TestAgent.
+
+    Risk level: LOW (code analysis only, no execution)
+    """
+    agent = get_test_agent()
+    result = await agent.run(
+        task=f"Generate {request.test_type.value} tests for {request.code_path}",
+        test_type=request.test_type,
+        code_path=request.code_path,
+        run_tests=False
+    )
+    return result
+
+
+@router.post("/test/run-tests")
+async def run_tests(request: RunTestsRequest):
+    """
+    Run tests using TestAgent.
+
+    Risk levels:
+    - LOW: Local execution
+    - MEDIUM: Dev/staging execution
+    - CRITICAL: Production execution (Human approval required)
+    """
+    agent = get_test_agent()
+    result = await agent.run(
+        task=request.task,
+        test_type=request.test_type,
+        environment=request.environment,
+        code_path=request.code_path,
+        test_files=request.test_files,
+        run_tests=request.run_tests
+    )
+    return result
+
+
+# ============================================================================
+# DocumentationAgent Endpoints
+# ============================================================================
+
+class GenerateDocsRequest(BaseModel):
+    """Request to generate documentation"""
+    task: str = Field(..., description="Documentation task description")
+    doc_type: DocumentationType = Field(default=DocumentationType.README)
+    output_format: DocumentationFormat = Field(default=DocumentationFormat.MARKDOWN)
+    code_path: Optional[str] = None
+    auto_commit: bool = Field(default=False)
+
+
+@router.post("/documentation/generate-docs")
+async def generate_documentation(request: GenerateDocsRequest):
+    """
+    Generate documentation using DocumentationAgent.
+
+    Risk levels:
+    - LOW: Documentation generation (non-destructive)
+    - MEDIUM: Auto-commit to repository (requires approval)
+    """
+    agent = get_documentation_agent()
+    result = await agent.run(
+        task=request.task,
+        doc_type=request.doc_type,
+        output_format=request.output_format,
+        code_path=request.code_path or "",
+        auto_commit=request.auto_commit
+    )
+    return result

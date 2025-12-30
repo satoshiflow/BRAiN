@@ -1,0 +1,22 @@
+# Prometheus Configuration for BRAiN Monitoring
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'brain-monitor'
+    environment: 'production'
+
+# Scrape configurations
+scrape_configs:
+  # BRAiN Backend Metrics
+  - job_name: 'brain-backend'
+    static_configs:
+      - targets: ['backend:8000']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  # Prometheus Self-Monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
