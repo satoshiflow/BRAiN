@@ -218,10 +218,19 @@ class ImmuneService:
                     await self._enable_circuit_breaker()
                     action["action"] = "circuit_breaker"
 
+                # Credit withdrawal for agent failures (Myzel-Hybrid-Charta)
+                if event.agent_id:
+                    await self._withdraw_agent_credits(event.agent_id, event.severity)
+
             elif event.type == ImmuneType.PERFORMANCE_DEGRADATION:
                 if "queue" in event.message.lower() or "overload" in event.message.lower():
                     await self._enable_backpressure()
                     action["action"] = "backpressure"
+
+            elif event.type == ImmuneType.SECURITY_VIOLATION:
+                # Critical: Immediate credit withdrawal for security violations
+                if event.agent_id:
+                    await self._withdraw_agent_credits(event.agent_id, "critical")
 
             else:
                 logger.info(
@@ -343,6 +352,56 @@ class ImmuneService:
             # await agent_manager.restart_agent(agent_id)
         else:
             logger.warning("[ImmuneService] No agent_id found in event - cannot restart specific agent")
+
+    async def _withdraw_agent_credits(self, agent_id: str, severity: ImmuneSeverity):
+        """
+        Withdraw credits from agent (Myzel-Hybrid-Charta Entzug).
+
+        Use case: Agent violations, failures, security issues
+        Actions:
+        - Calculate withdrawal amount based on severity
+        - Deduct credits via Credit System
+        - Log withdrawal action
+
+        Args:
+            agent_id: Agent identifier
+            severity: Event severity level
+        """
+        try:
+            # Import Credit System (lazy import to avoid circular dependency)
+            from backend.app.modules.credits import service as credit_service
+
+            # Map severity to credit system severity string
+            severity_map = {
+                ImmuneSeverity.INFO: "low",
+                ImmuneSeverity.WARNING: "low",
+                ImmuneSeverity.ERROR: "medium",
+                ImmuneSeverity.CRITICAL: "critical",
+            }
+
+            credit_severity = severity_map.get(severity, "medium")
+
+            # Withdraw credits
+            result = await credit_service.withdraw_credits(
+                entity_id=agent_id,
+                severity=credit_severity,
+                reason=f"ImmuneService credit withdrawal: {severity.value} severity event",
+                metadata={
+                    "triggered_by": "immune_service",
+                    "severity": severity.value,
+                },
+            )
+
+            logger.warning(
+                f"[ImmuneService] Withdrawn {result['amount_withdrawn']:.2f} credits from "
+                f"agent {agent_id} ({credit_severity} severity)"
+            )
+
+        except Exception as e:
+            logger.error(
+                f"[ImmuneService] Failed to withdraw credits from agent {agent_id}: {e}",
+                exc_info=True,
+            )
 
     # =========================================================================
     # SELF-PROTECTION STATE
