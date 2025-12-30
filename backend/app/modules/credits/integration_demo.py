@@ -172,6 +172,7 @@ class CreditSystemDemo:
         reason: str,
         mission_id: Optional[str] = None,
         actor_id: str = "system",
+        idempotency_key: Optional[str] = None,
     ) -> float:
         """
         Consume credits for agent.
@@ -182,6 +183,7 @@ class CreditSystemDemo:
             reason: Why credits are consumed
             mission_id: Related mission (optional)
             actor_id: Who initiated consumption
+            idempotency_key: Optional idempotency key for deduplication (for testing)
 
         Returns:
             Balance after consumption

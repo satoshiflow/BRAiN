@@ -231,7 +231,7 @@ class InvariantsChecker:
         logger.debug("Checking idempotency (no duplicate events)...")
 
         try:
-            journal = self.credit_system.demo.journal
+            journal = self.credit_system.journal
             seen_keys = set()
             duplicates = []
 
@@ -272,11 +272,11 @@ class InvariantsChecker:
         try:
             # Count events in journal
             event_count = 0
-            async for _ in self.credit_system.demo.journal.read_events():
+            async for _ in self.credit_system.journal.read_events():
                 event_count += 1
 
             # Count entries in projections
-            projection_manager = self.credit_system.demo.projection_manager
+            projection_manager = self.credit_system.projections
             balance_count = len(projection_manager.balance._balances)
             ledger_count = len(projection_manager.ledger._ledger)
 
@@ -309,7 +309,7 @@ class InvariantsChecker:
     async def _get_all_balances(self) -> Dict[str, float]:
         """Get all agent balances from projection."""
         try:
-            projection_manager = self.credit_system.demo.projection_manager
+            projection_manager = self.credit_system.projections
             return dict(projection_manager.balance._balances)
         except Exception as e:
             logger.error(f"Failed to get balances: {e}")
@@ -327,7 +327,7 @@ class InvariantsChecker:
         deltas = {}
 
         try:
-            async for event in self.credit_system.demo.journal.read_events():
+            async for event in self.credit_system.journal.read_events():
                 entity_id = event.payload.get("entity_id")
                 if not entity_id:
                     continue
@@ -365,7 +365,7 @@ class InvariantsChecker:
         try:
             approval_counts = {}
 
-            async for event in self.credit_system.demo.journal.read_events():
+            async for event in self.credit_system.journal.read_events():
                 if event.event_type.value in ["APPROVAL_APPROVED", "APPROVAL_DENIED"]:
                     approval_id = event.payload.get("approval_id", "unknown")
                     approval_counts[approval_id] = approval_counts.get(approval_id, 0) + 1
@@ -405,7 +405,7 @@ class InvariantsChecker:
             missing_correlation = 0
             total_events = 0
 
-            async for event in self.credit_system.demo.journal.read_events():
+            async for event in self.credit_system.journal.read_events():
                 total_events += 1
                 if not event.correlation_id:
                     missing_correlation += 1
