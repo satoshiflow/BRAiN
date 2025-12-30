@@ -5,13 +5,15 @@ Implements Myzel-Hybrid-Charta principles:
 - Data-driven recommendations
 - Human approval for structural changes
 - Cooperation-based growth
+- ML-based trend prediction (Phase 10)
 """
 
 import logging
-from typing import List, Dict, Optional
+import math
+from typing import List, Dict, Optional, Tuple
 from datetime import datetime, timezone, timedelta
 from enum import Enum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +51,31 @@ class SystemTrend:
     direction: TrendDirection
     is_significant: bool  # Is the change statistically significant?
 
+    # Phase 10: ML-based predictions
+    predicted_value: Optional[float] = None  # Predicted next value
+    confidence_interval: Optional[Tuple[float, float]] = None  # (lower, upper)
+    anomaly_detected: bool = False
+
+
+@dataclass
+class TrendHistory:
+    """Historical trend data for ML-based prediction (Phase 10)."""
+
+    metric_name: str
+    timestamps: List[datetime] = field(default_factory=list)
+    values: List[float] = field(default_factory=list)
+    max_history_size: int = 100  # Keep last 100 data points
+
+    def add_data_point(self, timestamp: datetime, value: float):
+        """Add data point to history."""
+        self.timestamps.append(timestamp)
+        self.values.append(value)
+
+        # Trim if exceeds max size (keep most recent)
+        if len(self.values) > self.max_history_size:
+            self.timestamps = self.timestamps[-self.max_history_size:]
+            self.values = self.values[-self.max_history_size:]
+
 
 @dataclass
 class GrowthRecommendation:
@@ -75,6 +102,7 @@ class EvolutionAnalyzer:
     - Human oversight for structural decisions
     - Cooperation-based recommendations
     - Fail-closed (conservative recommendations)
+    - ML-based trend prediction (Phase 10)
     """
 
     # Trend analysis thresholds
@@ -86,12 +114,181 @@ class EvolutionAnalyzer:
     LOW_UTILIZATION_THRESHOLD = 0.30   # 30% utilization -> consider reducing capacity
     POOR_PERFORMANCE_THRESHOLD = 0.60  # Below 60% average score
 
-    def __init__(self):
+    # Phase 10: ML prediction parameters
+    ANOMALY_THRESHOLD_STDDEV = 2.0  # 2 standard deviations for anomaly detection
+    PREDICTION_CONFIDENCE = 0.95  # 95% confidence interval
+
+    def __init__(self, enable_ml_prediction: bool = True):
         self.trend_history: List[SystemTrend] = []
         self.recommendations: List[GrowthRecommendation] = []
         self.recommendation_counter = 0
 
-        logger.info("[EvolutionAnalyzer] Initialized")
+        # Phase 10: Historical data for ML-based prediction
+        self.enable_ml_prediction = enable_ml_prediction
+        self.metric_histories: Dict[str, TrendHistory] = {}
+
+        logger.info(f"[EvolutionAnalyzer] Initialized (ML prediction: {enable_ml_prediction})")
+
+    def _calculate_statistics(self, values: List[float]) -> Tuple[float, float]:
+        """Calculate mean and standard deviation.
+
+        Args:
+            values: List of numerical values
+
+        Returns:
+            (mean, std_dev) tuple
+        """
+        if not values:
+            return 0.0, 0.0
+
+        n = len(values)
+        mean = sum(values) / n
+
+        variance = sum((x - mean) ** 2 for x in values) / n
+        std_dev = math.sqrt(variance)
+
+        return mean, std_dev
+
+    def _simple_linear_regression(self, x_values: List[float], y_values: List[float]) -> Tuple[float, float]:
+        """Simple linear regression: y = mx + b.
+
+        Args:
+            x_values: Independent variable (e.g., time indices)
+            y_values: Dependent variable (e.g., metric values)
+
+        Returns:
+            (slope, intercept) tuple
+        """
+        if not x_values or not y_values or len(x_values) != len(y_values):
+            return 0.0, 0.0
+
+        n = len(x_values)
+        sum_x = sum(x_values)
+        sum_y = sum(y_values)
+        sum_xy = sum(x * y for x, y in zip(x_values, y_values))
+        sum_x_squared = sum(x ** 2 for x in x_values)
+
+        # Avoid division by zero
+        denominator = (n * sum_x_squared - sum_x ** 2)
+        if abs(denominator) < 1e-10:
+            return 0.0, sum_y / n if n > 0 else 0.0
+
+        slope = (n * sum_xy - sum_x * sum_y) / denominator
+        intercept = (sum_y - slope * sum_x) / n
+
+        return slope, intercept
+
+    def _exponential_moving_average(self, values: List[float], alpha: float = 0.3) -> List[float]:
+        """Calculate exponential moving average.
+
+        Args:
+            values: Time series data
+            alpha: Smoothing factor (0.0-1.0), higher = more weight on recent values
+
+        Returns:
+            EMA values
+        """
+        if not values:
+            return []
+
+        ema = [values[0]]  # Initialize with first value
+
+        for i in range(1, len(values)):
+            ema_value = alpha * values[i] + (1 - alpha) * ema[-1]
+            ema.append(ema_value)
+
+        return ema
+
+    def _detect_anomaly(self, value: float, history: List[float]) -> bool:
+        """Detect if value is anomaly using statistical method.
+
+        Args:
+            value: Value to check
+            history: Historical values for comparison
+
+        Returns:
+            True if anomaly detected
+        """
+        if len(history) < 3:
+            return False  # Not enough data
+
+        mean, std_dev = self._calculate_statistics(history)
+
+        if std_dev < 1e-10:
+            return False  # No variation
+
+        # Z-score: number of standard deviations from mean
+        z_score = abs(value - mean) / std_dev
+
+        return z_score > self.ANOMALY_THRESHOLD_STDDEV
+
+    def _predict_next_value(
+        self,
+        metric_name: str,
+        current_value: float,
+    ) -> Tuple[Optional[float], Optional[Tuple[float, float]], bool]:
+        """Predict next value using ML-based forecasting (Phase 10).
+
+        Uses simple linear regression on historical data.
+
+        Args:
+            metric_name: Metric identifier
+            current_value: Current metric value
+
+        Returns:
+            (predicted_value, confidence_interval, anomaly_detected) tuple
+        """
+        if not self.enable_ml_prediction:
+            return None, None, False
+
+        # Get or create history
+        if metric_name not in self.metric_histories:
+            self.metric_histories[metric_name] = TrendHistory(metric_name=metric_name)
+
+        history = self.metric_histories[metric_name]
+
+        # Add current data point
+        history.add_data_point(datetime.now(timezone.utc), current_value)
+
+        # Need at least 3 data points for prediction
+        if len(history.values) < 3:
+            return None, None, False
+
+        # Detect anomaly in current value
+        anomaly_detected = self._detect_anomaly(current_value, history.values[:-1])
+
+        # Use linear regression for prediction
+        x_values = list(range(len(history.values)))  # Time indices
+        y_values = history.values
+
+        slope, intercept = self._simple_linear_regression(x_values, y_values)
+
+        # Predict next value (next time index)
+        next_x = len(x_values)
+        predicted_value = slope * next_x + intercept
+
+        # Calculate confidence interval using standard error
+        # Simplified: mean absolute deviation * confidence factor
+        residuals = [abs(y - (slope * x + intercept)) for x, y in zip(x_values, y_values)]
+        mean_abs_error = sum(residuals) / len(residuals) if residuals else 0.0
+
+        # 95% confidence interval approximation
+        confidence_factor = 1.96  # For 95% confidence
+        margin = mean_abs_error * confidence_factor
+
+        confidence_interval = (
+            max(0.0, predicted_value - margin),  # Lower bound (non-negative)
+            predicted_value + margin,             # Upper bound
+        )
+
+        logger.debug(
+            f"[EvolutionAnalyzer] ML prediction for {metric_name}: "
+            f"predicted={predicted_value:.2f}, "
+            f"CI=({confidence_interval[0]:.2f}, {confidence_interval[1]:.2f}), "
+            f"anomaly={anomaly_detected}"
+        )
+
+        return predicted_value, confidence_interval, anomaly_detected
 
     async def analyze_system_evolution(
         self,
@@ -158,16 +355,27 @@ class EvolutionAnalyzer:
 
         # Credit allocation trend
         if "total_credits_allocated" in ledger_stats:
-            # TODO: Compare with historical data (requires persistence)
-            # For now, we'll create a placeholder trend
+            current_value = ledger_stats.get("total_credits_allocated", 0.0)
+            previous_value = current_value * 0.9  # Simulated historical data
+
+            # Phase 10: ML-based prediction
+            predicted_value, confidence_interval, anomaly_detected = self._predict_next_value(
+                "credit_allocation_rate",
+                current_value,
+            )
+
             trend = SystemTrend(
                 metric_name="credit_allocation_rate",
                 time_period_hours=self.TREND_LOOKBACK_HOURS,
-                current_value=ledger_stats.get("total_credits_allocated", 0.0),
-                previous_value=ledger_stats.get("total_credits_allocated", 0.0) * 0.9,  # Simulated
+                current_value=current_value,
+                previous_value=previous_value,
                 change_percentage=10.0,  # Simulated
                 direction=TrendDirection.IMPROVING,
                 is_significant=False,
+                # Phase 10: ML predictions
+                predicted_value=predicted_value,
+                confidence_interval=confidence_interval,
+                anomaly_detected=anomaly_detected,
             )
             trends.append(trend)
 
@@ -177,6 +385,12 @@ class EvolutionAnalyzer:
             previous = current * 0.95  # Simulated historical data
             change = ((current - previous) / previous * 100) if previous > 0 else 0.0
 
+            # Phase 10: ML-based prediction
+            predicted_value, confidence_interval, anomaly_detected = self._predict_next_value(
+                "credit_consumption_rate",
+                current,
+            )
+
             trend = SystemTrend(
                 metric_name="credit_consumption_rate",
                 time_period_hours=self.TREND_LOOKBACK_HOURS,
@@ -185,6 +399,10 @@ class EvolutionAnalyzer:
                 change_percentage=change,
                 direction=TrendDirection.IMPROVING if change > 0 else TrendDirection.STABLE,
                 is_significant=abs(change) > self.SIGNIFICANT_CHANGE_THRESHOLD * 100,
+                # Phase 10: ML predictions
+                predicted_value=predicted_value,
+                confidence_interval=confidence_interval,
+                anomaly_detected=anomaly_detected,
             )
             trends.append(trend)
 
@@ -202,6 +420,12 @@ class EvolutionAnalyzer:
             else:
                 direction = TrendDirection.IMPROVING  # Moving toward chaos (activity)
 
+            # Phase 10: ML-based prediction
+            predicted_value, confidence_interval, anomaly_detected = self._predict_next_value(
+                "edge_of_chaos_score",
+                eoc_score,
+            )
+
             trend = SystemTrend(
                 metric_name="edge_of_chaos_score",
                 time_period_hours=self.TREND_LOOKBACK_HOURS,
@@ -210,6 +434,10 @@ class EvolutionAnalyzer:
                 change_percentage=(eoc_score - optimal_center) / optimal_center * 100,
                 direction=direction,
                 is_significant=distance_from_optimal > 0.15,
+                # Phase 10: ML predictions
+                predicted_value=predicted_value,
+                confidence_interval=confidence_interval,
+                anomaly_detected=anomaly_detected,
             )
             trends.append(trend)
 
