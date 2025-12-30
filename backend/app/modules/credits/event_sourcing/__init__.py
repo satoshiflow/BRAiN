@@ -18,6 +18,9 @@ Exports:
 - get_event_bus: Singleton event bus instance
 - Projections: In-memory read models (balance, ledger, approvals, synergie)
 - get_projection_manager: Singleton projection manager
+- ReplayEngine: Rebuild projections from events (crash recovery)
+- get_replay_engine: Singleton replay engine
+- replay_on_startup: Convenience function for startup replay
 - Event creation helpers for type-safe event construction
 """
 
@@ -62,6 +65,13 @@ from backend.app.modules.credits.event_sourcing.projections import (
     ApprovalRequest,
     CollaborationRecord,
 )
+from backend.app.modules.credits.event_sourcing.replay import (
+    ReplayEngine,
+    get_replay_engine,
+    replay_on_startup,
+    ReplayError,
+    ReplayIntegrityError,
+)
 
 __all__ = [
     # Core types
@@ -88,6 +98,12 @@ __all__ = [
     "LedgerEntry",
     "ApprovalRequest",
     "CollaborationRecord",
+    # Replay Engine
+    "ReplayEngine",
+    "get_replay_engine",
+    "replay_on_startup",
+    "ReplayError",
+    "ReplayIntegrityError",
     # Event creators (Ledger)
     "create_credit_allocated_event",
     "create_credit_consumed_event",
