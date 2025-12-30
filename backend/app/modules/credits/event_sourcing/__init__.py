@@ -12,6 +12,8 @@ Architecture:
 Exports:
 - EventEnvelope: Immutable event wrapper with causality tracking
 - EventType: Enum of all event types in the system
+- EventJournal: Append-only event storage with crash-safety
+- get_event_journal: Singleton journal instance
 - Event creation helpers for type-safe event construction
 """
 
@@ -32,11 +34,24 @@ from backend.app.modules.credits.event_sourcing.events import (
     create_eoc_regulated_event,
     create_mission_rated_event,
 )
+from backend.app.modules.credits.event_sourcing.event_journal import (
+    EventJournal,
+    get_event_journal,
+    EventJournalError,
+    EventJournalPermissionError,
+    EventJournalCorruptionError,
+)
 
 __all__ = [
     # Core types
     "EventEnvelope",
     "EventType",
+    # Journal
+    "EventJournal",
+    "get_event_journal",
+    "EventJournalError",
+    "EventJournalPermissionError",
+    "EventJournalCorruptionError",
     # Event creators (Ledger)
     "create_credit_allocated_event",
     "create_credit_consumed_event",
