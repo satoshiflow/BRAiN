@@ -73,6 +73,14 @@ from app.modules.course_distribution.distribution_router import router as distri
 from app.modules.governance.governance_router import router as governance_router
 from app.modules.paycore.router import router as paycore_router  # NEW: PayCore payment module
 
+# NeuroRail routers (EGR v1.0 - Phase 1: Observe-only)
+from app.modules.neurorail.identity.router import router as neurorail_identity_router
+from app.modules.neurorail.lifecycle.router import router as neurorail_lifecycle_router
+from app.modules.neurorail.audit.router import router as neurorail_audit_router
+from app.modules.neurorail.telemetry.router import router as neurorail_telemetry_router
+from app.modules.neurorail.execution.router import router as neurorail_execution_router
+from app.modules.governor.router import router as governor_router
+
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
@@ -244,6 +252,14 @@ def create_app() -> FastAPI:
     app.include_router(policy_router, tags=["policy"])
     app.include_router(threats_router, tags=["threats"])
     app.include_router(app_supervisor_router, tags=["supervisor"])
+
+    # NeuroRail routers (EGR v1.0 - Phase 1: Observe-only)
+    app.include_router(neurorail_identity_router, tags=["neurorail-identity"])
+    app.include_router(neurorail_lifecycle_router, tags=["neurorail-lifecycle"])
+    app.include_router(neurorail_audit_router, tags=["neurorail-audit"])
+    app.include_router(neurorail_telemetry_router, tags=["neurorail-telemetry"])
+    app.include_router(neurorail_execution_router, tags=["neurorail-execution"])
+    app.include_router(governor_router, tags=["governor"])
 
     # DISABLED: app.include_router(app_missions_router, tags=["missions"])
     # Reason: Route collision with LEGACY missions implementation

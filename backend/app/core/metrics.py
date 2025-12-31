@@ -188,6 +188,89 @@ mission_execution_time = Histogram(
 
 
 # ============================================================================
+# NeuroRail Metrics
+# ============================================================================
+
+# Attempt Metrics
+neurorail_attempts_total = Counter(
+    "neurorail_attempts_total",
+    "Total execution attempts",
+    ["entity_type", "status"]  # status: success, failed_mechanical, failed_ethical, failed_timeout
+)
+
+neurorail_attempts_failed_total = Counter(
+    "neurorail_attempts_failed_total",
+    "Total failed attempts",
+    ["error_category", "error_code"]  # error_category: mechanical, ethical, system
+)
+
+# Budget Violations (Phase 2)
+neurorail_budget_violations_total = Counter(
+    "neurorail_budget_violations_total",
+    "Total budget violations",
+    ["resource_type"]  # resource_type: time, tokens, memory
+)
+
+# Reflex Actions (Phase 2)
+neurorail_reflex_actions_total = Counter(
+    "neurorail_reflex_actions_total",
+    "Total reflex system actions",
+    ["reflex_type", "action"]  # reflex_type: cooldown, suspend, etc.
+)
+
+# Active Entities
+neurorail_active_missions = Gauge(
+    "neurorail_active_missions",
+    "Current number of active missions"
+)
+
+neurorail_active_jobs = Gauge(
+    "neurorail_active_jobs",
+    "Current number of active jobs"
+)
+
+neurorail_active_attempts = Gauge(
+    "neurorail_active_attempts",
+    "Current number of active attempts"
+)
+
+# Resources by State
+neurorail_resources_by_state = Gauge(
+    "neurorail_resources_by_state",
+    "Resources allocated by state",
+    ["resource_type", "state"]
+)
+
+# Duration Histograms
+neurorail_attempt_duration_ms = Histogram(
+    "neurorail_attempt_duration_ms",
+    "Attempt execution duration in milliseconds",
+    ["entity_type"],
+    buckets=[10, 50, 100, 500, 1000, 5000, 10000, 30000, 60000]
+)
+
+neurorail_job_duration_ms = Histogram(
+    "neurorail_job_duration_ms",
+    "Job execution duration in milliseconds",
+    buckets=[100, 500, 1000, 5000, 10000, 30000, 60000, 300000]
+)
+
+neurorail_mission_duration_ms = Histogram(
+    "neurorail_mission_duration_ms",
+    "Mission execution duration in milliseconds",
+    buckets=[1000, 5000, 10000, 30000, 60000, 300000, 600000, 1800000]
+)
+
+# Time to First Signal (TTFS) - inspired by SGLang
+neurorail_tt_first_signal_ms = Histogram(
+    "neurorail_tt_first_signal_ms",
+    "Time to first signal (response start) in milliseconds",
+    ["job_type"],
+    buckets=[10, 50, 100, 500, 1000, 5000]
+)
+
+
+# ============================================================================
 # Utility Functions
 # ============================================================================
 
@@ -237,3 +320,91 @@ def update_policy_stats(total_rules: int, active_policies: int):
     """Update policy statistics"""
     policy_rules_total.set(total_rules)
     policy_active_policies.set(active_policies)
+
+
+# ============================================================================
+# NeuroRail Utility Functions
+# ============================================================================
+
+def record_neurorail_attempt(
+    entity_type: str,
+    status: str,
+    duration_ms: float,
+    error_category: Optional[str] = None,
+    error_code: Optional[str] = None
+):
+    """
+    Record a NeuroRail execution attempt.
+
+    Args:
+        entity_type: attempt, job, or mission
+        status: success, failed_mechanical, failed_ethical, failed_timeout
+        duration_ms: Duration in milliseconds
+        error_category: mechanical, ethical, or system (if failed)
+        error_code: Error code (e.g., NR-E001)
+    """
+    neurorail_attempts_total.labels(entity_type=entity_type, status=status).inc()
+
+    if status != "success" and error_category and error_code:
+        neurorail_attempts_failed_total.labels(
+            error_category=error_category,
+            error_code=error_code
+        ).inc()
+
+    # Record duration
+    if entity_type == "attempt":
+        neurorail_attempt_duration_ms.labels(entity_type=entity_type).observe(duration_ms)
+    elif entity_type == "job":
+        neurorail_job_duration_ms.observe(duration_ms)
+    elif entity_type == "mission":
+        neurorail_mission_duration_ms.observe(duration_ms)
+
+
+def record_neurorail_budget_violation(resource_type: str):
+    """
+    Record a budget violation.
+
+    Args:
+        resource_type: time, tokens, memory, etc.
+    """
+    neurorail_budget_violations_total.labels(resource_type=resource_type).inc()
+
+
+def record_neurorail_reflex(reflex_type: str, action: str):
+    """
+    Record a reflex system action.
+
+    Args:
+        reflex_type: cooldown, suspend, throttle, etc.
+        action: cancel, pause, alert, etc.
+    """
+    neurorail_reflex_actions_total.labels(reflex_type=reflex_type, action=action).inc()
+
+
+def update_neurorail_gauges(
+    active_missions: int,
+    active_jobs: int,
+    active_attempts: int
+):
+    """
+    Update NeuroRail active entity gauges.
+
+    Args:
+        active_missions: Number of active missions
+        active_jobs: Number of active jobs
+        active_attempts: Number of active attempts
+    """
+    neurorail_active_missions.set(active_missions)
+    neurorail_active_jobs.set(active_jobs)
+    neurorail_active_attempts.set(active_attempts)
+
+
+def record_neurorail_ttfs(job_type: str, ttfs_ms: float):
+    """
+    Record Time to First Signal (TTFS).
+
+    Args:
+        job_type: llm_call, tool_execution, etc.
+        ttfs_ms: Time to first signal in milliseconds
+    """
+    neurorail_tt_first_signal_ms.labels(job_type=job_type).observe(ttfs_ms)
