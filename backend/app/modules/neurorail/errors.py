@@ -8,8 +8,11 @@ Error Code Format: NR-E{number:03d}
 
 Categories:
 - NR-E001-NR-E099: Execution Errors (mechanical)
-- NR-E100-NR-E199: Resource Errors
-- NR-E200-NR-E299: Governance Errors
+- NR-E100-NR-E109: Budget/Enforcement Errors (Phase 2)
+- NR-E110-NR-E119: Manifest/Governance Errors (Phase 2)
+- NR-E120-NR-E129: Decision/Resolution Errors (Phase 2)
+- NR-E130-NR-E139: Shadowing/Activation Errors (Phase 2)
+- NR-E200-NR-E299: Governance Errors (reserved for Policy Engine)
 - NR-E300-NR-E399: System Errors
 """
 
@@ -57,12 +60,66 @@ class NeuroRailErrorCode(str, Enum):
     ORPHAN_KILLED = "NR-E007"
     """Job killed due to missing parent context (orphan protection)."""
 
-    # Resource Errors (NR-E100-NR-E199) - Mechanical
-    RESOURCE_EXHAUSTED = "NR-E100"
-    """System resource exhausted (memory, connections, queue)."""
+    # Budget/Enforcement Errors (NR-E100-NR-E109) - Phase 2
+    BUDGET_TIMEOUT_EXCEEDED = "NR-E100"
+    """Execution exceeded timeout budget (hard limit)."""
 
-    RATE_LIMIT_EXCEEDED = "NR-E101"
-    """Rate limit exceeded for external service."""
+    BUDGET_RETRY_EXHAUSTED = "NR-E101"
+    """Retry budget exhausted (max retries reached)."""
+
+    BUDGET_PARALLELISM_EXCEEDED = "NR-E102"
+    """Parallelism budget exceeded (too many concurrent executions)."""
+
+    BUDGET_COST_EXCEEDED = "NR-E103"
+    """Cost budget exceeded (tokens/credits limit reached)."""
+
+    BUDGET_TOKEN_EXCEEDED = "NR-E104"
+    """LLM token budget exceeded."""
+
+    # Manifest/Governance Errors (NR-E110-NR-E119) - Phase 2
+    MANIFEST_NOT_FOUND = "NR-E110"
+    """Requested manifest version not found."""
+
+    MANIFEST_INVALID_SCHEMA = "NR-E111"
+    """Manifest schema validation failed."""
+
+    MANIFEST_HASH_MISMATCH = "NR-E112"
+    """Manifest hash chain validation failed."""
+
+    MANIFEST_DUPLICATE_VERSION = "NR-E113"
+    """Manifest version already exists."""
+
+    MANIFEST_RULE_CONFLICT = "NR-E114"
+    """Manifest rule priority conflict (duplicate priorities)."""
+
+    # Decision/Resolution Errors (NR-E120-NR-E129) - Phase 2
+    DECISION_NO_RULE_MATCH = "NR-E120"
+    """No manifest rule matched the job context."""
+
+    DECISION_BUDGET_RESOLUTION_FAILED = "NR-E121"
+    """Failed to resolve budget from manifest rules."""
+
+    DECISION_INVALID_CONTEXT = "NR-E122"
+    """Invalid job context provided for decision."""
+
+    DECISION_PERSISTENCE_FAILED = "NR-E123"
+    """Failed to persist decision to database."""
+
+    # Shadowing/Activation Errors (NR-E130-NR-E139) - Phase 2
+    SHADOW_EVALUATION_FAILED = "NR-E130"
+    """Shadow manifest evaluation failed."""
+
+    SHADOW_REPORT_INCOMPLETE = "NR-E131"
+    """Shadow report has insufficient evaluation data."""
+
+    ACTIVATION_GATE_BLOCKED = "NR-E132"
+    """Manifest activation blocked by gate (explosion rate too high)."""
+
+    ACTIVATION_ALREADY_ACTIVE = "NR-E133"
+    """Cannot activate manifest that is already active."""
+
+    SHADOW_MODE_REQUIRED = "NR-E134"
+    """Operation requires manifest to be in shadow mode."""
 
     # Governance Errors (NR-E200-NR-E299) - Ethical (handled by core, not NeuroRail)
     # Note: Ethical/policy violations are handled by Policy Engine, not NeuroRail
@@ -131,18 +188,145 @@ ERROR_METADATA: Dict[NeuroRailErrorCode, Dict[str, Any]] = {
         "message": "Job killed due to missing parent context",
     },
 
-    # Resource Errors
-    NeuroRailErrorCode.RESOURCE_EXHAUSTED: {
+    # Budget/Enforcement Errors (Phase 2)
+    NeuroRailErrorCode.BUDGET_TIMEOUT_EXCEEDED: {
         "category": ErrorCategory.MECHANICAL,
+        "retriable": False,  # Already exceeded timeout budget
+        "severity": "error",
+        "message": "Execution exceeded timeout budget",
+        "immune_alert": True,  # Alert immune system
+    },
+    NeuroRailErrorCode.BUDGET_RETRY_EXHAUSTED: {
+        "category": ErrorCategory.MECHANICAL,
+        "retriable": False,  # Already exhausted retries
+        "severity": "error",
+        "message": "Retry budget exhausted",
+        "immune_alert": True,
+    },
+    NeuroRailErrorCode.BUDGET_PARALLELISM_EXCEEDED: {
+        "category": ErrorCategory.MECHANICAL,
+        "retriable": True,  # Can retry after capacity frees up
+        "severity": "warning",
+        "message": "Parallelism budget exceeded",
+        "immune_alert": False,
+    },
+    NeuroRailErrorCode.BUDGET_COST_EXCEEDED: {
+        "category": ErrorCategory.MECHANICAL,
+        "retriable": False,  # Cost limit reached
+        "severity": "error",
+        "message": "Cost budget exceeded",
+        "immune_alert": True,
+    },
+    NeuroRailErrorCode.BUDGET_TOKEN_EXCEEDED: {
+        "category": ErrorCategory.MECHANICAL,
+        "retriable": False,  # Token limit reached
+        "severity": "warning",
+        "message": "LLM token budget exceeded",
+        "immune_alert": False,
+    },
+
+    # Manifest/Governance Errors (Phase 2)
+    NeuroRailErrorCode.MANIFEST_NOT_FOUND: {
+        "category": ErrorCategory.SYSTEM,
+        "retriable": False,
+        "severity": "error",
+        "message": "Manifest version not found",
+        "immune_alert": True,  # Missing manifest is critical
+    },
+    NeuroRailErrorCode.MANIFEST_INVALID_SCHEMA: {
+        "category": ErrorCategory.SYSTEM,
+        "retriable": False,
+        "severity": "error",
+        "message": "Manifest schema validation failed",
+        "immune_alert": True,
+    },
+    NeuroRailErrorCode.MANIFEST_HASH_MISMATCH: {
+        "category": ErrorCategory.SYSTEM,
+        "retriable": False,
+        "severity": "critical",
+        "message": "Manifest hash chain validation failed",
+        "immune_alert": True,  # Hash mismatch is security issue
+    },
+    NeuroRailErrorCode.MANIFEST_DUPLICATE_VERSION: {
+        "category": ErrorCategory.SYSTEM,
+        "retriable": False,
+        "severity": "warning",
+        "message": "Manifest version already exists",
+        "immune_alert": False,
+    },
+    NeuroRailErrorCode.MANIFEST_RULE_CONFLICT: {
+        "category": ErrorCategory.SYSTEM,
+        "retriable": False,
+        "severity": "error",
+        "message": "Manifest rule priority conflict",
+        "immune_alert": False,
+    },
+
+    # Decision/Resolution Errors (Phase 2)
+    NeuroRailErrorCode.DECISION_NO_RULE_MATCH: {
+        "category": ErrorCategory.MECHANICAL,
+        "retriable": False,
+        "severity": "warning",
+        "message": "No manifest rule matched job context",
+        "immune_alert": False,  # Fallback to default is acceptable
+    },
+    NeuroRailErrorCode.DECISION_BUDGET_RESOLUTION_FAILED: {
+        "category": ErrorCategory.SYSTEM,
+        "retriable": False,
+        "severity": "error",
+        "message": "Failed to resolve budget from manifest",
+        "immune_alert": True,
+    },
+    NeuroRailErrorCode.DECISION_INVALID_CONTEXT: {
+        "category": ErrorCategory.MECHANICAL,
+        "retriable": False,
+        "severity": "warning",
+        "message": "Invalid job context for decision",
+        "immune_alert": False,
+    },
+    NeuroRailErrorCode.DECISION_PERSISTENCE_FAILED: {
+        "category": ErrorCategory.SYSTEM,
+        "retriable": True,  # Database might recover
+        "severity": "error",
+        "message": "Failed to persist decision to database",
+        "immune_alert": True,
+    },
+
+    # Shadowing/Activation Errors (Phase 2)
+    NeuroRailErrorCode.SHADOW_EVALUATION_FAILED: {
+        "category": ErrorCategory.SYSTEM,
         "retriable": True,
         "severity": "warning",
-        "message": "System resource exhausted",
+        "message": "Shadow manifest evaluation failed",
+        "immune_alert": False,
     },
-    NeuroRailErrorCode.RATE_LIMIT_EXCEEDED: {
-        "category": ErrorCategory.MECHANICAL,
-        "retriable": True,
+    NeuroRailErrorCode.SHADOW_REPORT_INCOMPLETE: {
+        "category": ErrorCategory.SYSTEM,
+        "retriable": False,
+        "severity": "warning",
+        "message": "Shadow report has insufficient data",
+        "immune_alert": False,
+    },
+    NeuroRailErrorCode.ACTIVATION_GATE_BLOCKED: {
+        "category": ErrorCategory.SYSTEM,
+        "retriable": False,
+        "severity": "warning",
+        "message": "Manifest activation blocked by gate",
+        "immune_alert": True,  # Gate block is important
+    },
+    NeuroRailErrorCode.ACTIVATION_ALREADY_ACTIVE: {
+        "category": ErrorCategory.SYSTEM,
+        "retriable": False,
         "severity": "info",
-        "message": "Rate limit exceeded",
+        "message": "Manifest already active",
+        "immune_alert": False,
+    },
+    NeuroRailErrorCode.SHADOW_MODE_REQUIRED: {
+        "category": ErrorCategory.SYSTEM,
+        "retriable": False,
+        "severity": "warning",
+        "message": "Operation requires shadow mode",
+        "immune_alert": False,
     },
 
     # System Errors
@@ -305,6 +489,118 @@ class OrphanKilledError(NeuroRailError):
         )
 
 
+# ============================================================================
+# Phase 2 Exception Classes
+# ============================================================================
+
+class ManifestNotFoundError(NeuroRailError):
+    """Raised when requested manifest version is not found."""
+
+    def __init__(self, version: str, **kwargs) -> None:
+        super().__init__(
+            NeuroRailErrorCode.MANIFEST_NOT_FOUND,
+            message=f"Manifest version '{version}' not found",
+            details={"version": version, **kwargs.get("details", {})},
+            cause=kwargs.get("cause"),
+        )
+
+
+class ManifestInvalidSchemaError(NeuroRailError):
+    """Raised when manifest schema validation fails."""
+
+    def __init__(self, validation_errors: list, **kwargs) -> None:
+        super().__init__(
+            NeuroRailErrorCode.MANIFEST_INVALID_SCHEMA,
+            message=f"Manifest schema validation failed: {len(validation_errors)} errors",
+            details={"validation_errors": validation_errors, **kwargs.get("details", {})},
+            cause=kwargs.get("cause"),
+        )
+
+
+class ManifestHashMismatchError(NeuroRailError):
+    """Raised when manifest hash chain validation fails."""
+
+    def __init__(self, expected_hash: str, actual_hash: str, **kwargs) -> None:
+        super().__init__(
+            NeuroRailErrorCode.MANIFEST_HASH_MISMATCH,
+            message=f"Manifest hash mismatch: expected {expected_hash}, got {actual_hash}",
+            details={"expected_hash": expected_hash, "actual_hash": actual_hash, **kwargs.get("details", {})},
+            cause=kwargs.get("cause"),
+        )
+
+
+class DecisionBudgetResolutionError(NeuroRailError):
+    """Raised when budget resolution from manifest fails."""
+
+    def __init__(self, job_type: str, reason: str, **kwargs) -> None:
+        super().__init__(
+            NeuroRailErrorCode.DECISION_BUDGET_RESOLUTION_FAILED,
+            message=f"Failed to resolve budget for {job_type}: {reason}",
+            details={"job_type": job_type, "reason": reason, **kwargs.get("details", {})},
+            cause=kwargs.get("cause"),
+        )
+
+
+class ActivationGateBlockedError(NeuroRailError):
+    """Raised when manifest activation is blocked by gate."""
+
+    def __init__(self, version: str, reason: str, **kwargs) -> None:
+        super().__init__(
+            NeuroRailErrorCode.ACTIVATION_GATE_BLOCKED,
+            message=f"Activation of manifest '{version}' blocked: {reason}",
+            details={"version": version, "reason": reason, **kwargs.get("details", {})},
+            cause=kwargs.get("cause"),
+        )
+
+
+class BudgetTimeoutExceededError(NeuroRailError):
+    """Raised when execution exceeds timeout budget (Phase 2 enforcement)."""
+
+    def __init__(self, timeout_ms: float, elapsed_ms: float, **kwargs) -> None:
+        super().__init__(
+            NeuroRailErrorCode.BUDGET_TIMEOUT_EXCEEDED,
+            message=f"Timeout budget exceeded: {elapsed_ms}ms > {timeout_ms}ms",
+            details={"timeout_ms": timeout_ms, "elapsed_ms": elapsed_ms, **kwargs.get("details", {})},
+            cause=kwargs.get("cause"),
+        )
+
+
+class BudgetRetryExhaustedError(NeuroRailError):
+    """Raised when retry budget is exhausted (Phase 2 enforcement)."""
+
+    def __init__(self, max_retries: int, last_error: Optional[Exception] = None, **kwargs) -> None:
+        super().__init__(
+            NeuroRailErrorCode.BUDGET_RETRY_EXHAUSTED,
+            message=f"Retry budget exhausted: {max_retries} attempts",
+            details={"max_retries": max_retries, "last_error": str(last_error) if last_error else None, **kwargs.get("details", {})},
+            cause=last_error or kwargs.get("cause"),
+        )
+
+
+class BudgetParallelismExceededError(NeuroRailError):
+    """Raised when parallelism budget is exceeded."""
+
+    def __init__(self, limit: int, current: int, **kwargs) -> None:
+        super().__init__(
+            NeuroRailErrorCode.BUDGET_PARALLELISM_EXCEEDED,
+            message=f"Parallelism budget exceeded: {current} > {limit}",
+            details={"limit": limit, "current": current, **kwargs.get("details", {})},
+            cause=kwargs.get("cause"),
+        )
+
+
+class BudgetCostExceededError(NeuroRailError):
+    """Raised when cost budget is exceeded."""
+
+    def __init__(self, limit: float, consumed: float, **kwargs) -> None:
+        super().__init__(
+            NeuroRailErrorCode.BUDGET_COST_EXCEEDED,
+            message=f"Cost budget exceeded: {consumed} > {limit} credits",
+            details={"limit": limit, "consumed": consumed, **kwargs.get("details", {})},
+            cause=kwargs.get("cause"),
+        )
+
+
 def get_error_info(code: NeuroRailErrorCode) -> Dict[str, Any]:
     """Get metadata for an error code."""
     return ERROR_METADATA.get(code, {
@@ -323,3 +619,13 @@ def is_retriable(code: NeuroRailErrorCode) -> bool:
 def get_category(code: NeuroRailErrorCode) -> ErrorCategory:
     """Get category for error code."""
     return ERROR_METADATA.get(code, {}).get("category", ErrorCategory.SYSTEM)
+
+
+def should_alert_immune(code: NeuroRailErrorCode) -> bool:
+    """
+    Check if error code should trigger immune system alert.
+
+    Returns:
+        True if immune system should be alerted (critical errors)
+    """
+    return ERROR_METADATA.get(code, {}).get("immune_alert", False)
