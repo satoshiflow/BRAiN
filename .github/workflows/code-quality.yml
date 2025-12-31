@@ -22,13 +22,20 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
-      
+
+      - name: Verify Python environment
+        run: |
+          python --version
+          python -m pip --version
+          which python
+          which pip
+
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
+          python -m pip install --upgrade pip setuptools wheel
           cd backend
-          pip install -r requirements.txt
-          pip install ruff pylint radon
+          python -m pip install -r requirements.txt
+          python -m pip install ruff pylint radon
       
       - name: Code complexity analysis
         continue-on-error: true
@@ -43,23 +50,30 @@ jobs:
 
   dependency-check:
     runs-on: ubuntu-latest
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
           cache: 'pip'
-      
+
+      - name: Verify Python environment
+        run: |
+          python --version
+          python -m pip --version
+          which python
+          which pip
+
       - name: Check Python dependencies
         run: |
-          python -m pip install --upgrade pip
+          python -m pip install --upgrade pip setuptools wheel
           cd backend
-          pip install -r requirements.txt
-          pip install pip-audit
-          pip-audit || echo "Vulnerabilities found, see above"
+          python -m pip install -r requirements.txt
+          python -m pip install pip-audit
+          python -m pip-audit || echo "Vulnerabilities found, see above"
       
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -133,19 +147,26 @@ jobs:
     
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
           cache: 'pip'
-      
+
+      - name: Verify Python environment
+        run: |
+          python --version
+          python -m pip --version
+          which python
+          which pip
+
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
+          python -m pip install --upgrade pip setuptools wheel
           cd backend
-          pip install -r requirements.txt
-          pip install pytest pytest-asyncio pytest-cov
+          python -m pip install -r requirements.txt
+          python -m pip install pytest pytest-asyncio pytest-cov
       
       - name: Generate coverage report
         env:

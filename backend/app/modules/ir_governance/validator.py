@@ -20,6 +20,8 @@ Output: PASS | ESCALATE | REJECT
 """
 
 from typing import List, Optional
+from datetime import datetime
+import uuid
 from loguru import logger
 
 from backend.app.modules.ir_governance.schemas import (
@@ -34,6 +36,15 @@ from backend.app.modules.ir_governance.schemas import (
 )
 from backend.app.modules.ir_governance.canonicalization import ir_hash
 
+# EventStream integration (Sprint 1)
+try:
+    from backend.mission_control_core.core.event_stream import EventStream, Event, EventType
+except ImportError:
+    EventStream = None
+    Event = None
+    EventType = None
+    logger.warning("[IRGovernance] EventStream not available (mission_control_core not installed)")
+
 
 class IRValidator:
     """
@@ -41,6 +52,45 @@ class IRValidator:
 
     No LLM. Pure policy-as-code.
     """
+
+    def __init__(self, event_stream: Optional["EventStream"] = None):
+        """
+        Initialize validator.
+
+        Args:
+            event_stream: EventStream for event publishing (optional)
+        """
+        self.event_stream = event_stream
+
+    async def _publish_event_safe(self, event: "Event") -> None:
+        """
+        Publish event with error handling (non-blocking).
+
+        Charter v1.0 Compliance:
+        - Event publishing MUST NOT block business logic
+        - Failures are logged but NOT raised
+        - Business operations continue regardless of event success
+
+        Args:
+            event: Event to publish
+        """
+        if self.event_stream is None:
+            logger.debug("[IRGovernance] EventStream not available, skipping event publish")
+            return
+
+        if Event is None or EventType is None:
+            logger.debug("[IRGovernance] EventStream classes not imported, skipping")
+            return
+
+        try:
+            await self.event_stream.publish_event(event)
+            logger.info(f"[IRGovernance] Event published: {event.type.value} (id={event.id})")
+        except Exception as e:
+            logger.error(
+                f"[IRGovernance] Event publishing failed: {event.type.value if hasattr(event, 'type') else 'unknown'}",
+                exc_info=True,
+            )
+            # DO NOT raise - business logic must continue
 
     # Destructive keywords for auto-escalation
     DESTRUCTIVE_KEYWORDS = [
@@ -65,7 +115,7 @@ class IRValidator:
         "purchase.order",  # Purchase orders (if finalized)
     ]
 
-    def validate_ir(self, ir: IR) -> IRValidationResult:
+    async def validate_ir(self, ir: IR) -> IRValidationResult:
         """
         Validate IR against policy rules.
 
@@ -117,7 +167,7 @@ class IRValidator:
         )
 
         # Emit audit event
-        self._emit_validation_audit(result)
+        await self._emit_validation_audit(result, ir)
 
         return result
 
@@ -286,6 +336,34 @@ class IRValidator:
         if action.value.startswith("webgen."):
             return RiskTier.TIER_1
 
+        # CourseFactory content generation → Tier 0 (no side effects)
+        if action.value.startswith("course.generate"):
+            return RiskTier.TIER_0
+
+        # CourseFactory metadata creation → Tier 0
+        if action == IRAction.COURSE_CREATE:
+            return RiskTier.TIER_0
+
+        # CourseFactory staging deployment → Tier 1 (low risk, staging only)
+        if action == IRAction.COURSE_DEPLOY_STAGING:
+            return RiskTier.TIER_1
+
+        # CourseFactory enhancements (Sprint 13) → Tier 0 (content generation)
+        if action.value.startswith("course.enhance") or action.value.startswith("course.generate_flashcards"):
+            return RiskTier.TIER_0
+
+        # CourseFactory workflow transitions → Tier 0 (state management)
+        if action == IRAction.COURSE_WORKFLOW_TRANSITION:
+            return RiskTier.TIER_0
+
+        # WebGenesis theme/SEO → Tier 0 (metadata)
+        if action.value.startswith("webgenesis.bind") or action.value.startswith("webgenesis.apply_seo"):
+            return RiskTier.TIER_0
+
+        # WebGenesis build/preview → Tier 1 (staging deployment)
+        if action.value.startswith("webgenesis.build") or action.value.startswith("webgenesis.preview"):
+            return RiskTier.TIER_1
+
         # Default: Tier 0
         return RiskTier.TIER_0
 
@@ -381,15 +459,84 @@ class IRValidator:
         # Otherwise → PASS
         return IRValidationStatus.PASS
 
-    def _emit_validation_audit(self, result: IRValidationResult):
+    async def _emit_validation_audit(self, result: IRValidationResult, ir: IR):
         """
         Emit audit event for validation result.
 
         Args:
             result: Validation result
+            ir: Original IR (for step details in escalate/reject events)
         """
-        event_type = f"ir.validated_{result.status.value.lower()}"
+        if Event is None or EventType is None:
+            # Fallback to logging only
+            event_type = f"ir.validated_{result.status.value.lower()}"
+            logger.info(
+                f"[Validator] {event_type}: tenant_id={result.tenant_id}, "
+                f"request_id={result.request_id}, risk_tier={result.risk_tier.value}, "
+                f"requires_approval={result.requires_approval}, "
+                f"violations={len(result.violations)}, "
+                f"ir_hash={result.ir_hash[:16]}..."
+            )
+            return
 
+        # Base payload (common to all validation events)
+        base_payload = {
+            "tenant_id": result.tenant_id,
+            "request_id": result.request_id,
+            "ir_hash": result.ir_hash,
+            "risk_tier": result.risk_tier.value,
+            "requires_approval": result.requires_approval,
+            "violations": [v.model_dump() for v in result.violations],
+            "validated_at": datetime.utcnow().isoformat() + "Z",
+            "step_count": len(ir.steps),
+        }
+
+        # Determine event type and enrich payload
+        if result.status == IRValidationStatus.PASS:
+            event_type_enum = EventType.IR_VALIDATED_PASS
+            payload = base_payload.copy()
+
+        elif result.status == IRValidationStatus.ESCALATE:
+            event_type_enum = EventType.IR_VALIDATED_ESCALATE
+            # Add high-risk steps details
+            high_risk_steps = [
+                {
+                    "step_index": i,
+                    "action": step.action.value,
+                    "provider": step.provider.value,
+                    "risk_tier": step.risk_tier.value,
+                    "reason": f"Risk tier {step.risk_tier.value} detected",
+                }
+                for i, step in enumerate(ir.steps)
+                if step.risk_tier >= RiskTier.TIER_2
+            ]
+            payload = {**base_payload, "high_risk_steps": high_risk_steps}
+
+        else:  # REJECT
+            event_type_enum = EventType.IR_VALIDATED_REJECT
+            payload = base_payload.copy()
+
+        # Publish event
+        await self._publish_event_safe(
+            Event(
+                id=str(uuid.uuid4()),
+                type=event_type_enum,
+                source="ir_governance",
+                target=None,
+                timestamp=datetime.utcnow(),
+                payload=payload,
+                meta={
+                    "schema_version": "1.0",
+                    "producer": "ir_governance",
+                    "source_module": "ir_governance",
+                    "tenant_id": result.tenant_id,
+                    "correlation_id": result.request_id,
+                },
+            )
+        )
+
+        # Legacy logging (kept for backward compatibility)
+        event_type = f"ir.validated_{result.status.value.lower()}"
         logger.info(
             f"[Validator] {event_type}: tenant_id={result.tenant_id}, "
             f"request_id={result.request_id}, risk_tier={result.risk_tier.value}, "
@@ -398,17 +545,19 @@ class IRValidator:
             f"ir_hash={result.ir_hash[:16]}..."
         )
 
-        # TODO: Integrate with existing audit event system
-        # For now, logging is sufficient
-
 
 # Singleton
 _validator: Optional[IRValidator] = None
 
 
-def get_validator() -> IRValidator:
-    """Get singleton validator."""
+def get_validator(event_stream: Optional["EventStream"] = None) -> IRValidator:
+    """
+    Get singleton validator.
+
+    Args:
+        event_stream: EventStream for event publishing (optional, only used on first call)
+    """
     global _validator
     if _validator is None:
-        _validator = IRValidator()
+        _validator = IRValidator(event_stream=event_stream)
     return _validator

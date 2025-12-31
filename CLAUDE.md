@@ -1,7 +1,7 @@
 # CLAUDE.md - AI Assistant Guide for BRAiN
 
-**Version:** 0.5.0
-**Last Updated:** 2025-12-20
+**Version:** 0.6.0
+**Last Updated:** 2025-12-31
 **Purpose:** Comprehensive guide for AI assistants working with the BRAiN codebase
 
 ---
@@ -28,6 +28,7 @@
 
 - **Multi-Agent System** with supervisor orchestration
 - **Mission Queue System** with Redis-based priority scheduling
+- **NeuroRail Execution Governance** with complete trace chain and observability (Phase 1)
 - **Conversational Interface** with multiple frontend applications
 - **Modular Architecture** with 17+ specialized modules
 - **LLM Integration** with runtime-configurable providers
@@ -629,6 +630,200 @@ class ResearchAgent(BaseAgent):
         pass
 ```
 
+### Constitutional Agents Framework
+
+**Purpose:** DSGVO and EU AI Act compliant agent system with risk-based supervision and human-in-the-loop workflows.
+
+**Location:** `backend/brain/agents/`
+
+**Core Agents (5):**
+
+| Agent | Role | Risk Management | Compliance |
+|-------|------|-----------------|------------|
+| **SupervisorAgent** | Constitutional Guardian | 4-tier risk system (LOW/MEDIUM/HIGH/CRITICAL) | DSGVO Art. 22, EU AI Act Art. 16 |
+| **CoderAgent** | Secure Code Generation | Personal data detection → HIGH risk | DSGVO Art. 25 (Privacy by Design) |
+| **OpsAgent** | Safe Operations | Production deployment → CRITICAL risk | Automatic rollback, pre-deployment checks |
+| **ArchitectAgent** | EU Compliance Auditor | High-risk AI detection | EU AI Act Art. 5, 6; DSGVO compliance |
+| **AXEAgent** | Conversational Assistant | Context-aware with history | Safe command execution |
+
+**Risk-Based Supervision:**
+
+```python
+class RiskLevel(str, Enum):
+    LOW = "low"           # Read-only operations, auto-approved after LLM check
+    MEDIUM = "medium"     # Write operations, reversible, auto-approved
+    HIGH = "high"         # Personal data, production changes → Human approval required
+    CRITICAL = "critical" # Irreversible, system-wide → Human approval required
+
+class SupervisionRequest(BaseModel):
+    requesting_agent: str
+    action: str
+    context: Dict[str, Any]
+    risk_level: RiskLevel
+    reason: Optional[str] = None
+
+class SupervisionResponse(BaseModel):
+    approved: bool
+    reason: str
+    human_oversight_required: bool
+    human_oversight_token: Optional[str] = None
+    audit_id: str
+    timestamp: str
+    policy_violations: List[str]
+```
+
+**Supervision Workflow:**
+
+```python
+from backend.brain.agents.supervisor_agent import get_supervisor_agent
+from backend.brain.agents.coder_agent import get_coder_agent
+
+# 1. CoderAgent requests supervision for HIGH-risk code
+coder = get_coder_agent()
+result = await coder.generate_odoo_module({
+    "name": "customer_portal",
+    "data_types": ["name", "email", "address"]  # Personal data → HIGH risk
+})
+
+# 2. SupervisorAgent automatically evaluates:
+# - Risk level assessment
+# - Policy Engine rules
+# - LLM constitutional check
+# - DSGVO/EU AI Act compliance
+
+# 3. HIGH/CRITICAL risk → Human-in-the-Loop
+supervisor = get_supervisor_agent()
+response = await supervisor.supervise_action(SupervisionRequest(
+    requesting_agent="CoderAgent",
+    action="generate_odoo_module",
+    context={"uses_personal_data": True},
+    risk_level=RiskLevel.HIGH
+))
+
+if response.human_oversight_required:
+    print(f"Human approval needed: {response.human_oversight_token}")
+    # Wait for human approval via Control Deck UI
+```
+
+**Example: Safe Deployment with OpsAgent:**
+
+```python
+from backend.brain.agents.ops_agent import get_ops_agent
+
+ops = get_ops_agent()
+
+# Production deployment → CRITICAL risk → Requires human approval
+result = await ops.deploy_application(
+    app_name="brain-backend",
+    version="1.2.3",
+    environment="production",  # CRITICAL risk
+    config={}
+)
+
+# Workflow:
+# 1. Risk assessment: production = CRITICAL
+# 2. Supervisor approval required (EU AI Act Art. 16)
+# 3. Pre-deployment checks (version, dependencies, environment)
+# 4. Backup creation for rollback
+# 5. Deployment execution
+# 6. Post-deployment health check
+# 7. Automatic rollback on failure
+```
+
+**Example: EU Compliance Check with ArchitectAgent:**
+
+```python
+from backend.brain.agents.architect_agent import get_architect_agent
+
+architect = get_architect_agent()
+
+# Check for prohibited practices (EU AI Act Art. 5)
+result = await architect.review_architecture(
+    system_name="Customer Analytics Platform",
+    architecture_spec={
+        "uses_ai": True,
+        "processes_personal_data": True,
+        "uses_social_scoring": False,  # Prohibited practice
+        "uses_biometric_categorization": False,  # Prohibited practice
+        "has_consent_mechanism": True,
+        "international_transfers": False
+    },
+    high_risk_ai=False
+)
+
+# Returns:
+# - EU AI Act compliance score
+# - DSGVO compliance validation
+# - Prohibited practices detection
+# - Architecture quality assessment
+# - Security audit results
+# - Scalability recommendations
+```
+
+**Frontend Integration:**
+
+```typescript
+// frontend/brain_control_ui/src/hooks/useAgents.ts
+import { useSupervisor, useCoder, useOps, useArchitect, useAXE } from "@/hooks/useAgents";
+
+export function SupervisorDashboard() {
+  const { superviseAction, getMetrics } = useSupervisor();
+
+  const handleSupervise = () => {
+    superviseAction.mutate({
+      requesting_agent: "CoderAgent",
+      action: "generate_odoo_module",
+      context: { uses_personal_data: true },
+      risk_level: "high"
+    });
+  };
+
+  // Live metrics
+  const metrics = getMetrics.data;
+  // {
+  //   total_supervision_requests: 42,
+  //   approved_actions: 35,
+  //   denied_actions: 3,
+  //   human_approvals_pending: 4
+  // }
+}
+```
+
+**UI Pages:**
+
+- **Constitutional Agents Dashboard:** `/constitutional` - Main interface for all 5 agents
+- **Components:**
+  - `SupervisorDashboard` - Supervision testing and metrics
+  - `CoderInterface` - Code generation and Odoo modules
+  - `OpsPanel` - Deployment and rollback operations
+  - `ArchitectInterface` - Architecture review and compliance checks
+  - `AXEChatInterface` - Conversational assistant with chat history
+
+**API Endpoints:**
+
+See [Constitutional Agents API Reference](#constitutional-agents-api-apiagent-ops) for complete endpoint documentation.
+
+**Key Features:**
+
+- ✅ **Risk-based supervision** with 4-tier system
+- ✅ **Human-in-the-loop** for HIGH/CRITICAL risk (DSGVO Art. 22, EU AI Act Art. 16)
+- ✅ **Policy Engine integration** for rule-based governance
+- ✅ **Constitutional LLM checks** with ethical constraints
+- ✅ **Comprehensive audit trail** for all decisions
+- ✅ **DSGVO compliance:** Privacy by Design (Art. 25), data minimization, legal basis validation
+- ✅ **EU AI Act compliance:** Prohibited practices detection, high-risk AI requirements
+- ✅ **Automatic rollback** on deployment failures
+- ✅ **Code validation:** Forbidden patterns detection (eval/exec, hardcoded secrets)
+
+**Documentation:**
+
+See `docs/CONSTITUTIONAL_AGENTS.md` for complete guide including:
+- Detailed agent documentation
+- Usage examples
+- Compliance matrix
+- Best practices
+- Troubleshooting
+
 ### Mission System
 
 **Mission Lifecycle:**
@@ -925,6 +1120,430 @@ if result.effect == PolicyEffect.DENY:
     "enabled": true
 }
 ```
+
+### NeuroRail System (Phase 1 - Observe-only) 🆕
+
+**Purpose:** Deterministic execution governance plane with complete traceability and observability.
+
+**Location:** `backend/app/modules/neurorail/` + `backend/app/modules/governor/`
+
+**Status:** Phase 1 (Observe-only) - No enforcement, full observation
+
+**Core Concepts:**
+
+NeuroRail provides a **One-Way Door** execution framework inspired by SGLang Model Gateway, ensuring:
+- Complete trace chain: `mission_id → plan_id → job_id → attempt_id → resource_uuid`
+- Deterministic state machines (no interpretation, mechanical transitions only)
+- Immutable audit trail with real-time EventStream integration
+- Prometheus metrics for observability
+- Governor mode decision (direct vs. rail execution)
+
+**Architecture:**
+
+```
+NeuroRail Modules (Phase 1)
+├── identity/          # Trace chain entity management (mission/plan/job/attempt/resource)
+├── lifecycle/         # State machines with explicit transitions
+├── audit/             # Immutable append-only event log + EventStream
+├── telemetry/         # Prometheus metrics + real-time snapshots
+├── execution/         # Observation wrapper (no enforcement in Phase 1)
+└── governor/          # Mode decision engine (direct vs. rail)
+
+Error Registry
+└── errors.py          # NR-E001 to NR-E007 (mechanical vs. ethical classification)
+
+Database Schema (Alembic migration: 004_neurorail_schema.py)
+├── neurorail_audit                 # Immutable audit log
+├── neurorail_state_transitions     # State machine history
+├── governor_decisions              # Mode decisions + budget checks
+├── neurorail_metrics_snapshots     # Periodic metric snapshots
+└── governor_manifests              # Manifest versioning (shadow mode ready)
+```
+
+**Trace Chain (Complete Lineage):**
+
+```python
+from backend.app.modules.neurorail.identity.service import IdentityService
+
+identity_service = IdentityService()
+
+# 1. Create Mission
+mission = await identity_service.create_mission(
+    parent_mission_id=None,
+    tags={"project": "demo"}
+)
+# → mission_id: "m_abc123def456"
+
+# 2. Create Plan
+plan = await identity_service.create_plan(
+    mission_id=mission.mission_id,
+    plan_type="sequential"
+)
+# → plan_id: "p_xyz789uvw012"
+
+# 3. Create Job
+job = await identity_service.create_job(
+    plan_id=plan.plan_id,
+    job_type="llm_call"
+)
+# → job_id: "j_qwe456rty789"
+
+# 4. Create Attempt
+attempt = await identity_service.create_attempt(
+    job_id=job.job_id,
+    attempt_number=1
+)
+# → attempt_id: "a_asd123fgh456"
+
+# 5. Retrieve Full Trace Chain
+trace = await identity_service.get_trace_chain("attempt", attempt.attempt_id)
+# → TraceChain with mission → plan → job → attempt
+```
+
+**State Machines (One-Way Doors):**
+
+```python
+from backend.app.modules.neurorail.lifecycle.service import LifecycleService
+from backend.app.modules.neurorail.lifecycle.schemas import MissionState, JobState, AttemptState
+
+# Allowed Transitions (Deterministic)
+MISSION_TRANSITIONS = {
+    None: [MissionState.PENDING],
+    MissionState.PENDING: [MissionState.PLANNING, MissionState.CANCELLED],
+    MissionState.PLANNING: [MissionState.PLANNED, MissionState.FAILED, MissionState.CANCELLED],
+    MissionState.PLANNED: [MissionState.EXECUTING, MissionState.CANCELLED],
+    MissionState.EXECUTING: [MissionState.COMPLETED, MissionState.FAILED, MissionState.TIMEOUT, MissionState.CANCELLED],
+    # Terminal states: COMPLETED, FAILED, TIMEOUT, CANCELLED
+}
+
+lifecycle_service = LifecycleService()
+
+# Execute state transition
+event = await lifecycle_service.transition(
+    entity_type="attempt",
+    request=TransitionRequest(
+        entity_id="a_asd123fgh456",
+        transition="start",  # PENDING → RUNNING
+        metadata={"started_at": time.time()}
+    ),
+    db=db_session
+)
+# → Validates transition, updates Redis + PostgreSQL
+```
+
+**Immutable Audit Trail:**
+
+```python
+from backend.app.modules.neurorail.audit.service import AuditService
+from backend.app.modules.neurorail.audit.schemas import AuditEvent
+
+audit_service = AuditService()
+
+# Log audit event (append-only, no updates/deletes)
+event = await audit_service.log(
+    AuditEvent(
+        mission_id="m_abc123def456",
+        attempt_id="a_asd123fgh456",
+        event_type="execution_start",
+        event_category="execution",
+        severity="info",
+        message="Execution started for attempt a_asd123fgh456",
+        details={"job_type": "llm_call"}
+    ),
+    db=db_session
+)
+# → Dual write: PostgreSQL (durable) + EventStream (real-time pub/sub)
+```
+
+**Prometheus Metrics:**
+
+```python
+# 9 new metrics integrated into backend/app/core/metrics.py
+
+# Counters
+neurorail_attempts_total{entity_type, status}
+neurorail_attempts_failed_total{entity_type, error_category, error_code}
+neurorail_budget_violations_total{violation_type}
+neurorail_reflex_actions_total{action_type, entity_type}
+
+# Gauges
+neurorail_active_missions
+neurorail_active_jobs
+neurorail_active_attempts
+neurorail_resources_by_state{resource_type, state}
+
+# Histograms
+neurorail_attempt_duration_ms{entity_type}  # Buckets: [10, 50, 100, 500, 1000, 5000, 10000, 30000, 60000]
+neurorail_job_duration_ms{entity_type}
+neurorail_mission_duration_ms{entity_type}
+neurorail_tt_first_signal_ms{entity_type}  # Time to First Signal (SGLang-inspired)
+```
+
+**Governor Mode Decision:**
+
+```python
+from backend.app.modules.governor.service import GovernorService
+
+governor_service = GovernorService()
+
+# Decide execution mode (direct vs. rail)
+decision = await governor_service.decide_mode(
+    DecisionRequest(
+        job_type="llm_call",
+        context={"model": "gpt-4", "environment": "production"},
+        shadow_evaluate=False  # Phase 1: no shadow eval
+    ),
+    db=db_session
+)
+
+# Phase 1 Hard-Coded Rules:
+# 1. job_type == "llm_call" → RAIL (token tracking required)
+# 2. uses_personal_data == True → RAIL (DSGVO Art. 25)
+# 3. environment == "production" → RAIL (governance required)
+# 4. Default → DIRECT (low-risk operations)
+
+# Example response:
+# ModeDecision(
+#     mode="rail",
+#     reason="LLM calls require governance for token tracking",
+#     matched_rules=["llm_call_governance"],
+#     decision_id="dec_xyz123abc456",
+#     logged_to_db=True
+# )
+```
+
+**Error Code Registry:**
+
+```python
+# backend/app/modules/neurorail/errors.py
+
+class NeuroRailErrorCode(str, Enum):
+    # Mechanical Errors (Retriable)
+    EXEC_TIMEOUT = "NR-E001"              # Execution timeout
+    UPSTREAM_UNAVAILABLE = "NR-E004"      # Upstream service unavailable
+    BAD_RESPONSE_FORMAT = "NR-E005"       # Bad response format from upstream
+
+    # Mechanical Errors (Non-Retriable)
+    EXEC_OVERBUDGET = "NR-E002"           # Budget exceeded (tokens/time/cost)
+    RETRY_EXHAUSTED = "NR-E003"           # Max retries reached
+    POLICY_REFLEX_COOLDOWN = "NR-E006"    # Policy reflex cooldown active
+
+    # System Errors
+    ORPHAN_KILLED = "NR-E007"             # Orphaned job killed (no parent context)
+
+ERROR_METADATA = {
+    NeuroRailErrorCode.EXEC_TIMEOUT: {
+        "category": ErrorCategory.MECHANICAL,
+        "retriable": True,
+        "description": "Execution exceeded timeout limit"
+    },
+    NeuroRailErrorCode.EXEC_OVERBUDGET: {
+        "category": ErrorCategory.MECHANICAL,
+        "retriable": False,
+        "description": "Execution exceeded budget (tokens, time, or cost)"
+    },
+    # ... see backend/app/modules/neurorail/errors.py for complete registry
+}
+```
+
+**Execution Observation Wrapper (Phase 1):**
+
+```python
+from backend.app.modules.neurorail.execution.service import ExecutionService
+from backend.app.modules.neurorail.execution.schemas import ExecutionContext
+
+execution_service = ExecutionService()
+
+# Phase 1: Observation-only (no enforcement)
+result = await execution_service.execute(
+    context=ExecutionContext(
+        mission_id="m_abc123def456",
+        plan_id="p_xyz789uvw012",
+        job_id="j_qwe456rty789",
+        attempt_id="a_asd123fgh456",
+        job_type="llm_call",
+        job_parameters={"prompt": "Hello, world!"},
+        max_attempts=3,
+        timeout_ms=30000,  # Logged but NOT enforced in Phase 1
+        max_llm_tokens=2000,  # Logged but NOT enforced in Phase 1
+    ),
+    executor=my_llm_call_function,  # Your actual execution logic
+    db=db_session
+)
+
+# What the wrapper does (Phase 1):
+# ✅ 1. Generate complete trace chain
+# ✅ 2. Verify parent context exists (orphan protection)
+# ✅ 3. Transition attempt: PENDING → RUNNING
+# ✅ 4. Log audit event: execution_start
+# ✅ 5. Execute job (NO timeout wrapper - pure observation)
+# ✅ 6. Classify errors (mechanical vs. ethical)
+# ✅ 7. Transition attempt: RUNNING → SUCCEEDED/FAILED
+# ✅ 8. Log audit event: execution_success/execution_failure
+# ✅ 9. Record telemetry metrics (Prometheus + Redis)
+# ❌ NO budget enforcement (Phase 2)
+# ❌ NO reflex system (Phase 2)
+```
+
+**Database Schema (5 Tables):**
+
+**1. neurorail_audit** - Immutable audit log
+```sql
+CREATE TABLE neurorail_audit (
+    audit_id VARCHAR(20) PRIMARY KEY,
+    timestamp TIMESTAMP NOT NULL,
+    mission_id VARCHAR(20),
+    plan_id VARCHAR(20),
+    job_id VARCHAR(20),
+    attempt_id VARCHAR(20),
+    event_type VARCHAR(50) NOT NULL,
+    event_category VARCHAR(50) NOT NULL,
+    severity VARCHAR(20) NOT NULL,
+    message TEXT NOT NULL,
+    details JSONB,
+    -- Indexes on mission_id, plan_id, job_id, attempt_id, event_type, severity
+);
+```
+
+**2. neurorail_state_transitions** - State machine history
+```sql
+CREATE TABLE neurorail_state_transitions (
+    transition_id VARCHAR(20) PRIMARY KEY,
+    timestamp TIMESTAMP NOT NULL,
+    entity_type VARCHAR(20) NOT NULL,
+    entity_id VARCHAR(20) NOT NULL,
+    from_state VARCHAR(50),
+    to_state VARCHAR(50) NOT NULL,
+    transition_type VARCHAR(50),
+    metadata JSONB,
+    -- Indexes on entity_type, entity_id, timestamp
+);
+```
+
+**3. governor_decisions** - Mode decisions and budget checks
+```sql
+CREATE TABLE governor_decisions (
+    decision_id VARCHAR(20) PRIMARY KEY,
+    timestamp TIMESTAMP NOT NULL,
+    decision_type VARCHAR(50) NOT NULL,
+    context JSONB NOT NULL,
+    decision_result VARCHAR(50) NOT NULL,
+    reason TEXT,
+    matched_rules JSONB,
+    -- Index on timestamp, decision_type
+);
+```
+
+**4. neurorail_metrics_snapshots** - Periodic metric snapshots
+```sql
+CREATE TABLE neurorail_metrics_snapshots (
+    snapshot_id VARCHAR(20) PRIMARY KEY,
+    timestamp TIMESTAMP NOT NULL,
+    entity_counts JSONB NOT NULL,
+    active_executions JSONB,
+    error_rates JSONB,
+    -- Index on timestamp
+);
+```
+
+**5. governor_manifests** - Manifest versioning (shadow mode ready for Phase 2)
+```sql
+CREATE TABLE governor_manifests (
+    manifest_id VARCHAR(20) PRIMARY KEY,
+    version VARCHAR(20) NOT NULL,
+    created_at TIMESTAMP NOT NULL,
+    activated_at TIMESTAMP,
+    shadow_mode BOOLEAN DEFAULT TRUE,
+    shadow_start TIMESTAMP,
+    rules JSONB NOT NULL,
+    metadata JSONB,
+    -- Indexes on version, shadow_mode, activated_at
+);
+```
+
+**Redis Keys (24h TTL):**
+
+```
+neurorail:identity:mission:{mission_id}      # Mission identity JSON
+neurorail:identity:plan:{plan_id}            # Plan identity JSON
+neurorail:identity:job:{job_id}              # Job identity JSON
+neurorail:identity:attempt:{attempt_id}      # Attempt identity JSON
+neurorail:identity:resource:{resource_uuid}  # Resource identity JSON
+
+neurorail:state:mission:{mission_id}         # Current mission state
+neurorail:state:job:{job_id}                 # Current job state
+neurorail:state:attempt:{attempt_id}         # Current attempt state
+
+neurorail:metrics:attempt:{attempt_id}       # Execution metrics JSON
+```
+
+**Integration with Mission System:**
+
+NeuroRail integrates with the existing mission system as an **optional observation layer**:
+
+```python
+# In mission execution logic (future integration):
+from backend.app.modules.neurorail.execution.service import ExecutionService
+
+execution_service = ExecutionService()
+
+# Wrap mission execution with NeuroRail observation
+result = await execution_service.execute(
+    context=ExecutionContext(
+        mission_id=mission.id,
+        plan_id=plan_id,
+        job_id=job_id,
+        attempt_id=attempt_id,
+        job_type=mission.type,
+        job_parameters=mission.payload,
+    ),
+    executor=lambda **kwargs: execute_mission_legacy(mission, **kwargs),
+    db=db_session
+)
+```
+
+**Feature Flags (Phase 1):**
+
+All enforcement is **disabled by default** (observe-only):
+
+```python
+# Phase 1: No enforcement
+NEURORAIL_ENABLE_TIMEOUT_ENFORCEMENT = False  # Timeouts logged but not enforced
+NEURORAIL_ENABLE_BUDGET_ENFORCEMENT = False   # Budget tracked but not blocked
+NEURORAIL_ENABLE_REFLEX_SYSTEM = False        # Reflex hooks in place but inactive
+
+# Phase 2: Enforcement enabled
+# These flags will be added in Phase 2 implementation
+```
+
+**Testing:**
+
+```bash
+# E2E Test (pytest)
+cd backend
+pytest tests/test_neurorail_e2e.py -v -s
+
+# Smoke Test (curl)
+cd backend/tests
+./test_neurorail_curl.sh
+
+# Coverage: 7 pytest tests + 11 curl scenarios
+```
+
+**Documentation:**
+
+- **Integration Guide:** `backend/app/modules/neurorail/README_INTEGRATION.md`
+- **Status Summary:** `backend/app/modules/neurorail/STATUS_PHASE1.md`
+- **Module READMEs:** Each module has detailed documentation
+
+**Phase 2 Roadmap (Future):**
+
+- ⏳ Budget enforcement (timeout wrapper, token limits, resource quotas)
+- ⏳ Reflex system (cooldown periods, probing strategies, auto-suspend)
+- ⏳ Manifest-driven governance (replace hard-coded rules)
+- ⏳ ControlDeck UI (Trace Explorer, Health Matrix, Budget Dashboard)
+- ⏳ WebSocket real-time updates
+- ⏳ Advanced telemetry (cost attribution, predictive allocation)
 
 ### Fleet Management System (Phase 2 & 3 - RYR Integration)
 
@@ -1611,6 +2230,222 @@ export const usePresenceStore = create<PresenceState>((set) => ({
 | GET | `/api/axe/info` | AXE engine info |
 | POST | `/api/axe/message` | Execute via gateway or LLM fallback |
 
+### Constitutional Agents API (`/api/agent-ops`) 🆕
+
+**Purpose:** REST API for DSGVO and EU AI Act compliant agents with risk-based supervision.
+
+**Location:** `backend/app/api/routes/agent_ops.py`
+
+#### SupervisorAgent Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/agent-ops/supervisor/supervise` | Request supervision for agent action |
+| GET | `/api/agent-ops/supervisor/metrics` | Get supervision metrics |
+
+**Supervise Request:**
+```json
+{
+  "requesting_agent": "CoderAgent",
+  "action": "generate_odoo_module",
+  "context": {
+    "uses_personal_data": true,
+    "environment": "production"
+  },
+  "risk_level": "high",
+  "reason": "Optional explanation"
+}
+```
+
+**Supervise Response:**
+```json
+{
+  "approved": false,
+  "reason": "HIGH risk: Personal data processing requires human oversight (EU AI Act Art. 16)",
+  "human_oversight_required": true,
+  "human_oversight_token": "HITL-abc123",
+  "audit_id": "audit_20231220_143022",
+  "timestamp": "2023-12-20T14:30:22Z",
+  "policy_violations": []
+}
+```
+
+**Metrics Response:**
+```json
+{
+  "total_supervision_requests": 42,
+  "approved_actions": 35,
+  "denied_actions": 3,
+  "human_approvals_pending": 4,
+  "approval_rate": 0.833
+}
+```
+
+#### CoderAgent Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/agent-ops/coder/generate-code` | Generate code with DSGVO compliance |
+| POST | `/api/agent-ops/coder/generate-odoo-module` | Generate DSGVO-compliant Odoo module |
+
+**Generate Code Request:**
+```json
+{
+  "spec": "Create a Python function to validate email addresses",
+  "risk_level": "low"
+}
+```
+
+**Generate Odoo Module Request:**
+```json
+{
+  "name": "customer_portal",
+  "purpose": "Customer self-service portal",
+  "data_types": ["name", "email", "phone"],
+  "models": ["res.partner", "sale.order"],
+  "views": ["form", "tree", "search"]
+}
+```
+
+#### OpsAgent Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/agent-ops/ops/deploy` | Deploy application (prod requires approval) |
+| POST | `/api/agent-ops/ops/rollback` | Rollback deployment to previous version |
+| GET | `/api/agent-ops/ops/health/{app_name}/{environment}` | Check application health |
+
+**Deploy Request:**
+```json
+{
+  "app_name": "brain-backend",
+  "version": "1.2.3",
+  "environment": "production",
+  "config": {}
+}
+```
+
+**Rollback Request:**
+```json
+{
+  "app_name": "brain-backend",
+  "environment": "production",
+  "backup_id": "backup_20231220_143022"
+}
+```
+
+#### ArchitectAgent Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/agent-ops/architect/review` | Comprehensive architecture review |
+| POST | `/api/agent-ops/architect/compliance-check` | Quick EU compliance check (AI Act + DSGVO) |
+| POST | `/api/agent-ops/architect/scalability-assessment` | Assess system scalability |
+| POST | `/api/agent-ops/architect/security-audit` | Security architecture audit |
+
+**Architecture Review Request:**
+```json
+{
+  "system_name": "Customer Data Platform",
+  "architecture_spec": {
+    "uses_ai": true,
+    "processes_personal_data": true,
+    "data_types": ["names", "emails", "addresses"],
+    "international_transfers": false,
+    "components": ["api", "database", "ml_service"]
+  },
+  "high_risk_ai": false
+}
+```
+
+**Review Response:**
+```json
+{
+  "compliance_score": 85,
+  "eu_ai_act_compliant": true,
+  "dsgvo_compliant": true,
+  "prohibited_practices_detected": [],
+  "recommendations": [
+    "Add data encryption at rest",
+    "Implement privacy-enhancing technologies"
+  ],
+  "security_issues": ["Missing intrusion detection"],
+  "scalability_rating": "good"
+}
+```
+
+#### AXEAgent Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/agent-ops/axe/chat` | Chat with AXE conversational assistant |
+| GET | `/api/agent-ops/axe/system-status` | Get current system status |
+| DELETE | `/api/agent-ops/axe/history` | Clear conversation history |
+
+**Chat Request:**
+```json
+{
+  "message": "What's the system status?",
+  "context": {},
+  "include_history": true
+}
+```
+
+**Chat Response:**
+```json
+{
+  "response": "System is operational. All agents are running normally. Mission queue has 3 pending missions.",
+  "timestamp": "2023-12-20T14:30:22Z"
+}
+```
+
+#### Agent Info Endpoint
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/agent-ops/info` | Get information about all constitutional agents |
+
+**Info Response:**
+```json
+{
+  "name": "Constitutional Agents",
+  "version": "1.0.0",
+  "agents": [
+    {
+      "id": "supervisor",
+      "name": "SupervisorAgent",
+      "role": "Constitutional Guardian",
+      "capabilities": ["risk_assessment", "policy_evaluation", "human_oversight"]
+    },
+    {
+      "id": "coder",
+      "name": "CoderAgent",
+      "role": "Secure Code Generation",
+      "capabilities": ["code_generation", "odoo_modules", "dsgvo_compliance"]
+    },
+    {
+      "id": "ops",
+      "name": "OpsAgent",
+      "role": "Operations & Deployment",
+      "capabilities": ["deployment", "rollback", "health_monitoring"]
+    },
+    {
+      "id": "architect",
+      "name": "ArchitectAgent",
+      "role": "Architecture & Compliance Auditor",
+      "capabilities": ["architecture_review", "eu_compliance", "security_audit"]
+    },
+    {
+      "id": "axe",
+      "name": "AXEAgent",
+      "role": "Conversational Assistant",
+      "capabilities": ["chat", "system_monitoring", "log_analysis"]
+    }
+  ],
+  "compliance_frameworks": ["DSGVO", "EU AI Act"]
+}
+```
+
 ### Policy Engine (`/api/policy`) 🆕
 
 | Method | Endpoint | Description |
@@ -1644,6 +2479,235 @@ export const usePresenceStore = create<PresenceState>((set) => ({
   "matched_rule": "prod-deploy-restriction"
 }
 ```
+
+### NeuroRail & Governor (`/api/neurorail` & `/api/governor`) 🆕
+
+**Purpose:** Execution governance with complete trace chain and observability (Phase 1: Observe-only)
+
+**Swagger Sections:** `neurorail-identity`, `neurorail-lifecycle`, `neurorail-audit`, `neurorail-telemetry`, `neurorail-execution`, `governor`
+
+#### Identity Module (`/api/neurorail/v1/identity`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/neurorail/v1/identity/mission` | Create mission identity |
+| POST | `/api/neurorail/v1/identity/plan` | Create plan identity |
+| POST | `/api/neurorail/v1/identity/job` | Create job identity |
+| POST | `/api/neurorail/v1/identity/attempt` | Create attempt identity |
+| POST | `/api/neurorail/v1/identity/resource` | Create resource identity |
+| GET | `/api/neurorail/v1/identity/trace/{entity_type}/{entity_id}` | Get complete trace chain |
+
+**Create Mission Request:**
+```json
+{
+  "parent_mission_id": null,
+  "tags": {"project": "demo", "environment": "dev"}
+}
+```
+
+**Response:**
+```json
+{
+  "mission_id": "m_abc123def456",
+  "created_at": "2025-12-30T23:00:00Z",
+  "parent_mission_id": null,
+  "tags": {"project": "demo", "environment": "dev"}
+}
+```
+
+**Trace Chain Response:**
+```json
+{
+  "mission": {
+    "mission_id": "m_abc123def456",
+    "created_at": "2025-12-30T23:00:00Z",
+    "tags": {}
+  },
+  "plan": {
+    "plan_id": "p_xyz789uvw012",
+    "mission_id": "m_abc123def456",
+    "plan_type": "sequential"
+  },
+  "job": {
+    "job_id": "j_qwe456rty789",
+    "plan_id": "p_xyz789uvw012",
+    "job_type": "llm_call"
+  },
+  "attempt": {
+    "attempt_id": "a_asd123fgh456",
+    "job_id": "j_qwe456rty789",
+    "attempt_number": 1
+  }
+}
+```
+
+#### Lifecycle Module (`/api/neurorail/v1/lifecycle`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/neurorail/v1/lifecycle/transition/{entity_type}` | Execute state transition |
+| GET | `/api/neurorail/v1/lifecycle/state/{entity_type}/{entity_id}` | Get current state |
+| GET | `/api/neurorail/v1/lifecycle/history/{entity_type}/{entity_id}` | Get transition history |
+
+**Transition Request:**
+```json
+{
+  "entity_id": "a_asd123fgh456",
+  "transition": "start",
+  "metadata": {"started_at": 1703001234.56}
+}
+```
+
+**Transition Response:**
+```json
+{
+  "transition_id": "tr_xyz123abc456",
+  "entity_type": "attempt",
+  "entity_id": "a_asd123fgh456",
+  "from_state": "pending",
+  "to_state": "running",
+  "timestamp": "2025-12-30T23:00:00Z",
+  "metadata": {"started_at": 1703001234.56}
+}
+```
+
+**Allowed Transitions:**
+- **Mission:** PENDING → PLANNING → PLANNED → EXECUTING → COMPLETED/FAILED/TIMEOUT/CANCELLED
+- **Job:** PENDING → QUEUED → RUNNING → SUCCEEDED/FAILED/TIMEOUT/CANCELLED
+- **Attempt:** PENDING → RUNNING → SUCCEEDED/FAILED/TIMEOUT/ORPHAN_KILLED
+
+#### Audit Module (`/api/neurorail/v1/audit`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/neurorail/v1/audit/log` | Log audit event (append-only) |
+| GET | `/api/neurorail/v1/audit/events` | Query audit events (by trace context) |
+| GET | `/api/neurorail/v1/audit/stats` | Get audit statistics |
+
+**Log Request:**
+```json
+{
+  "mission_id": "m_abc123def456",
+  "attempt_id": "a_asd123fgh456",
+  "event_type": "execution_start",
+  "event_category": "execution",
+  "severity": "info",
+  "message": "Execution started",
+  "details": {"job_type": "llm_call"}
+}
+```
+
+**Query Events (by mission):**
+```
+GET /api/neurorail/v1/audit/events?mission_id=m_abc123def456&limit=50
+GET /api/neurorail/v1/audit/events?attempt_id=a_asd123fgh456&limit=10
+GET /api/neurorail/v1/audit/events?severity=error&limit=100
+```
+
+#### Telemetry Module (`/api/neurorail/v1/telemetry`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/neurorail/v1/telemetry/record` | Record execution metrics |
+| GET | `/api/neurorail/v1/telemetry/metrics/{entity_id}` | Get metrics for entity |
+| GET | `/api/neurorail/v1/telemetry/snapshot` | Get real-time system snapshot |
+
+**Snapshot Response:**
+```json
+{
+  "timestamp": "2025-12-30T23:00:00Z",
+  "entity_counts": {
+    "missions": 42,
+    "plans": 38,
+    "jobs": 120,
+    "attempts": 145
+  },
+  "active_executions": {
+    "running_attempts": 3,
+    "queued_jobs": 7
+  },
+  "error_rates": {
+    "mechanical_errors": 0.02,
+    "ethical_errors": 0.0
+  },
+  "prometheus_metrics": {
+    "neurorail_attempts_total": 145,
+    "neurorail_active_missions": 5,
+    "neurorail_tt_first_signal_ms_avg": 23.5
+  }
+}
+```
+
+#### Execution Module (`/api/neurorail/v1/execution`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/neurorail/v1/execution/status/{attempt_id}` | Get execution status (placeholder) |
+
+**Note:** Execution module is primarily used programmatically via service layer, not REST API.
+
+#### Governor Module (`/api/governor/v1`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/governor/v1/decide` | Decide execution mode (direct vs. rail) |
+| GET | `/api/governor/v1/stats` | Get decision statistics |
+
+**Decide Request:**
+```json
+{
+  "job_type": "llm_call",
+  "context": {"model": "gpt-4", "environment": "production"},
+  "shadow_evaluate": false
+}
+```
+
+**Decide Response:**
+```json
+{
+  "mode": "rail",
+  "reason": "LLM calls require governance for token tracking",
+  "matched_rules": ["llm_call_governance"],
+  "decision_id": "dec_xyz123abc456",
+  "timestamp": "2025-12-30T23:00:00Z",
+  "logged_to_db": true
+}
+```
+
+**Error Codes:**
+
+| Code | Category | Retriable | Description |
+|------|----------|-----------|-------------|
+| NR-E001 | MECHANICAL | ✅ Yes | Execution timeout |
+| NR-E002 | MECHANICAL | ❌ No | Budget exceeded (tokens/time/cost) |
+| NR-E003 | MECHANICAL | ❌ No | Max retries exhausted |
+| NR-E004 | MECHANICAL | ✅ Yes | Upstream service unavailable |
+| NR-E005 | MECHANICAL | ✅ Yes | Bad response format from upstream |
+| NR-E006 | MECHANICAL | ❌ No | Policy reflex cooldown active |
+| NR-E007 | SYSTEM | ❌ No | Orphaned job killed (no parent context) |
+
+**Database Tables:**
+
+| Table | Purpose |
+|-------|---------|
+| `neurorail_audit` | Immutable audit log with trace context |
+| `neurorail_state_transitions` | State machine transition history |
+| `governor_decisions` | Mode decisions and budget checks |
+| `neurorail_metrics_snapshots` | Periodic system snapshots |
+| `governor_manifests` | Manifest versioning (shadow mode for Phase 2) |
+
+**Testing:**
+```bash
+# E2E Test
+pytest backend/tests/test_neurorail_e2e.py -v
+
+# Smoke Test
+bash backend/tests/test_neurorail_curl.sh
+```
+
+**Documentation:**
+- Integration Guide: `backend/app/modules/neurorail/README_INTEGRATION.md`
+- Status Summary: `backend/app/modules/neurorail/STATUS_PHASE1.md`
 
 ### Fleet Management (`/api/fleet`) 🆕
 

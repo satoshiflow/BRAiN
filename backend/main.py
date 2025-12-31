@@ -33,6 +33,25 @@ from app.core.redis_client import get_redis
 # Mission worker (from old backend/main.py)
 from backend.modules.missions.worker import start_mission_worker, stop_mission_worker
 
+# Event Stream (ADR-001: REQUIRED core infrastructure)
+try:
+    from backend.mission_control_core.core.event_stream import EventStream
+except ImportError as e:
+    # Check if degraded mode is explicitly allowed (Dev/CI only)
+    if os.getenv("BRAIN_EVENTSTREAM_MODE", "required").lower() == "degraded":
+        EventStream = None  # type: ignore
+        import warnings
+        warnings.warn(
+            "DEGRADED MODE: EventStream unavailable. This violates ADR-001 in production.",
+            RuntimeWarning
+        )
+    else:
+        # FATAL: EventStream is required per ADR-001
+        raise RuntimeError(
+            f"EventStream is required core infrastructure (ADR-001). "
+            f"mission_control_core must be available. ImportError: {e}"
+        ) from e
+
 # Legacy supervisor router (from old backend/main.py)
 from backend.modules.supervisor.router import router as supervisor_router
 
@@ -44,10 +63,23 @@ from app.modules.credits.router import router as credits_router
 from app.modules.policy.router import router as policy_router
 from app.modules.threats.router import router as threats_router
 from app.modules.supervisor.router import router as app_supervisor_router
-from app.modules.missions.router import router as app_missions_router
+# DISABLED: from app.modules.missions.router import router as app_missions_router  # Sprint 2: Using LEGACY instead
 from app.modules.foundation.router import router as foundation_router
 from app.modules.sovereign_mode.router import router as sovereign_mode_router
 from app.modules.dmz_control.router import router as dmz_control_router
+from app.modules.course_factory.router import router as course_factory_router
+from app.modules.course_factory.monetization_router import router as monetization_router
+from app.modules.course_distribution.distribution_router import router as distribution_router
+from app.modules.governance.governance_router import router as governance_router
+from app.modules.paycore.router import router as paycore_router  # NEW: PayCore payment module
+
+# NeuroRail routers (EGR v1.0 - Phase 1: Observe-only)
+from app.modules.neurorail.identity.router import router as neurorail_identity_router
+from app.modules.neurorail.lifecycle.router import router as neurorail_lifecycle_router
+from app.modules.neurorail.audit.router import router as neurorail_audit_router
+from app.modules.neurorail.telemetry.router import router as neurorail_telemetry_router
+from app.modules.neurorail.execution.router import router as neurorail_execution_router
+from app.modules.governor.router import router as governor_router
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -72,17 +104,55 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await redis.ping()
     logger.info("✅ Redis connection established")
 
-    # Start mission worker (if enabled)
+    # Start Event Stream (ADR-001: required by default)
+    event_stream = None
+    eventstream_mode = os.getenv("BRAIN_EVENTSTREAM_MODE", "required").lower()
+
+    if eventstream_mode == "required":
+        # REQUIRED MODE: EventStream MUST start
+        if EventStream is None:
+            raise RuntimeError(
+                "EventStream is None in required mode. This should not happen. "
+                "Check import logic."
+            )
+
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+        event_stream = EventStream(redis_url)
+        await event_stream.initialize()
+        await event_stream.start()
+        logger.info("✅ Event Stream started (required mode)")
+        app.state.event_stream = event_stream
+
+    elif eventstream_mode == "degraded":
+        # DEGRADED MODE: EventStream disabled, explicit log
+        logger.warning(
+            "⚠️ DEGRADED MODE: EventStream disabled. "
+            "This violates ADR-001 and should ONLY be used in Dev/CI."
+        )
+        event_stream = None
+        app.state.event_stream = None
+
+    else:
+        raise ValueError(
+            f"Invalid BRAIN_EVENTSTREAM_MODE='{eventstream_mode}'. "
+            f"Must be 'required' (default) or 'degraded' (Dev/CI only)."
+        )
+
+    # Start mission worker (if enabled) with EventStream integration (Sprint 2)
     mission_worker_task = None
     if os.getenv("ENABLE_MISSION_WORKER", "true").lower() == "true":
-        mission_worker_task = await start_mission_worker()
-        logger.info("✅ Mission worker started")
+        mission_worker_task = await start_mission_worker(event_stream=event_stream)
+        logger.info("✅ Mission worker started (EventStream: %s)", "enabled" if event_stream else "disabled")
 
     logger.info("✅ All systems operational")
 
     yield
 
     # Shutdown
+    if event_stream:
+        await event_stream.stop()
+        logger.info("🛑 Event Stream stopped")
+
     if mission_worker_task:
         await stop_mission_worker()
         logger.info("🛑 Mission worker stopped")
@@ -170,6 +240,11 @@ def create_app() -> FastAPI:
     app.include_router(foundation_router, tags=["foundation"])  # NEW: Foundation module
     app.include_router(sovereign_mode_router, tags=["sovereign-mode"])  # NEW: Sovereign Mode
     app.include_router(dmz_control_router, tags=["dmz-control"])  # NEW: DMZ Control
+    app.include_router(course_factory_router, tags=["course-factory"])  # NEW: CourseFactory (Sprint 12)
+    app.include_router(monetization_router, tags=["course-monetization"])  # NEW: CourseFactory Monetization (Sprint 14)
+    app.include_router(distribution_router, tags=["course-distribution"])  # NEW: Course Distribution (Sprint 15)
+    app.include_router(governance_router, tags=["governance"])  # NEW: Governance & HITL Approvals (Sprint 16)
+    app.include_router(paycore_router, tags=["paycore"])  # NEW: PayCore payment module
     app.include_router(dna_router, tags=["dna"])
     app.include_router(karma_router, tags=["karma"])
     app.include_router(immune_router, tags=["immune"])
@@ -177,7 +252,20 @@ def create_app() -> FastAPI:
     app.include_router(policy_router, tags=["policy"])
     app.include_router(threats_router, tags=["threats"])
     app.include_router(app_supervisor_router, tags=["supervisor"])
-    app.include_router(app_missions_router, tags=["missions"])
+
+    # NeuroRail routers (EGR v1.0 - Phase 1: Observe-only)
+    app.include_router(neurorail_identity_router, tags=["neurorail-identity"])
+    app.include_router(neurorail_lifecycle_router, tags=["neurorail-lifecycle"])
+    app.include_router(neurorail_audit_router, tags=["neurorail-audit"])
+    app.include_router(neurorail_telemetry_router, tags=["neurorail-telemetry"])
+    app.include_router(neurorail_execution_router, tags=["neurorail-execution"])
+    app.include_router(governor_router, tags=["governor"])
+
+    # DISABLED: app.include_router(app_missions_router, tags=["missions"])
+    # Reason: Route collision with LEGACY missions implementation
+    # Decision: Sprint 2 - Migrate LEGACY instead (see SPRINT2_MISSIONS_ARCHITECTURE_DECISION.md)
+    # NEW missions router creates orphaned missions (no worker integration)
+    # LEGACY missions router is functional (queue + worker + partial EventStream)
 
     # 3. Auto-discover routes from backend/api/routes/*
     _include_legacy_routers(app)

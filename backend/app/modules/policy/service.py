@@ -7,6 +7,15 @@ Provides rule-based policy engine with:
 - Integration with Foundation layer (double-check safety)
 - Permission management
 - Audit trail
+
+Sprint 3 EventStream Integration:
+- policy.evaluated: Every policy evaluation
+- policy.denied: When action is denied
+- policy.warning_triggered: When WARN effect applied
+- policy.audit_required: When AUDIT effect applied
+- policy.created: When policy created
+- policy.updated: When policy modified
+- policy.deleted: When policy removed
 """
 
 import re
@@ -31,6 +40,19 @@ from .schemas import (
     Permission,
 )
 
+# EventStream integration (Sprint 3)
+try:
+    from backend.mission_control_core.core import EventStream, Event, EventType
+except ImportError:
+    EventStream = None
+    Event = None
+    EventType = None
+    import warnings
+    warnings.warn(
+        "[PolicyEngine] EventStream not available (mission_control_core not installed)",
+        RuntimeWarning
+    )
+
 # Optional: Integrate with Foundation for safety double-check
 try:
     from app.modules.foundation.service import get_foundation_service
@@ -53,8 +75,11 @@ class PolicyEngine:
     Evaluates actions against policies and permissions.
     """
 
-    def __init__(self):
-        """Initialize Policy Engine"""
+    def __init__(self, event_stream: Optional["EventStream"] = None):
+        """Initialize Policy Engine with optional EventStream integration"""
+        # EventStream integration (Sprint 3)
+        self.event_stream = event_stream
+
         # In-memory storage (TODO: migrate to database)
         self.policies: Dict[str, Policy] = {}
         self.permissions: Dict[str, Permission] = {}
@@ -70,7 +95,10 @@ class PolicyEngine:
         # Load default policies
         self._load_default_policies()
 
-        logger.info(f"🔐 Policy Engine initialized (v{MODULE_VERSION})")
+        logger.info(
+            f"🔐 Policy Engine initialized (v{MODULE_VERSION}, EventStream: %s)",
+            "enabled" if event_stream else "disabled"
+        )
 
     def _load_default_policies(self):
         """Load default policies for common scenarios"""
@@ -159,6 +187,117 @@ class PolicyEngine:
 
         logger.info(f"✅ Loaded {len(self.policies)} default policies")
 
+    async def _emit_event_safe(
+        self,
+        event_type: str,
+        policy: Optional[Policy] = None,
+        rule: Optional[PolicyRule] = None,
+        context: Optional[PolicyEvaluationContext] = None,
+        result: Optional[PolicyEvaluationResult] = None,
+        changes: Optional[Dict[str, Any]] = None,
+        warnings: Optional[List[str]] = None,
+        evaluation_time_ms: Optional[float] = None,
+    ) -> None:
+        """
+        Emit policy event with error handling (non-blocking).
+
+        Charter v1.0 Compliance:
+        - Event publishing MUST NOT block business logic
+        - Failures are logged but NOT raised
+
+        Args:
+            event_type: Event type (e.g., "policy.evaluated")
+            policy: Policy object (optional)
+            rule: PolicyRule object (optional)
+            context: PolicyEvaluationContext (optional)
+            result: PolicyEvaluationResult (optional)
+            changes: Dict of changes for update events (optional)
+            warnings: List of warnings (optional)
+            evaluation_time_ms: Evaluation duration (optional)
+        """
+        if self.event_stream is None or Event is None:
+            logger.debug("[PolicyEngine] EventStream not available, skipping event")
+            return
+
+        try:
+            # Build payload based on event type
+            payload = {}
+
+            # Add context fields (agent, action, resource)
+            if context:
+                payload["agent_id"] = context.agent_id
+                if context.agent_role:
+                    payload["agent_role"] = context.agent_role
+                payload["action"] = context.action
+                if context.resource:
+                    payload["resource"] = context.resource
+
+            # Add policy info
+            if policy:
+                payload["policy_id"] = policy.policy_id
+                payload["policy_name"] = policy.name
+
+            # Add rule info
+            if rule:
+                payload["rule_id"] = rule.rule_id
+                payload["rule_name"] = rule.name
+
+            # Add result info
+            if result:
+                payload["result"] = {
+                    "allowed": result.allowed,
+                    "effect": result.effect.value,
+                    "reason": result.reason,
+                }
+                if result.matched_policy:
+                    payload["matched_policy"] = result.matched_policy
+                if result.matched_rule:
+                    payload["matched_rule"] = result.matched_rule
+                if result.warnings:
+                    payload["warnings"] = result.warnings
+                if result.requires_audit:
+                    payload["requires_audit"] = result.requires_audit
+
+            # Add changes (for update events)
+            if changes:
+                payload["changes"] = changes
+
+            # Add warnings (for warning events)
+            if warnings:
+                payload["warnings"] = warnings
+
+            # Add evaluation time (for performance tracking)
+            if evaluation_time_ms is not None:
+                payload["evaluation_time_ms"] = evaluation_time_ms
+
+            # Add timestamp
+            payload[f"{event_type.split('.')[1]}_at"] = time.time()
+
+            # Create and publish event
+            event = Event(
+                type=event_type,
+                source="policy_engine",
+                target=None,
+                payload=payload,
+            )
+
+            await self.event_stream.publish(event)
+
+            logger.debug(
+                "[PolicyEngine] Event published: %s (policy=%s)",
+                event_type,
+                policy.policy_id if policy else "none",
+            )
+
+        except Exception as e:
+            logger.error(
+                "[PolicyEngine] Event publishing failed: %s (event_type=%s)",
+                e,
+                event_type,
+                exc_info=True,
+            )
+            # DO NOT raise - business logic must continue
+
     async def evaluate(
         self, context: PolicyEvaluationContext
     ) -> PolicyEvaluationResult:
@@ -172,6 +311,9 @@ class PolicyEngine:
             PolicyEvaluationResult with decision and reason
         """
         self.total_evaluations += 1
+
+        # Track evaluation time (Sprint 3: for event payload)
+        start_time = time.time()
 
         logger.debug(
             f"🔍 Evaluating: agent={context.agent_id}, action={context.action}"
@@ -224,6 +366,47 @@ class PolicyEngine:
                         )
                         self.total_denies += 1
 
+                # EVENT: policy.evaluated (every evaluation)
+                evaluation_time_ms = (time.time() - start_time) * 1000
+                await self._emit_event_safe(
+                    event_type="policy.evaluated",
+                    policy=policy,
+                    rule=rule,
+                    context=context,
+                    result=result,
+                    evaluation_time_ms=evaluation_time_ms,
+                )
+
+                # EVENT: policy.denied (if action was denied)
+                if not result.allowed:
+                    await self._emit_event_safe(
+                        event_type="policy.denied",
+                        policy=policy,
+                        rule=rule,
+                        context=context,
+                        result=result,
+                    )
+
+                # EVENT: policy.warning_triggered (if WARN effect)
+                if result.effect == PolicyEffect.WARN:
+                    await self._emit_event_safe(
+                        event_type="policy.warning_triggered",
+                        policy=policy,
+                        rule=rule,
+                        context=context,
+                        warnings=result.warnings,
+                    )
+
+                # EVENT: policy.audit_required (if AUDIT effect)
+                if result.effect == PolicyEffect.AUDIT:
+                    await self._emit_event_safe(
+                        event_type="policy.audit_required",
+                        policy=policy,
+                        rule=rule,
+                        context=context,
+                        result=result,
+                    )
+
                 return result
 
         # Step 4: No rules matched - use default effect
@@ -242,6 +425,28 @@ class PolicyEngine:
         )
 
         self._update_metrics(result)
+
+        # EVENT: policy.evaluated (default effect path)
+        evaluation_time_ms = (time.time() - start_time) * 1000
+        await self._emit_event_safe(
+            event_type="policy.evaluated",
+            policy=None,  # No specific policy matched
+            rule=None,  # No specific rule matched
+            context=context,
+            result=result,
+            evaluation_time_ms=evaluation_time_ms,
+        )
+
+        # EVENT: policy.denied (if default effect is DENY)
+        if not result.allowed:
+            await self._emit_event_safe(
+                event_type="policy.denied",
+                policy=None,
+                rule=None,
+                context=context,
+                result=result,
+            )
+
         return result
 
     async def _rule_matches(
@@ -467,6 +672,12 @@ class PolicyEngine:
         self.policies[policy_id] = policy
         logger.info(f"✅ Created policy: {policy_id}")
 
+        # EVENT: policy.created
+        await self._emit_event_safe(
+            event_type="policy.created",
+            policy=policy,
+        )
+
         return policy
 
     async def get_policy(self, policy_id: str) -> Optional[Policy]:
@@ -485,26 +696,50 @@ class PolicyEngine:
         if not policy:
             return None
 
+        # Track changes for event payload
+        changes = {}
+
         # Update fields
         if request.name is not None:
+            changes["name"] = {"old": policy.name, "new": request.name}
             policy.name = request.name
         if request.description is not None:
+            changes["description"] = {"old": policy.description, "new": request.description}
             policy.description = request.description
         if request.rules is not None:
+            changes["rules"] = {"old_count": len(policy.rules), "new_count": len(request.rules)}
             policy.rules = request.rules
         if request.default_effect is not None:
+            changes["default_effect"] = {"old": policy.default_effect.value, "new": request.default_effect.value}
             policy.default_effect = request.default_effect
         if request.enabled is not None:
+            changes["enabled"] = {"old": policy.enabled, "new": request.enabled}
             policy.enabled = request.enabled
 
         policy.updated_at = datetime.utcnow()
 
         logger.info(f"✅ Updated policy: {policy_id}")
+
+        # EVENT: policy.updated
+        await self._emit_event_safe(
+            event_type="policy.updated",
+            policy=policy,
+            changes=changes,
+        )
+
         return policy
 
     async def delete_policy(self, policy_id: str) -> bool:
         """Delete a policy"""
         if policy_id in self.policies:
+            policy = self.policies[policy_id]
+
+            # EVENT: policy.deleted (before deletion)
+            await self._emit_event_safe(
+                event_type="policy.deleted",
+                policy=policy,
+            )
+
             del self.policies[policy_id]
             logger.info(f"✅ Deleted policy: {policy_id}")
             return True
@@ -537,11 +772,20 @@ class PolicyEngine:
 _policy_engine: Optional[PolicyEngine] = None
 
 
-def get_policy_engine() -> PolicyEngine:
-    """Get the singleton Policy Engine instance"""
+def get_policy_engine(event_stream: Optional["EventStream"] = None) -> PolicyEngine:
+    """
+    Get the singleton Policy Engine instance.
+
+    Args:
+        event_stream: Optional EventStream for event publishing (Sprint 3)
+                      Only used on first initialization
+
+    Returns:
+        PolicyEngine singleton instance
+    """
     global _policy_engine
     if _policy_engine is None:
-        _policy_engine = PolicyEngine()
+        _policy_engine = PolicyEngine(event_stream=event_stream)
     return _policy_engine
 
 

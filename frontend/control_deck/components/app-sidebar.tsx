@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import {
+  Activity,
   Bot,
   Command,
   LayoutDashboard,
@@ -77,6 +78,22 @@ const data = {
         {
           title: "History",
           url: "/missions/history",
+        },
+      ],
+    },
+    {
+      title: "NeuroRail",
+      url: "/neurorail",
+      icon: Activity,
+      isActive: false,
+      items: [
+        {
+          title: "Trace Explorer",
+          url: "/neurorail/trace-explorer",
+        },
+        {
+          title: "Health Matrix",
+          url: "/neurorail/health-matrix",
         },
       ],
     },

@@ -27,7 +27,10 @@ pydantic==2.6.1
 pydantic-settings==2.1.0
 
 # --- HTTP Client ---
-httpx==0.26.0                   # Async HTTP client (for LLM API calls)
+httpx>=0.24,<0.26               # Async HTTP client (for LLM API calls, compatible with supabase)
+
+# --- Payment Processing ---
+stripe==8.0.0                   # Stripe payment gateway SDK (PayCore module)
 
 # --- Environment ---
 python-dotenv==1.0.1
@@ -36,8 +39,10 @@ python-dotenv==1.0.1
 loguru==0.7.2
 python-json-logger==2.0.7
 
-# --- Cryptography ---
+# --- Cryptography & Authentication ---
 cryptography==42.0.2                # Ed25519 signatures for bundle signing (G1)
+python-jose[cryptography]==3.3.0    # JWT token encoding/decoding
+passlib[bcrypt]==1.7.4              # Password hashing (bcrypt)
 
 # --- Background Jobs / Scheduling ---
 APScheduler==3.10.4             # Background task scheduling
@@ -49,14 +54,15 @@ rich==13.7.0                    # Beautiful terminal output
 # --- Optional: Supabase Integration ---
 supabase==2.3.4                 # Supabase client (for agent repository)
 
-# --- Optional: Vector DB ---
+# --- Optional: Vector DB & Knowledge Graphs ---
 qdrant-client==1.7.3            # Qdrant vector database client
+cognee==0.5.1                   # Knowledge graph + vector memory platform (PoC Phase 1)
 
 # --- Development / Testing ---
 pytest==8.0.1
 pytest-asyncio==0.23.5
 pytest-cov==4.1.0
-httpx-mock>=0.12.0,<1.0.0       # Mock HTTP requests in tests (compatible with httpx 0.26.0)
+pytest-httpx==0.30.0            # Mock HTTP requests in tests (provides httpx_mock fixture)
 
 # --- Code Quality (Development) ---
 black==24.2.0                   # Code formatter
@@ -78,7 +84,7 @@ types-redis==4.6.0.20240218
 # --- Advanced Features ---
 # celery[redis]==5.3.6          # Distributed task queue
 # flower==2.0.1                 # Celery monitoring
-# prometheus-client==0.20.0     # Metrics export
+prometheus-client==0.20.0       # Metrics export (ENABLED for Grafana)
 
 # ============================================================================
 # Notes:

@@ -19,7 +19,7 @@ import logging
 
 from .task_queue import TaskQueue, Task, TaskStatus, TaskPriority
 from .orchestrator import Orchestrator, AgentCapability
-from .event_stream import EventStream, EventType, emit_task_event
+from .event_stream import EventStream, Event, EventType, emit_task_event
 
 logger = logging.getLogger(__name__)
 
@@ -187,21 +187,27 @@ class MissionController:
             
             self.missions[mission_id] = mission
             
-            # Emit mission created event
-            await self.event_stream.publish_event({
-                'id': str(uuid.uuid4()),
-                'type': EventType.MISSION_CREATED,
-                'source': 'mission_controller',
-                'target': None,
-                'payload': {
+            # Emit mission created event (Charter v1.0 compliant)
+            event = Event(
+                id=str(uuid.uuid4()),
+                type=EventType.MISSION_CREATED,
+                source='mission_controller',
+                target=None,
+                payload={
                     'mission_id': mission_id,
                     'name': name,
                     'priority': priority.value,
                     'objectives_count': len(objectives)
                 },
-                'timestamp': datetime.utcnow(),
-                'mission_id': mission_id
-            })
+                timestamp=datetime.utcnow(),
+                mission_id=mission_id,
+                meta={
+                    'schema_version': 1,
+                    'producer': 'mission_controller',
+                    'source_module': 'mission_control_core'
+                }
+            )
+            await self.event_stream.publish_event(event)
             
             logger.info(f"Mission '{name}' created with {len(objectives)} objectives")
             return mission_id
@@ -287,20 +293,26 @@ class MissionController:
             mission.started_at = datetime.utcnow()
             mission.updated_at = datetime.utcnow()
             
-            # Emit mission started event
-            await self.event_stream.publish_event({
-                'id': str(uuid.uuid4()),
-                'type': EventType.MISSION_STARTED,
-                'source': 'mission_controller',
-                'target': None,
-                'payload': {
+            # Emit mission started event (Charter v1.0 compliant)
+            event = Event(
+                id=str(uuid.uuid4()),
+                type=EventType.MISSION_STARTED,
+                source='mission_controller',
+                target=None,
+                payload={
                     'mission_id': mission_id,
                     'name': mission.name,
                     'total_tasks': mission.total_tasks
                 },
-                'timestamp': datetime.utcnow(),
-                'mission_id': mission_id
-            })
+                timestamp=datetime.utcnow(),
+                mission_id=mission_id,
+                meta={
+                    'schema_version': 1,
+                    'producer': 'mission_controller',
+                    'source_module': 'mission_control_core'
+                }
+            )
+            await self.event_stream.publish_event(event)
             
             logger.info(f"Mission {mission_id} started")
             return True
@@ -347,19 +359,25 @@ class MissionController:
                         task.id, TaskStatus.CANCELLED
                     )
             
-            # Emit mission cancelled event
-            await self.event_stream.publish_event({
-                'id': str(uuid.uuid4()),
-                'type': EventType.MISSION_CANCELLED,
-                'source': 'mission_controller',
-                'target': None,
-                'payload': {
+            # Emit mission cancelled event (Charter v1.0 compliant)
+            event = Event(
+                id=str(uuid.uuid4()),
+                type=EventType.MISSION_CANCELLED,
+                source='mission_controller',
+                target=None,
+                payload={
                     'mission_id': mission_id,
                     'name': mission.name
                 },
-                'timestamp': datetime.utcnow(),
-                'mission_id': mission_id
-            })
+                timestamp=datetime.utcnow(),
+                mission_id=mission_id,
+                meta={
+                    'schema_version': 1,
+                    'producer': 'mission_controller',
+                    'source_module': 'mission_control_core'
+                }
+            )
+            await self.event_stream.publish_event(event)
             
             logger.info(f"Mission {mission_id} cancelled")
             return True
@@ -552,12 +570,13 @@ class MissionController:
                 }.get(mission.status)
                 
                 if event_type:
-                    await self.event_stream.publish_event({
-                        'id': str(uuid.uuid4()),
-                        'type': event_type,
-                        'source': 'mission_controller',
-                        'target': None,
-                        'payload': {
+                    # Emit mission completion event (Charter v1.0 compliant)
+                    event = Event(
+                        id=str(uuid.uuid4()),
+                        type=event_type,
+                        source='mission_controller',
+                        target=None,
+                        payload={
                             'mission_id': mission_id,
                             'name': mission.name,
                             'final_status': mission.status.value,
@@ -565,9 +584,15 @@ class MissionController:
                             'failed_tasks': failed_tasks,
                             'total_tasks': mission.total_tasks
                         },
-                        'timestamp': datetime.utcnow(),
-                        'mission_id': mission_id
-                    })
+                        timestamp=datetime.utcnow(),
+                        mission_id=mission_id,
+                        meta={
+                            'schema_version': 1,
+                            'producer': 'mission_controller',
+                            'source_module': 'mission_control_core'
+                        }
+                    )
+                    await self.event_stream.publish_event(event)
                 
                 logger.info(f"Mission {mission_id} status changed: {old_status} -> {mission.status}")
                 

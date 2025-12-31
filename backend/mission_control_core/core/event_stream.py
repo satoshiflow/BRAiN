@@ -13,7 +13,7 @@ import asyncio
 import json
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Set
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from enum import Enum
 import logging
 import redis.asyncio as redis
@@ -60,10 +60,55 @@ class EventType(str, Enum):
     AGENT_MESSAGE = "agent.message"
     BROADCAST = "broadcast"
 
+    # Course Factory Events (Sprint 1)
+    COURSE_GENERATION_REQUESTED = "course.generation.requested"
+    COURSE_OUTLINE_CREATED = "course.outline.created"
+    COURSE_LESSON_GENERATED = "course.lesson.generated"
+    COURSE_QUIZ_CREATED = "course.quiz.created"
+    COURSE_LANDING_PAGE_CREATED = "course.landing_page.created"
+    COURSE_GENERATION_COMPLETED = "course.generation.completed"
+    COURSE_GENERATION_FAILED = "course.generation.failed"
+    COURSE_WORKFLOW_TRANSITIONED = "course.workflow.transitioned"
+    COURSE_DEPLOYED_STAGING = "course.deployed.staging"
+
+    # Course Distribution Events (Sprint 1)
+    DISTRIBUTION_CREATED = "distribution.created"
+    DISTRIBUTION_UPDATED = "distribution.updated"
+    DISTRIBUTION_DELETED = "distribution.deleted"
+    DISTRIBUTION_PUBLISHED = "distribution.published"
+    DISTRIBUTION_UNPUBLISHED = "distribution.unpublished"
+    DISTRIBUTION_VIEWED = "distribution.viewed"
+    DISTRIBUTION_ENROLLMENT_CLICKED = "distribution.enrollment_clicked"
+    DISTRIBUTION_MICRO_NICHE_CREATED = "distribution.micro_niche_created"
+    DISTRIBUTION_VERSION_BUMPED = "distribution.version_bumped"
+
+    # IR Governance Events (Sprint 1)
+    IR_APPROVAL_CREATED = "ir.approval_created"
+    IR_APPROVAL_CONSUMED = "ir.approval_consumed"
+    IR_APPROVAL_EXPIRED = "ir.approval_expired"
+    IR_APPROVAL_INVALID = "ir.approval_invalid"
+    IR_VALIDATED_PASS = "ir.validated_pass"
+    IR_VALIDATED_ESCALATE = "ir.validated_escalate"
+    IR_VALIDATED_REJECT = "ir.validated_reject"
+    IR_DAG_DIFF_OK = "ir.dag_diff_ok"
+    IR_DAG_DIFF_FAILED = "ir.dag_diff_failed"
+
 
 @dataclass
 class Event:
-    """Event data structure"""
+    """
+    Event data structure with multi-tenancy, audit support, and metadata (Charter v1.0)
+
+    Charter Compliance (HARD GATE):
+    - id: UUID v4 (secon dary dedup key)
+    - type: EventType enum
+    - timestamp: UTC ISO-8601
+    - tenant_id: Tenant isolation
+    - actor_id: User attribution
+    - correlation_id: Request tracing
+    - payload: Event-specific data
+    - meta: Schema version, producer, source_module (NEW in v1.3)
+    """
     id: str
     type: EventType
     source: str              # Agent ID or system component
@@ -73,20 +118,41 @@ class Event:
     mission_id: Optional[str] = None
     task_id: Optional[str] = None
     correlation_id: Optional[str] = None
-    
+
+    # Multi-tenancy & Audit fields (added in consolidation v1.1)
+    tenant_id: Optional[str] = None      # Tenant/organization ID for multi-tenancy
+    actor_id: Optional[str] = None       # User/actor who triggered the event
+    severity: Optional[str] = None       # Event severity: INFO, WARNING, ERROR, CRITICAL
+
+    # Metadata fields (added in Charter v1.0 compliance - v1.3)
+    meta: Dict[str, Any] = field(default_factory=lambda: {
+        "schema_version": 1,
+        "producer": "event_stream",
+        "source_module": "core"
+    })
+
     def to_dict(self) -> Dict[str, Any]:
         """Serialize event for Redis"""
         data = asdict(self)
         data['timestamp'] = self.timestamp.isoformat()
         data['type'] = self.type.value
         return data
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Event':
-        """Deserialize event from Redis"""
+        """Deserialize event from Redis (backward compatible)"""
         data = data.copy()
         data['timestamp'] = datetime.fromisoformat(data['timestamp'])
         data['type'] = EventType(data['type'])
+
+        # Backward compatibility: add default meta if missing (pre-v1.3 events)
+        if 'meta' not in data:
+            data['meta'] = {
+                "schema_version": 1,
+                "producer": "legacy",
+                "source_module": "unknown"
+            }
+
         return cls(**data)
 
 
@@ -110,7 +176,7 @@ class EventStream:
         # Subscriptions: agent_id -> set of event types
         self._subscriptions: Dict[str, Set[EventType]] = {}
         
-        # Redis key patterns
+        # Redis key patterns (unified naming: brain:events:{type})
         self.keys = {
             'event_stream': 'brain:events:stream',       # Main event stream (Redis Stream)
             'event_log': 'brain:events:log:{}',          # Event logs by date
@@ -118,6 +184,8 @@ class EventStream:
             'broadcast': 'brain:events:broadcast',       # Broadcast channel
             'system': 'brain:events:system',             # System events channel
             'ethics': 'brain:events:ethics',             # Ethics events channel
+            'missions': 'brain:events:missions',         # Mission events channel
+            'tasks': 'brain:events:tasks',               # Task events channel
         }
 
     async def initialize(self) -> None:
@@ -131,12 +199,14 @@ class EventStream:
             
             # Initialize pubsub
             self.pubsub = self.redis.pubsub()
-            
-            # Subscribe to system channels
+
+            # Subscribe to all topic channels
             await self.pubsub.subscribe(
                 self.keys['broadcast'],
-                self.keys['system'], 
-                self.keys['ethics']
+                self.keys['system'],
+                self.keys['ethics'],
+                self.keys['missions'],
+                self.keys['tasks']
             )
             
             logger.info("Event Stream initialized successfully")
@@ -296,10 +366,24 @@ class EventStream:
         self._event_handlers[event_type].append(handler)
         logger.debug(f"Handler registered for event type {event_type.value}")
 
-    async def get_event_history(self, agent_id: Optional[str] = None, 
+    async def get_event_history(self, agent_id: Optional[str] = None,
                                event_types: Optional[Set[EventType]] = None,
+                               tenant_id: Optional[str] = None,
+                               actor_id: Optional[str] = None,
                                limit: int = 100) -> List[Event]:
-        """Get recent event history with optional filtering"""
+        """
+        Get recent event history with optional filtering.
+
+        Args:
+            agent_id: Filter by source or target agent ID
+            event_types: Filter by event types
+            tenant_id: Filter by tenant ID (multi-tenancy support)
+            actor_id: Filter by actor ID (user attribution)
+            limit: Maximum number of events to return
+
+        Returns:
+            List of Event objects matching filters
+        """
         try:
             # Get events from main stream
             events_data = await self.redis.xrevrange(
@@ -308,19 +392,25 @@ class EventStream:
                 min='-',
                 count=limit
             )
-            
+
             events = []
             for event_id, fields in events_data:
                 try:
                     event = Event.from_dict(fields)
-                    
+
                     # Apply filters
                     if agent_id and event.source != agent_id and event.target != agent_id:
                         continue
-                        
+
                     if event_types and event.type not in event_types:
                         continue
-                        
+
+                    if tenant_id and event.tenant_id != tenant_id:
+                        continue
+
+                    if actor_id and event.actor_id != actor_id:
+                        continue
+
                     events.append(event)
                     
                 except Exception as e:
@@ -389,26 +479,30 @@ class EventStream:
             logger.error(f"Event listener error: {e}")
 
     async def _route_event(self, event: Event) -> None:
-        """Route event to appropriate channels"""
+        """Route event to appropriate channels based on event type"""
         try:
             event_json = json.dumps(event.to_dict())
-            
+
             # Route to specific agent if targeted
             if event.target:
                 inbox_channel = self.keys['agent_inbox'].format(event.target)
                 await self.redis.publish(inbox_channel, event_json)
             else:
-                # Route to appropriate broadcast channel
+                # Route to appropriate topic channel based on event type
                 if event.type in [EventType.BROADCAST]:
                     await self.redis.publish(self.keys['broadcast'], event_json)
+                elif event.type.value.startswith('mission.'):
+                    await self.redis.publish(self.keys['missions'], event_json)
+                elif event.type.value.startswith('task.'):
+                    await self.redis.publish(self.keys['tasks'], event_json)
                 elif event.type.value.startswith('ethics.'):
                     await self.redis.publish(self.keys['ethics'], event_json)
                 elif event.type.value.startswith('system.'):
                     await self.redis.publish(self.keys['system'], event_json)
                 else:
-                    # General broadcast for other events
+                    # General broadcast for other events (agent.*, etc.)
                     await self.redis.publish(self.keys['broadcast'], event_json)
-                    
+
         except Exception as e:
             logger.error(f"Failed to route event {event.id}: {e}")
 
@@ -486,8 +580,337 @@ async def emit_agent_event(event_stream: EventStream, agent_id: str,
     return event_id
 
 
+# Charter v1.0: Idempotent Event Consumer Infrastructure
+# ========================================================
+
+class EventConsumer:
+    """
+    Charter-compliant event consumer with idempotent processing.
+
+    Primary dedup key: (subscriber_name, stream_message_id)
+    event.id is SECONDARY (audit/trace only)
+
+    Usage:
+        consumer = EventConsumer(
+            subscriber_name="course_access_handler",
+            event_stream=event_stream,
+            db_session_factory=get_db_session
+        )
+        await consumer.start()
+    """
+
+    def __init__(
+        self,
+        subscriber_name: str,
+        event_stream: EventStream,
+        db_session_factory: Callable,
+        stream_name: str = "brain:events:stream",
+        consumer_group: Optional[str] = None,
+        batch_size: int = 10,
+        block_ms: int = 5000
+    ):
+        self.subscriber_name = subscriber_name
+        self.event_stream = event_stream
+        self.db_session_factory = db_session_factory
+        self.stream_name = stream_name
+        self.consumer_group = consumer_group or f"group_{subscriber_name}"
+        self.batch_size = batch_size
+        self.block_ms = block_ms
+
+        self._running = False
+        self._consumer_task: Optional[asyncio.Task] = None
+        self._handlers: Dict[EventType, Callable] = {}
+
+        logger.info(
+            f"EventConsumer '{subscriber_name}' initialized "
+            f"(group={self.consumer_group}, stream={stream_name})"
+        )
+
+    def register_handler(self, event_type: EventType, handler: Callable) -> None:
+        """Register handler for specific event type"""
+        self._handlers[event_type] = handler
+        logger.debug(f"Handler registered: {event_type.value} → {handler.__name__}")
+
+    async def start(self) -> None:
+        """Start consumer loop"""
+        if self._running:
+            logger.warning(f"Consumer '{self.subscriber_name}' already running")
+            return
+
+        # Ensure consumer group exists
+        try:
+            await self.event_stream.redis.xgroup_create(
+                self.stream_name,
+                self.consumer_group,
+                id='0',
+                mkstream=True
+            )
+            logger.info(f"Created consumer group '{self.consumer_group}'")
+        except Exception as e:
+            # Group might already exist
+            logger.debug(f"Consumer group exists or creation failed: {e}")
+
+        self._running = True
+        self._consumer_task = asyncio.create_task(self._consume_loop())
+        logger.info(f"EventConsumer '{self.subscriber_name}' started")
+
+    async def stop(self) -> None:
+        """Stop consumer loop gracefully"""
+        self._running = False
+        if self._consumer_task:
+            self._consumer_task.cancel()
+            try:
+                await self._consumer_task
+            except asyncio.CancelledError:
+                pass
+        logger.info(f"EventConsumer '{self.subscriber_name}' stopped")
+
+    async def _consume_loop(self) -> None:
+        """Main consumer loop (Charter-compliant)"""
+        logger.info(f"Consumer loop started: {self.subscriber_name}")
+
+        try:
+            while self._running:
+                try:
+                    # Read from stream (consumer group pattern)
+                    messages = await self.event_stream.redis.xreadgroup(
+                        groupname=self.consumer_group,
+                        consumername=self.subscriber_name,
+                        streams={self.stream_name: '>'},
+                        count=self.batch_size,
+                        block=self.block_ms
+                    )
+
+                    if not messages:
+                        continue  # Timeout, retry
+
+                    # Process each message
+                    for stream_name, message_list in messages:
+                        for stream_message_id, fields in message_list:
+                            await self._process_message(
+                                stream_message_id=stream_message_id,
+                                fields=fields
+                            )
+
+                except asyncio.CancelledError:
+                    break
+                except Exception as e:
+                    logger.error(f"Consumer loop error: {e}", exc_info=True)
+                    await asyncio.sleep(5)  # Backoff on error
+
+        except Exception as e:
+            logger.error(f"Fatal consumer error: {e}", exc_info=True)
+        finally:
+            logger.info(f"Consumer loop exited: {self.subscriber_name}")
+
+    async def _process_message(
+        self,
+        stream_message_id: str,
+        fields: Dict[str, Any]
+    ) -> None:
+        """
+        Process single message with idempotent dedup (Charter v1.0)
+
+        Args:
+            stream_message_id: Redis Stream Message ID (PRIMARY dedup key)
+            fields: Event data fields
+        """
+        try:
+            # Parse event
+            event = Event.from_dict(fields)
+
+            # CHARTER COMPLIANCE: Check dedup (stream_message_id PRIMARY)
+            db_session = self.db_session_factory()
+            try:
+                is_duplicate = await self._check_duplicate(
+                    db_session,
+                    stream_message_id,
+                    event.id  # SECONDARY, audit only
+                )
+
+                if is_duplicate:
+                    logger.debug(
+                        f"Skipping duplicate message: {stream_message_id} "
+                        f"(event_id={event.id})"
+                    )
+                    # ACK duplicate (idempotent: no effect)
+                    await self._ack_message(stream_message_id)
+                    return
+
+                # Find handler for this event type
+                handler = self._handlers.get(event.type)
+                if not handler:
+                    logger.warning(
+                        f"No handler for {event.type.value}, skipping "
+                        f"(stream_msg={stream_message_id})"
+                    )
+                    await self._ack_message(stream_message_id)
+                    return
+
+                # Execute handler
+                logger.debug(
+                    f"Processing {event.type.value}: {stream_message_id} "
+                    f"(event_id={event.id})"
+                )
+
+                if asyncio.iscoroutinefunction(handler):
+                    await handler(event)
+                else:
+                    handler(event)
+
+                # Mark as processed (DEDUP)
+                await self._mark_processed(
+                    db_session,
+                    stream_message_id,
+                    event
+                )
+
+                # ACK message
+                await self._ack_message(stream_message_id)
+
+                logger.debug(f"Successfully processed: {stream_message_id}")
+
+            finally:
+                await db_session.close()
+
+        except Exception as e:
+            # ERROR HANDLING (Charter compliance)
+            if self._is_permanent_error(e):
+                # Permanent error: ACK + Log (avoid infinite retry)
+                logger.error(
+                    f"PERMANENT ERROR processing {stream_message_id}: {e}",
+                    exc_info=True
+                )
+                await self._ack_message(stream_message_id)
+                # Optional: Send to DLQ (not implemented yet)
+            else:
+                # Transient error: NO ACK (will retry)
+                logger.warning(
+                    f"TRANSIENT ERROR processing {stream_message_id}: {e}. "
+                    f"Will retry."
+                )
+                # Do NOT ack, let retry happen
+
+    async def _check_duplicate(
+        self,
+        db_session,
+        stream_message_id: str,
+        event_id: str
+    ) -> bool:
+        """
+        Check if message already processed (Charter PRIMARY key)
+
+        Returns:
+            True if duplicate (already processed)
+        """
+        from sqlalchemy import text
+
+        query = text("""
+            SELECT 1 FROM processed_events
+            WHERE subscriber_name = :subscriber
+            AND stream_message_id = :stream_msg_id
+            LIMIT 1
+        """)
+
+        result = await db_session.execute(
+            query,
+            {
+                "subscriber": self.subscriber_name,
+                "stream_msg_id": stream_message_id
+            }
+        )
+
+        return result.scalar() is not None
+
+    async def _mark_processed(
+        self,
+        db_session,
+        stream_message_id: str,
+        event: Event
+    ) -> None:
+        """Mark message as processed (idempotency tracking)"""
+        from sqlalchemy import text
+
+        query = text("""
+            INSERT INTO processed_events (
+                subscriber_name,
+                stream_name,
+                stream_message_id,
+                event_id,
+                event_type,
+                tenant_id,
+                metadata
+            ) VALUES (
+                :subscriber,
+                :stream,
+                :stream_msg_id,
+                :event_id,
+                :event_type,
+                :tenant_id,
+                :metadata
+            )
+            ON CONFLICT (subscriber_name, stream_message_id) DO NOTHING
+        """)
+
+        await db_session.execute(
+            query,
+            {
+                "subscriber": self.subscriber_name,
+                "stream": self.stream_name,
+                "stream_msg_id": stream_message_id,
+                "event_id": event.id,
+                "event_type": event.type.value,
+                "tenant_id": event.tenant_id,
+                "metadata": json.dumps(event.meta)
+            }
+        )
+        await db_session.commit()
+
+    async def _ack_message(self, stream_message_id: str) -> None:
+        """Acknowledge message (remove from pending)"""
+        try:
+            await self.event_stream.redis.xack(
+                self.stream_name,
+                self.consumer_group,
+                stream_message_id
+            )
+        except Exception as e:
+            logger.warning(f"Failed to ACK {stream_message_id}: {e}")
+
+    def _is_permanent_error(self, error: Exception) -> bool:
+        """
+        Determine if error is permanent (ACK) or transient (retry)
+
+        Permanent: ValidationError, KeyError, TypeError, etc.
+        Transient: ConnectionError, TimeoutError, etc.
+        """
+        permanent_types = (
+            KeyError,
+            TypeError,
+            ValueError,
+            AttributeError,
+            # Add more as needed
+        )
+
+        transient_types = (
+            ConnectionError,
+            TimeoutError,
+            asyncio.TimeoutError,
+            # Add more as needed
+        )
+
+        if isinstance(error, permanent_types):
+            return True
+        if isinstance(error, transient_types):
+            return False
+
+        # Default: transient (safer, will retry)
+        return False
+
+
 # Export public interface
 __all__ = [
-    'EventStream', 'Event', 'EventType', 
+    'EventStream', 'Event', 'EventType',
+    'EventConsumer',  # NEW
     'emit_task_event', 'emit_agent_event'
 ]
