@@ -27,7 +27,7 @@ pydantic==2.6.1
 pydantic-settings==2.1.0
 
 # --- HTTP Client ---
-httpx==0.26.0                   # Async HTTP client (for LLM API calls)
+httpx>=0.24,<0.26               # Async HTTP client (for LLM API calls, compatible with supabase)
 
 # --- Payment Processing ---
 stripe==8.0.0                   # Stripe payment gateway SDK (PayCore module)
