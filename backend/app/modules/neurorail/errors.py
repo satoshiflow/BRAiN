@@ -12,6 +12,7 @@ Categories:
 - NR-E110-NR-E119: Manifest/Governance Errors (Phase 2)
 - NR-E120-NR-E129: Decision/Resolution Errors (Phase 2)
 - NR-E130-NR-E139: Shadowing/Activation Errors (Phase 2)
+- NR-E140-NR-E149: Reflex System Errors (Phase 2)
 - NR-E200-NR-E299: Governance Errors (reserved for Policy Engine)
 - NR-E300-NR-E399: System Errors
 """
@@ -120,6 +121,19 @@ class NeuroRailErrorCode(str, Enum):
 
     SHADOW_MODE_REQUIRED = "NR-E134"
     """Operation requires manifest to be in shadow mode."""
+
+    # Reflex System Errors (NR-E140-NR-E149) - Phase 2
+    REFLEX_CIRCUIT_OPEN = "NR-E140"
+    """Circuit breaker is open (failure threshold exceeded)."""
+
+    REFLEX_TRIGGER_ACTIVATED = "NR-E141"
+    """Reflex trigger activated (error rate/budget violation threshold)."""
+
+    REFLEX_ACTION_FAILED = "NR-E142"
+    """Reflex action execution failed."""
+
+    REFLEX_LIFECYCLE_INVALID = "NR-E143"
+    """Invalid lifecycle state transition requested."""
 
     # Governance Errors (NR-E200-NR-E299) - Ethical (handled by core, not NeuroRail)
     # Note: Ethical/policy violations are handled by Policy Engine, not NeuroRail
@@ -326,6 +340,36 @@ ERROR_METADATA: Dict[NeuroRailErrorCode, Dict[str, Any]] = {
         "retriable": False,
         "severity": "warning",
         "message": "Operation requires shadow mode",
+        "immune_alert": False,
+    },
+
+    # Reflex System Errors (Phase 2)
+    NeuroRailErrorCode.REFLEX_CIRCUIT_OPEN: {
+        "category": ErrorCategory.MECHANICAL,
+        "retriable": True,  # Can retry after recovery timeout
+        "severity": "warning",
+        "message": "Circuit breaker is open",
+        "immune_alert": True,  # Important for cascading failure prevention
+    },
+    NeuroRailErrorCode.REFLEX_TRIGGER_ACTIVATED: {
+        "category": ErrorCategory.MECHANICAL,
+        "retriable": False,  # Trigger indicates threshold exceeded
+        "severity": "warning",
+        "message": "Reflex trigger activated",
+        "immune_alert": True,
+    },
+    NeuroRailErrorCode.REFLEX_ACTION_FAILED: {
+        "category": ErrorCategory.SYSTEM,
+        "retriable": True,
+        "severity": "error",
+        "message": "Reflex action execution failed",
+        "immune_alert": True,
+    },
+    NeuroRailErrorCode.REFLEX_LIFECYCLE_INVALID: {
+        "category": ErrorCategory.SYSTEM,
+        "retriable": False,
+        "severity": "error",
+        "message": "Invalid lifecycle state transition",
         "immune_alert": False,
     },
 
@@ -597,6 +641,54 @@ class BudgetCostExceededError(NeuroRailError):
             NeuroRailErrorCode.BUDGET_COST_EXCEEDED,
             message=f"Cost budget exceeded: {consumed} > {limit} credits",
             details={"limit": limit, "consumed": consumed, **kwargs.get("details", {})},
+            cause=kwargs.get("cause"),
+        )
+
+
+class ReflexCircuitOpenError(NeuroRailError):
+    """Raised when circuit breaker is open."""
+
+    def __init__(self, circuit_id: str, **kwargs) -> None:
+        super().__init__(
+            NeuroRailErrorCode.REFLEX_CIRCUIT_OPEN,
+            message=f"Circuit {circuit_id} is OPEN (failure threshold exceeded)",
+            details={"circuit_id": circuit_id, **kwargs.get("details", {})},
+            cause=kwargs.get("cause"),
+        )
+
+
+class ReflexTriggerActivatedError(NeuroRailError):
+    """Raised when reflex trigger is activated."""
+
+    def __init__(self, trigger_type: str, reason: str, **kwargs) -> None:
+        super().__init__(
+            NeuroRailErrorCode.REFLEX_TRIGGER_ACTIVATED,
+            message=f"Reflex trigger activated: {trigger_type} - {reason}",
+            details={"trigger_type": trigger_type, "reason": reason, **kwargs.get("details", {})},
+            cause=kwargs.get("cause"),
+        )
+
+
+class ReflexActionFailedError(NeuroRailError):
+    """Raised when reflex action execution fails."""
+
+    def __init__(self, action_type: str, reason: str, **kwargs) -> None:
+        super().__init__(
+            NeuroRailErrorCode.REFLEX_ACTION_FAILED,
+            message=f"Reflex action {action_type} failed: {reason}",
+            details={"action_type": action_type, "reason": reason, **kwargs.get("details", {})},
+            cause=kwargs.get("cause"),
+        )
+
+
+class ReflexLifecycleInvalidError(NeuroRailError):
+    """Raised when invalid lifecycle state transition is requested."""
+
+    def __init__(self, from_state: str, to_state: str, **kwargs) -> None:
+        super().__init__(
+            NeuroRailErrorCode.REFLEX_LIFECYCLE_INVALID,
+            message=f"Invalid lifecycle transition: {from_state} → {to_state}",
+            details={"from_state": from_state, "to_state": to_state, **kwargs.get("details", {})},
             cause=kwargs.get("cause"),
         )
 
