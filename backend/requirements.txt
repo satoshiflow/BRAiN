@@ -6,7 +6,7 @@
 # ============================================================================
 
 # --- Core FastAPI + Server ---
-fastapi==0.109.2
+fastapi==0.116.2                # Updated for cognee compatibility
 uvicorn[standard]==0.27.1
 python-multipart==0.0.9        # Required for FastAPI file uploads and form data
 
