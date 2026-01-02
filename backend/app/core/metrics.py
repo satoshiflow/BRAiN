@@ -208,7 +208,38 @@ neurorail_attempts_failed_total = Counter(
 neurorail_budget_violations_total = Counter(
     "neurorail_budget_violations_total",
     "Total budget violations",
-    ["resource_type"]  # resource_type: time, tokens, memory
+    ["violation_type"]  # violation_type: timeout, retry_exhausted, parallelism, cost_tokens, cost_credits
+)
+
+# Enforcement Actions (Phase 2)
+neurorail_enforcement_timeouts_total = Counter(
+    "neurorail_enforcement_timeouts_total",
+    "Total timeout enforcements",
+    ["grace_period_invoked"]  # true, false
+)
+
+neurorail_enforcement_retries_total = Counter(
+    "neurorail_enforcement_retries_total",
+    "Total retry attempts",
+    ["success"]  # true, false
+)
+
+neurorail_enforcement_parallelism_rejected_total = Counter(
+    "neurorail_enforcement_parallelism_rejected_total",
+    "Total parallelism rejections",
+    ["limit_type"]  # global, job
+)
+
+neurorail_enforcement_cost_violations_total = Counter(
+    "neurorail_enforcement_cost_violations_total",
+    "Total cost budget violations",
+    ["cost_type"]  # llm_tokens, cost_credits
+)
+
+neurorail_enforcement_grace_periods_total = Counter(
+    "neurorail_enforcement_grace_periods_total",
+    "Total grace period invocations",
+    ["outcome"]  # completed, exceeded
 )
 
 # Reflex Actions (Phase 2)
@@ -360,14 +391,74 @@ def record_neurorail_attempt(
         neurorail_mission_duration_ms.observe(duration_ms)
 
 
-def record_neurorail_budget_violation(resource_type: str):
+def record_neurorail_budget_violation(violation_type: str):
     """
     Record a budget violation.
 
     Args:
-        resource_type: time, tokens, memory, etc.
+        violation_type: timeout, retry_exhausted, parallelism, cost_tokens, cost_credits
     """
-    neurorail_budget_violations_total.labels(resource_type=resource_type).inc()
+    neurorail_budget_violations_total.labels(violation_type=violation_type).inc()
+
+
+def record_neurorail_timeout(grace_period_invoked: bool):
+    """
+    Record a timeout enforcement.
+
+    Args:
+        grace_period_invoked: Whether grace period was invoked
+    """
+    neurorail_enforcement_timeouts_total.labels(
+        grace_period_invoked=str(grace_period_invoked).lower()
+    ).inc()
+
+
+def record_neurorail_retry(success: bool):
+    """
+    Record a retry attempt.
+
+    Args:
+        success: Whether retry succeeded
+    """
+    neurorail_enforcement_retries_total.labels(
+        success=str(success).lower()
+    ).inc()
+
+
+def record_neurorail_parallelism_rejection(limit_type: str):
+    """
+    Record a parallelism rejection.
+
+    Args:
+        limit_type: global or job
+    """
+    neurorail_enforcement_parallelism_rejected_total.labels(
+        limit_type=limit_type
+    ).inc()
+
+
+def record_neurorail_cost_violation(cost_type: str):
+    """
+    Record a cost budget violation.
+
+    Args:
+        cost_type: llm_tokens or cost_credits
+    """
+    neurorail_enforcement_cost_violations_total.labels(
+        cost_type=cost_type
+    ).inc()
+
+
+def record_neurorail_grace_period(outcome: str):
+    """
+    Record a grace period invocation.
+
+    Args:
+        outcome: completed or exceeded
+    """
+    neurorail_enforcement_grace_periods_total.labels(
+        outcome=outcome
+    ).inc()
 
 
 def record_neurorail_reflex(reflex_type: str, action: str):
