@@ -31,11 +31,11 @@ from app.core.logging import configure_logging
 from app.core.redis_client import get_redis
 
 # Mission worker (from old backend/main.py)
-from backend.modules.missions.worker import start_mission_worker, stop_mission_worker
+from modules.missions.worker import start_mission_worker, stop_mission_worker
 
 # Event Stream (ADR-001: REQUIRED core infrastructure)
 try:
-    from backend.mission_control_core.core.event_stream import EventStream
+    from mission_control_core.core.event_stream import EventStream
 except ImportError as e:
     # Check if degraded mode is explicitly allowed (Dev/CI only)
     if os.getenv("BRAIN_EVENTSTREAM_MODE", "required").lower() == "degraded":
@@ -53,7 +53,7 @@ except ImportError as e:
         ) from e
 
 # Legacy supervisor router (from old backend/main.py)
-from backend.modules.supervisor.router import router as supervisor_router
+from modules.supervisor.router import router as supervisor_router
 
 # App module routers (from app/main.py)
 from app.modules.dna.router import router as dna_router
@@ -286,7 +286,7 @@ def _include_legacy_routers(app: FastAPI) -> None:
     (Legacy router discovery from original backend/main.py)
     """
     try:
-        from backend.api import routes as routes_pkg  # type: ignore[import]
+        from api import routes as routes_pkg  # type: ignore[import]
 
         package_path = routes_pkg.__path__  # type: ignore[attr-defined]
         package_name = routes_pkg.__name__

@@ -1,0 +1,17 @@
+# Minimal Backend with Database Support
+# Core
+fastapi==0.116.2
+uvicorn[standard]==0.34.0
+pydantic==2.10.6
+pydantic-settings==2.6.1
+
+# Database
+sqlalchemy==2.0.36
+psycopg2-binary==2.9.10
+asyncpg==0.30.0
+
+# Redis
+redis==5.2.1
+
+# HTTP Client (for health checks)
+httpx==0.28.1
