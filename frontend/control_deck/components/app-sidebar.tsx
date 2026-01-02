@@ -5,6 +5,7 @@ import {
   Activity,
   Bot,
   Command,
+  Globe,
   LayoutDashboard,
   Map,
   Shield,
@@ -110,6 +111,22 @@ const data = {
         {
           title: "New Agent",
           url: "/agents/new",
+        },
+      ],
+    },
+    {
+      title: "WebGenesis",
+      url: "/webgenesis",
+      icon: Globe,
+      isActive: false,
+      items: [
+        {
+          title: "Sites",
+          url: "/webgenesis",
+        },
+        {
+          title: "Create New Site",
+          url: "/webgenesis/new",
         },
       ],
     },

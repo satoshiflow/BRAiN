@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="{locale}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{page_title}</title>
+    <meta name="description" content="{page_description}">
+    {seo_keywords_meta}
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="{page_title}">
+    <meta property="og:description" content="{page_description}">
+    <meta property="og:type" content="website">
+    {og_image_meta}
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="{twitter_card}">
+    <meta name="twitter:title" content="{page_title}">
+    <meta name="twitter:description" content="{page_description}">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Tailwind Config -->
+    <script>
+        tailwind.config = {{
+            theme: {{
+                extend: {{
+                    colors: {{
+                        primary: '{theme_primary}',
+                        secondary: '{theme_secondary}',
+                        accent: '{theme_accent}'
+                    }}
+                }}
+            }}
+        }}
+    </script>
+
+    <style>
+        body {{
+            font-family: {theme_font_family};
+            font-size: {theme_base_size};
+            color: {theme_text};
+            background-color: {theme_background};
+        }}
+
+        h1, h2, h3, h4, h5, h6 {{
+            {heading_font_style}
+        }}
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="bg-white shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <h1 class="text-xl font-bold text-primary">{site_name}</h1>
+                </div>
+                <div class="flex items-center space-x-4">
+                    {navigation_links}
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main>
+        {page_content}
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-50 mt-16">
+        <div class="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
+            <p class="text-center text-gray-500 text-sm">
+                © {current_year} {site_name}. All rights reserved.
+            </p>
+        </div>
+    </footer>
+</body>
+</html>
