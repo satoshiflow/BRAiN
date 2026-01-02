@@ -1,0 +1,51 @@
+name: Deploy to Development
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: development
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+
+      - name: Add server to known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H brain.falklabs.de >> ~/.ssh/known_hosts
+
+      - name: Deploy to dev environment
+        run: |
+          ssh claude@brain.falklabs.de << 'ENDSSH'
+            cd /srv/dev
+            git pull origin dev
+            docker-compose -f docker-compose.yml -f docker-compose.dev.yml down
+            docker-compose -f docker-compose.yml -f docker-compose.dev.yml build
+            docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+            echo "✓ Development environment updated"
+          ENDSSH
+
+      - name: Health check
+        run: |
+          sleep 30
+          curl -f https://dev.brain.falklabs.de/api/health || exit 1
+
+      - name: Notify deployment
+        if: always()
+        run: |
+          if [ ${{ job.status }} == 'success' ]; then
+            echo "✓ Deployment successful!"
+          else
+            echo "✗ Deployment failed!"
+          fi

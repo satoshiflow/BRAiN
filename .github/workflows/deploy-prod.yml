@@ -1,0 +1,84 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://brain.falklabs.de
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+
+      - name: Add server to known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H brain.falklabs.de >> ~/.ssh/known_hosts
+
+      - name: Create backup
+        run: |
+          ssh claude@brain.falklabs.de << 'ENDSSH'
+            cd /srv/prod
+            BACKUP_DIR="/srv/backups/$(date +%Y%m%d_%H%M%S)"
+            mkdir -p $BACKUP_DIR
+            docker-compose exec -T postgres pg_dump -U brain brain > $BACKUP_DIR/brain.sql
+            echo "✓ Backup created at $BACKUP_DIR"
+          ENDSSH
+
+      - name: Deploy to production
+        run: |
+          ssh claude@brain.falklabs.de << 'ENDSSH'
+            cd /srv/prod
+            git pull origin main
+            docker-compose -f docker-compose.yml -f docker-compose.prod.yml down
+            docker-compose -f docker-compose.yml -f docker-compose.prod.yml build
+            docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+            echo "✓ Production environment updated"
+          ENDSSH
+
+      - name: Run database migrations
+        run: |
+          ssh claude@brain.falklabs.de << 'ENDSSH'
+            cd /srv/prod
+            docker-compose exec -T backend alembic upgrade head
+            echo "✓ Migrations complete"
+          ENDSSH
+
+      - name: Health check
+        run: |
+          sleep 30
+          curl -f https://brain.falklabs.de/api/health || exit 1
+
+      - name: Create release tag
+        if: success()
+        run: |
+          VERSION=$(date +%Y.%m.%d-%H%M)
+          git tag -a "v$VERSION" -m "Production release $VERSION"
+          git push --tags
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          echo "✗ Deployment failed - consider rollback"
+          # ssh claude@brain.falklabs.de "cd /srv/prod && docker-compose down && docker-compose up -d"
+
+      - name: Notify deployment
+        if: always()
+        run: |
+          if [ ${{ job.status }} == 'success' ]; then
+            echo "✓ Production deployment successful!"
+          else
+            echo "✗ Production deployment failed!"
+          fi
