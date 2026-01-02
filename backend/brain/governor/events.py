@@ -1,5 +1,5 @@
 """
-Governor v1 Event System (Phase 2a)
+Governor v1 Event System (Phase 2a + 2b)
 
 Events emitted by Governor v1 for agent creation governance decisions.
 
@@ -9,16 +9,21 @@ All events follow dual-write pattern:
 
 Events are fail-closed: at least one write must succeed.
 
-Event Types:
+Event Types (Phase 2a):
 - governor.decision.requested: Decision request received
 - governor.decision.evaluated: Decision evaluation complete
 - governor.decision.approved: Decision approved
 - governor.decision.rejected: Decision rejected
 - governor.constraints.applied: Constraints applied to agent
 
+Event Types (Phase 2b):
+- governor.constraints.reduced: Constraints reduced by manifest rules
+- governor.manifest.applied: Governance manifest applied
+
 Author: Governor v1 System
-Version: 1.0.0
+Version: 2b.1
 Created: 2026-01-02
+Updated: 2026-01-02 (Phase 2b)
 """
 
 from __future__ import annotations
@@ -356,6 +361,117 @@ class GovernorEvents:
 
         await GovernorEvents.emit(
             "governor.constraints.applied",
+            payload,
+            redis_client,
+            audit_log
+        )
+
+    # ========================================================================
+    # Phase 2b: Reduction & Manifest Events
+    # ========================================================================
+
+    @staticmethod
+    async def constraints_reduced(
+        decision_id: str,
+        applied_reductions: list[str],
+        reduction_summary: Dict[str, Any],
+        base_constraints_hash: str,
+        reduced_constraints_hash: str,
+        redis_client: redis.Redis,
+        audit_log: AuditLog
+    ) -> None:
+        """
+        Emit event when constraints are reduced by manifest rules.
+
+        Args:
+            decision_id: Decision identifier
+            applied_reductions: List of reduction section names applied
+            reduction_summary: Summary of reductions (before/after values)
+            base_constraints_hash: Hash of base constraints
+            reduced_constraints_hash: Hash of reduced constraints
+            redis_client: Redis client
+            audit_log: Audit logger
+
+        Example:
+            >>> await GovernorEvents.constraints_reduced(
+            ...     decision_id="dec_abc123",
+            ...     applied_reductions=["on_customization", "on_high_risk"],
+            ...     reduction_summary={
+            ...         "max_llm_calls_per_day": {"before": 1000, "after": 700},
+            ...         "network_access": {"before": "restricted", "after": "none"}
+            ...     },
+            ...     base_constraints_hash="sha256:abc123",
+            ...     reduced_constraints_hash="sha256:def456",
+            ...     redis_client=redis,
+            ...     audit_log=audit
+            ... )
+        """
+        payload = {
+            "decision_id": decision_id,
+            "applied_reductions": applied_reductions,
+            "reduction_summary": reduction_summary,
+            "base_constraints_hash": base_constraints_hash,
+            "reduced_constraints_hash": reduced_constraints_hash,
+        }
+
+        await GovernorEvents.emit(
+            "governor.constraints.reduced",
+            payload,
+            redis_client,
+            audit_log
+        )
+
+    @staticmethod
+    async def manifest_applied(
+        decision_id: str,
+        manifest_name: str,
+        manifest_version: str,
+        policy_version: str,
+        applicable_sections: list[str],
+        risk_overrides: Dict[str, str],
+        locked_fields: list[str],
+        redis_client: redis.Redis,
+        audit_log: AuditLog
+    ) -> None:
+        """
+        Emit event when a governance manifest is applied.
+
+        Args:
+            decision_id: Decision identifier
+            manifest_name: Manifest name
+            manifest_version: Manifest version
+            policy_version: Policy version
+            applicable_sections: Reduction sections that were applicable
+            risk_overrides: Risk tier overrides applied
+            locked_fields: Fields locked by manifest
+            redis_client: Redis client
+            audit_log: Audit logger
+
+        Example:
+            >>> await GovernorEvents.manifest_applied(
+            ...     decision_id="dec_abc123",
+            ...     manifest_name="default",
+            ...     manifest_version="1",
+            ...     policy_version="2b.1",
+            ...     applicable_sections=["on_customization"],
+            ...     risk_overrides={"if_customizations": "MEDIUM"},
+            ...     locked_fields=["ethics_flags.human_override"],
+            ...     redis_client=redis,
+            ...     audit_log=audit
+            ... )
+        """
+        payload = {
+            "decision_id": decision_id,
+            "manifest_name": manifest_name,
+            "manifest_version": str(manifest_version),
+            "policy_version": policy_version,
+            "applicable_sections": applicable_sections,
+            "risk_overrides": risk_overrides,
+            "locked_fields": locked_fields,
+        }
+
+        await GovernorEvents.emit(
+            "governor.manifest.applied",
             payload,
             redis_client,
             audit_log
