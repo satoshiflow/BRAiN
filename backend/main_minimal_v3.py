@@ -11,9 +11,9 @@ import os
 import time
 from contextlib import asynccontextmanager
 
-from backend.models.system_event import SystemEventCreate, EventSeverity
-from backend.services.system_events import SystemEventsService
-from backend.api.routes import events as events_router
+from models.system_event import SystemEventCreate, EventSeverity
+from services.system_events import SystemEventsService
+from api.routes import events as events_router
 
 # Configuration from environment
 DATABASE_URL = os.getenv(

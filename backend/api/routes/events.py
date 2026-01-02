@@ -6,14 +6,14 @@ CRUD endpoints for system events.
 from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import List, Optional
 
-from backend.models.system_event import (
+from models.system_event import (
     SystemEventCreate,
     SystemEventUpdate,
     SystemEventResponse,
     EventStats,
     EventSeverity
 )
-from backend.services.system_events import SystemEventsService
+from services.system_events import SystemEventsService
 
 # This will be injected from main app
 # For now, this is a placeholder - actual dependency injection happens in main_minimal_v3.py
