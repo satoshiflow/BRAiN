@@ -856,3 +856,157 @@ class ReleasesListResponse(BaseModel):
                 "current_release_id": "rel_1703002000_b4c7d9e2",
             }
         }
+
+
+# ============================================================================
+# Sprint III - Site List & Audit (Control Center UI)
+# ============================================================================
+
+
+class SiteListItem(BaseModel):
+    """
+    Minimal site information for list view.
+
+    Used by Control Center UI to display sites table.
+    """
+
+    site_id: str = Field(..., description="Unique site identifier")
+    name: Optional[str] = Field(None, description="Site name")
+    domain: Optional[str] = Field(None, description="Primary domain")
+    status: SiteStatus = Field(..., description="Current site status")
+    lifecycle_status: Optional[SiteLifecycleStatus] = Field(
+        None, description="Container lifecycle status"
+    )
+    health_status: Optional[HealthStatus] = Field(
+        None, description="Health check status"
+    )
+    current_release_id: Optional[str] = Field(
+        None, description="Currently deployed release ID"
+    )
+    deployed_url: Optional[str] = Field(None, description="Deployed site URL")
+    dns_enabled: bool = Field(False, description="DNS configuration enabled")
+    last_action: Optional[str] = Field(None, description="Last operation performed")
+    updated_at: datetime = Field(..., description="Last update timestamp")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "site_id": "my-site_20250101120000",
+                "name": "My Awesome Site",
+                "domain": "example.com",
+                "status": "deployed",
+                "lifecycle_status": "running",
+                "health_status": "healthy",
+                "current_release_id": "rel_1735747200_a1b2c3d4",
+                "deployed_url": "http://localhost:8080",
+                "dns_enabled": True,
+                "last_action": "deploy",
+                "updated_at": "2025-01-01T12:00:00Z",
+            }
+        }
+
+
+class SitesListResponse(BaseModel):
+    """Response for listing all sites"""
+
+    sites: List[SiteListItem] = Field(..., description="List of sites")
+    total_count: int = Field(..., description="Total number of sites")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "sites": [
+                    {
+                        "site_id": "site-1",
+                        "name": "Site One",
+                        "domain": "example.com",
+                        "status": "deployed",
+                        "lifecycle_status": "running",
+                        "health_status": "healthy",
+                        "current_release_id": "rel_123",
+                        "deployed_url": "http://localhost:8080",
+                        "dns_enabled": True,
+                        "last_action": "deploy",
+                        "updated_at": "2025-01-01T12:00:00Z",
+                    }
+                ],
+                "total_count": 1,
+            }
+        }
+
+
+class AuditEventSeverity(str, Enum):
+    """Audit event severity level"""
+
+    INFO = "INFO"
+    WARNING = "WARNING"
+    ERROR = "ERROR"
+    CRITICAL = "CRITICAL"
+
+
+class AuditEvent(BaseModel):
+    """
+    Single audit event for WebGenesis operations.
+
+    Tracks all significant operations (deploy, rollback, errors, etc.)
+    """
+
+    id: str = Field(..., description="Unique event ID")
+    timestamp: datetime = Field(..., description="Event timestamp")
+    site_id: str = Field(..., description="Site ID")
+    event_type: str = Field(..., description="Event type (e.g., 'deploy', 'rollback')")
+    severity: AuditEventSeverity = Field(..., description="Event severity")
+    source: str = Field(..., description="Event source (e.g., 'webgenesis.deploy')")
+    description: str = Field(..., description="Human-readable description")
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict, description="Additional event metadata"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "id": "evt_1735747200_abc123",
+                "timestamp": "2025-01-01T12:00:00Z",
+                "site_id": "my-site_20250101120000",
+                "event_type": "deploy",
+                "severity": "INFO",
+                "source": "webgenesis.deploy",
+                "description": "Site deployed successfully",
+                "metadata": {
+                    "release_id": "rel_1735747200_a1b2c3d4",
+                    "container_id": "abc123def456",
+                },
+            }
+        }
+
+
+class SiteAuditResponse(BaseModel):
+    """Response for site audit events"""
+
+    site_id: str = Field(..., description="Site ID")
+    events: List[AuditEvent] = Field(..., description="List of audit events")
+    total_count: int = Field(..., description="Total number of events")
+    filtered_count: int = Field(
+        ..., description="Number of events after filtering"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "site_id": "my-site_20250101120000",
+                "events": [
+                    {
+                        "id": "evt_123",
+                        "timestamp": "2025-01-01T12:00:00Z",
+                        "site_id": "my-site_20250101120000",
+                        "event_type": "deploy",
+                        "severity": "INFO",
+                        "source": "webgenesis.deploy",
+                        "description": "Site deployed successfully",
+                        "metadata": {},
+                    }
+                ],
+                "total_count": 10,
+                "filtered_count": 5,
+            }
+        }
