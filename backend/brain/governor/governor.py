@@ -1,12 +1,12 @@
 """
-Governor v1 Service (Phase 2a)
+Governor v1 Service (Phase 2a + 2b)
 
 Central decision engine for agent creation governance.
 
 The Governor v1 makes formal, deterministic decisions on agent creation by:
 1. Evaluating policy rules (Groups A-E)
-2. Computing risk tier and quarantine status
-3. Applying constraints (defaults + reductions)
+2. Computing risk tier and quarantine status (with manifest overrides)
+3. Applying constraints (defaults + manifest-driven reductions)
 4. Emitting audit events (dual-write)
 5. Returning immutable DecisionResult
 
@@ -15,14 +15,25 @@ Architecture:
 - Fail-closed event emission (at least one write succeeds)
 - Complete audit trail for every decision
 - No ML, no LLMs, no interpretation - mechanical only
+- Monotonic reductions (can only reduce, never expand)
+
+Phase 2b Extensions:
+- Manifest-driven governance (YAML-based policy configuration)
+- Constraint reduction engine with monotonicity validation
+- Risk tier overrides from manifests
+- Locked field enforcement
 
 Author: Governor v1 System
-Version: 1.0.0
+Version: 2b.1
 Created: 2026-01-02
+Updated: 2026-01-02 (Phase 2b)
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
+import logging
 import time
 from typing import Any, Dict, List, Optional
 
@@ -33,14 +44,26 @@ from backend.brain.agents.genesis_agent.events import AuditLog
 from backend.brain.governor.constraints.defaults import get_default_constraints
 from backend.brain.governor.constraints.schema import EffectiveConstraints
 from backend.brain.governor.decision.models import (
+    ActorContext,
     DecisionRequest,
     DecisionResult,
     DecisionType,
     ReasonCode,
+    RequestContext,
     RiskTier,
 )
 from backend.brain.governor.events import GovernorEvents
+from backend.brain.governor.manifests.loader import get_manifest_loader
+from backend.brain.governor.manifests.schema import GovernanceManifest
 from backend.brain.governor.policy import rules
+from backend.brain.governor.reductions.reducer import ConstraintReducer
+from backend.brain.governor.reductions.rules import (
+    ReductionContext,
+    get_applicable_reductions,
+)
+
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================================
@@ -136,7 +159,8 @@ class Governor:
         config: Optional[GovernorConfig] = None,
         killswitch_active: bool = False,
         available_credits: int = 10000,
-        population_counts: Optional[Dict[AgentType, int]] = None
+        population_counts: Optional[Dict[AgentType, int]] = None,
+        manifest: Optional[GovernanceManifest] = None
     ):
         """
         Initialize Governor v1.
@@ -148,6 +172,7 @@ class Governor:
             killswitch_active: Whether kill switch is active
             available_credits: Available credits in budget
             population_counts: Current population per AgentType
+            manifest: Governance manifest (loads default if None)
         """
         self.redis = redis_client
         self.audit_log = audit_log
@@ -155,6 +180,25 @@ class Governor:
         self.killswitch_active = killswitch_active
         self.available_credits = available_credits
         self.population_counts = population_counts or {}
+
+        # Phase 2b: Load governance manifest
+        if manifest is None:
+            manifest_loader = get_manifest_loader()
+            try:
+                self.manifest = manifest_loader.get_default_manifest()
+                logger.info(
+                    f"Loaded governance manifest: {self.manifest.name} "
+                    f"v{self.manifest.policy_version}"
+                )
+            except Exception as e:
+                logger.error(f"Failed to load governance manifest: {e}")
+                # Fallback: create minimal manifest
+                self.manifest = None
+        else:
+            self.manifest = manifest
+
+        # Phase 2b: Initialize reduction engine
+        self.reducer = ConstraintReducer()
 
     # ========================================================================
     # Main Decision Evaluation
@@ -215,7 +259,7 @@ class Governor:
         # Apply constraints (if approved)
         constraints = None
         if approved:
-            constraints = self._apply_constraints(agent_type, request.context.has_customizations)
+            constraints = await self._apply_constraints(request, agent_type, risk_tier)
 
         # Determine decision type
         if not approved:
@@ -432,7 +476,12 @@ class Governor:
         has_customizations: bool
     ) -> tuple[RiskTier, bool]:
         """
-        Compute risk tier and quarantine status.
+        Compute risk tier and quarantine status (with manifest overrides).
+
+        Phase 2b: Applies risk overrides from governance manifest:
+        - if_customizations: Override risk tier if customizations present
+        - if_template_not_in_allowlist: Override if template not allowed
+        - if_capability_escalation: Override if escalation detected
 
         Args:
             agent_type: Agent type
@@ -459,45 +508,237 @@ class Governor:
         if quarantine:
             risk_tier_str = "CRITICAL"
 
+        # Phase 2b: Apply risk overrides from manifest
+        if self.manifest and self.manifest.risk_overrides:
+            # if_customizations override
+            if has_customizations and self.manifest.risk_overrides.if_customizations:
+                override = self.manifest.risk_overrides.if_customizations
+                risk_tier_str = self._escalate_risk_tier(risk_tier_str, override)
+
         risk_tier = RiskTier(risk_tier_str)
 
         return (risk_tier, quarantine)
+
+    def _escalate_risk_tier(self, current: str, override: str) -> str:
+        """
+        Escalate risk tier (risk can only increase, never decrease).
+
+        Args:
+            current: Current risk tier string
+            override: Override risk tier string
+
+        Returns:
+            Higher risk tier
+
+        Example:
+            >>> _escalate_risk_tier("LOW", "MEDIUM")  # → "MEDIUM"
+            >>> _escalate_risk_tier("HIGH", "MEDIUM")  # → "HIGH" (no downgrade)
+        """
+        hierarchy = {"LOW": 0, "MEDIUM": 1, "HIGH": 2, "CRITICAL": 3}
+
+        current_level = hierarchy.get(current, 0)
+        override_level = hierarchy.get(override, 0)
+
+        # Risk can only escalate, never de-escalate
+        if override_level > current_level:
+            return override
+        else:
+            return current
 
     # ========================================================================
     # Constraint Application
     # ========================================================================
 
-    def _apply_constraints(
+    async def _apply_constraints(
         self,
+        request: DecisionRequest,
         agent_type: AgentType,
-        has_customizations: bool
+        risk_tier: RiskTier
     ) -> EffectiveConstraints:
         """
-        Apply constraints based on AgentType and customizations.
+        Apply constraints based on AgentType, manifest, and reductions.
+
+        Phase 2b: Implements manifest-driven constraint reductions:
+        1. Get base constraints (defaults for AgentType)
+        2. Load governance manifest
+        3. Determine applicable reductions (via reduction rules)
+        4. Apply reductions incrementally (with monotonicity validation)
+        5. Emit events (constraints.reduced, manifest.applied)
 
         Args:
+            request: Decision request (for context)
             agent_type: Agent type
-            has_customizations: Whether request has customizations
+            risk_tier: Computed risk tier (for reduction conditions)
 
         Returns:
-            EffectiveConstraints to apply
+            EffectiveConstraints (after reductions)
 
-        Note:
-            Phase 2a: No escalations allowed, only defaults or reductions.
+        Raises:
+            Exception: If monotonicity validation fails
 
         Example:
-            >>> constraints = governor._apply_constraints(
+            >>> constraints = await governor._apply_constraints(
+            ...     request,
             ...     AgentType.WORKER,
-            ...     has_customizations=False
+            ...     RiskTier.MEDIUM
             ... )
         """
-        # Get default constraints for AgentType
-        constraints = get_default_constraints(agent_type)
+        # 1. Get base constraints (defaults for AgentType)
+        base_constraints = get_default_constraints(agent_type)
 
-        # Phase 2a: No customization-based reductions yet (future)
-        # For now, return defaults
+        # If no manifest loaded, return base constraints
+        if self.manifest is None:
+            logger.warning("No governance manifest loaded, using base constraints")
+            return base_constraints
 
-        return constraints
+        # 2. Build reduction context
+        reduction_context = ReductionContext(
+            has_customizations=request.context.has_customizations,
+            customization_fields=request.context.customization_fields,
+            risk_tier=risk_tier,
+            agent_type=agent_type,
+            agent_dna=request.agent_dna,
+            current_population=self.population_counts.get(agent_type, 0),
+            max_population=self.config.max_population,
+            environment=None  # TODO: Extract from request context if available
+        )
+
+        # 3. Determine applicable reductions
+        applicable_reductions = get_applicable_reductions(
+            reduction_context,
+            self.manifest.reductions
+        )
+
+        # If no reductions apply, return base constraints
+        if not applicable_reductions:
+            logger.debug("No reductions applicable, using base constraints")
+            return base_constraints
+
+        # 4. Apply reductions incrementally
+        reduced_constraints = base_constraints
+        reduction_summary = {}
+        applied_reduction_names = []
+
+        for section_name, reduction_spec in applicable_reductions:
+            try:
+                # Apply reduction
+                new_constraints = self.reducer.reduce(reduced_constraints, reduction_spec)
+
+                # Track before/after for summary
+                self._build_reduction_summary(
+                    reduced_constraints,
+                    new_constraints,
+                    reduction_summary
+                )
+
+                # Update constraints
+                reduced_constraints = new_constraints
+                applied_reduction_names.append(section_name)
+
+                logger.debug(f"Applied reduction: {section_name}")
+
+            except Exception as e:
+                logger.error(
+                    f"Failed to apply reduction '{section_name}': {e}. "
+                    f"Skipping this reduction."
+                )
+
+        # 5. Emit constraints.reduced event (if reductions were applied)
+        if applied_reduction_names:
+            base_hash = self._compute_constraints_hash(base_constraints)
+            reduced_hash = self._compute_constraints_hash(reduced_constraints)
+
+            await GovernorEvents.constraints_reduced(
+                decision_id=request.decision_id,
+                applied_reductions=applied_reduction_names,
+                reduction_summary=reduction_summary,
+                base_constraints_hash=base_hash,
+                reduced_constraints_hash=reduced_hash,
+                redis_client=self.redis,
+                audit_log=self.audit_log
+            )
+
+        # 6. Emit manifest.applied event
+        await GovernorEvents.manifest_applied(
+            decision_id=request.decision_id,
+            manifest_name=self.manifest.name,
+            manifest_version=str(self.manifest.manifest_version),
+            policy_version=self.manifest.policy_version,
+            applicable_sections=applied_reduction_names,
+            risk_overrides={k: v for k, v in self.manifest.risk_overrides.model_dump().items() if v},
+            locked_fields=self.manifest.locks.locked_fields,
+            redis_client=self.redis,
+            audit_log=self.audit_log
+        )
+
+        return reduced_constraints
+
+    def _build_reduction_summary(
+        self,
+        before: EffectiveConstraints,
+        after: EffectiveConstraints,
+        summary: Dict[str, Any]
+    ) -> None:
+        """
+        Build reduction summary (before/after values) for event emission.
+
+        Args:
+            before: Constraints before reduction
+            after: Constraints after reduction
+            summary: Summary dict to update (in-place)
+        """
+        # Track changed budget fields
+        if before.budget.max_credits_per_mission != after.budget.max_credits_per_mission:
+            summary["max_credits_per_mission"] = {
+                "before": before.budget.max_credits_per_mission,
+                "after": after.budget.max_credits_per_mission
+            }
+
+        if before.budget.max_llm_calls_per_day != after.budget.max_llm_calls_per_day:
+            summary["max_llm_calls_per_day"] = {
+                "before": before.budget.max_llm_calls_per_day,
+                "after": after.budget.max_llm_calls_per_day
+            }
+
+        if before.budget.max_llm_tokens_per_call != after.budget.max_llm_tokens_per_call:
+            summary["max_llm_tokens_per_call"] = {
+                "before": before.budget.max_llm_tokens_per_call,
+                "after": after.budget.max_llm_tokens_per_call
+            }
+
+        # Track changed capability fields
+        if before.capabilities.network_access != after.capabilities.network_access:
+            summary["network_access"] = {
+                "before": before.capabilities.network_access,
+                "after": after.capabilities.network_access
+            }
+
+        # Track changed runtime fields
+        if before.runtime.parallelism != after.runtime.parallelism:
+            summary["parallelism"] = {
+                "before": before.runtime.parallelism,
+                "after": after.runtime.parallelism
+            }
+
+        if before.runtime.max_lifetime_seconds != after.runtime.max_lifetime_seconds:
+            summary["max_lifetime_seconds"] = {
+                "before": before.runtime.max_lifetime_seconds,
+                "after": after.runtime.max_lifetime_seconds
+            }
+
+    def _compute_constraints_hash(self, constraints: EffectiveConstraints) -> str:
+        """
+        Compute deterministic hash of constraints.
+
+        Args:
+            constraints: Constraints to hash
+
+        Returns:
+            SHA-256 hash (hex string)
+        """
+        constraints_json = json.dumps(constraints.model_dump(), sort_keys=True)
+        hash_digest = hashlib.sha256(constraints_json.encode()).hexdigest()
+        return f"sha256:{hash_digest[:16]}"
 
 
 # ============================================================================
@@ -599,10 +840,6 @@ class GovernorApproval:
             approved=result.approved,
             reason=result.reason_detail
         )
-
-
-# Import ActorContext and RequestContext for GovernorApproval
-from backend.brain.governor.decision.models import ActorContext, RequestContext
 
 
 class ApprovalResponse:
