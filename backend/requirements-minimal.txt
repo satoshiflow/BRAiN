@@ -15,3 +15,6 @@ redis==5.2.1
 
 # HTTP Client (for health checks)
 httpx==0.28.1
+
+# Database Migrations
+alembic==1.13.3
