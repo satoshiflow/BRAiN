@@ -34,6 +34,14 @@ from .dna_schema import AgentDNA, AgentStatus, DNAMetadata
 from .dna_validator import DNAValidator, TemplateNotFoundError, ValidationError
 from .events import AuditLog, GenesisEvents, SimpleAuditLog
 
+# Governor v1 integration (Phase 2a)
+try:
+    from backend.brain.governor import GovernorApproval as Governor_v1_Approval
+    GOVERNOR_V1_AVAILABLE = True
+except ImportError:
+    GOVERNOR_V1_AVAILABLE = False
+    Governor_v1_Approval = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -203,7 +211,20 @@ class GenesisAgent:
         self.audit_log = audit_log
         self.budget = budget
         self.settings = settings or get_genesis_settings()
-        self.governor = governor or StubGovernor()
+
+        # Governor v1 integration (Phase 2a)
+        if governor is None:
+            if GOVERNOR_V1_AVAILABLE:
+                self.governor = Governor_v1_Approval(
+                    redis_client=redis_client,
+                    audit_log=audit_log
+                )
+                logger.info("Governor v1 initialized for agent creation governance")
+            else:
+                self.governor = StubGovernor()
+                logger.warning("Governor v1 not available, using stub (auto-approve)")
+        else:
+            self.governor = governor
 
         # Initialize validator
         templates_dir = self.settings.get_templates_dir()
@@ -590,29 +611,39 @@ class GenesisAgent:
 
 
 # ============================================================================
-# Stub Implementations
+# Stub Implementations (DEPRECATED - use Governor v1)
 # ============================================================================
 
 class StubGovernor:
     """
-    Stub Governor implementation for Phase 1.
+    Stub Governor implementation (DEPRECATED).
 
-    Always approves agent creation. Phase 3 will implement real governance.
+    This is a fallback for testing when Governor v1 is not available.
+    Always approves agent creation without governance.
+
+    **DEPRECATED:** Use Governor v1 (backend.brain.governor) instead.
     """
 
     async def request_approval(self, dna: AgentDNA) -> ApprovalResponse:
         """
-        Request approval (Phase 1: always approves).
+        Request approval (DEPRECATED: always approves).
 
         Args:
             dna: Agent DNA to approve
 
         Returns:
             ApprovalResponse with approval=True
+
+        Warning:
+            This stub bypasses all governance rules. Only use for testing.
         """
+        logger.warning(
+            "StubGovernor is DEPRECATED and bypasses all governance. "
+            "Use Governor v1 for production."
+        )
         return ApprovalResponse(
             approved=True,
-            reason="Phase 1: Stub Governor auto-approves all requests"
+            reason="DEPRECATED: Stub Governor auto-approves (no governance)"
         )
 
 
