@@ -9,7 +9,7 @@ import json
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 
-from backend.models.system_event import (
+from models.system_event import (
     SystemEventCreate,
     SystemEventUpdate,
     SystemEventResponse,
