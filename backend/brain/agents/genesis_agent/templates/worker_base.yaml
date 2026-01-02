@@ -1,0 +1,62 @@
+# Worker Base Template v1.0
+# Description: Generic worker agent for task execution and integration
+# Use Case: API calls, data processing, task automation
+# Autonomy Level: 2 (Supervised with some autonomy)
+
+agent_dna:
+  metadata:
+    name: "worker_generic"
+    type: "Worker"
+    version: "1.0.0"
+    template_version: "1.0"
+    parent_id: null
+
+  traits:
+    base_type: "Worker"
+    primary_function: "task_execution"
+    autonomy_level: 2
+
+  skills:
+    - skill_id: "api_calls"
+      proficiency: 0.80
+      domains: ["rest", "graphql"]
+    - skill_id: "data_processing"
+      proficiency: 0.75
+      domains: ["json", "csv"]
+
+  behavior_modules:
+    communication_style: "concise"
+    decision_making: "rule_based"
+    collaboration_preference: "sync"
+    error_handling: "retry_with_backoff"
+
+  ethics_flags:
+    data_privacy: "standard"
+    transparency: "basic_audit"
+    bias_awareness: "enabled"
+    human_override: "always_allowed"
+
+  capabilities:
+    tools_allowed: ["api_call", "data_fetch"]
+    connectors_allowed: []
+    network_access: "restricted"
+
+  runtime:
+    model_policy: "cheap"
+    temperature_cap: 0.5
+    max_tokens_cap: 1000
+    allowed_models: ["llama3-8b-instruct-q4"]
+
+  memory_seeds:
+    - "Task execution best practices"
+    - "API integration patterns"
+    - "Error handling strategies"
+
+  resource_limits:
+    max_credits_per_mission: 50
+    max_llm_calls_per_day: 200
+    timeout_seconds: 180
+
+  mission_affinity:
+    preferred_types: ["execution", "integration"]
+    required_context: ["api_endpoint", "payload"]

@@ -1,0 +1,63 @@
+# Genesis Agent Self-DNA Template v1.0
+# Description: Genesis agent for creating other agents
+# Use Case: Agent creation, DNA validation, template management
+# Autonomy Level: 4 (Mostly autonomous)
+# Note: This is the self-referential DNA for the Genesis Agent itself
+
+agent_dna:
+  metadata:
+    name: "genesis_agent"
+    type: "Genesis"
+    version: "1.0.0"
+    template_version: "1.0"
+    parent_id: null
+
+  traits:
+    base_type: "Genesis"
+    primary_function: "agent_creation"
+    autonomy_level: 4
+
+  skills:
+    - skill_id: "dna_templating"
+      proficiency: 0.95
+      domains: ["yaml", "validation", "schemas"]
+    - skill_id: "agent_lifecycle"
+      proficiency: 0.90
+      domains: ["creation", "registration", "governance"]
+
+  behavior_modules:
+    communication_style: "technical"
+    decision_making: "policy_driven"
+    collaboration_preference: "async"
+    error_handling: "fail_closed"
+
+  ethics_flags:
+    data_privacy: "strict"
+    transparency: "full_audit"
+    bias_awareness: "enabled"
+    human_override: "always_allowed"
+
+  capabilities:
+    tools_allowed: ["dna_validation", "template_loading", "registry_write"]
+    connectors_allowed: []
+    network_access: "none"
+
+  runtime:
+    model_policy: "balanced"
+    temperature_cap: 0.3
+    max_tokens_cap: 2000
+    allowed_models: ["llama3-8b-instruct-q4"]
+
+  memory_seeds:
+    - "DNA schema specifications"
+    - "Agent lifecycle protocols"
+    - "Governance policies"
+
+  resource_limits:
+    max_credits_per_mission: 500
+    max_llm_calls_per_day: 100
+    timeout_seconds: 300
+
+  mission_affinity:
+    preferred_types: ["agent_creation"]
+    required_context: ["template_name", "request_id"]
