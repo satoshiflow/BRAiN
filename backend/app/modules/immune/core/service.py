@@ -9,7 +9,7 @@ from app.modules.immune.schemas import (
     ImmuneEvent,
     ImmuneHealthSummary,
     ImmuneSeverity,
-    ImmuneType,
+    ImmuneEventType,
 )
 
 # EventStream integration (Sprint 3)
@@ -202,7 +202,7 @@ class ImmuneService:
 
         try:
             # Dispatch based on event type
-            if event.type == ImmuneType.RESOURCE_EXHAUSTION:
+            if event.type == ImmuneEventType.RESOURCE_EXHAUSTION:
                 if "memory" in event.message.lower():
                     await self._trigger_garbage_collection()
                     action["action"] = "garbage_collection"
@@ -210,7 +210,7 @@ class ImmuneService:
                     await self._enable_backpressure()
                     action["action"] = "backpressure"
 
-            elif event.type == ImmuneType.AGENT_FAILURE:
+            elif event.type == ImmuneEventType.AGENT_FAILURE:
                 if "deadlock" in event.message.lower():
                     await self._restart_affected_agents(event)
                     action["action"] = "restart_agents"
@@ -218,7 +218,7 @@ class ImmuneService:
                     await self._enable_circuit_breaker()
                     action["action"] = "circuit_breaker"
 
-            elif event.type == ImmuneType.PERFORMANCE_DEGRADATION:
+            elif event.type == ImmuneEventType.PERFORMANCE_DEGRADATION:
                 if "queue" in event.message.lower() or "overload" in event.message.lower():
                     await self._enable_backpressure()
                     action["action"] = "backpressure"
