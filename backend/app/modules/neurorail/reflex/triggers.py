@@ -9,7 +9,7 @@ from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
 from loguru import logger
 
-from backend.app.modules.neurorail.errors import ReflexTriggerActivatedError
+from app.modules.neurorail.errors import ReflexTriggerActivatedError
 
 
 @dataclass

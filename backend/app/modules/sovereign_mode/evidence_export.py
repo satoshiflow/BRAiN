@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from loguru import logger
 
-from backend.app.modules.sovereign_mode.schemas import (
+from app.modules.sovereign_mode.schemas import (
     EvidencePack,
     EvidenceExportRequest,
     EvidenceScope,

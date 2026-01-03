@@ -20,16 +20,16 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 from loguru import logger
 
-from backend.app.modules.business_factory.schemas import (
+from app.modules.business_factory.schemas import (
     BusinessBriefing,
     BusinessPlan,
     ExecutionResult,
     RollbackResult,
     PlanStatus,
 )
-from backend.app.modules.business_factory.planner import BusinessPlanner
-from backend.app.modules.template_registry.loader import get_template_loader
-from backend.app.modules.template_registry.schemas import Template
+from app.modules.business_factory.planner import BusinessPlanner
+from app.modules.template_registry.loader import get_template_loader
+from app.modules.template_registry.schemas import Template
 
 # Initialize router
 router = APIRouter(prefix="/api/factory", tags=["factory"])

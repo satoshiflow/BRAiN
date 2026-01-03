@@ -17,7 +17,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import AsyncIterator, Dict
 
-from backend.app.modules.credits.event_sourcing.events import EventEnvelope
+from app.modules.credits.event_sourcing.events import EventEnvelope
 
 
 class BaseEventJournal(ABC):

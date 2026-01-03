@@ -27,7 +27,7 @@ try:
 except ImportError:
     redis = None
 
-from backend.app.modules.ir_governance.schemas import ApprovalRequest, ApprovalStatus
+from app.modules.ir_governance.schemas import ApprovalRequest, ApprovalStatus
 
 
 class RedisApprovalStore:

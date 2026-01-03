@@ -12,7 +12,7 @@ from datetime import datetime
 from enum import Enum
 
 # Import HITL storage and helper from hitl.py
-from backend.app.api.routes.hitl import (
+from app.api.routes.hitl import (
     get_hitl_storage,
     ApprovalStatus,
     create_hitl_approval,

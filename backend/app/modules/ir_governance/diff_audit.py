@@ -16,11 +16,11 @@ from datetime import datetime
 import uuid
 from loguru import logger
 
-from backend.app.modules.ir_governance.schemas import (
+from app.modules.ir_governance.schemas import (
     IR,
     DiffAuditResult,
 )
-from backend.app.modules.ir_governance.canonicalization import (
+from app.modules.ir_governance.canonicalization import (
     ir_hash,
     step_hash,
     compute_dag_hash,

@@ -1,6 +1,6 @@
 """Ops Specialist Blueprint - System operations and administration."""
 
-from backend.app.modules.genesis.blueprints.schemas import (
+from app.modules.genesis.blueprints.schemas import (
     AgentBlueprint,
     BlueprintCapability,
 )

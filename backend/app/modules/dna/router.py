@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, status
 
-from backend.app.modules.dna.core.service import DNAService
-from backend.app.modules.dna.schemas import (
+from app.modules.dna.core.service import DNAService
+from app.modules.dna.schemas import (
     CreateDNASnapshotRequest,
     MutateDNARequest,
     AgentDNASnapshot,

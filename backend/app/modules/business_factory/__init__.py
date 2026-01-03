@@ -11,7 +11,7 @@ Version: 1.0.0
 Sprint: 5
 """
 
-from backend.app.modules.business_factory.schemas import (
+from app.modules.business_factory.schemas import (
     BusinessBriefing,
     BusinessPlan,
     BusinessType,
@@ -24,8 +24,8 @@ from backend.app.modules.business_factory.schemas import (
     RiskAssessment,
     Risk,
 )
-from backend.app.modules.business_factory.planner import BusinessPlanner
-from backend.app.modules.business_factory.risk_assessor import RiskAssessor
+from app.modules.business_factory.planner import BusinessPlanner
+from app.modules.business_factory.risk_assessor import RiskAssessor
 
 __all__ = [
     "BusinessBriefing",

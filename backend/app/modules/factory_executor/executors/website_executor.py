@@ -19,19 +19,19 @@ from pathlib import Path
 from datetime import datetime
 from loguru import logger
 
-from backend.app.modules.factory_executor.base import (
+from app.modules.factory_executor.base import (
     ExecutorBase,
     ExecutionContext,
     ExecutorCapability,
     ValidationError,
     ExecutionError,
 )
-from backend.app.modules.business_factory.schemas import (
+from app.modules.business_factory.schemas import (
     ExecutionStep,
     StepResult,
 )
-from backend.app.modules.template_registry.loader import get_template_loader
-from backend.app.modules.template_registry.schemas import Template
+from app.modules.template_registry.loader import get_template_loader
+from app.modules.template_registry.schemas import Template
 
 
 class WebsiteExecutor(ExecutorBase):

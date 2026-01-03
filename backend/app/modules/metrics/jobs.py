@@ -7,11 +7,11 @@ import redis
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from loguru import logger
 
-from backend.app.core.redis_client import get_redis
+from app.core.redis_client import get_redis
 
 # Optional metrics import
 try:
-    from backend.app.core.metrics import inc_counter
+    from app.core.metrics import inc_counter
 except ImportError:
     # Stub function if metrics module not available
     def inc_counter(metric_name: str, tags: dict = None):

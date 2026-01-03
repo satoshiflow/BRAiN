@@ -28,7 +28,7 @@ from typing import Dict, List, Optional
 
 from loguru import logger
 
-from backend.app.modules.credits.event_sourcing.events import (
+from app.modules.credits.event_sourcing.events import (
     EventEnvelope,
     EventType,
 )

@@ -17,8 +17,8 @@ from typing import Optional
 from datetime import datetime
 from loguru import logger
 
-from backend.app.modules.ir_governance.redis_approval_store import RedisApprovalStore
-from backend.app.modules.ir_governance.approvals import ApprovalsService
+from app.modules.ir_governance.redis_approval_store import RedisApprovalStore
+from app.modules.ir_governance.approvals import ApprovalsService
 
 
 class ApprovalCleanupWorker:

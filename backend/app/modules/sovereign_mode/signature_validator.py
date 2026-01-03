@@ -9,16 +9,16 @@ from typing import Optional
 from datetime import datetime
 from loguru import logger
 
-from backend.app.modules.sovereign_mode.schemas import (
+from app.modules.sovereign_mode.schemas import (
     ValidationResult,
     Bundle,
     AuditEventType,
 )
-from backend.app.modules.sovereign_mode.crypto import (
+from app.modules.sovereign_mode.crypto import (
     verify_bundle_signature,
     SignatureError,
 )
-from backend.app.modules.sovereign_mode.keyring import get_trusted_keyring
+from app.modules.sovereign_mode.keyring import get_trusted_keyring
 
 
 class SignaturePolicy:
@@ -367,7 +367,7 @@ class SignatureValidator:
             reason: Event reason/details
         """
         try:
-            from backend.app.modules.sovereign_mode.service import (
+            from app.modules.sovereign_mode.service import (
                 get_sovereign_mode_service,
             )
 

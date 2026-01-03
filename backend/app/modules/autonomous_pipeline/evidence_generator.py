@@ -13,7 +13,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from loguru import logger
 
-from backend.app.modules.autonomous_pipeline.schemas import (
+from app.modules.autonomous_pipeline.schemas import (
     ExecutionGraphResult,
     ResolvedBusinessIntent,
     ExecutionGraphSpec,
@@ -21,7 +21,7 @@ from backend.app.modules.autonomous_pipeline.schemas import (
 
 # Sprint 9-B: Run Contracts
 try:
-    from backend.app.modules.autonomous_pipeline.run_contract import RunContract
+    from app.modules.autonomous_pipeline.run_contract import RunContract
     RUN_CONTRACT_AVAILABLE = True
 except ImportError:
     RUN_CONTRACT_AVAILABLE = False

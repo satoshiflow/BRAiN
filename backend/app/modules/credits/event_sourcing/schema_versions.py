@@ -62,7 +62,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Optional
 
-from backend.app.modules.credits.event_sourcing.events import EventType
+from app.modules.credits.event_sourcing.events import EventType
 
 # Type alias for upcaster functions
 Upcaster = Callable[[Dict[str, Any]], Dict[str, Any]]

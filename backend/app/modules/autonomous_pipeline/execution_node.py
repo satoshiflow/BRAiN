@@ -11,7 +11,7 @@ from datetime import datetime
 import time
 from loguru import logger
 
-from backend.app.modules.autonomous_pipeline.schemas import (
+from app.modules.autonomous_pipeline.schemas import (
     ExecutionNodeSpec,
     ExecutionNodeResult,
     ExecutionNodeStatus,

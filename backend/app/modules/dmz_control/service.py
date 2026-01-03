@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Optional
 from loguru import logger
 
-from backend.app.modules.dmz_control.schemas import (
+from app.modules.dmz_control.schemas import (
     DMZStatus,
     DMZContainer,
 )

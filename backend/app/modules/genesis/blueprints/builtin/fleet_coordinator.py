@@ -1,6 +1,6 @@
 """Fleet Coordinator Blueprint - Multi-robot fleet coordination."""
 
-from backend.app.modules.genesis.blueprints.schemas import (
+from app.modules.genesis.blueprints.schemas import (
     AgentBlueprint,
     BlueprintCapability,
 )

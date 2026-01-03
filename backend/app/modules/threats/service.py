@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
-from backend.app.core.redis_client import get_redis
+from app.core.redis_client import get_redis
 from .models import (
     Threat,
     ThreatCreate,

@@ -7,7 +7,7 @@ Handles startup and shutdown of the Credits module, including:
 - Graceful shutdown
 
 Usage (in main.py):
-    from backend.app.modules.credits.lifecycle import (
+    from app.modules.credits.lifecycle import (
         startup_credits_module,
         shutdown_credits_module,
     )
@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from loguru import logger
 
-from backend.app.modules.credits.service import initialize_event_sourcing
+from app.modules.credits.service import initialize_event_sourcing
 
 
 async def startup_credits_module() -> None:

@@ -12,11 +12,11 @@ Components:
 - Service: Core orchestration and policy integration
 """
 
-from backend.app.modules.sovereign_mode.service import (
+from app.modules.sovereign_mode.service import (
     SovereignModeService,
     get_sovereign_service,
 )
-from backend.app.modules.sovereign_mode.schemas import (
+from app.modules.sovereign_mode.schemas import (
     SovereignMode,
     OperationMode,
     Bundle,
@@ -27,7 +27,7 @@ from backend.app.modules.sovereign_mode.schemas import (
     AuditSeverity,
     AuditEventType,
 )
-from backend.app.modules.sovereign_mode.ipv6_gate import (
+from app.modules.sovereign_mode.ipv6_gate import (
     IPv6GateChecker,
     IPv6GateResult,
     get_ipv6_gate_checker,

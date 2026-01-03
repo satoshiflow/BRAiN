@@ -13,19 +13,19 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from loguru import logger
 
-from backend.app.core.database import get_db
-from backend.app.modules.governor.manifest.registry import get_manifest_registry
-from backend.app.modules.governor.manifest.schemas import (
+from app.core.database import get_db
+from app.modules.governor.manifest.registry import get_manifest_registry
+from app.modules.governor.manifest.schemas import (
     GovernorManifest,
     ShadowReport,
 )
-from backend.app.modules.governor.decision.store import get_decision_store
-from backend.app.modules.governor.decision.models import (
+from app.modules.governor.decision.store import get_decision_store
+from app.modules.governor.decision.models import (
     DecisionQuery,
     DecisionStatistics,
     GovernorDecision,
 )
-from backend.app.modules.neurorail.errors import ManifestNotFoundError
+from app.modules.neurorail.errors import ManifestNotFoundError
 
 
 router = APIRouter(prefix="/api/governor/v2", tags=["governor-v2"])

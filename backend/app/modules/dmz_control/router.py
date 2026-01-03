@@ -7,12 +7,12 @@ Endpoints for managing DMZ gateway services.
 from fastapi import APIRouter, HTTPException
 from loguru import logger
 
-from backend.app.modules.dmz_control.service import get_dmz_control_service
-from backend.app.modules.dmz_control.schemas import (
+from app.modules.dmz_control.service import get_dmz_control_service
+from app.modules.dmz_control.schemas import (
     DMZStatus,
     DMZControlResponse,
 )
-from backend.app.modules.dmz_control.monitoring import (
+from app.modules.dmz_control.monitoring import (
     get_dmz_health_monitor,
     DMZMetrics,
     GatewayHealthMetric,
@@ -60,7 +60,7 @@ async def start_dmz():
 
     try:
         # TODO: Check if in Sovereign Mode - if yes, reject
-        # from backend.app.modules.sovereign_mode import get_sovereign_service
+        # from app.modules.sovereign_mode import get_sovereign_service
         # sovereign = get_sovereign_service()
         # if sovereign.config.current_mode == OperationMode.SOVEREIGN:
         #     raise HTTPException(

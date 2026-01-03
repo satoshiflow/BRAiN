@@ -11,9 +11,9 @@ Exports:
 - UserContext: User context for request
 """
 
-from backend.app.modules.neurorail.rbac.schemas import Role, Permission, UserContext
-from backend.app.modules.neurorail.rbac.service import RBACService, get_rbac_service
-from backend.app.modules.neurorail.rbac.middleware import require_permission
+from app.modules.neurorail.rbac.schemas import Role, Permission, UserContext
+from app.modules.neurorail.rbac.service import RBACService, get_rbac_service
+from app.modules.neurorail.rbac.middleware import require_permission
 
 __all__ = [
     "Role",

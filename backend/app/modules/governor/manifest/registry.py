@@ -16,12 +16,12 @@ from loguru import logger
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.modules.governor.manifest.schemas import (
+from app.modules.governor.manifest.schemas import (
     GovernorManifest,
     ActivationGateConfig,
     ShadowReport,
 )
-from backend.app.modules.neurorail.errors import (
+from app.modules.neurorail.errors import (
     ManifestNotFoundError,
     ManifestInvalidSchemaError,
     ManifestHashMismatchError,
@@ -403,7 +403,7 @@ class ManifestRegistry:
             GovernorManifest
         """
         import json
-        from backend.app.modules.governor.manifest.schemas import (
+        from app.modules.governor.manifest.schemas import (
             ManifestRule,
             Budget,
             RiskClass,

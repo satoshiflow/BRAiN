@@ -16,15 +16,15 @@ import redis.asyncio as redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.core.redis_client import get_redis
-from backend.app.core.metrics import (
+from app.core.redis_client import get_redis
+from app.core.metrics import (
     record_neurorail_attempt,
     record_neurorail_budget_violation,
     record_neurorail_reflex,
     update_neurorail_gauges,
     record_neurorail_ttfs,
 )
-from backend.app.modules.neurorail.telemetry.schemas import (
+from app.modules.neurorail.telemetry.schemas import (
     ExecutionMetrics,
     AggregatedMetrics,
     RealtimeSnapshot,

@@ -3,7 +3,7 @@ from typing import Dict, List, Optional
 
 from loguru import logger
 
-from backend.app.modules.dna.schemas import (
+from app.modules.dna.schemas import (
     AgentDNASnapshot,
     CreateDNASnapshotRequest,
     MutateDNARequest,

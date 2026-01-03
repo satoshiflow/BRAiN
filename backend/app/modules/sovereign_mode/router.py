@@ -8,8 +8,8 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query
 from loguru import logger
 
-from backend.app.modules.sovereign_mode.service import get_sovereign_service
-from backend.app.modules.sovereign_mode.schemas import (
+from app.modules.sovereign_mode.service import get_sovereign_service
+from app.modules.sovereign_mode.schemas import (
     SovereignMode,
     Bundle,
     BundleStatus,
@@ -236,7 +236,7 @@ async def check_network(
 
         # Phase 2: Add host firewall state check
         if include_firewall:
-            from backend.app.modules.sovereign_mode.network_guard import check_host_firewall_state
+            from app.modules.sovereign_mode.network_guard import check_host_firewall_state
 
             try:
                 firewall_state = await check_host_firewall_state()
@@ -429,7 +429,7 @@ async def remove_quarantine(bundle_id: str):
 # IPv6 MONITORING ENDPOINTS
 # ============================================================================
 
-from backend.app.modules.sovereign_mode.ipv6_monitoring import (
+from app.modules.sovereign_mode.ipv6_monitoring import (
     get_ipv6_traffic_monitor,
     IPv6TrafficStats,
     IPv6FirewallStats,
@@ -525,7 +525,7 @@ async def get_ipv6_prometheus_metrics():
 # FIREWALL AUDIT LOGGING ENDPOINTS
 # ============================================================================
 
-from backend.app.modules.sovereign_mode.firewall_audit import (
+from app.modules.sovereign_mode.firewall_audit import (
     get_firewall_audit_log,
     FirewallAuditEntry,
     FirewallOperation,
@@ -627,13 +627,13 @@ async def sign_bundle_endpoint(bundle_id: str):
 
     **Returns**: Bundle with signature added
     """
-    from backend.app.modules.sovereign_mode.crypto import (
+    from app.modules.sovereign_mode.crypto import (
         generate_keypair,
         sign_bundle as crypto_sign_bundle,
         export_public_key_pem,
         export_public_key_hex,
     )
-    from backend.app.modules.sovereign_mode.keyring import get_trusted_keyring
+    from app.modules.sovereign_mode.keyring import get_trusted_keyring
     from datetime import datetime
 
     service = get_sovereign_mode_service()
@@ -730,7 +730,7 @@ async def list_trusted_keys(
 
     **Returns**: List of TrustedKey objects
     """
-    from backend.app.modules.sovereign_mode.keyring import get_trusted_keyring
+    from app.modules.sovereign_mode.keyring import get_trusted_keyring
 
     try:
         keyring = get_trusted_keyring()
@@ -769,7 +769,7 @@ async def add_trusted_key(
 
     **Returns**: TrustedKey object
     """
-    from backend.app.modules.sovereign_mode.keyring import get_trusted_keyring
+    from app.modules.sovereign_mode.keyring import get_trusted_keyring
 
     try:
         keyring = get_trusted_keyring()
@@ -809,7 +809,7 @@ async def remove_trusted_key(key_id: str, revoke: bool = False):
 
     **Returns**: Success message
     """
-    from backend.app.modules.sovereign_mode.keyring import get_trusted_keyring
+    from app.modules.sovereign_mode.keyring import get_trusted_keyring
 
     try:
         keyring = get_trusted_keyring()
@@ -892,7 +892,7 @@ async def export_evidence(request: EvidenceExportRequest) -> EvidencePack:
     
     **Returns:** EvidencePack with SHA256 content hash for verification
     """
-    from backend.app.modules.sovereign_mode.evidence_export import get_evidence_exporter
+    from app.modules.sovereign_mode.evidence_export import get_evidence_exporter
     
     try:
         # Get sovereign service
@@ -940,7 +940,7 @@ async def verify_evidence(pack: EvidencePack) -> dict:
     - computed_hash: Recomputed hash
     - pack_id: Evidence pack identifier
     """
-    from backend.app.modules.sovereign_mode.evidence_export import get_evidence_exporter
+    from app.modules.sovereign_mode.evidence_export import get_evidence_exporter
     
     try:
         exporter = get_evidence_exporter()

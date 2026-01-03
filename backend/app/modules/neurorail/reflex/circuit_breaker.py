@@ -13,7 +13,7 @@ from enum import Enum
 from dataclasses import dataclass, field
 from loguru import logger
 
-from backend.app.modules.neurorail.errors import (
+from app.modules.neurorail.errors import (
     ReflexCircuitOpenError,
     NeuroRailErrorCode,
     should_alert_immune,

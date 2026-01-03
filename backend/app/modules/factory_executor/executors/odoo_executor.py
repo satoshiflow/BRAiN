@@ -16,14 +16,14 @@ from __future__ import annotations
 from typing import List, Dict, Any, Set
 from loguru import logger
 
-from backend.app.modules.factory_executor.base import (
+from app.modules.factory_executor.base import (
     ExecutorBase,
     ExecutionContext,
     ExecutorCapability,
     ValidationError,
     ExecutionError,
 )
-from backend.app.modules.business_factory.schemas import (
+from app.modules.business_factory.schemas import (
     ExecutionStep,
     StepResult,
 )

@@ -7,7 +7,7 @@ Maps WebGenesis execution graph to IR steps for governance and diff-audit.
 from typing import List, Dict, Any
 from loguru import logger
 
-from backend.app.modules.ir_governance import (
+from app.modules.ir_governance import (
     IR,
     IRStep,
     IRAction,
@@ -15,7 +15,7 @@ from backend.app.modules.ir_governance import (
     RiskTier,
     step_hash,
 )
-from backend.app.modules.autonomous_pipeline.schemas import (
+from app.modules.autonomous_pipeline.schemas import (
     ExecutionGraphSpec,
     ExecutionNodeSpec,
     ExecutionNodeType,

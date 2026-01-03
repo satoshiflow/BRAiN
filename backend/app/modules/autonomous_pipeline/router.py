@@ -8,21 +8,21 @@ from fastapi import APIRouter, HTTPException
 from typing import Dict, Any
 from loguru import logger
 
-from backend.app.modules.autonomous_pipeline.schemas import (
+from app.modules.autonomous_pipeline.schemas import (
     BusinessIntentInput,
     ResolvedBusinessIntent,
     ExecutionGraphSpec,
     ExecutionGraphResult,
 )
-from backend.app.modules.autonomous_pipeline.intent_resolver import get_business_intent_resolver
-from backend.app.modules.autonomous_pipeline.execution_graph import create_execution_graph
-from backend.app.modules.autonomous_pipeline.evidence_generator import (
+from app.modules.autonomous_pipeline.intent_resolver import get_business_intent_resolver
+from app.modules.autonomous_pipeline.execution_graph import create_execution_graph
+from app.modules.autonomous_pipeline.evidence_generator import (
     get_evidence_generator,
     PipelineEvidencePack,
 )
 
 # Sprint 9-B: Run contracts
-from backend.app.modules.autonomous_pipeline.run_contract import (
+from app.modules.autonomous_pipeline.run_contract import (
     get_run_contract_service,
     RunContract,
 )
@@ -444,7 +444,7 @@ async def replay_contract(
         governor = None
         if contract.policy:
             try:
-                from backend.app.modules.autonomous_pipeline.governor import ExecutionGovernor
+                from app.modules.autonomous_pipeline.governor import ExecutionGovernor
                 governor = ExecutionGovernor(contract.policy)
                 logger.info(f"[Replay] Governor enabled with policy: {contract.policy.policy_name}")
             except ImportError:

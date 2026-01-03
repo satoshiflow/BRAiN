@@ -43,8 +43,8 @@ from typing import Any, Dict, Optional
 
 from loguru import logger
 
-from backend.app.modules.credits.event_sourcing.events import EventEnvelope
-from backend.app.modules.credits.event_sourcing.schema_versions import SCHEMA_REGISTRY
+from app.modules.credits.event_sourcing.events import EventEnvelope
+from app.modules.credits.event_sourcing.schema_versions import SCHEMA_REGISTRY
 
 
 class UpcastError(Exception):
@@ -322,7 +322,7 @@ To integrate with replay engine, modify replay.py:
 await self.projection_manager.balance.handle_event(event)
 
 # After:
-from backend.app.modules.credits.event_sourcing.event_upcaster import upcast_event_if_needed
+from app.modules.credits.event_sourcing.event_upcaster import upcast_event_if_needed
 
 upcasted_event = await upcast_event_if_needed(event)
 await self.projection_manager.balance.handle_event(upcasted_event)

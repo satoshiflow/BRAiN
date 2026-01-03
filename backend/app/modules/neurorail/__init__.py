@@ -11,7 +11,7 @@ NeuroRail provides mechanical execution guarantees with complete observability:
 Inspired by SGLang Model Gateway v0.3.0.
 """
 
-from backend.app.modules.neurorail.errors import (
+from app.modules.neurorail.errors import (
     NeuroRailError,
     NeuroRailErrorCode,
     ErrorCategory,

@@ -12,12 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 from typing import Optional, List
 
-from backend.app.core.database import get_db
-from backend.app.modules.neurorail.audit.service import (
+from app.core.database import get_db
+from app.modules.neurorail.audit.service import (
     AuditService,
     get_audit_service,
 )
-from backend.app.modules.neurorail.audit.schemas import (
+from app.modules.neurorail.audit.schemas import (
     AuditEvent,
     AuditQuery,
     AuditQueryResponse,

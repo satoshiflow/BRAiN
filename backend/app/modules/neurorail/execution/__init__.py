@@ -11,16 +11,16 @@ Phase 1: Observation only (no budget enforcement)
 Phase 2: Budget enforcement (timeouts, retries, limits)
 """
 
-from backend.app.modules.neurorail.execution.schemas import (
+from app.modules.neurorail.execution.schemas import (
     ExecutionContext,
     ExecutionResult,
     ExecutionRequest,
 )
-from backend.app.modules.neurorail.execution.service import (
+from app.modules.neurorail.execution.service import (
     ExecutionService,
     get_execution_service,
 )
-from backend.app.modules.neurorail.execution.router import router
+from app.modules.neurorail.execution.router import router
 
 __all__ = [
     # Schemas

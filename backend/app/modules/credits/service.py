@@ -12,14 +12,14 @@ MODULE_VERSION = "2.0.0"  # Updated for Event Sourcing
 
 # Optional EventStream import (Sprint 5: EventStream Integration)
 try:
-    from backend.app.core.event_stream import EventStream, Event
+    from app.core.event_stream import EventStream, Event
 except ImportError:
     EventStream = None
     Event = None
 
 # Event Sourcing imports
 try:
-    from backend.app.modules.credits.integration_demo import (
+    from app.modules.credits.integration_demo import (
         CreditSystemDemo,
         get_credit_system_demo,
     )

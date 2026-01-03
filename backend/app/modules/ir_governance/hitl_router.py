@@ -19,13 +19,13 @@ from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Qu
 from pydantic import BaseModel, Field
 from loguru import logger
 
-from backend.app.modules.ir_governance.schemas import (
+from app.modules.ir_governance.schemas import (
     ApprovalRequest,
     ApprovalStatus,
 )
-from backend.app.modules.ir_governance.approvals import get_approvals_service
-from backend.app.modules.ir_governance.approval_cleanup_worker import get_cleanup_worker
-from backend.app.modules.ir_governance.redis_approval_store import RedisApprovalStore
+from app.modules.ir_governance.approvals import get_approvals_service
+from app.modules.ir_governance.approval_cleanup_worker import get_cleanup_worker
+from app.modules.ir_governance.redis_approval_store import RedisApprovalStore
 
 
 router = APIRouter(prefix="/api/ir/approvals", tags=["HITL Approvals"])

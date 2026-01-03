@@ -10,7 +10,7 @@ import time
 from datetime import datetime, timedelta
 from loguru import logger
 
-from backend.app.modules.autonomous_pipeline.governor_schemas import (
+from app.modules.autonomous_pipeline.governor_schemas import (
     ExecutionBudget,
     ExecutionPolicy,
     GovernorDecision,
@@ -20,7 +20,7 @@ from backend.app.modules.autonomous_pipeline.governor_schemas import (
     BudgetViolation,
     BudgetLimitType,
 )
-from backend.app.modules.autonomous_pipeline.schemas import ExecutionNodeSpec
+from app.modules.autonomous_pipeline.schemas import ExecutionNodeSpec
 
 
 class BudgetExceededException(Exception):

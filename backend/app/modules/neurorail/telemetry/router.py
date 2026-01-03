@@ -9,11 +9,11 @@ Provides REST endpoints for:
 from fastapi import APIRouter, HTTPException, status, Depends
 from typing import Optional
 
-from backend.app.modules.neurorail.telemetry.service import (
+from app.modules.neurorail.telemetry.service import (
     TelemetryService,
     get_telemetry_service,
 )
-from backend.app.modules.neurorail.telemetry.schemas import (
+from app.modules.neurorail.telemetry.schemas import (
     ExecutionMetrics,
     RealtimeSnapshot,
 )

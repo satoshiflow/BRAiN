@@ -9,7 +9,7 @@ This module provides a robust foundation for all external integrations with:
 - RetryHandler: Exponential backoff with jitter
 
 Usage:
-    from backend.app.modules.integrations import (
+    from app.modules.integrations import (
         BaseAPIClient,
         APIClientConfig,
         AuthConfig,

@@ -9,8 +9,8 @@ from enum import Enum
 from dataclasses import dataclass
 from loguru import logger
 
-from backend.app.modules.neurorail.reflex.lifecycle import JobLifecycle, get_job_lifecycle
-from backend.app.modules.neurorail.errors import ReflexActionFailedError
+from app.modules.neurorail.reflex.lifecycle import JobLifecycle, get_job_lifecycle
+from app.modules.neurorail.errors import ReflexActionFailedError
 
 
 class ReflexActionType(str, Enum):
@@ -231,7 +231,7 @@ class ReflexAction:
         """
         try:
             lifecycle = get_job_lifecycle(self.job_id)
-            from backend.app.modules.neurorail.reflex.lifecycle import JobLifecycleState
+            from app.modules.neurorail.reflex.lifecycle import JobLifecycleState
             lifecycle.transition(JobLifecycleState.CANCELLED, reason, triggered_by="reflex")
 
             self.action_count += 1

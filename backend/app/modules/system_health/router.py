@@ -7,8 +7,8 @@ API endpoints for comprehensive system health monitoring.
 from fastapi import APIRouter, Depends
 from typing import Optional
 
-from backend.app.modules.system_health.service import SystemHealthService
-from backend.app.modules.system_health.schemas import (
+from app.modules.system_health.service import SystemHealthService
+from app.modules.system_health.schemas import (
     SystemHealth,
     SystemHealthSummary,
 )
@@ -33,8 +33,8 @@ def get_runtime_auditor() -> Optional[object]:
     global _runtime_auditor
     if _runtime_auditor is None:
         try:
-            from backend.app.modules.runtime_auditor.service import RuntimeAuditor
-            from backend.app.modules.immune.core.service import ImmuneService
+            from app.modules.runtime_auditor.service import RuntimeAuditor
+            from app.modules.immune.core.service import ImmuneService
 
             # Initialize with Immune System integration
             immune_service = ImmuneService()

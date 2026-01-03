@@ -8,8 +8,8 @@ from typing import List, Callable
 from functools import wraps
 from fastapi import HTTPException, status
 
-from backend.app.modules.neurorail.rbac.schemas import Permission, UserContext, Role
-from backend.app.modules.neurorail.rbac.service import get_rbac_service
+from app.modules.neurorail.rbac.schemas import Permission, UserContext, Role
+from app.modules.neurorail.rbac.service import get_rbac_service
 
 
 def require_permission(

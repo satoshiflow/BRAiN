@@ -8,7 +8,7 @@ import asyncio
 from typing import Dict, List, Optional
 from loguru import logger
 
-from backend.app.modules.neurorail.streams.schemas import StreamEvent, EventChannel
+from app.modules.neurorail.streams.schemas import StreamEvent, EventChannel
 
 
 class SSEPublisher:

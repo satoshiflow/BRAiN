@@ -14,15 +14,15 @@ from fastapi import APIRouter, HTTPException
 from typing import Dict, Any
 from loguru import logger
 
-from backend.app.modules.ir_governance.schemas import (
+from app.modules.ir_governance.schemas import (
     IR,
     IRValidationResult,
     ApprovalRequest,
     ApprovalConsumeRequest,
     ApprovalConsumeResult,
 )
-from backend.app.modules.ir_governance.validator import get_validator
-from backend.app.modules.ir_governance.approvals import get_approvals_service
+from app.modules.ir_governance.validator import get_validator
+from app.modules.ir_governance.approvals import get_approvals_service
 
 
 router = APIRouter(prefix="/api/ir", tags=["ir-governance"])

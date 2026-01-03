@@ -5,7 +5,7 @@ Manages the hierarchical trace chain:
 mission_id → plan_id → job_id → attempt_id → resource_uuid
 """
 
-from backend.app.modules.neurorail.identity.schemas import (
+from app.modules.neurorail.identity.schemas import (
     MissionIdentity,
     PlanIdentity,
     JobIdentity,
@@ -18,11 +18,11 @@ from backend.app.modules.neurorail.identity.schemas import (
     CreateAttemptRequest,
     CreateResourceRequest,
 )
-from backend.app.modules.neurorail.identity.service import (
+from app.modules.neurorail.identity.service import (
     IdentityService,
     get_identity_service,
 )
-from backend.app.modules.neurorail.identity.router import router
+from app.modules.neurorail.identity.router import router
 
 __all__ = [
     # Schemas

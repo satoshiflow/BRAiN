@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from loguru import logger
 
-from backend.app.modules.safe_mode.service import get_safe_mode_service
+from app.modules.safe_mode.service import get_safe_mode_service
 
 
 router = APIRouter(prefix="/api/safe-mode", tags=["safe-mode"])

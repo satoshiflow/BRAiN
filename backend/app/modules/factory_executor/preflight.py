@@ -11,7 +11,7 @@ from typing import List, Dict, Any
 from pathlib import Path
 from loguru import logger
 
-from backend.app.modules.business_factory.schemas import (
+from app.modules.business_factory.schemas import (
     BusinessPlan,
     PreflightResult,
 )
@@ -122,7 +122,7 @@ class PreflightChecker:
 
     async def _check_templates(self, plan: BusinessPlan) -> Dict[str, Any]:
         """Check that all required templates exist"""
-        from backend.app.modules.template_registry.loader import get_template_loader
+        from app.modules.template_registry.loader import get_template_loader
 
         try:
             loader = get_template_loader()
@@ -215,7 +215,7 @@ class PreflightChecker:
     def _requires_network(self, plan: BusinessPlan) -> bool:
         """Determine if plan requires network connectivity"""
         # Check if any step requires external services
-        from backend.app.modules.business_factory.schemas import ExecutorType
+        from app.modules.business_factory.schemas import ExecutorType
 
         network_executors = {ExecutorType.ODOO, ExecutorType.DNS}
 

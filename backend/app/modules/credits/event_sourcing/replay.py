@@ -39,12 +39,12 @@ from typing import Dict, List, Optional
 
 from loguru import logger
 
-from backend.app.modules.credits.event_sourcing.base_journal import BaseEventJournal
-from backend.app.modules.credits.event_sourcing.events import EventType
-from backend.app.modules.credits.event_sourcing.projections import (
+from app.modules.credits.event_sourcing.base_journal import BaseEventJournal
+from app.modules.credits.event_sourcing.events import EventType
+from app.modules.credits.event_sourcing.projections import (
     ProjectionManager,
 )
-from backend.app.modules.credits.event_sourcing.snapshot_manager import (
+from app.modules.credits.event_sourcing.snapshot_manager import (
     SnapshotManager,
     ProjectionSnapshot,
 )
@@ -422,21 +422,21 @@ async def get_replay_engine(
 
     if _replay_engine_instance is None:
         if journal is None:
-            from backend.app.modules.credits.event_sourcing.event_journal import (
+            from app.modules.credits.event_sourcing.event_journal import (
                 get_event_journal,
             )
 
             journal = await get_event_journal()
 
         if projection_manager is None:
-            from backend.app.modules.credits.event_sourcing.projections import (
+            from app.modules.credits.event_sourcing.projections import (
                 get_projection_manager,
             )
 
             projection_manager = get_projection_manager()
 
         if snapshot_manager is None:
-            from backend.app.modules.credits.event_sourcing.snapshot_manager import (
+            from app.modules.credits.event_sourcing.snapshot_manager import (
                 get_snapshot_manager,
             )
 

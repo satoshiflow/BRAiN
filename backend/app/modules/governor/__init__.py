@@ -10,17 +10,17 @@ Phase 1: Observation only
 Phase 2: Full budget enforcement and manifest-driven governance
 """
 
-from backend.app.modules.governor.schemas import (
+from app.modules.governor.schemas import (
     ModeDecision,
     ManifestSpec,
     ShadowEvaluation,
     DecisionRequest,
 )
-from backend.app.modules.governor.service import (
+from app.modules.governor.service import (
     GovernorService,
     get_governor_service,
 )
-from backend.app.modules.governor.router import router
+from app.modules.governor.router import router
 
 __all__ = [
     # Schemas

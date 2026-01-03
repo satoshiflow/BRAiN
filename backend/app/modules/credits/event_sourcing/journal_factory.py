@@ -22,7 +22,7 @@ from typing import Literal, Optional
 
 from loguru import logger
 
-from backend.app.modules.credits.event_sourcing.base_journal import BaseEventJournal
+from app.modules.credits.event_sourcing.base_journal import BaseEventJournal
 
 
 EventJournalBackend = Literal["file", "postgres"]
@@ -77,7 +77,7 @@ async def create_event_journal(
 
     # === File Backend ===
     if backend == "file":
-        from backend.app.modules.credits.event_sourcing.event_journal import EventJournal
+        from app.modules.credits.event_sourcing.event_journal import EventJournal
 
         # Extract file-specific kwargs
         file_path = kwargs.get("file_path", "storage/events/credits.jsonl")
@@ -100,7 +100,7 @@ async def create_event_journal(
 
     # === Postgres Backend ===
     elif backend == "postgres":
-        from backend.app.modules.credits.event_sourcing.postgres_journal import PostgresEventJournal
+        from app.modules.credits.event_sourcing.postgres_journal import PostgresEventJournal
 
         # Extract postgres-specific kwargs
         database_url = kwargs.get("database_url", None)
@@ -156,8 +156,8 @@ async def migrate_file_to_postgres(
             target_database_url="postgresql+asyncpg://..."
         )
     """
-    from backend.app.modules.credits.event_sourcing.event_journal import EventJournal
-    from backend.app.modules.credits.event_sourcing.postgres_journal import PostgresEventJournal
+    from app.modules.credits.event_sourcing.event_journal import EventJournal
+    from app.modules.credits.event_sourcing.postgres_journal import PostgresEventJournal
 
     logger.info("Starting migration from JSONL to Postgres...")
 

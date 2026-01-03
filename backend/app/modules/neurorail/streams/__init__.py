@@ -8,9 +8,9 @@ Exports:
 - StreamEvent: Event message structure
 """
 
-from backend.app.modules.neurorail.streams.publisher import SSEPublisher, get_sse_publisher
-from backend.app.modules.neurorail.streams.subscriber import SSESubscriber
-from backend.app.modules.neurorail.streams.schemas import EventChannel, StreamEvent
+from app.modules.neurorail.streams.publisher import SSEPublisher, get_sse_publisher
+from app.modules.neurorail.streams.subscriber import SSESubscriber
+from app.modules.neurorail.streams.schemas import EventChannel, StreamEvent
 
 __all__ = [
     "SSEPublisher",

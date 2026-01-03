@@ -4,22 +4,22 @@ NeuroRail API Router Integration (Phase 3 Backend).
 Combines all NeuroRail routers for easy FastAPI integration.
 
 Usage in main.py:
-    from backend.app.modules.neurorail.api.router import neurorail_router
+    from app.modules.neurorail.api.router import neurorail_router
     app.include_router(neurorail_router)
 """
 
 from fastapi import APIRouter
 
-from backend.app.modules.neurorail.api.streams import router as streams_router
-from backend.app.modules.neurorail.api.rbac import router as rbac_router
+from app.modules.neurorail.api.streams import router as streams_router
+from app.modules.neurorail.api.rbac import router as rbac_router
 
 # Import existing NeuroRail routers (from Phase 1 & 2)
-from backend.app.modules.neurorail.identity.router import router as identity_router
-from backend.app.modules.neurorail.lifecycle.router import router as lifecycle_router
-from backend.app.modules.neurorail.audit.router import router as audit_router
-from backend.app.modules.neurorail.telemetry.router import router as telemetry_router
-from backend.app.modules.neurorail.execution.router import router as execution_router
-from backend.app.modules.governor.router import router as governor_router
+from app.modules.neurorail.identity.router import router as identity_router
+from app.modules.neurorail.lifecycle.router import router as lifecycle_router
+from app.modules.neurorail.audit.router import router as audit_router
+from app.modules.neurorail.telemetry.router import router as telemetry_router
+from app.modules.neurorail.execution.router import router as execution_router
+from app.modules.governor.router import router as governor_router
 
 # Combined NeuroRail router
 neurorail_router = APIRouter()
