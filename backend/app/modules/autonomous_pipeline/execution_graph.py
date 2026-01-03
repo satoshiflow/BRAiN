@@ -10,13 +10,13 @@ from collections import defaultdict
 import time
 from loguru import logger
 
-from backend.app.modules.autonomous_pipeline.schemas import (
+from app.modules.autonomous_pipeline.schemas import (
     ExecutionGraphSpec,
     ExecutionGraphResult,
     ExecutionNodeResult,
     ExecutionNodeStatus,
 )
-from backend.app.modules.autonomous_pipeline.execution_node import (
+from app.modules.autonomous_pipeline.execution_node import (
     ExecutionNode,
     ExecutionContext,
     ExecutionNodeError,
@@ -25,12 +25,12 @@ from backend.app.modules.autonomous_pipeline.execution_node import (
 
 # Sprint 9: Governor integration (optional)
 try:
-    from backend.app.modules.autonomous_pipeline.governor import (
+    from app.modules.autonomous_pipeline.governor import (
         ExecutionGovernor,
         BudgetExceededException,
         ApprovalRequiredException,
     )
-    from backend.app.modules.autonomous_pipeline.governor_schemas import (
+    from app.modules.autonomous_pipeline.governor_schemas import (
         GovernorDecisionType,
     )
     GOVERNOR_AVAILABLE = True
@@ -440,19 +440,19 @@ class ExecutionGraph:
             ExecutionGraphError: If instantiation fails
         """
         # Import node types dynamically
-        from backend.app.modules.autonomous_pipeline.schemas import ExecutionNodeType
+        from app.modules.autonomous_pipeline.schemas import ExecutionNodeType
 
         # Map node types to executor classes
         if node_spec.node_type == ExecutionNodeType.WEBGENESIS:
-            from backend.app.modules.autonomous_pipeline.nodes.webgenesis_node import WebGenesisNode
+            from app.modules.autonomous_pipeline.nodes.webgenesis_node import WebGenesisNode
             return WebGenesisNode(node_spec)
 
         # Add other node types as they're implemented
         # elif node_spec.node_type == ExecutionNodeType.DNS:
-        #     from backend.app.modules.autonomous_pipeline.nodes.dns_node import DNSNode
+        #     from app.modules.autonomous_pipeline.nodes.dns_node import DNSNode
         #     return DNSNode(node_spec)
         # elif node_spec.node_type == ExecutionNodeType.ODOO_MODULE:
-        #     from backend.app.modules.autonomous_pipeline.nodes.odoo_module_node import OdooModuleNode
+        #     from app.modules.autonomous_pipeline.nodes.odoo_module_node import OdooModuleNode
         #     return OdooModuleNode(node_spec)
 
         # Fallback for unsupported node types

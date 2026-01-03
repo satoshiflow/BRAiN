@@ -16,7 +16,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 import uuid
 
-from backend.app.modules.governor.manifest.schemas import Budget
+from app.modules.governor.manifest.schemas import Budget
 
 
 # ============================================================================

@@ -12,8 +12,8 @@ Aggregates health data from all BRAiN modules:
 Provides comprehensive system health overview for monitoring and diagnostics.
 """
 
-from backend.app.modules.system_health.service import SystemHealthService
-from backend.app.modules.system_health.schemas import (
+from app.modules.system_health.service import SystemHealthService
+from app.modules.system_health.schemas import (
     SystemHealth,
     HealthStatus,
     BottleneckInfo,

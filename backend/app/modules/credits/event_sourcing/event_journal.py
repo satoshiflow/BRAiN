@@ -35,7 +35,7 @@ from typing import AsyncIterator, Optional, Set
 
 from loguru import logger
 
-from backend.app.modules.credits.event_sourcing.events import EventEnvelope
+from app.modules.credits.event_sourcing.events import EventEnvelope
 
 
 class EventJournalError(Exception):
@@ -434,7 +434,7 @@ class EventJournal:
 # Global journal instance (initialized on first use)
 # Note: Changed to use factory for backend selection (Phase 5a)
 
-from backend.app.modules.credits.event_sourcing.base_journal import BaseEventJournal
+from app.modules.credits.event_sourcing.base_journal import BaseEventJournal
 
 _journal_instance: Optional[BaseEventJournal] = None
 
@@ -461,7 +461,7 @@ async def get_event_journal() -> BaseEventJournal:
     global _journal_instance
 
     if _journal_instance is None:
-        from backend.app.modules.credits.event_sourcing.journal_factory import create_event_journal
+        from app.modules.credits.event_sourcing.journal_factory import create_event_journal
 
         _journal_instance = await create_event_journal()
 

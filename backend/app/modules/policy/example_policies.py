@@ -6,7 +6,7 @@ Load these policies into the Policy Engine for testing and production use.
 """
 
 from typing import List, Dict, Any
-from backend.app.modules.policy.schemas import PolicyRule, PolicyEffect
+from app.modules.policy.schemas import PolicyRule, PolicyEffect
 
 
 # ============================================================================
@@ -296,8 +296,8 @@ def load_policies_into_engine(policy_service):
     Load all example policies into a PolicyService instance.
 
     Usage:
-        from backend.app.modules.policy.service import PolicyService
-        from backend.app.modules.policy.example_policies import load_policies_into_engine
+        from app.modules.policy.service import PolicyService
+        from app.modules.policy.example_policies import load_policies_into_engine
 
         service = PolicyService()
         load_policies_into_engine(service)

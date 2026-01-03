@@ -15,12 +15,12 @@ from loguru import logger
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.modules.governor.decision.models import (
+from app.modules.governor.decision.models import (
     GovernorDecision,
     DecisionStatistics,
     DecisionQuery,
 )
-from backend.app.modules.neurorail.errors import NeuroRailErrorCode
+from app.modules.neurorail.errors import NeuroRailErrorCode
 
 
 class DecisionStore:
@@ -305,7 +305,7 @@ class DecisionStore:
             GovernorDecision
         """
         import json
-        from backend.app.modules.governor.decision.models import BudgetResolution
+        from app.modules.governor.decision.models import BudgetResolution
 
         budget_resolution_data = json.loads(row[7])  # budget_resolution column
         triggered_rules_data = json.loads(row[11])  # triggered_rules column

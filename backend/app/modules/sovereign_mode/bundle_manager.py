@@ -11,21 +11,21 @@ from typing import Dict, List, Optional
 from datetime import datetime
 from loguru import logger
 
-from backend.app.modules.sovereign_mode.schemas import (
+from app.modules.sovereign_mode.schemas import (
     Bundle,
     BundleStatus,
     ValidationResult,
     AuditEventType,
 )
-from backend.app.modules.sovereign_mode.hash_validator import get_hash_validator
-from backend.app.modules.sovereign_mode.signature_validator import (
+from app.modules.sovereign_mode.hash_validator import get_hash_validator
+from app.modules.sovereign_mode.signature_validator import (
     get_signature_validator,
     SignaturePolicy,
 )
 
 # Sprint 7: Metrics integration
 try:
-    from backend.app.modules.monitoring.metrics import get_metrics_collector
+    from app.modules.monitoring.metrics import get_metrics_collector
     METRICS_AVAILABLE = True
 except ImportError:
     METRICS_AVAILABLE = False
@@ -335,7 +335,7 @@ class BundleManager:
     def _emit_quarantine_audit_event(self, bundle_id: str, reason: str):
         """Emit BUNDLE_QUARANTINED audit event."""
         try:
-            from backend.app.modules.sovereign_mode.service import (
+            from app.modules.sovereign_mode.service import (
                 get_sovereign_mode_service,
             )
 

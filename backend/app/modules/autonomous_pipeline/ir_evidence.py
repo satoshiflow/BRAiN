@@ -9,9 +9,9 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 from loguru import logger
 
-from backend.app.modules.ir_governance import IR, IRValidationResult, ir_hash
-from backend.app.modules.ir_governance.diff_audit import DiffAuditResult
-from backend.app.modules.autonomous_pipeline.evidence_generator import PipelineEvidencePack
+from app.modules.ir_governance import IR, IRValidationResult, ir_hash
+from app.modules.ir_governance.diff_audit import DiffAuditResult
+from app.modules.autonomous_pipeline.evidence_generator import PipelineEvidencePack
 
 
 class IREvidencePack(BaseModel):

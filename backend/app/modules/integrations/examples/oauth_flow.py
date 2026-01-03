@@ -8,7 +8,7 @@ token refresh.
 import asyncio
 from typing import List, Dict, Any
 
-from backend.app.modules.integrations import (
+from app.modules.integrations import (
     BaseAPIClient,
     APIClientConfig,
     AuthConfig,

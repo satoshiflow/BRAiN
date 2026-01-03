@@ -17,9 +17,9 @@ import redis.asyncio as redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.core.redis_client import get_redis
-from backend.app.core.database import get_db
-from backend.app.modules.neurorail.lifecycle.schemas import (
+from app.core.redis_client import get_redis
+from app.core.database import get_db
+from app.modules.neurorail.lifecycle.schemas import (
     MissionState,
     JobState,
     AttemptState,
@@ -30,7 +30,7 @@ from backend.app.modules.neurorail.lifecycle.schemas import (
     is_valid_transition,
     get_allowed_transitions,
 )
-from backend.app.modules.neurorail.errors import (
+from app.modules.neurorail.errors import (
     NeuroRailError,
     NeuroRailErrorCode,
 )

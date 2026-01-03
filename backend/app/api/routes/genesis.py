@@ -9,9 +9,9 @@ from typing import List
 from fastapi import APIRouter, HTTPException
 from loguru import logger
 
-from backend.app.modules.genesis.blueprints import get_blueprint_library
-from backend.app.modules.genesis.blueprints.schemas import AgentBlueprint
-from backend.app.modules.genesis.core import (
+from app.modules.genesis.blueprints import get_blueprint_library
+from app.modules.genesis.blueprints.schemas import AgentBlueprint
+from app.modules.genesis.core import (
     EvolveAgentRequest,
     GenesisAgentResult,
     GenesisEvolutionResult,
@@ -20,17 +20,17 @@ from backend.app.modules.genesis.core import (
     SpawnAgentRequest,
     get_genesis_service,
 )
-from backend.app.modules.genesis.core.exceptions import (
+from app.modules.genesis.core.exceptions import (
     EthicsViolationError,
     GenesisError,
 )
-from backend.app.modules.genesis.foundation import (
+from app.modules.genesis.foundation import (
     FoundationValidationResult,
     get_foundation_layer,
 )
-from backend.app.modules.genesis.foundation.schemas import AgentCreationContext
-from backend.app.modules.genesis.traits import get_trait_service
-from backend.app.modules.genesis.traits.schemas import TraitDefinition
+from app.modules.genesis.foundation.schemas import AgentCreationContext
+from app.modules.genesis.traits import get_trait_service
+from app.modules.genesis.traits.schemas import TraitDefinition
 
 router = APIRouter(prefix="/api/genesis", tags=["genesis"])
 
@@ -258,7 +258,7 @@ async def list_traits(category: str = None):
         definitions = trait_service.get_all_definitions()
 
         if category:
-            from backend.app.modules.genesis.traits.schemas import TraitCategory
+            from app.modules.genesis.traits.schemas import TraitCategory
 
             try:
                 cat = TraitCategory(category)

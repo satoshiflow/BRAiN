@@ -7,9 +7,9 @@ Provides template loading, validation, versioning, and rendering capabilities.
 Version: 1.0.0
 """
 
-from backend.app.modules.template_registry.loader import TemplateLoader
-from backend.app.modules.template_registry.validator import TemplateValidator
-from backend.app.modules.template_registry.schemas import (
+from app.modules.template_registry.loader import TemplateLoader
+from app.modules.template_registry.validator import TemplateValidator
+from app.modules.template_registry.schemas import (
     Template,
     TemplateType,
     TemplateVariable,

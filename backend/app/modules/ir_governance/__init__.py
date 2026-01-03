@@ -12,7 +12,7 @@ Components:
 - router: FastAPI endpoints
 """
 
-from backend.app.modules.ir_governance.schemas import (
+from app.modules.ir_governance.schemas import (
     IR,
     IRStep,
     IRAction,
@@ -27,26 +27,26 @@ from backend.app.modules.ir_governance.schemas import (
     ApprovalConsumeResult,
     DiffAuditResult,
 )
-from backend.app.modules.ir_governance.canonicalization import (
+from app.modules.ir_governance.canonicalization import (
     canonical_json,
     sha256_hex,
     ir_hash,
     step_hash,
     compute_dag_hash,
 )
-from backend.app.modules.ir_governance.validator import (
+from app.modules.ir_governance.validator import (
     IRValidator,
     get_validator,
 )
-from backend.app.modules.ir_governance.approvals import (
+from app.modules.ir_governance.approvals import (
     ApprovalsService,
     get_approvals_service,
 )
-from backend.app.modules.ir_governance.diff_audit import (
+from app.modules.ir_governance.diff_audit import (
     DiffAuditGate,
     get_diff_audit_gate,
 )
-from backend.app.modules.ir_governance.router import router
+from app.modules.ir_governance.router import router
 
 __all__ = [
     # Schemas

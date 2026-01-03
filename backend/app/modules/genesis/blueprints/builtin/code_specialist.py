@@ -1,6 +1,6 @@
 """Code Specialist Blueprint - Code generation and review."""
 
-from backend.app.modules.genesis.blueprints.schemas import (
+from app.modules.genesis.blueprints.schemas import (
     AgentBlueprint,
     BlueprintCapability,
 )

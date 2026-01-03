@@ -8,24 +8,24 @@ Automatic failure response and recovery system:
 - Reflex actions
 """
 
-from backend.app.modules.neurorail.reflex.circuit_breaker import (
+from app.modules.neurorail.reflex.circuit_breaker import (
     CircuitBreaker,
     CircuitState,
     CircuitBreakerConfig,
     get_circuit_breaker,
 )
-from backend.app.modules.neurorail.reflex.lifecycle import (
+from app.modules.neurorail.reflex.lifecycle import (
     JobLifecycle,
     JobLifecycleState,
     ALLOWED_TRANSITIONS,
     get_job_lifecycle,
 )
-from backend.app.modules.neurorail.reflex.triggers import (
+from app.modules.neurorail.reflex.triggers import (
     ReflexTrigger,
     TriggerConfig,
     get_reflex_trigger,
 )
-from backend.app.modules.neurorail.reflex.actions import (
+from app.modules.neurorail.reflex.actions import (
     ReflexAction,
     ReflexActionType,
     ReflexActionResult,

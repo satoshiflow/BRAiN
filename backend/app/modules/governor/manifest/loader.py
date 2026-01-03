@@ -16,14 +16,14 @@ import json
 from pathlib import Path
 from loguru import logger
 
-from backend.app.modules.governor.manifest.schemas import (
+from app.modules.governor.manifest.schemas import (
     GovernorManifest,
     ManifestRule,
     Budget,
     RiskClass,
     RuleCondition,
 )
-from backend.app.modules.neurorail.errors import ManifestInvalidSchemaError
+from app.modules.neurorail.errors import ManifestInvalidSchemaError
 
 
 class ManifestLoader:

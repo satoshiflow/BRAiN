@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 # Optional EventStream import (Sprint 5: EventStream Integration)
 try:
-    from backend.app.core.event_stream import EventStream, Event
+    from app.core.event_stream import EventStream, Event
 except ImportError:
     EventStream = None
     Event = None

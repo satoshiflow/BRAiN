@@ -33,8 +33,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine, AsyncSession
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from backend.app.modules.credits.event_sourcing.base_journal import BaseEventJournal
-from backend.app.modules.credits.event_sourcing.events import EventEnvelope
+from app.modules.credits.event_sourcing.base_journal import BaseEventJournal
+from app.modules.credits.event_sourcing.events import EventEnvelope
 
 
 class PostgresEventJournalError(Exception):

@@ -13,13 +13,13 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from loguru import logger
 
-from backend.app.modules.autonomous_pipeline.schemas import (
+from app.modules.autonomous_pipeline.schemas import (
     BusinessIntentInput,
     ResolvedBusinessIntent,
     ExecutionGraphSpec,
     ExecutionGraphResult,
 )
-from backend.app.modules.autonomous_pipeline.governor_schemas import ExecutionPolicy
+from app.modules.autonomous_pipeline.governor_schemas import ExecutionPolicy
 
 
 class RunContract(BaseModel):

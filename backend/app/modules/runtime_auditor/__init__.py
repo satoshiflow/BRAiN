@@ -13,8 +13,8 @@ Based on: backend/tests/brain_master_audit.py
 Adapted for: Production runtime monitoring (no stress tests)
 """
 
-from backend.app.modules.runtime_auditor.service import RuntimeAuditor
-from backend.app.modules.runtime_auditor.schemas import (
+from app.modules.runtime_auditor.service import RuntimeAuditor
+from app.modules.runtime_auditor.schemas import (
     RuntimeMetrics,
     AnomalyDetection,
     EdgeOfChaosMetrics,

@@ -19,21 +19,21 @@ from pathlib import Path
 from datetime import datetime
 from loguru import logger
 
-from backend.app.modules.business_factory.schemas import (
+from app.modules.business_factory.schemas import (
     BusinessPlan,
     ExecutionStep,
     ExecutionResult,
     PlanStatus,
     StepStatus,
 )
-from backend.app.modules.factory_executor.base import (
+from app.modules.factory_executor.base import (
     ExecutorBase,
     ExecutionContext,
     ExecutionMode,
     ValidationError,
     ExecutionError,
 )
-from backend.app.modules.factory_executor.rollback_manager import RollbackManager
+from app.modules.factory_executor.rollback_manager import RollbackManager
 
 
 class FactoryExecutor:

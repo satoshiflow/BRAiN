@@ -10,13 +10,13 @@ import os
 from loguru import logger
 import httpx
 
-from backend.app.modules.autonomous_pipeline.execution_node import (
+from app.modules.autonomous_pipeline.execution_node import (
     ExecutionNode,
     ExecutionContext,
     ExecutionNodeError,
     RollbackError,
 )
-from backend.app.modules.autonomous_pipeline.schemas import ExecutionNodeSpec
+from app.modules.autonomous_pipeline.schemas import ExecutionNodeSpec
 
 
 class DNSNode(ExecutionNode):

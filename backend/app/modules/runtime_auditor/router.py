@@ -7,8 +7,8 @@ API endpoints for runtime audit metrics and anomaly detection.
 from fastapi import APIRouter, Depends
 from typing import Optional
 
-from backend.app.modules.runtime_auditor.service import RuntimeAuditor
-from backend.app.modules.runtime_auditor.schemas import (
+from app.modules.runtime_auditor.service import RuntimeAuditor
+from app.modules.runtime_auditor.schemas import (
     RuntimeMetrics,
     RuntimeAuditorStatus,
 )
@@ -25,7 +25,7 @@ def get_runtime_auditor() -> RuntimeAuditor:
     if _runtime_auditor is None:
         # Initialize with Immune System integration
         try:
-            from backend.app.modules.immune.core.service import ImmuneService
+            from app.modules.immune.core.service import ImmuneService
             immune_service = ImmuneService()
         except:
             immune_service = None

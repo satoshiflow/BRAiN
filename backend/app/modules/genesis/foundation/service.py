@@ -10,10 +10,10 @@ from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
-from backend.app.modules.genesis.traits import TraitSet
-from backend.app.modules.immune.core.service import ImmuneService
-from backend.app.modules.immune.schemas import ImmuneEvent, ImmuneEventType, ImmuneSeverity
-from backend.app.modules.policy.service import get_policy_engine
+from app.modules.genesis.traits import TraitSet
+from app.modules.immune.core.service import ImmuneService
+from app.modules.immune.schemas import ImmuneEvent, ImmuneEventType, ImmuneSeverity
+from app.modules.policy.service import get_policy_engine
 
 from .schemas import (
     ActionContext,
@@ -268,7 +268,7 @@ class FoundationLayer:
         # Delegate to policy engine if available
         if self.policy_engine:
             try:
-                from backend.app.modules.policy.schemas import PolicyEvaluationContext
+                from app.modules.policy.schemas import PolicyEvaluationContext
 
                 policy_context = PolicyEvaluationContext(
                     agent_id=context.agent_id,

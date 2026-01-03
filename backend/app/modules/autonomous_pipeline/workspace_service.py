@@ -11,7 +11,7 @@ import json
 import time
 from loguru import logger
 
-from backend.app.modules.autonomous_pipeline.workspace_schemas import (
+from app.modules.autonomous_pipeline.workspace_schemas import (
     Workspace,
     Project,
     WorkspaceStatus,

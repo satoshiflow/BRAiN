@@ -10,8 +10,8 @@ import time
 from typing import Callable, Any, Optional, Dict
 from loguru import logger
 
-from backend.app.modules.governor.manifest.schemas import Budget
-from backend.app.modules.neurorail.errors import (
+from app.modules.governor.manifest.schemas import Budget
+from app.modules.neurorail.errors import (
     BudgetTimeoutExceededError,
     NeuroRailErrorCode,
     should_alert_immune,

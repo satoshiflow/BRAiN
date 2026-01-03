@@ -15,14 +15,14 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 from loguru import logger
 
-from backend.app.modules.governor.manifest.schemas import (
+from app.modules.governor.manifest.schemas import (
     GovernorManifest,
     ShadowDecisionComparison,
     ShadowReport,
     ActivationGateConfig,
 )
-from backend.app.modules.governor.decision.models import DecisionContext
-from backend.app.modules.governor.decision.evaluator import DecisionEvaluator
+from app.modules.governor.decision.models import DecisionContext
+from app.modules.governor.decision.evaluator import DecisionEvaluator
 
 
 class ShadowingEngine:

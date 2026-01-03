@@ -12,12 +12,12 @@ for testing and manual invocation. Normal flow is internal service calls.
 from fastapi import APIRouter, HTTPException, status, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.core.database import get_db
-from backend.app.modules.neurorail.execution.service import (
+from app.core.database import get_db
+from app.modules.neurorail.execution.service import (
     ExecutionService,
     get_execution_service,
 )
-from backend.app.modules.neurorail.execution.schemas import (
+from app.modules.neurorail.execution.schemas import (
     ExecutionContext,
     ExecutionResult,
 )

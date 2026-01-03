@@ -12,12 +12,12 @@ from typing import Dict, List, Optional, Any
 from jinja2 import Environment, FileSystemLoader, select_autoescape, TemplateSyntaxError
 from loguru import logger
 
-from backend.app.modules.template_registry.schemas import (
+from app.modules.template_registry.schemas import (
     Template,
     TemplateType,
     RenderedTemplate,
 )
-from backend.app.modules.template_registry.validator import TemplateValidator
+from app.modules.template_registry.validator import TemplateValidator
 
 
 class TemplateLoader:

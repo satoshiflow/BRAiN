@@ -7,7 +7,7 @@ Provides immutable audit logging with:
 - Query API for audit trail analysis
 """
 
-from backend.app.modules.neurorail.audit.schemas import (
+from app.modules.neurorail.audit.schemas import (
     AuditEvent,
     AuditQuery,
     AuditQueryResponse,
@@ -18,11 +18,11 @@ from backend.app.modules.neurorail.audit.schemas import (
     ErrorAudit,
     GovernanceDecisionAudit,
 )
-from backend.app.modules.neurorail.audit.service import (
+from app.modules.neurorail.audit.service import (
     AuditService,
     get_audit_service,
 )
-from backend.app.modules.neurorail.audit.router import router
+from app.modules.neurorail.audit.router import router
 
 __all__ = [
     # Schemas

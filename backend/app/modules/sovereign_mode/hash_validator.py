@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 from loguru import logger
 
-from backend.app.modules.sovereign_mode.schemas import (
+from app.modules.sovereign_mode.schemas import (
     ValidationResult,
     Bundle,
 )

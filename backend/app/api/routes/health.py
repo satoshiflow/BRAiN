@@ -6,7 +6,7 @@ This endpoint is kept for backward compatibility and simple health checks.
 """
 
 from fastapi import APIRouter, Depends
-from backend.app.modules.system_health.service import SystemHealthService
+from app.modules.system_health.service import SystemHealthService
 
 router = APIRouter(prefix="/api", tags=["core"])
 

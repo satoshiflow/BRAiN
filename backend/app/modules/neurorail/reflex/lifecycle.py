@@ -11,7 +11,7 @@ from enum import Enum
 from dataclasses import dataclass
 from loguru import logger
 
-from backend.app.modules.neurorail.errors import ReflexLifecycleInvalidError
+from app.modules.neurorail.errors import ReflexLifecycleInvalidError
 
 
 class JobLifecycleState(str, Enum):

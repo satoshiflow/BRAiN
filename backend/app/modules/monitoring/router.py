@@ -9,7 +9,7 @@ from fastapi.responses import PlainTextResponse
 from typing import Dict, Any
 from loguru import logger
 
-from backend.app.modules.monitoring.metrics import get_metrics_collector
+from app.modules.monitoring.metrics import get_metrics_collector
 
 router = APIRouter(prefix="/metrics", tags=["monitoring"])
 

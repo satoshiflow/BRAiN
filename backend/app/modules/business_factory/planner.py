@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import List, Dict, Any, Optional
 from loguru import logger
 
-from backend.app.modules.business_factory.schemas import (
+from app.modules.business_factory.schemas import (
     BusinessBriefing,
     BusinessPlan,
     ExecutionStep,
@@ -18,7 +18,7 @@ from backend.app.modules.business_factory.schemas import (
     ExecutorType,
     StepStatus,
 )
-from backend.app.modules.business_factory.risk_assessor import RiskAssessor
+from app.modules.business_factory.risk_assessor import RiskAssessor
 
 
 class BusinessPlanner:

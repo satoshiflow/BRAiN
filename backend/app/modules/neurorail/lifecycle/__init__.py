@@ -7,7 +7,7 @@ Manages entity state machines and transitions:
 - Attempt lifecycle (CREATED → RUNNING → SUCCEEDED/FAILED)
 """
 
-from backend.app.modules.neurorail.lifecycle.schemas import (
+from app.modules.neurorail.lifecycle.schemas import (
     MissionState,
     JobState,
     AttemptState,
@@ -18,11 +18,11 @@ from backend.app.modules.neurorail.lifecycle.schemas import (
     is_valid_transition,
     get_allowed_transitions,
 )
-from backend.app.modules.neurorail.lifecycle.service import (
+from app.modules.neurorail.lifecycle.service import (
     LifecycleService,
     get_lifecycle_service,
 )
-from backend.app.modules.neurorail.lifecycle.router import router
+from app.modules.neurorail.lifecycle.router import router
 
 __all__ = [
     # State enums

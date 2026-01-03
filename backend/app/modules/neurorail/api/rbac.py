@@ -7,7 +7,7 @@ FastAPI endpoints for RBAC management.
 from fastapi import APIRouter
 from typing import List
 
-from backend.app.modules.neurorail.rbac import (
+from app.modules.neurorail.rbac import (
     get_rbac_service,
     Role,
     Permission,

@@ -5,7 +5,7 @@ This module demonstrates how to use the Event Sourcing infrastructure
 for credit operations in the BRAiN system.
 
 Usage Example:
-    >>> from backend.app.modules.credits.integration_demo import CreditSystemDemo
+    >>> from app.modules.credits.integration_demo import CreditSystemDemo
     >>>
     >>> # Initialize system
     >>> demo = CreditSystemDemo()
@@ -31,7 +31,7 @@ from typing import Dict, List, Optional
 
 from loguru import logger
 
-from backend.app.modules.credits.event_sourcing import (
+from app.modules.credits.event_sourcing import (
     # Core components
     EventBus,
     ProjectionManager,

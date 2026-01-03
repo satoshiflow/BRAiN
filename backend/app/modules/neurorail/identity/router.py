@@ -11,11 +11,11 @@ from fastapi import APIRouter, HTTPException, status, Depends
 from typing import Optional
 from datetime import datetime
 
-from backend.app.modules.neurorail.identity.service import (
+from app.modules.neurorail.identity.service import (
     IdentityService,
     get_identity_service,
 )
-from backend.app.modules.neurorail.identity.schemas import (
+from app.modules.neurorail.identity.schemas import (
     MissionIdentity,
     PlanIdentity,
     JobIdentity,

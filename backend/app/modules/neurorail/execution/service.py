@@ -18,18 +18,18 @@ from datetime import datetime
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.modules.neurorail.execution.schemas import (
+from app.modules.neurorail.execution.schemas import (
     ExecutionContext,
     ExecutionResult,
 )
-from backend.app.modules.neurorail.identity.service import get_identity_service
-from backend.app.modules.neurorail.lifecycle.service import get_lifecycle_service
-from backend.app.modules.neurorail.lifecycle.schemas import TransitionRequest, AttemptState
-from backend.app.modules.neurorail.audit.service import get_audit_service
-from backend.app.modules.neurorail.audit.schemas import AuditEvent
-from backend.app.modules.neurorail.telemetry.service import get_telemetry_service
-from backend.app.modules.neurorail.telemetry.schemas import ExecutionMetrics
-from backend.app.modules.neurorail.errors import (
+from app.modules.neurorail.identity.service import get_identity_service
+from app.modules.neurorail.lifecycle.service import get_lifecycle_service
+from app.modules.neurorail.lifecycle.schemas import TransitionRequest, AttemptState
+from app.modules.neurorail.audit.service import get_audit_service
+from app.modules.neurorail.audit.schemas import AuditEvent
+from app.modules.neurorail.telemetry.service import get_telemetry_service
+from app.modules.neurorail.telemetry.schemas import ExecutionMetrics
+from app.modules.neurorail.errors import (
     NeuroRailError,
     NeuroRailErrorCode,
     ExecutionTimeoutError,

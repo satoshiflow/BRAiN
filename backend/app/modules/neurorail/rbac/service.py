@@ -7,7 +7,7 @@ Authorization service for permission checks.
 from typing import List, Optional
 from loguru import logger
 
-from backend.app.modules.neurorail.rbac.schemas import (
+from app.modules.neurorail.rbac.schemas import (
     Role,
     Permission,
     UserContext,

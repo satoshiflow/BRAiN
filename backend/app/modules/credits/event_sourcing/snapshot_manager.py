@@ -408,7 +408,7 @@ class SnapshotManager:
         state_data: Dict,
     ) -> None:
         """Restore LedgerProjection from snapshot."""
-        from backend.app.modules.credits.event_sourcing.projections import LedgerEntry
+        from app.modules.credits.event_sourcing.projections import LedgerEntry
         from datetime import datetime
 
         ledger_projection._ledger = [

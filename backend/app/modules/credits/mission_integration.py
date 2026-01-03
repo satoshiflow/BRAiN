@@ -8,7 +8,7 @@ Automatically consumes/refunds credits based on mission lifecycle:
 - Mission Cancelled → Refund credits
 
 Usage:
-    from backend.app.modules.credits.mission_integration import (
+    from app.modules.credits.mission_integration import (
         MissionCreditHooks,
         register_mission_hooks,
     )
@@ -25,7 +25,7 @@ from typing import Dict, Optional
 
 from loguru import logger
 
-from backend.app.modules.credits.service import (
+from app.modules.credits.service import (
     consume_agent_credits,
     refund_agent_credits,
     get_agent_balance,

@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-from backend.app.modules.genesis.traits import TraitSet
+from app.modules.genesis.traits import TraitSet
 
 
 class SpawnAgentRequest(BaseModel):

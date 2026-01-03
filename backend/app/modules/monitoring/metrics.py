@@ -11,7 +11,7 @@ from datetime import datetime
 from threading import RLock
 from loguru import logger
 
-from backend.app.modules.sovereign_mode.schemas import OperationMode
+from app.modules.sovereign_mode.schemas import OperationMode
 
 
 class MetricsCollector:

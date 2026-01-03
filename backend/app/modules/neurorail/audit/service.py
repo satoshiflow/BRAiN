@@ -15,13 +15,13 @@ from loguru import logger
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.modules.neurorail.audit.schemas import (
+from app.modules.neurorail.audit.schemas import (
     AuditEvent,
     AuditQuery,
     AuditQueryResponse,
     AuditStats,
 )
-from backend.app.modules.neurorail.errors import (
+from app.modules.neurorail.errors import (
     NeuroRailError,
     NeuroRailErrorCode,
 )
@@ -53,7 +53,7 @@ class AuditService:
     async def _get_event_stream(self):
         """Get or create EventStream instance."""
         if self.event_stream is None and self._event_stream_class:
-            from backend.app.core.config import get_settings
+            from app.core.config import get_settings
             settings = get_settings()
             self.event_stream = self._event_stream_class(redis_url=settings.redis_url)
             await self.event_stream.initialize()

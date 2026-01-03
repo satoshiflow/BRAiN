@@ -9,7 +9,7 @@ import asyncio
 import time
 from typing import Dict, Any
 
-from backend.app.modules.integrations import (
+from app.modules.integrations import (
     BaseAPIClient,
     APIClientConfig,
     AuthConfig,

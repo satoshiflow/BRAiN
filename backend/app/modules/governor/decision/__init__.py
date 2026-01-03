@@ -1,6 +1,6 @@
 """Governor Decision Module - Deterministic Decision Engine."""
 
-from backend.app.modules.governor.decision.models import (
+from app.modules.governor.decision.models import (
     DecisionContext,
     BudgetResolution,
     RecoveryStrategy,

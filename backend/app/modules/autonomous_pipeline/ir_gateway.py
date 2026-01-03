@@ -7,7 +7,7 @@ Validates IR before pipeline execution, enforces governance gates.
 from typing import Dict, Any, Optional
 from loguru import logger
 
-from backend.app.modules.ir_governance import (
+from app.modules.ir_governance import (
     IR,
     IRValidationResult,
     IRValidationStatus,
@@ -18,7 +18,7 @@ from backend.app.modules.ir_governance import (
     get_approvals_service,
     ir_hash,
 )
-from backend.app.modules.autonomous_pipeline.ir_config import get_ir_config, IRMode
+from app.modules.autonomous_pipeline.ir_config import get_ir_config, IRMode
 
 
 class IRGatewayError(Exception):

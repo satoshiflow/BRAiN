@@ -29,7 +29,7 @@ import os
 import uuid
 from loguru import logger
 
-from backend.app.modules.ir_governance.schemas import (
+from app.modules.ir_governance.schemas import (
     ApprovalRequest,
     ApprovalStatus,
     ApprovalConsumeRequest,
@@ -647,7 +647,7 @@ def get_approvals_service() -> ApprovalsService:
         if store_type == "redis":
             # Import Redis store
             try:
-                from backend.app.modules.ir_governance.redis_approval_store import (
+                from app.modules.ir_governance.redis_approval_store import (
                     RedisApprovalStore,
                 )
 

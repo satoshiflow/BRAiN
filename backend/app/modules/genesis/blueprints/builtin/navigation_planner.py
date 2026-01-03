@@ -1,6 +1,6 @@
 """Navigation Planner Blueprint - Path planning and navigation."""
 
-from backend.app.modules.genesis.blueprints.schemas import (
+from app.modules.genesis.blueprints.schemas import (
     AgentBlueprint,
     BlueprintCapability,
 )

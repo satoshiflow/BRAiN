@@ -10,14 +10,14 @@ from typing import List, Optional
 import asyncio
 import time
 
-from backend.app.modules.neurorail.streams import (
+from app.modules.neurorail.streams import (
     get_sse_publisher,
     SSESubscriber,
     EventChannel,
     SubscriptionFilter,
     StreamEvent,
 )
-from backend.app.modules.neurorail.rbac import require_permission, Permission
+from app.modules.neurorail.rbac import require_permission, Permission
 
 router = APIRouter(prefix="/api/neurorail/v1/stream", tags=["neurorail-streams"])
 

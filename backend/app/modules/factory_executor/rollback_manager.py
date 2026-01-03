@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import List, Dict, Any
 from loguru import logger
 
-from backend.app.modules.business_factory.schemas import (
+from app.modules.business_factory.schemas import (
     BusinessPlan,
     ExecutionStep,
     RollbackResult,

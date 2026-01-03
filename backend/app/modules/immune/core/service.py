@@ -5,7 +5,7 @@ import asyncio
 
 from loguru import logger
 
-from backend.app.modules.immune.schemas import (
+from app.modules.immune.schemas import (
     ImmuneEvent,
     ImmuneHealthSummary,
     ImmuneSeverity,

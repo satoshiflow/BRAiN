@@ -17,7 +17,7 @@ from loguru import logger
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.modules.governor.schemas import (
+from app.modules.governor.schemas import (
     ModeDecision,
     ManifestSpec,
     ShadowEvaluation,

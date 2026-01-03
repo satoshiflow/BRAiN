@@ -9,7 +9,7 @@ Provides insights into:
 - Anomaly detection
 
 Usage:
-    from backend.app.modules.credits.analytics import CreditAnalytics
+    from app.modules.credits.analytics import CreditAnalytics
 
     analytics = CreditAnalytics()
     await analytics.initialize()
@@ -32,8 +32,8 @@ from typing import Dict, List, Optional
 
 from loguru import logger
 
-from backend.app.modules.credits.integration_demo import get_credit_system_demo
-from backend.app.modules.credits.event_sourcing import LedgerEntry
+from app.modules.credits.integration_demo import get_credit_system_demo
+from app.modules.credits.event_sourcing import LedgerEntry
 
 
 class CreditAnalytics:

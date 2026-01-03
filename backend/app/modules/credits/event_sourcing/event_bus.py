@@ -38,11 +38,11 @@ from typing import Callable, Coroutine, Dict, List
 
 from loguru import logger
 
-from backend.app.modules.credits.event_sourcing.events import (
+from app.modules.credits.event_sourcing.events import (
     EventEnvelope,
     EventType,
 )
-from backend.app.modules.credits.event_sourcing.event_journal import (
+from app.modules.credits.event_sourcing.event_journal import (
     EventJournal,
     get_event_journal,
 )

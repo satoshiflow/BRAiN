@@ -51,9 +51,9 @@ from typing import Optional
 
 from loguru import logger
 
-from backend.app.modules.credits.event_sourcing.base_journal import BaseEventJournal
-from backend.app.modules.credits.event_sourcing.projections import ProjectionManager
-from backend.app.modules.credits.event_sourcing.snapshot_manager import SnapshotManager
+from app.modules.credits.event_sourcing.base_journal import BaseEventJournal
+from app.modules.credits.event_sourcing.projections import ProjectionManager
+from app.modules.credits.event_sourcing.snapshot_manager import SnapshotManager
 
 
 class SnapshotSchedulerConfig:
@@ -152,21 +152,21 @@ class SnapshotScheduler:
 
         # Initialize components if not provided
         if self.journal is None:
-            from backend.app.modules.credits.event_sourcing.event_journal import (
+            from app.modules.credits.event_sourcing.event_journal import (
                 get_event_journal,
             )
 
             self.journal = await get_event_journal()
 
         if self.projection_manager is None:
-            from backend.app.modules.credits.event_sourcing.projections import (
+            from app.modules.credits.event_sourcing.projections import (
                 get_projection_manager,
             )
 
             self.projection_manager = get_projection_manager()
 
         if self.snapshot_manager is None:
-            from backend.app.modules.credits.event_sourcing.snapshot_manager import (
+            from app.modules.credits.event_sourcing.snapshot_manager import (
                 get_snapshot_manager,
             )
 

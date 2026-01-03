@@ -9,23 +9,23 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from loguru import logger
 
-from backend.app.modules.ir_governance import IR, ir_hash
-from backend.app.modules.autonomous_pipeline.schemas import (
+from app.modules.ir_governance import IR, ir_hash
+from app.modules.autonomous_pipeline.schemas import (
     ExecutionGraphSpec,
     ExecutionGraphResult,
 )
-from backend.app.modules.autonomous_pipeline.ir_config import get_ir_config
-from backend.app.modules.autonomous_pipeline.ir_gateway import (
+from app.modules.autonomous_pipeline.ir_config import get_ir_config
+from app.modules.autonomous_pipeline.ir_gateway import (
     get_ir_gateway,
     IRGatewayBlockedError,
 )
-from backend.app.modules.autonomous_pipeline.ir_mapper import get_ir_mapper
-from backend.app.modules.autonomous_pipeline.execution_graph import create_execution_graph
-from backend.app.modules.autonomous_pipeline.evidence_generator import (
+from app.modules.autonomous_pipeline.ir_mapper import get_ir_mapper
+from app.modules.autonomous_pipeline.execution_graph import create_execution_graph
+from app.modules.autonomous_pipeline.evidence_generator import (
     get_evidence_generator,
 )
-from backend.app.modules.autonomous_pipeline.ir_evidence import get_ir_evidence_generator
-from backend.app.modules.ir_governance.diff_audit import get_diff_audit_gate
+from app.modules.autonomous_pipeline.ir_evidence import get_ir_evidence_generator
+from app.modules.ir_governance.diff_audit import get_diff_audit_gate
 
 
 # Sprint 10: Extended request schemas with IR support

@@ -15,20 +15,20 @@ from __future__ import annotations
 from typing import Optional, Dict, Any, List, Tuple
 from loguru import logger
 
-from backend.app.modules.governor.manifest.schemas import (
+from app.modules.governor.manifest.schemas import (
     GovernorManifest,
     ManifestRule,
     RuleCondition,
     Budget,
     RiskClass,
 )
-from backend.app.modules.governor.decision.models import (
+from app.modules.governor.decision.models import (
     DecisionContext,
     BudgetResolution,
     RecoveryStrategy,
     GovernorDecision,
 )
-from backend.app.modules.neurorail.errors import (
+from app.modules.neurorail.errors import (
     NeuroRailError,
     NeuroRailErrorCode,
     DecisionBudgetResolutionError,

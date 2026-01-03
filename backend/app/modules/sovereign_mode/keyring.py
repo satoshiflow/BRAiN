@@ -13,7 +13,7 @@ from threading import RLock
 from pydantic import BaseModel, Field
 from loguru import logger
 
-from backend.app.modules.sovereign_mode.crypto import (
+from app.modules.sovereign_mode.crypto import (
     import_public_key_pem,
     import_public_key_hex,
     export_public_key_pem,

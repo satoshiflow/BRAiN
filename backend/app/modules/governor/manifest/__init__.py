@@ -1,6 +1,6 @@
 """Governor Manifest Module - Versioned Governance Configuration."""
 
-from backend.app.modules.governor.manifest.schemas import (
+from app.modules.governor.manifest.schemas import (
     Budget,
     RiskClass,
     RuleCondition,

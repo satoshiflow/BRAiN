@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Optional, List
 from loguru import logger
 
-from backend.app.modules.system_health.schemas import (
+from app.modules.system_health.schemas import (
     SystemHealth,
     SystemHealthSummary,
     HealthStatus,
@@ -26,13 +26,13 @@ from backend.app.modules.system_health.schemas import (
 
 # Import sub-systems (with fallback if not available)
 try:
-    from backend.app.modules.immune.core.service import ImmuneService
+    from app.modules.immune.core.service import ImmuneService
 except ImportError:
     ImmuneService = None
     logger.warning("[SystemHealth] ImmuneService not available")
 
 try:
-    from backend.app.modules.threats.service import ThreatsService
+    from app.modules.threats.service import ThreatsService
 except ImportError:
     ThreatsService = None
     logger.warning("[SystemHealth] ThreatsService not available")
@@ -44,8 +44,8 @@ except ImportError:
     logger.warning("[SystemHealth] MissionService not available")
 
 try:
-    from backend.app.modules.runtime_auditor.service import RuntimeAuditor
-    from backend.app.modules.runtime_auditor.schemas import RuntimeMetrics
+    from app.modules.runtime_auditor.service import RuntimeAuditor
+    from app.modules.runtime_auditor.schemas import RuntimeMetrics
 except ImportError:
     RuntimeAuditor = None
     RuntimeMetrics = None

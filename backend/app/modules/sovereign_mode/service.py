@@ -13,7 +13,7 @@ from datetime import datetime
 from threading import RLock
 from loguru import logger
 
-from backend.app.modules.sovereign_mode.schemas import (
+from app.modules.sovereign_mode.schemas import (
     OperationMode,
     Bundle,
     BundleStatus,
@@ -27,32 +27,32 @@ from backend.app.modules.sovereign_mode.schemas import (
     AuditSeverity,
     AuditEventType,
 )
-from backend.app.modules.sovereign_mode.mode_detector import (
+from app.modules.sovereign_mode.mode_detector import (
     get_mode_detector,
     get_network_monitor,
     ModeDetector,
     NetworkMonitor,
 )
-from backend.app.modules.sovereign_mode.bundle_manager import (
+from app.modules.sovereign_mode.bundle_manager import (
     get_bundle_manager,
     BundleManager,
 )
-from backend.app.modules.sovereign_mode.hash_validator import (
+from app.modules.sovereign_mode.hash_validator import (
     get_hash_validator,
     HashValidator,
 )
-from backend.app.modules.sovereign_mode.network_guard import (
+from app.modules.sovereign_mode.network_guard import (
     get_network_guard,
     NetworkGuard,
 )
-from backend.app.modules.sovereign_mode.ipv6_gate import (
+from app.modules.sovereign_mode.ipv6_gate import (
     get_ipv6_gate_checker,
     IPv6GateResult,
 )
 
 # Sprint 7: Metrics integration
 try:
-    from backend.app.modules.monitoring.metrics import get_metrics_collector
+    from app.modules.monitoring.metrics import get_metrics_collector
     METRICS_AVAILABLE = True
 except ImportError:
     METRICS_AVAILABLE = False
@@ -62,7 +62,7 @@ except ImportError:
 # Import DMZ control (lazy to avoid circular imports)
 def _get_dmz_service():
     """Lazy import to avoid circular dependency."""
-    from backend.app.modules.dmz_control.service import get_dmz_control_service
+    from app.modules.dmz_control.service import get_dmz_control_service
 
     return get_dmz_control_service()
 

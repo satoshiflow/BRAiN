@@ -8,7 +8,7 @@ Provides team/department-level credit pooling:
 - Usage tracking and analytics
 
 Usage:
-    from backend.app.modules.credits.resource_pools import ResourcePoolManager
+    from app.modules.credits.resource_pools import ResourcePoolManager
 
     pool_mgr = ResourcePoolManager()
     await pool_mgr.initialize()
@@ -42,7 +42,7 @@ from typing import Dict, List, Optional, Set
 from loguru import logger
 from pydantic import BaseModel, Field
 
-from backend.app.modules.credits.integration_demo import get_credit_system_demo
+from app.modules.credits.integration_demo import get_credit_system_demo
 
 
 # ============================================================================

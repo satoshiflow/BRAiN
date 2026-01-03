@@ -8,8 +8,8 @@ import asyncio
 from typing import Optional, AsyncGenerator
 from loguru import logger
 
-from backend.app.modules.neurorail.streams.schemas import StreamEvent, SubscriptionFilter
-from backend.app.modules.neurorail.streams.publisher import get_sse_publisher
+from app.modules.neurorail.streams.schemas import StreamEvent, SubscriptionFilter
+from app.modules.neurorail.streams.publisher import get_sse_publisher
 
 
 class SSESubscriber:

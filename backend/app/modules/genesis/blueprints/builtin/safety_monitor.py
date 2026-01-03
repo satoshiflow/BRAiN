@@ -1,6 +1,6 @@
 """Safety Monitor Blueprint - Real-time safety monitoring and enforcement."""
 
-from backend.app.modules.genesis.blueprints.schemas import (
+from app.modules.genesis.blueprints.schemas import (
     AgentBlueprint,
     BlueprintCapability,
 )

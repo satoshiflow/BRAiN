@@ -11,7 +11,7 @@ from threading import RLock
 from datetime import datetime
 from loguru import logger
 
-from backend.app.modules.sovereign_mode.schemas import (
+from app.modules.sovereign_mode.schemas import (
     AuditEventType,
     AuditSeverity,
 )
@@ -233,7 +233,7 @@ class SafeModeService:
         """
         try:
             # Import here to avoid circular dependency
-            from backend.app.modules.sovereign_mode.service import get_sovereign_service
+            from app.modules.sovereign_mode.service import get_sovereign_service
 
             service = get_sovereign_service()
             service._audit(

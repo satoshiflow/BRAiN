@@ -12,7 +12,7 @@ from datetime import datetime
 from loguru import logger
 import httpx
 
-from backend.app.modules.sovereign_mode.schemas import NetworkCheckResult
+from app.modules.sovereign_mode.schemas import NetworkCheckResult
 
 
 class ModeDetector:

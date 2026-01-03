@@ -24,7 +24,7 @@ from datetime import datetime
 import uuid
 from loguru import logger
 
-from backend.app.modules.ir_governance.schemas import (
+from app.modules.ir_governance.schemas import (
     IR,
     IRStep,
     IRAction,
@@ -34,7 +34,7 @@ from backend.app.modules.ir_governance.schemas import (
     IRValidationResult,
     IRViolation,
 )
-from backend.app.modules.ir_governance.canonicalization import ir_hash
+from app.modules.ir_governance.canonicalization import ir_hash
 
 # EventStream integration (Sprint 1)
 try:

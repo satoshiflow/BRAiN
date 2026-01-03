@@ -14,19 +14,19 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 from loguru import logger
 
-from backend.app.modules.dna.core.service import DNAService
-from backend.app.modules.dna.schemas import (
+from app.modules.dna.core.service import DNAService
+from app.modules.dna.schemas import (
     CreateDNASnapshotRequest,
     MutateDNARequest,
 )
-from backend.app.modules.genesis.blueprints import get_blueprint_library
-from backend.app.modules.genesis.foundation import (
+from app.modules.genesis.blueprints import get_blueprint_library
+from app.modules.genesis.foundation import (
     AgentCreationContext,
     FoundationLayer,
     MutationContext,
     get_foundation_layer,
 )
-from backend.app.modules.genesis.traits import TraitSet, get_trait_service
+from app.modules.genesis.traits import TraitSet, get_trait_service
 from backend.brain.agents.agent_manager import AgentDefinition, AgentManager
 
 from .exceptions import EthicsViolationError, GenesisError

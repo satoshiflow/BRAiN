@@ -14,8 +14,8 @@ from datetime import datetime, timedelta
 from loguru import logger
 import redis.asyncio as redis
 
-from backend.app.core.redis_client import get_redis
-from backend.app.modules.neurorail.identity.schemas import (
+from app.core.redis_client import get_redis
+from app.modules.neurorail.identity.schemas import (
     MissionIdentity,
     PlanIdentity,
     JobIdentity,

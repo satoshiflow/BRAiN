@@ -34,7 +34,7 @@ except ImportError:
     scipy_stats = None
     logger.warning("[RuntimeAuditor] numpy/scipy not available - advanced analysis disabled")
 
-from backend.app.modules.runtime_auditor.schemas import (
+from app.modules.runtime_auditor.schemas import (
     RuntimeMetrics,
     PerformanceMetrics,
     ResourceMetrics,
@@ -46,8 +46,8 @@ from backend.app.modules.runtime_auditor.schemas import (
 
 # Import for Immune System integration (Phase 2 end)
 try:
-    from backend.app.modules.immune.core.service import ImmuneService
-    from backend.app.modules.immune.schemas import ImmuneEvent, ImmuneSeverity, ImmuneType
+    from app.modules.immune.core.service import ImmuneService
+    from app.modules.immune.schemas import ImmuneEvent, ImmuneSeverity, ImmuneType
 except ImportError:
     ImmuneService = None
     logger.warning("[RuntimeAuditor] ImmuneService not available")

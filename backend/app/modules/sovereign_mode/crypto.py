@@ -568,7 +568,7 @@ def sign_bundle(
         SignatureError: If signing fails
 
     Example:
-        >>> from backend.app.modules.sovereign_mode.crypto import generate_keypair, sign_bundle
+        >>> from app.modules.sovereign_mode.crypto import generate_keypair, sign_bundle
         >>> private_key, public_key = generate_keypair()
         >>> bundle = {"id": "test", "name": "Test", "version": "1.0.0", ...}
         >>> signature = sign_bundle(bundle, private_key)
@@ -612,7 +612,7 @@ def verify_bundle_signature(
         SignatureError: If verification process fails (not same as invalid signature)
 
     Example:
-        >>> from backend.app.modules.sovereign_mode.crypto import (
+        >>> from app.modules.sovereign_mode.crypto import (
         ...     generate_keypair, sign_bundle, verify_bundle_signature
         ... )
         >>> private_key, public_key = generate_keypair()

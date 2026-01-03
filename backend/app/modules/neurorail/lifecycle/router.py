@@ -10,19 +10,19 @@ Provides REST endpoints for:
 from fastapi import APIRouter, HTTPException, status, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.core.database import get_db
-from backend.app.modules.neurorail.lifecycle.service import (
+from app.core.database import get_db
+from app.modules.neurorail.lifecycle.service import (
     LifecycleService,
     get_lifecycle_service,
 )
-from backend.app.modules.neurorail.lifecycle.schemas import (
+from app.modules.neurorail.lifecycle.schemas import (
     StateTransitionEvent,
     TransitionRequest,
     EntityStateResponse,
     StateHistoryResponse,
     get_allowed_transitions,
 )
-from backend.app.modules.neurorail.errors import NeuroRailError
+from app.modules.neurorail.errors import NeuroRailError
 
 router = APIRouter(prefix="/api/neurorail/v1/lifecycle", tags=["NeuroRail Lifecycle"])
 

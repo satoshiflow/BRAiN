@@ -24,7 +24,7 @@ Exports:
 - Event creation helpers for type-safe event construction
 """
 
-from backend.app.modules.credits.event_sourcing.events import (
+from app.modules.credits.event_sourcing.events import (
     EventEnvelope,
     EventType,
     create_credit_allocated_event,
@@ -41,20 +41,20 @@ from backend.app.modules.credits.event_sourcing.events import (
     create_eoc_regulated_event,
     create_mission_rated_event,
 )
-from backend.app.modules.credits.event_sourcing.event_journal import (
+from app.modules.credits.event_sourcing.event_journal import (
     EventJournal,
     get_event_journal,
     EventJournalError,
     EventJournalPermissionError,
     EventJournalCorruptionError,
 )
-from backend.app.modules.credits.event_sourcing.event_bus import (
+from app.modules.credits.event_sourcing.event_bus import (
     EventBus,
     get_event_bus,
     EventBusError,
     EventHandler,
 )
-from backend.app.modules.credits.event_sourcing.projections import (
+from app.modules.credits.event_sourcing.projections import (
     BalanceProjection,
     LedgerProjection,
     ApprovalProjection,
@@ -65,7 +65,7 @@ from backend.app.modules.credits.event_sourcing.projections import (
     ApprovalRequest,
     CollaborationRecord,
 )
-from backend.app.modules.credits.event_sourcing.replay import (
+from app.modules.credits.event_sourcing.replay import (
     ReplayEngine,
     get_replay_engine,
     replay_on_startup,

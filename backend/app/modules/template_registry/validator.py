@@ -10,7 +10,7 @@ from typing import Dict, List, Any
 import re
 from loguru import logger
 
-from backend.app.modules.template_registry.schemas import (
+from app.modules.template_registry.schemas import (
     Template,
     TemplateVariable,
     VariableType,

@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException
 from typing import Dict, Any, List, Optional
 from loguru import logger
 
-from backend.app.modules.autonomous_pipeline.workspace_schemas import (
+from app.modules.autonomous_pipeline.workspace_schemas import (
     Workspace,
     Project,
     WorkspaceCreateRequest,
@@ -21,7 +21,7 @@ from backend.app.modules.autonomous_pipeline.workspace_schemas import (
     WorkspaceStatus,
     ProjectStatus,
 )
-from backend.app.modules.autonomous_pipeline.workspace_service import (
+from app.modules.autonomous_pipeline.workspace_service import (
     get_workspace_service,
     WorkspaceNotFoundError,
     ProjectNotFoundError,
@@ -29,9 +29,9 @@ from backend.app.modules.autonomous_pipeline.workspace_service import (
 )
 
 # Sprint 9-C: Workspace-scoped execution
-from backend.app.modules.autonomous_pipeline.schemas import ExecutionGraphSpec
-from backend.app.modules.autonomous_pipeline.execution_graph import create_execution_graph
-from backend.app.modules.autonomous_pipeline.run_contract import get_run_contract_service
+from app.modules.autonomous_pipeline.schemas import ExecutionGraphSpec
+from app.modules.autonomous_pipeline.execution_graph import create_execution_graph
+from app.modules.autonomous_pipeline.run_contract import get_run_contract_service
 
 
 router = APIRouter(prefix="/api/workspaces", tags=["workspaces"])

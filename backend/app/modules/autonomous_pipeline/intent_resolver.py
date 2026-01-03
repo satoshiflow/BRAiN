@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 from loguru import logger
 
-from backend.app.modules.autonomous_pipeline.schemas import (
+from app.modules.autonomous_pipeline.schemas import (
     BusinessIntentInput,
     ResolvedBusinessIntent,
     BusinessType,

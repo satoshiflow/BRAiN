@@ -7,17 +7,17 @@ Provides metrics collection and monitoring:
 - Historical data aggregation
 """
 
-from backend.app.modules.neurorail.telemetry.schemas import (
+from app.modules.neurorail.telemetry.schemas import (
     ExecutionMetrics,
     AggregatedMetrics,
     RealtimeSnapshot,
     MetricEvent,
 )
-from backend.app.modules.neurorail.telemetry.service import (
+from app.modules.neurorail.telemetry.service import (
     TelemetryService,
     get_telemetry_service,
 )
-from backend.app.modules.neurorail.telemetry.router import router
+from app.modules.neurorail.telemetry.router import router
 
 __all__ = [
     # Schemas

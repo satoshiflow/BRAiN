@@ -21,7 +21,7 @@ from backend.brain.agents.axe_agent import get_axe_agent
 from backend.brain.agents.research_agent import get_research_agent, ResearchType
 from backend.brain.agents.test_agent import get_test_agent, TestType, TestEnvironment
 from backend.brain.agents.documentation_agent import get_documentation_agent, DocumentationType, DocumentationFormat
-from backend.app.modules.supervisor.schemas import (
+from app.modules.supervisor.schemas import (
     RiskLevel,
     SupervisionRequest,
     SupervisionResponse,

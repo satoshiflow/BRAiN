@@ -7,7 +7,7 @@ Auto-discovered route module for runtime audit metrics.
 from fastapi import APIRouter
 
 # Import the main router from the runtime_auditor module
-from backend.app.modules.runtime_auditor.router import router as auditor_router
+from app.modules.runtime_auditor.router import router as auditor_router
 
 # Create wrapper router for auto-discovery
 router = APIRouter()
