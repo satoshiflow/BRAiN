@@ -6,3 +6,5 @@ pnpm-lock.yaml
 .git
 .gitignore
 .DS_Store
+.env.local
+.env*.local
