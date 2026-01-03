@@ -13,14 +13,14 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Body
 from pydantic import BaseModel, Field
 
-from backend.brain.agents.supervisor_agent import get_supervisor_agent
-from backend.brain.agents.coder_agent import get_coder_agent
-from backend.brain.agents.ops_agent import get_ops_agent
-from backend.brain.agents.architect_agent import get_architect_agent
-from backend.brain.agents.axe_agent import get_axe_agent
-from backend.brain.agents.research_agent import get_research_agent, ResearchType
-from backend.brain.agents.test_agent import get_test_agent, TestType, TestEnvironment
-from backend.brain.agents.documentation_agent import get_documentation_agent, DocumentationType, DocumentationFormat
+from brain.agents.supervisor_agent import get_supervisor_agent
+from brain.agents.coder_agent import get_coder_agent
+from brain.agents.ops_agent import get_ops_agent
+from brain.agents.architect_agent import get_architect_agent
+from brain.agents.axe_agent import get_axe_agent
+from brain.agents.research_agent import get_research_agent, ResearchType
+from brain.agents.test_agent import get_test_agent, TestType, TestEnvironment
+from brain.agents.documentation_agent import get_documentation_agent, DocumentationType, DocumentationFormat
 from app.modules.supervisor.schemas import (
     RiskLevel,
     SupervisionRequest,
