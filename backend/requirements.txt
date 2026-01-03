@@ -1,17 +1,17 @@
 # ============================================================================
-# BRAiN Backend - Complete Requirements (v0.3.0)
+# BRAiN Backend - Fixed Requirements (Python Path Fix + Deps Resolved)
 # ============================================================================
-# Updated: 2024-12-19
-# Purpose: Complete dependency list with pinned versions for reproducibility
+# Updated: 2026-01-03
+# Fix: All dependency conflicts resolved (cognee, litellm compatible)
 # ============================================================================
 
 # --- Core FastAPI + Server ---
 fastapi==0.116.2                # Updated for cognee compatibility
 uvicorn[standard]==0.27.1
-python-multipart==0.0.9        # Required for FastAPI file uploads and form data
+python-multipart>=0.0.20,<1.0.0 # ✅ Fixed: cognee needs >=0.0.20
 
 # --- ASGI / Web Server ---
-starlette==0.36.3               # ASGI framework (FastAPI dependency)
+# starlette - removed, fastapi brings correct version automatically
 websockets==12.0                # WebSocket support
 
 # --- Database ---
@@ -23,8 +23,8 @@ alembic==1.13.3                 # Database migrations (required by cognee>=1.13.
 redis[hiredis]==5.0.1           # Redis client with hiredis for performance
 
 # --- Pydantic (Data Validation) ---
-pydantic==2.6.1
-pydantic-settings==2.1.0
+pydantic>=2.10.5,<2.12.0        # ✅ Fixed: cognee compatible range
+pydantic-settings>=2.2.1,<3     # ✅ Fixed: cognee compatible range
 
 # --- HTTP Client ---
 httpx>=0.24,<0.26               # Async HTTP client (for LLM API calls, compatible with supabase)
@@ -47,22 +47,25 @@ passlib[bcrypt]==1.7.4              # Password hashing (bcrypt)
 # --- Background Jobs / Scheduling ---
 APScheduler==3.10.4             # Background task scheduling
 
-# --- CLI Tools (Optional) ---
+# --- CLI Tools ---
 typer==0.9.0                    # CLI interface for brain_cli
 rich==13.7.0                    # Beautiful terminal output
 
-# --- Optional: Supabase Integration ---
+# --- Supabase Integration ---
 supabase==2.3.4                 # Supabase client (for agent repository)
 
-# --- Optional: Vector DB & Knowledge Graphs ---
+# --- Vector DB & Knowledge Graphs ---
 qdrant-client==1.7.3            # Qdrant vector database client
-cognee==0.5.1                   # Knowledge graph + vector memory platform (PoC Phase 1)
+cognee==0.5.1                   # Knowledge graph + vector memory platform
+
+# --- LLM Providers ---
+litellm>=1.76.0                 # Multi-LLM provider abstraction
 
 # --- Development / Testing ---
 pytest==8.0.1
 pytest-asyncio==0.23.5
 pytest-cov==4.1.0
-pytest-httpx==0.30.0            # Mock HTTP requests in tests (provides httpx_mock fixture)
+pytest-httpx==0.30.0            # Mock HTTP requests in tests
 
 # --- Code Quality (Development) ---
 black==24.2.0                   # Code formatter
@@ -72,24 +75,14 @@ mypy==1.8.0                     # Static type checker
 # --- Type Stubs ---
 types-redis==4.6.0.20240218
 
-# ============================================================================
-# Optional Dependencies (Uncomment if needed)
-# ============================================================================
-
-# --- LLM Provider Integrations ---
-# openai==1.12.0                # OpenAI API client
-# anthropic==0.18.1             # Anthropic Claude API
-# litellm==1.30.0               # Multi-provider LLM gateway
-
-# --- Advanced Features ---
-# celery[redis]==5.3.6          # Distributed task queue
-# flower==2.0.1                 # Celery monitoring
-prometheus-client==0.20.0       # Metrics export (ENABLED for Grafana)
+# --- Monitoring ---
+prometheus-client==0.20.0       # Metrics collection
 
 # ============================================================================
-# Notes:
-# - All versions are pinned for reproducibility
-# - Run `pip install -r requirements.txt` to install
-# - For development: `pip install -r requirements.txt -r requirements-dev.txt`
-# - Update versions: `pip list --outdated` then test thoroughly
+# Key Fixes Applied:
+# 1. python-multipart: 0.0.9 → >=0.0.20,<1.0.0 (cognee requirement)
+# 2. pydantic: 2.6.1 → >=2.10.5,<2.12.0 (cognee requirement)
+# 3. pydantic-settings: 2.1.0 → >=2.2.1,<3 (cognee requirement)
+# 4. starlette: removed (fastapi manages it automatically)
+# 5. litellm: added (user needs it)
 # ============================================================================

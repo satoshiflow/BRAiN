@@ -24,6 +24,8 @@ from typing import AsyncIterator, List
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
 
 # Core infrastructure
 from app.core.config import get_settings
@@ -196,6 +198,17 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # UTF-8 Middleware - Ensures all JSON responses have charset=utf-8
+    class UTF8Middleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            response = await call_next(request)
+            # Ensure Content-Type has charset=utf-8
+            if "application/json" in response.headers.get("content-type", ""):
+                response.headers["content-type"] = "application/json; charset=utf-8"
+            return response
+
+    app.add_middleware(UTF8Middleware)
 
     # -------------------------------------------------------
     # Root & Health Endpoints
