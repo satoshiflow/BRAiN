@@ -27,7 +27,7 @@ from app.modules.genesis.foundation import (
     get_foundation_layer,
 )
 from app.modules.genesis.traits import TraitSet, get_trait_service
-from backend.brain.agents.agent_manager import AgentDefinition, AgentManager
+from brain.agents.agent_manager import AgentDefinition, AgentManager
 
 from .exceptions import EthicsViolationError, GenesisError
 from .schemas import (

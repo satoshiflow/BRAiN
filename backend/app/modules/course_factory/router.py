@@ -11,7 +11,7 @@ from typing import Dict, Any, List, Optional
 from loguru import logger
 
 # EventStream Integration (Sprint 1)
-from backend.mission_control_core.core.event_stream import EventStream
+from mission_control_core.core.event_stream import EventStream
 
 from app.modules.course_factory.schemas import (
     CourseGenerationRequest,

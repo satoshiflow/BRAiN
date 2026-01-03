@@ -20,7 +20,7 @@ except ImportError:
 
 # EventStream integration (Sprint 4)
 try:
-    from backend.mission_control_core.core import EventStream, Event
+    from mission_control_core.core import EventStream, Event
 except ImportError:
     EventStream = None
     Event = None

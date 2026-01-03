@@ -42,7 +42,7 @@ class AuditService:
         # EventStream integration (optional dependency)
         self.event_stream = None
         try:
-            from backend.mission_control_core.core.event_stream import EventStream, EventType, Event
+            from mission_control_core.core.event_stream import EventStream, EventType, Event
             # Initialize EventStream connection (will be created on first use)
             self._event_stream_class = EventStream
             self._event_type_class = EventType

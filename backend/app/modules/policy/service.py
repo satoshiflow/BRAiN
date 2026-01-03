@@ -42,7 +42,7 @@ from .schemas import (
 
 # EventStream integration (Sprint 3)
 try:
-    from backend.mission_control_core.core import EventStream, Event, EventType
+    from mission_control_core.core import EventStream, Event, EventType
 except ImportError:
     EventStream = None
     Event = None

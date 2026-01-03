@@ -19,7 +19,7 @@ from loguru import logger
 from pydantic import BaseModel, Field
 
 # EventStream Integration (Sprint 1)
-from backend.mission_control_core.core.event_stream import EventStream
+from mission_control_core.core.event_stream import EventStream
 
 from .distribution_models import (
     CourseCTA,
