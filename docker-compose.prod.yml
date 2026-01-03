@@ -1,0 +1,52 @@
+# Docker Compose overrides for PRODUCTION environment
+# Used with: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up
+
+services:
+  backend:
+    container_name: prod-backend
+    # Ports 8000:8000 (default from base compose)
+    environment:
+      - APP_ENV=production
+      - LOG_LEVEL=WARNING
+      - ENABLE_API_CACHING=true
+
+  control_deck:
+    container_name: prod-control-deck
+    # Ports 3000:3000 (default from base compose)
+    environment:
+      - NEXT_PUBLIC_BRAIN_API_BASE=https://brain.falklabs.de
+      - NODE_ENV=production
+
+  axe_ui:
+    container_name: prod-axe-ui
+    ports:
+      - "3005:3000"  # Production AXE UI on port 3005
+    environment:
+      - NEXT_PUBLIC_BRAIN_API_BASE=https://brain.falklabs.de
+      - NODE_ENV=production
+
+  postgres:
+    container_name: prod-postgres
+    environment:
+      POSTGRES_DB: brain_prod
+    # Production should have regular backups configured
+    # Consider adding backup volumes and backup service here
+
+  redis:
+    container_name: prod-redis
+    # Production should have persistence enabled
+    command: redis-server --appendonly yes
+    volumes:
+      - brain_redis_data:/data
+
+  qdrant:
+    container_name: prod-qdrant
+
+  ollama:
+    container_name: prod-ollama
+
+  openwebui:
+    container_name: prod-openwebui
+
+volumes:
+  brain_redis_data:  # Redis persistence for production

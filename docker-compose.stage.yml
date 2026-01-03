@@ -1,0 +1,42 @@
+# Docker Compose overrides for STAGING environment
+# Used with: docker-compose -f docker-compose.yml -f docker-compose.stage.yml up
+
+services:
+  backend:
+    container_name: stage-backend
+    ports:
+      - "8002:8000"  # Staging backend on port 8002
+    environment:
+      - APP_ENV=staging
+      - LOG_LEVEL=INFO
+
+  control_deck:
+    container_name: stage-control-deck
+    ports:
+      - "3003:3000"  # Staging frontend on port 3003
+    environment:
+      - NEXT_PUBLIC_BRAIN_API_BASE=http://localhost:8002
+
+  axe_ui:
+    container_name: stage-axe-ui
+    ports:
+      - "3004:3000"  # Staging AXE UI on port 3004
+    environment:
+      - NEXT_PUBLIC_BRAIN_API_BASE=http://localhost:8002
+
+  postgres:
+    container_name: stage-postgres
+    environment:
+      POSTGRES_DB: brain_stage
+
+  redis:
+    container_name: stage-redis
+
+  qdrant:
+    container_name: stage-qdrant
+
+  ollama:
+    container_name: stage-ollama
+
+  openwebui:
+    container_name: stage-openwebui
