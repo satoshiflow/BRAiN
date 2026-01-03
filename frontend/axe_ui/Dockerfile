@@ -2,6 +2,10 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
+# Build-time arguments for Next.js
+ARG NEXT_PUBLIC_BRAIN_API_BASE=http://backend:8000
+ENV NEXT_PUBLIC_BRAIN_API_BASE=$NEXT_PUBLIC_BRAIN_API_BASE
+
 COPY package.json package-lock.json* ./
 RUN npm install --legacy-peer-deps
 
