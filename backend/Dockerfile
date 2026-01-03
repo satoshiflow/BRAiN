@@ -4,6 +4,8 @@ WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+# Fix: Set PYTHONPATH to support both import styles
+ENV PYTHONPATH=/app:/app/backend
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y build-essential && rm -rf /var/lib/apt/lists/*
