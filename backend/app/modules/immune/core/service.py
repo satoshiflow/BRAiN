@@ -14,7 +14,7 @@ from app.modules.immune.schemas import (
 
 # EventStream integration (Sprint 3)
 try:
-    from backend.mission_control_core.core import EventStream, Event
+    from mission_control_core.core import EventStream, Event
 except ImportError:
     EventStream = None
     Event = None

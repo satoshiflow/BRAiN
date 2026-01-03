@@ -54,7 +54,7 @@ from app.modules.ir_governance import (
 )
 
 # EventStream Integration (Sprint 1)
-from backend.mission_control_core.core.event_stream import EventStream, Event, EventType
+from mission_control_core.core.event_stream import EventStream, Event, EventType
 from datetime import datetime
 import uuid
 

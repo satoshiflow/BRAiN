@@ -18,7 +18,7 @@ import uuid
 from loguru import logger
 
 # EventStream Integration (Sprint 1)
-from backend.mission_control_core.core.event_stream import EventStream, Event, EventType
+from mission_control_core.core.event_stream import EventStream, Event, EventType
 
 from .distribution_models import (
     CourseDistribution,

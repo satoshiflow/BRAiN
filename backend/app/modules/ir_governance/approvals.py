@@ -38,7 +38,7 @@ from app.modules.ir_governance.schemas import (
 
 # EventStream integration (Sprint 1)
 try:
-    from backend.mission_control_core.core.event_stream import EventStream, Event, EventType
+    from mission_control_core.core.event_stream import EventStream, Event, EventType
 except ImportError:
     EventStream = None
     Event = None

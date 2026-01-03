@@ -27,7 +27,7 @@ import asyncio
 from loguru import logger
 import asyncpg
 
-from backend.mission_control_core.core.event_stream import EventStream, Event, EventType
+from mission_control_core.core.event_stream import EventStream, Event, EventType
 from .distribution_service import DistributionService
 from .distribution_models import CourseSEO, CourseCTA
 
