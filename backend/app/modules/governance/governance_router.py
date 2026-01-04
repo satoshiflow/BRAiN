@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from loguru import logger
 from pydantic import BaseModel, Field
 
@@ -70,7 +70,7 @@ def get_governance_service() -> GovernanceService:
 )
 async def create_approval(
     request: ApprovalRequest,
-    service: GovernanceService = None,
+    service: GovernanceService = Depends(get_governance_service),
 ) -> ApprovalResponse:
     """
     Create new approval request.
@@ -130,7 +130,7 @@ async def list_approvals(
     risk_tier: Optional[RiskTier] = Query(None, description="Filter by risk tier"),
     include_expired: bool = Query(False, description="Include expired approvals"),
     limit: int = Query(100, ge=1, le=500, description="Maximum results"),
-    service: GovernanceService = None,
+    service: GovernanceService = Depends(get_governance_service),
 ) -> List[ApprovalSummary]:
     """
     List approval requests with optional filters.
@@ -174,7 +174,7 @@ async def list_approvals(
 )
 async def get_approval_detail(
     approval_id: str,
-    service: GovernanceService = None,
+    service: GovernanceService = Depends(get_governance_service),
 ) -> ApprovalDetail:
     """
     Get detailed approval information.
@@ -222,7 +222,7 @@ async def get_approval_detail(
 async def approve_approval(
     approval_id: str,
     request: ApproveRequest,
-    service: GovernanceService = None,
+    service: GovernanceService = Depends(get_governance_service),
 ) -> ApprovalDetail:
     """
     Approve an approval request.
@@ -277,7 +277,7 @@ async def approve_approval(
 async def reject_approval(
     approval_id: str,
     request: RejectRequest,
-    service: GovernanceService = None,
+    service: GovernanceService = Depends(get_governance_service),
 ) -> ApprovalDetail:
     """
     Reject an approval request.
@@ -336,7 +336,7 @@ async def reject_approval(
 async def get_audit_trail(
     approval_id: Optional[str] = Query(None, description="Filter by approval ID"),
     limit: Optional[int] = Query(100, ge=1, le=1000, description="Maximum entries"),
-    service: GovernanceService = None,
+    service: GovernanceService = Depends(get_governance_service),
 ) -> List[AuditEntry]:
     """
     Get audit trail entries.
@@ -384,7 +384,7 @@ async def export_audit_trail(
     actor_id: str = Query(..., description="Actor performing export"),
     approval_id: Optional[str] = Query(None, description="Filter by approval ID"),
     limit: Optional[int] = Query(None, description="Maximum entries"),
-    service: GovernanceService = None,
+    service: GovernanceService = Depends(get_governance_service),
 ) -> AuditExport:
     """
     Export audit trail (auditor mode).
@@ -428,7 +428,7 @@ async def export_audit_trail(
     description="Convenience endpoint for pending approvals only.",
 )
 async def get_pending_approvals(
-    service: GovernanceService = None,
+    service: GovernanceService = Depends(get_governance_service),
 ) -> List[ApprovalSummary]:
     """Get all pending approval requests."""
     if service is None:
@@ -451,7 +451,7 @@ async def get_pending_approvals(
     description="Convenience endpoint for approved approvals only.",
 )
 async def get_approved_approvals(
-    service: GovernanceService = None,
+    service: GovernanceService = Depends(get_governance_service),
 ) -> List[ApprovalSummary]:
     """Get all approved approval requests."""
     if service is None:
@@ -474,7 +474,7 @@ async def get_approved_approvals(
     description="Convenience endpoint for rejected approvals only.",
 )
 async def get_rejected_approvals(
-    service: GovernanceService = None,
+    service: GovernanceService = Depends(get_governance_service),
 ) -> List[ApprovalSummary]:
     """Get all rejected approval requests."""
     if service is None:
@@ -497,7 +497,7 @@ async def get_rejected_approvals(
     description="Convenience endpoint for expired approvals only.",
 )
 async def get_expired_approvals(
-    service: GovernanceService = None,
+    service: GovernanceService = Depends(get_governance_service),
 ) -> List[ApprovalSummary]:
     """Get all expired approval requests."""
     if service is None:
@@ -524,7 +524,7 @@ async def get_expired_approvals(
     description="Get system-wide governance statistics.",
 )
 async def get_governance_stats(
-    service: GovernanceService = None,
+    service: GovernanceService = Depends(get_governance_service),
 ) -> GovernanceStats:
     """
     Get governance system statistics.
@@ -552,7 +552,7 @@ async def get_governance_stats(
     description="Health check for governance system.",
 )
 async def governance_health(
-    service: GovernanceService = None,
+    service: GovernanceService = Depends(get_governance_service),
 ) -> HealthResponse:
     """
     Health check for governance system.
@@ -595,7 +595,7 @@ async def governance_health(
     description="Maintenance endpoint to expire all old pending approvals. Admin only.",
 )
 async def expire_old_approvals(
-    service: GovernanceService = None,
+    service: GovernanceService = Depends(get_governance_service),
 ) -> Dict[str, int]:
     """
     Expire all old pending approvals.
