@@ -193,7 +193,7 @@ export interface SiteStatusResponse {
   site_id: string;
   manifest: SiteManifest;
   is_running: boolean;
-  health_status?: string;
+  health_status?: HealthStatus;
 }
 
 // ============================================================================
