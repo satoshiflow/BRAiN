@@ -9,7 +9,7 @@
 
 import { useState } from "react";
 import { ChevronLeft, ChevronRight, Check, Eye, Rocket, Loader2 } from "lucide-react";
-import type { WebsiteSpec, DNSRecordType } from "@/types/webgenesis";
+import type { WebsiteSpec, DNSRecordType, ThemeColors } from "@/types/webgenesis";
 import { submitSpec, deployFullPipeline } from "@/lib/webgenesisApi";
 
 type Step = 1 | 2 | 3 | 4 | 5;
@@ -390,7 +390,7 @@ interface Step2Props {
 }
 
 function Step2Theme({ spec, updateThemeColors }: Step2Props) {
-  const colors = spec.theme?.colors || {};
+  const colors: Partial<ThemeColors> = spec.theme?.colors || {};
 
   return (
     <div className="flex flex-col gap-6">
