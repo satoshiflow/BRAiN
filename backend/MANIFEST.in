@@ -1,0 +1,27 @@
+# MANIFEST.in - Package Data Files for brain-backend
+# Ensures non-Python files are included in the package distribution
+
+# Include all YAML manifest files (governance manifests, etc.)
+recursive-include brain/governor/manifests *.yaml *.yml
+recursive-include brain/governor/constraints *.yaml *.yml
+recursive-include app/modules/*/manifests *.yaml *.yml
+
+# Include JSON configuration files
+recursive-include brain *.json
+recursive-include app *.json
+recursive-include modules *.json
+
+# Include Alembic migration files
+recursive-include alembic *.py *.mako
+include alembic.ini
+
+# Include documentation
+recursive-include brain *.md
+recursive-include app *.md
+
+# Exclude test files and caches
+global-exclude __pycache__
+global-exclude *.py[co]
+global-exclude .pytest_cache
+global-exclude .coverage
+global-exclude htmlcov
