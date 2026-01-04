@@ -20,6 +20,9 @@ Event Types (Phase 2b):
 - governor.constraints.reduced: Constraints reduced by manifest rules
 - governor.manifest.applied: Governance manifest applied
 
+Event Types (Phase 2c):
+- governance.locked_field_violation: Locked field mutation detected
+
 Author: Governor v1 System
 Version: 2b.1
 Created: 2026-01-02
@@ -472,6 +475,67 @@ class GovernorEvents:
 
         await GovernorEvents.emit(
             "governor.manifest.applied",
+            payload,
+            redis_client,
+            audit_log
+        )
+
+    # ========================================================================
+    # Phase 2c: Locked Field Violation Event
+    # ========================================================================
+
+    @staticmethod
+    async def locked_field_violation(
+        decision_id: str,
+        agent_type: str,
+        violations: list[Dict[str, Any]],
+        dna_hash: str,
+        redis_client: redis.Redis,
+        audit_log: AuditLog
+    ) -> None:
+        """
+        Emit event when locked field violation is detected.
+
+        This critical event is emitted when an agent creation request
+        attempts to mutate a locked field, which is prohibited for
+        compliance with DSGVO Art. 22 and EU AI Act Art. 16.
+
+        Args:
+            decision_id: Decision identifier
+            agent_type: Agent type being created
+            violations: List of violation dicts with field_path, locked_value, attempted_value
+            dna_hash: SHA256 hash of DNA for audit
+            redis_client: Redis client
+            audit_log: Audit logger
+
+        Example:
+            >>> await GovernorEvents.locked_field_violation(
+            ...     decision_id="dec_abc123",
+            ...     agent_type="worker",
+            ...     violations=[{
+            ...         "field_path": "ethics_flags.human_override",
+            ...         "locked_value": "always_allowed",
+            ...         "attempted_value": "never",
+            ...         "manifest_name": "defaults"
+            ...     }],
+            ...     dna_hash="sha256:abc123...",
+            ...     redis_client=redis,
+            ...     audit_log=audit
+            ... )
+        """
+        payload = {
+            "decision_id": decision_id,
+            "agent_type": agent_type,
+            "violations": violations,
+            "violation_count": len(violations),
+            "dna_hash": dna_hash,
+            "severity": "critical",
+            "compliance_framework": "DSGVO Art. 22, EU AI Act Art. 16",
+            "action_taken": "REJECTED",
+        }
+
+        await GovernorEvents.emit(
+            "governance.locked_field_violation",
             payload,
             redis_client,
             audit_log

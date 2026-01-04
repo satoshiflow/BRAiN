@@ -61,6 +61,10 @@ from backend.brain.governor.reductions.rules import (
     ReductionContext,
     get_applicable_reductions,
 )
+from backend.brain.governor.enforcement.locks import (
+    LockedFieldEnforcer,
+    PolicyViolationError,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -200,6 +204,11 @@ class Governor:
         # Phase 2b: Initialize reduction engine
         self.reducer = ConstraintReducer()
 
+        # Phase 2c: Initialize locked field enforcer
+        self.locked_field_enforcer = LockedFieldEnforcer(
+            manifest_loader=get_manifest_loader()
+        )
+
     # ========================================================================
     # Main Decision Evaluation
     # ========================================================================
@@ -255,6 +264,45 @@ class Governor:
             agent_type,
             request.context.has_customizations
         )
+
+        # Phase 2c: Validate locked fields
+        # This check happens BEFORE constraint application to catch violations early
+        if approved and request.context.has_customizations:
+            try:
+                # Extract customization DNA from request
+                customization_dna = self._extract_customization_dna(request)
+
+                # Validate against locked fields
+                self.locked_field_enforcer.validate_dna_against_locks(
+                    agent_type=agent_type,
+                    dna=customization_dna,
+                    manifest_name="defaults"
+                )
+            except PolicyViolationError as e:
+                # Locked field violation detected - REJECT immediately
+                logger.error(
+                    f"Locked field violation detected for {request.decision_id}: "
+                    f"{[v.field_path for v in e.violations]}"
+                )
+
+                # Emit locked field violation event
+                violations_data = [v.model_dump() for v in e.violations]
+                await GovernorEvents.locked_field_violation(
+                    decision_id=request.decision_id,
+                    agent_type=agent_type.value,
+                    violations=violations_data,
+                    dna_hash=self.locked_field_enforcer.get_dna_hash(customization_dna),
+                    redis_client=self.redis,
+                    audit_log=self.audit_log
+                )
+
+                # Mark as rejected
+                approved = False
+                reason_code = ReasonCode.REJECTED_LOCKED_FIELD_VIOLATION
+                reason_detail = (
+                    f"Locked field violation: {[v.field_path for v in e.violations]}. "
+                    f"These fields are immutable for compliance (DSGVO Art. 22, EU AI Act Art. 16)."
+                )
 
         # Apply constraints (if approved)
         constraints = None
@@ -739,6 +787,73 @@ class Governor:
         constraints_json = json.dumps(constraints.model_dump(), sort_keys=True)
         hash_digest = hashlib.sha256(constraints_json.encode()).hexdigest()
         return f"sha256:{hash_digest[:16]}"
+
+    # ========================================================================
+    # Phase 2c: Locked Field Enforcement Helpers
+    # ========================================================================
+
+    def _extract_customization_dna(self, request: DecisionRequest) -> Dict[str, Any]:
+        """
+        Extract customization DNA from request.
+
+        This extracts only the customized fields from the full agent DNA,
+        making it easier to validate against locked fields.
+
+        Args:
+            request: Decision request
+
+        Returns:
+            Dictionary with only customized fields
+
+        Example:
+            >>> dna = _extract_customization_dna(request)
+            >>> # Returns: {"ethics_flags.human_override": "never"}
+        """
+        # If customization_fields is provided in context, extract those specific fields
+        if request.context.customization_fields:
+            customization_dna = {}
+            full_dna = request.agent_dna
+
+            for field_path in request.context.customization_fields:
+                # Try to extract the value from full DNA
+                try:
+                    value = self._get_nested_value_from_dna(full_dna, field_path)
+                    customization_dna[field_path] = value
+                except KeyError:
+                    logger.warning(
+                        f"Customization field {field_path} not found in DNA"
+                    )
+
+            return customization_dna
+        else:
+            # If no customization_fields specified, return full DNA
+            # (enforcer will flatten and check all fields)
+            return request.agent_dna
+
+    def _get_nested_value_from_dna(self, dna: Dict[str, Any], path: str) -> Any:
+        """
+        Get value from nested DNA dict using dot notation.
+
+        Args:
+            dna: DNA dictionary
+            path: Dot-notation path (e.g., "ethics_flags.human_override")
+
+        Returns:
+            Value at path
+
+        Raises:
+            KeyError: If path not found
+        """
+        keys = path.split(".")
+        value = dna
+
+        for key in keys:
+            if isinstance(value, dict):
+                value = value[key]
+            else:
+                raise KeyError(f"Path {path} not found in DNA")
+
+        return value
 
 
 # ============================================================================
