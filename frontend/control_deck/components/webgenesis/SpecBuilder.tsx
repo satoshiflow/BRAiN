@@ -9,7 +9,7 @@
 
 import { useState } from "react";
 import { ChevronLeft, ChevronRight, Check, Eye, Rocket, Loader2 } from "lucide-react";
-import type { WebsiteSpec, DNSRecordType, ThemeColors } from "@/types/webgenesis";
+import type { WebsiteSpec, DNSRecordType, ThemeColors, SEOConfig, DeployConfig, DNSConfig } from "@/types/webgenesis";
 import { submitSpec, deployFullPipeline } from "@/lib/webgenesisApi";
 
 type Step = 1 | 2 | 3 | 4 | 5;
@@ -442,7 +442,7 @@ interface Step3Props {
 }
 
 function Step3SEO({ spec, updateSEO }: Step3Props) {
-  const seo = spec.seo || {};
+  const seo: Partial<SEOConfig> = spec.seo || {};
 
   return (
     <div className="flex flex-col gap-6">
@@ -516,8 +516,8 @@ interface Step4Props {
 }
 
 function Step4Deployment({ spec, updateDeploy, updateDNS }: Step4Props) {
-  const deploy = spec.deploy || {};
-  const dns = deploy.dns || {};
+  const deploy: Partial<DeployConfig> = spec.deploy || {};
+  const dns: Partial<DNSConfig> = deploy.dns || {};
 
   return (
     <div className="flex flex-col gap-6">
