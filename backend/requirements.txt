@@ -93,6 +93,3 @@ prometheus-client==0.20.0       # Metrics collection
 # 11. supabase: removed (websockets conflict: realtime<13 vs cognee>=15)
 # 12. pytest-httpx: removed (httpx version conflict)
 # ============================================================================
-
-# --- Database Drivers (Additional) ---
-psycopg2-binary>=2.9.9  # PostgreSQL driver for tests and direct DB access
