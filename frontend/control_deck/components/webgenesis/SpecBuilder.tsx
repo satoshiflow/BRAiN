@@ -67,7 +67,7 @@ export function SpecBuilder() {
     setSpec((prev) => ({ ...prev, ...updates }));
   };
 
-  const updateThemeColors = (colors: Partial<typeof spec.theme.colors>) => {
+  const updateThemeColors = (colors: Partial<NonNullable<typeof spec.theme>['colors']>) => {
     setSpec((prev) => ({
       ...prev,
       theme: {
@@ -77,21 +77,21 @@ export function SpecBuilder() {
     }));
   };
 
-  const updateSEO = (seo: Partial<typeof spec.seo>) => {
+  const updateSEO = (seo: Partial<NonNullable<typeof spec.seo>>) => {
     setSpec((prev) => ({
       ...prev,
       seo: { ...prev.seo!, ...seo },
     }));
   };
 
-  const updateDeploy = (deploy: Partial<typeof spec.deploy>) => {
+  const updateDeploy = (deploy: Partial<NonNullable<typeof spec.deploy>>) => {
     setSpec((prev) => ({
       ...prev,
       deploy: { ...prev.deploy!, ...deploy },
     }));
   };
 
-  const updateDNS = (dns: Partial<typeof spec.deploy.dns>) => {
+  const updateDNS = (dns: Partial<NonNullable<NonNullable<typeof spec.deploy>['dns']>>) => {
     setSpec((prev) => ({
       ...prev,
       deploy: {
