@@ -132,9 +132,9 @@ export function SidebarMenuItem({ className, ...props }: React.HTMLAttributes<HT
   return <li className={cn("", className)} {...props} />;
 }
 
-export function SidebarMenuButton({ className, asChild, ...props }: React.HTMLAttributes<HTMLButtonElement> & { asChild?: boolean }) {
+export function SidebarMenuButton({ className, asChild, tooltip, ...props }: React.HTMLAttributes<HTMLButtonElement> & { asChild?: boolean; tooltip?: string }) {
   const Comp = asChild ? "div" : "button";
-  return <Comp className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted", className)} {...(props as any)} />;
+  return <Comp className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted", className)} title={tooltip} {...(props as any)} />;
 }
 
 export function SidebarMenuSub({ className, ...props }: React.HTMLAttributes<HTMLUListElement>) {
@@ -145,7 +145,7 @@ export function SidebarMenuSubItem({ className, ...props }: React.HTMLAttributes
   return <li className={cn("", className)} {...props} />;
 }
 
-export function SidebarMenuSubButton({ className, asChild, ...props }: React.HTMLAttributes<HTMLButtonElement> & { asChild?: boolean }) {
+export function SidebarMenuSubButton({ className, asChild, tooltip, ...props }: React.HTMLAttributes<HTMLButtonElement> & { asChild?: boolean; tooltip?: string }) {
   const Comp = asChild ? "div" : "button";
-  return <Comp className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1 text-sm hover:bg-muted", className)} {...(props as any)} />;
+  return <Comp className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1 text-sm hover:bg-muted", className)} title={tooltip} {...(props as any)} />;
 }
