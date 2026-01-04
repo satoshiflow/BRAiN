@@ -94,18 +94,21 @@ export function BudgetDashboard() {
       }
 
       if (event.event_type === 'cost_tracked') {
+        const newTokens = event.data.llm_tokens || 0;
+        const newCost = event.data.cost || 0;
+
         setCostStats((prev) => ({
-          llm_tokens: prev.llm_tokens + (event.data.llm_tokens || 0),
+          llm_tokens: prev.llm_tokens + newTokens,
           api_calls: prev.api_calls + 1,
-          cost_credits: prev.cost_credits + (event.data.cost || 0),
+          cost_credits: prev.cost_credits + newCost,
           violations: prev.violations,
         }));
         setCostTimeSeries((prev) => [
           ...prev.slice(-19),
           {
             time: timestamp,
-            tokens: prev.llm_tokens + (event.data.llm_tokens || 0),
-            cost: prev.cost_credits + (event.data.cost || 0),
+            tokens: newTokens,
+            cost: newCost,
           },
         ]);
       }
