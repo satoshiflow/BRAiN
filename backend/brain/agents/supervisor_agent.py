@@ -11,7 +11,7 @@ Responsibilities:
 - Maintain audit trail for all decisions
 
 Constitutional Framework:
-- Menschenw¸rde > Effizienz
+- Menschenwuerde > Effizienz
 - Privacy by Design (DSGVO Art. 25)
 - No autonomous High-Risk decisions (EU AI Act Art. 16)
 - Transparency and auditability mandatory
@@ -61,23 +61,23 @@ except ImportError:
 
 CONSTITUTIONAL_PROMPT = """Du bist der Supervisor-Agent des BRAiN-Systems.
 
-Deine Aufgabe ist die **ethische und rechtliche Pr¸fung** aller Agent-Aktionen.
+Deine Aufgabe ist die **ethische und rechtliche Pr√ºfung** aller Agent-Aktionen.
 
-=‹ VERFASSUNGSRAHMEN (unver‰nderlich):
+=√ú VERFASSUNGSRAHMEN (unver√§nderlich):
 
-1. **Menschenw¸rde steht ¸ber Effizienz**
-   - Keine Entscheidungen, die Menschen schaden kˆnnten
-   - Menschen behalten Kontrolle ¸ber kritische Entscheidungen
+1. **Menschenwuerde steht √ºber Effizienz**
+   - Keine Entscheidungen, die Menschen schaden k√∂nnten
+   - Menschen behalten Kontrolle √ºber kritische Entscheidungen
 
 2. **Datenschutz (DSGVO)**
-   - Art. 5: Datenminimierung, Zweckbindung, Rechtm‰ﬂigkeit
+   - Art. 5: Datenminimierung, Zweckbindung, Rechtm√§√üigkeit
    - Art. 6: Keine Verarbeitung ohne Rechtsgrundlage
    - Art. 22: Keine vollautomatischen Entscheidungen bei High-Risk
    - Art. 25: Privacy by Design
 
 3. **EU AI Act**
-   - Art. 5: Verboten sind: Social Scoring, biometrische Massen¸berwachung
-   - Art. 16: High-Risk-KI benˆtigt menschliche Aufsicht
+   - Art. 5: Verboten sind: Social Scoring, biometrische Massen√ºberwachung
+   - Art. 16: High-Risk-KI ben√∂tigt menschliche Aufsicht
    - Art. 52: Transparenzpflicht bei KI-Nutzung
 
 4. **Transparenz & Auditierung**
@@ -85,32 +85,32 @@ Deine Aufgabe ist die **ethische und rechtliche Pr¸fung** aller Agent-Aktionen.
    - Audit-Logs sind Pflicht
    - Keine Black-Box-Entscheidungen
 
-5. **Souver‰nit‰t**
-   - Keine Abh‰ngigkeit von US-Clouds
+5. **Souver√§nit√§t**
+   - Keine Abh√§ngigkeit von US-Clouds
    - EU-konforme Dienstleister bevorzugen
 
 =4 KRITISCHE AKTIONEN (IMMER HUMAN-IN-THE-LOOP):
 - Verarbeitung personenbezogener Daten
-- Produktionsdatenbank-ƒnderungen
+- Produktionsdatenbank-√Ñnderungen
 - Finanztransaktionen
 - Code-Deployment in Produktion
-- Systemweite Konfigurations‰nderungen
+- Systemweite Konfigurations√§nderungen
 
-=· MITTLERE RISIKOAKTIONEN (POLICY-CHECK):
+=√° MITTLERE RISIKOAKTIONEN (POLICY-CHECK):
 - Schreibzugriffe auf Entwicklungssysteme
 - API-Aufrufe an externe Dienste
 - Dateisystem-Operationen
 
-=‚ NIEDRIGE RISIKOAKTIONEN (AUTO-APPROVE):
+=√¢ NIEDRIGE RISIKOAKTIONEN (AUTO-APPROVE):
 - Read-Only Datenbankabfragen
 - Log-Analysen
 - Status-Checks
 
 DEINE AUSGABE:
 - approved: true/false
-- reason: Klare Begr¸ndung (DSGVO/AI Act Artikel referenzieren)
+- reason: Klare Begr√ºndung (DSGVO/AI Act Artikel referenzieren)
 - human_oversight_required: true bei HIGH/CRITICAL
-- policy_violations: Liste von Policy-Verstˆﬂen
+- policy_violations: Liste von Policy-Verst√∂√üen
 
 Handle verantwortungsvoll.
 """
@@ -175,7 +175,7 @@ class SupervisorAgent(BaseAgent):
         self.register_tool("audit_log", self._audit_log)
 
         logger.info(
-            "=· SupervisorAgent initialized | PolicyEngine: %s | Foundation: %s",
+            "=√° SupervisorAgent initialized | PolicyEngine: %s | Foundation: %s",
             "enabled" if POLICY_ENGINE_AVAILABLE else "disabled",
             "enabled" if FOUNDATION_AVAILABLE else "disabled"
         )
@@ -198,7 +198,7 @@ class SupervisorAgent(BaseAgent):
         start_time = time.time()
 
         logger.info(
-            "= Supervision requested | agent=%s action=%s risk=%s",
+            "= Supervision requested | agent=%s action=%s risk=%s",
             request.requesting_agent,
             request.action,
             request.risk_level.value
@@ -209,7 +209,7 @@ class SupervisorAgent(BaseAgent):
         # Step 1: Automatic rules based on risk level
         if request.risk_level in (RiskLevel.HIGH, RiskLevel.CRITICAL):
             logger.warning(
-                "† HIGH/CRITICAL risk action requires human approval | action=%s",
+                "¬† HIGH/CRITICAL risk action requires human approval | action=%s",
                 request.action
             )
             self.human_approvals_pending += 1
@@ -239,7 +239,7 @@ class SupervisorAgent(BaseAgent):
                 policy_result = await self._check_policy_engine(request)
                 if policy_result.effect == PolicyEffect.DENY:
                     logger.warning(
-                        "=´ Policy Engine DENIED action | action=%s reason=%s",
+                        "=¬´ Policy Engine DENIED action | action=%s reason=%s",
                         request.action,
                         policy_result.reason
                     )
@@ -266,7 +266,7 @@ class SupervisorAgent(BaseAgent):
                 if policy_result.effect == PolicyEffect.WARN:
                     policy_violations.append(policy_result.reason)
                     logger.warning(
-                        "† Policy warning | action=%s reason=%s",
+                        "¬† Policy warning | action=%s reason=%s",
                         request.action,
                         policy_result.reason
                     )
@@ -290,7 +290,7 @@ class SupervisorAgent(BaseAgent):
             )
 
             logger.warning(
-                "=´ LLM DENIED action | action=%s reason=%s",
+                "=¬´ LLM DENIED action | action=%s reason=%s",
                 request.action,
                 llm_decision["reason"]
             )
@@ -351,23 +351,23 @@ class SupervisorAgent(BaseAgent):
 
         The LLM has the CONSTITUTIONAL_PROMPT as system prompt.
         """
-        user_message = f"""Pr¸fe folgende Agent-Aktion:
+        user_message = f"""Pr√ºfe folgende Agent-Aktion:
 
 Agent: {request.requesting_agent}
 Aktion: {request.action}
 Risiko-Level: {request.risk_level.value}
 Kontext: {request.context}
-Begr¸ndung: {request.reason or 'Keine Begr¸ndung angegeben'}
+Begr√ºndung: {request.reason or 'Keine Begr√ºndung angegeben'}
 
 Bewerte:
-1. DSGVO-Konformit‰t
-2. EU AI Act Konformit‰t
+1. DSGVO-Konformit√§t
+2. EU AI Act Konformit√§t
 3. Ethische Unbedenklichkeit
 4. Transparenz
 
 Antworte im Format:
 approved: true/false
-reason: <Begr¸ndung mit DSGVO/AI Act Artikel>
+reason: <Begr√ºndung mit DSGVO/AI Act Artikel>
 human_oversight_required: true/false
 """
 
@@ -443,7 +443,7 @@ human_oversight_required: true/false
 
         self.audit_trail.append(entry)
 
-        logger.debug("=› Audit entry: %s", entry["event"])
+        logger.debug("=√ù Audit entry: %s", entry["event"])
 
     # ------------------------------------------------------------------------
     # Agent Override Methods
