@@ -5,7 +5,7 @@ Collects and exports metrics for Constitutional Agents Framework.
 """
 
 from prometheus_client import Counter, Gauge, Histogram, Info
-from typing import Dict
+from typing import Dict, Optional
 
 
 # ============================================================================
