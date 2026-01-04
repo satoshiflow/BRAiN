@@ -206,7 +206,7 @@ class PayCoreService:
                 amount_cents=request.amount_cents,
                 currency=request.currency,
                 status=provider_intent.status.value,
-                metadata=request.metadata,
+                payment_metadata=request.metadata,
             )
             session.add(intent)
             await session.commit()
@@ -267,7 +267,7 @@ class PayCoreService:
                 currency=intent.currency,
                 provider=PaymentProviderEnum(intent.provider),
                 provider_intent_id=intent.provider_intent_id,
-                metadata=intent.metadata or {},
+                metadata=intent.payment_metadata or {},
                 created_at=intent.created_at,
                 updated_at=intent.updated_at,
             )
