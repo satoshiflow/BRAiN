@@ -180,7 +180,7 @@ async def list_public_courses(
 )
 async def get_public_course_detail(
     slug: str,
-    service: DistributionService = None,
+    service: DistributionService = Depends(get_distribution_service),
 ) -> PublicCourseDetail:
     """
     Get public course details by slug.
@@ -228,7 +228,7 @@ async def get_public_course_detail(
 )
 async def get_public_course_outline(
     slug: str,
-    service: DistributionService = None,
+    service: DistributionService = Depends(get_distribution_service),
 ) -> PublicCourseOutline:
     """
     Get public course outline by slug.
@@ -278,7 +278,7 @@ async def get_public_course_outline(
 )
 async def track_enrollment_click(
     slug: str,
-    service: DistributionService = None,
+    service: DistributionService = Depends(get_distribution_service),
 ) -> TrackEnrollmentResponse:
     """
     Track enrollment CTA click.
@@ -335,7 +335,7 @@ async def track_enrollment_click(
 )
 async def render_course_page(
     slug: str,
-    service: DistributionService = None,
+    service: DistributionService = Depends(get_distribution_service),
 ) -> HTMLResponse:
     """
     Render complete course landing page as HTML.
@@ -400,7 +400,7 @@ async def render_course_page(
 )
 async def create_distribution(
     request: CreateDistributionRequest,
-    service: DistributionService = None,
+    service: DistributionService = Depends(get_distribution_service),
 ) -> CreateDistributionResponse:
     """
     Create a new course distribution.
@@ -458,7 +458,7 @@ async def create_distribution(
 )
 async def publish_distribution(
     distribution_id: str,
-    service: DistributionService = None,
+    service: DistributionService = Depends(get_distribution_service),
 ) -> PublishResponse:
     """
     Publish a course distribution (make public).
@@ -506,7 +506,7 @@ async def publish_distribution(
 )
 async def unpublish_distribution(
     distribution_id: str,
-    service: DistributionService = None,
+    service: DistributionService = Depends(get_distribution_service),
 ) -> PublishResponse:
     """
     Unpublish a course distribution (make private).
@@ -550,7 +550,7 @@ async def unpublish_distribution(
 )
 async def create_micro_niche_variant(
     request: MicroNicheDerivationRequest,
-    service: DistributionService = None,
+    service: DistributionService = Depends(get_distribution_service),
 ) -> CreateDistributionResponse:
     """
     Create micro-niche variant from parent course.
@@ -602,7 +602,7 @@ async def create_micro_niche_variant(
 )
 async def bump_course_version(
     distribution_id: str,
-    service: DistributionService = None,
+    service: DistributionService = Depends(get_distribution_service),
 ) -> VersionBumpResponse:
     """
     Bump course version.
@@ -671,7 +671,7 @@ async def bump_course_version(
     description="Health check for course distribution system.",
 )
 async def distribution_health(
-    service: DistributionService = None,
+    service: DistributionService = Depends(get_distribution_service),
 ) -> HealthResponse:
     """
     Health check for course distribution system.
