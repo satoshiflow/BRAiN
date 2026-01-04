@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse
 from loguru import logger
 from pydantic import BaseModel, Field
@@ -144,7 +144,7 @@ def get_distribution_service(request: Request) -> DistributionService:
 async def list_public_courses(
     language: Optional[str] = Query(None, description="Filter by language (ISO code)"),
     limit: int = Query(50, ge=1, le=100, description="Maximum results"),
-    service: DistributionService = None,
+    service: DistributionService = Depends(get_distribution_service),
 ) -> List[PublicCourseListItem]:
     """
     List all public courses.
