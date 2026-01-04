@@ -5,8 +5,8 @@ services:
     container_name: brain-backend
     env_file:
       - .env
-    ports:
-      - "8000:8000"
+    # ports:
+    #   - "8000:8000"  # Defined in environment-specific overrides
     depends_on:
       - postgres
       - redis
@@ -20,8 +20,8 @@ services:
     container_name: brain-control-deck
     environment:
       - NEXT_PUBLIC_BRAIN_API_BASE=http://backend:8000
-    ports:
-      - "3000:3000"
+    # ports:
+    #   - "3000:3000"  # Defined in environment-specific overrides
     depends_on:
       - backend
     restart: unless-stopped
@@ -34,8 +34,8 @@ services:
     container_name: brain-axe-ui
     environment:
       - NEXT_PUBLIC_BRAIN_API_BASE=http://backend:8000
-    ports:
-      - "3001:3000"
+    # ports:
+    #   - "3001:3000"  # Defined in environment-specific overrides
     depends_on:
       - backend
     restart: unless-stopped
