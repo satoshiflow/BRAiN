@@ -75,7 +75,7 @@ class PaymentIntent(Base):
     )
 
     # Metadata (course_id, product_type, etc.)
-    metadata = Column(JSONB, nullable=True, default={})
+    payment_metadata = Column(JSONB, nullable=True, default={})
 
     # Timestamps
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
