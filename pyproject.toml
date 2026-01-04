@@ -40,7 +40,7 @@ backend = [
 # Pytest configuration
 [tool.pytest.ini_options]
 minversion = "8.0"
-addopts = "-ra -q --strict-markers --cov=backend.app --cov=backend.brain --cov=backend.modules --cov-report=html --cov-report=json"
+addopts = "-ra -q --strict-markers"
 testpaths = ["backend/tests"]
 asyncio_mode = "auto"
 python_files = ["test_*.py", "*_test.py"]

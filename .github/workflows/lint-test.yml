@@ -39,9 +39,8 @@ jobs:
           ruff check .
 
       - name: Run backend tests
-        working-directory: backend
         run: |
-          pytest
+          pytest backend/tests/
 
   frontend:
     name: Frontend Lint & Build

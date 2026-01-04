@@ -171,14 +171,13 @@ jobs:
           REDIS_URL: redis://localhost:6379/0
           ANTHROPIC_API_KEY: sk-test-key
         run: |
-          cd backend
-          pytest tests/ --cov=app --cov-report=html --cov-report=json
+          pytest backend/tests/ --cov=backend.app --cov=backend.brain --cov=backend.modules --cov-report=html --cov-report=json
       
       - name: Upload coverage artifacts
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
-          path: backend/htmlcov/
+          path: htmlcov/
       
       - name: Comment PR with coverage
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
@@ -187,12 +186,13 @@ jobs:
           script: |
             const fs = require('fs');
             try {
-              const coverage = JSON.parse(fs.readFileSync('backend/.coverage'));
+              const coverage = JSON.parse(fs.readFileSync('coverage.json'));
+              const totalCoverage = coverage.totals.percent_covered.toFixed(2);
               github.rest.issues.createComment({
                 issue_number: context.issue.number,
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                body: `📊 Coverage Report\n\`\`\`\n${coverage}\n\`\`\``
+                body: `📊 Coverage Report: ${totalCoverage}%\n\nFull report available in artifacts.`
               });
             } catch (e) {
               console.log('Could not read coverage file');

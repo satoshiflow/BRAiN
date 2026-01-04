@@ -81,8 +81,7 @@ jobs:
         run: mypy . || true  # not blocking am Anfang, später kannst du das '|| true' entfernen
 
       - name: Run tests
-        working-directory: backend
-        run: pytest -q
+        run: pytest backend/tests/ -q
 
       - name: Docker build check (backend)
         run: |
