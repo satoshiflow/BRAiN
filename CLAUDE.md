@@ -1,8 +1,19 @@
 # CLAUDE.md - AI Assistant Guide for BRAiN
 
-**Version:** 0.6.0
-**Last Updated:** 2025-12-31
+**Version:** 0.6.1
+**Last Updated:** 2026-01-05
 **Purpose:** Comprehensive guide for AI assistants working with the BRAiN codebase
+
+---
+
+## 🎯 Current Development Focus (2026-01-05)
+
+**Backend:** Hardening phase only - no new features
+**Frontend Priority:**
+1. **control_deck** ⭐ PRIMARY - System administration & monitoring
+2. **axe_ui** ⭐ SECONDARY - BRAiN interface & floating widget
+3. **brain_control_ui** - Future user interface (pending backend coordination)
+4. **OpenWebUI** - Multi-LLM interface (separate project)
 
 ---
 
@@ -238,11 +249,15 @@ BRAiN/
 │   ├── Dockerfile
 │   └── requirements.txt
 │
-├── frontend/                  # Frontend applications
-│   ├── control_deck/          # 🆕 NEW Control Dashboard (Next.js)
+├── frontend/                  # Frontend applications (4 separate apps)
+│   │
+│   ├── control_deck/          # ⭐ PRIMARY: BRAiN System Admin (Next.js v1.0.0)
+│   │   │                      # Purpose: Administration & monitoring of BRAiN itself
+│   │   │                      # Users: BRAiN administrators and developers only
+│   │   │                      # Priority: HIGHEST - Active development focus
 │   │   ├── app/               # App Router (14 pages)
 │   │   │   ├── page.tsx           # Landing page
-│   │   │   ├── dashboard/page.tsx # Main dashboard
+│   │   │   ├── dashboard/page.tsx # Main system dashboard
 │   │   │   ├── core/
 │   │   │   │   ├── agents/page.tsx       # Agent management
 │   │   │   │   ├── agents/[agentId]/page.tsx # Agent details
@@ -250,13 +265,29 @@ BRAiN/
 │   │   │   ├── missions/page.tsx  # Mission control
 │   │   │   ├── supervisor/page.tsx # Supervisor panel
 │   │   │   ├── immune/page.tsx     # Security dashboard
-│   │   │   └── settings/page.tsx   # Settings
+│   │   │   └── settings/page.tsx   # System settings
 │   │   ├── components/        # React components
 │   │   ├── lib/               # Utilities
+│   │   ├── hooks/             # React Query hooks
+│   │   ├── types/             # TypeScript types
 │   │   ├── Dockerfile
 │   │   └── package.json
 │   │
-│   ├── brain_control_ui/      # Admin/Control Center (Next.js)
+│   ├── axe_ui/                # ⭐ SECONDARY: BRAiN Interface (Next.js)
+│   │   │                      # Purpose: ONLY interface to communicate with BRAiN
+│   │   │                      # Architecture: Floating widget for external projects
+│   │   │                      # Integration: Can be embedded in any project
+│   │   │                      # Priority: HIGH - Second development focus
+│   │   ├── app/               # App Router pages
+│   │   ├── components/        # Widget components
+│   │   └── package.json
+│   │
+│   ├── brain_control_ui/      # FUTURE: End-User Project Admin (Next.js)
+│   │   │                      # Purpose: Project administration for BRAiN users (not admins)
+│   │   │                      # Projects: FeWoHeros, Odoo 19 ERP, SatoshiFlow, etc.
+│   │   │                      # Features: Business Dashboard, Template System
+│   │   │                      # Status: Pending backend coordination & design
+│   │   │                      # Priority: LOW - Future development after control_deck & axe_ui
 │   │   ├── src/
 │   │   │   ├── app/           # App Router pages
 │   │   │   │   ├── (control-center)/  # Route group
@@ -286,7 +317,8 @@ BRAiN/
 │   │   ├── package.json
 │   │   └── tsconfig.json
 │   │
-│   ├── brain_ui/              # Chat Interface (Next.js)
+│   ├── brain_ui/              # DEPRECATED: Old Chat Interface (Next.js)
+│   │   │                      # Status: Legacy, may be removed
 │   │   ├── app/               # App Router pages
 │   │   ├── src/
 │   │   │   ├── brain-ui/
@@ -302,9 +334,12 @@ BRAiN/
 │   │   ├── package.json
 │   │   └── tsconfig.json
 │   │
-│   └── axe_ui/                # AXE Interface (Next.js)
-│       ├── app/               # App Router pages
-│       └── package.json
+│   └── (OpenWebUI)            # SEPARATE: Multi-LLM Interface
+│       │                      # Purpose: Local + API LLM access
+│       │                      # Users: Third-party users (paid service)
+│       │                      # Branding: Custom branding support
+│       │                      # Deployment: Separate container/service
+│       └── (Managed via docker-compose)
 │
 ├── docs/                      # Documentation
 │   ├── BRAIN_SERVER_DATASHEET_FOR_CHATGPT.md
@@ -3693,13 +3728,18 @@ systemctl status ollama
 
 ### Deployment Architecture
 
+**Current Development Path:** `/root/BRAiN` (Active development on branch `claude/update-claude-md-Q9jY6`)
+
 BRAiN v2.0 uses a **three-environment deployment strategy** on server `brain.falklabs.de` (46.224.37.114):
 
-| Environment | Path | Backend Port | Frontend Port | Domain |
-|-------------|------|--------------|---------------|---------|
-| Development | `/srv/dev/` | 8001 | 3001 | dev.brain.falklabs.de |
-| Staging | `/srv/stage/` | 8002 | 3003 | stage.brain.falklabs.de |
-| Production | `/srv/prod/` | 8000 | 3000 | brain.falklabs.de |
+| Environment | Path | Backend Port | Frontend Port | Domain | Status |
+|-------------|------|--------------|---------------|---------|--------|
+| **Development (Current)** | `/root/BRAiN` | 8001 | 3001 (control_deck), 3002 (axe_ui) | dev.brain.falklabs.de | 🟢 Active |
+| Development (Planned) | `/srv/dev/` | 8001 | 3001 | dev.brain.falklabs.de | ⏳ Future |
+| Staging | `/srv/stage/` | 8002 | 3003 | stage.brain.falklabs.de | ⏳ Future |
+| Production | `/srv/prod/` | 8000 | 3000 | brain.falklabs.de | ⏳ Future |
+
+**Note:** Development currently uses `/root/BRAiN`. The `/srv/*` paths are planned for the final CI/CD pipeline.
 
 ### Deployment Scripts
 
@@ -4000,6 +4040,30 @@ OLLAMA_MODEL=llama3.2:latest
 ---
 
 ## Version History
+
+**0.6.1** (2026-01-05)
+- **Frontend Architecture Clarification:**
+  - ⭐ **control_deck** marked as PRIMARY frontend (system admin & monitoring)
+  - ⭐ **axe_ui** marked as SECONDARY (only BRAiN interface, floating widget)
+  - **brain_control_ui** clarified as FUTURE user interface (project admin, business dashboard)
+  - **brain_ui** marked as DEPRECATED (legacy chat interface)
+  - **OpenWebUI** documented as separate multi-LLM interface
+- **Development Focus Update:**
+  - Backend: Hardening phase only - no new features
+  - Frontend: Priority on control_deck, then axe_ui
+- **Deployment Path Clarification:**
+  - Current development path: `/root/BRAiN`
+  - Future deployment paths: `/srv/dev/`, `/srv/stage/`, `/srv/prod/`
+  - Docker Compose overrides documented (dev, stage, prod)
+- **Documentation Updates:**
+  - Frontend roles and purposes clearly defined
+  - Development priorities explicitly stated
+  - Deployment architecture status updated
+
+**0.6.0** (2025-12-31)
+- Initial comprehensive documentation release
+- Complete API reference with 60+ endpoints
+- All modules documented with examples
 
 **0.5.0** (2025-12-20)
 - **Phase 5.1:** Generic API Client Framework with enterprise-grade resilience patterns
