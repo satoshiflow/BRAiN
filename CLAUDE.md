@@ -317,8 +317,10 @@ BRAiN/
 │   │   ├── package.json
 │   │   └── tsconfig.json
 │   │
-│   ├── brain_ui/              # DEPRECATED: Old Chat Interface (Next.js)
-│   │   │                      # Status: Legacy, may be removed
+│   ├── brain_ui/              # F&E: First AXE Version - Avatar UI (Next.js)
+│   │   │                      # Status: Research & Development (Avatar emotions, graphics, audio)
+│   │   │                      # Features: Emotional colors, movement, graphics/video/audio
+│   │   │                      # Purpose: Test UI for avatar development
 │   │   ├── app/               # App Router pages
 │   │   ├── src/
 │   │   │   ├── brain-ui/
@@ -3728,18 +3730,31 @@ systemctl status ollama
 
 ### Deployment Architecture
 
-**Current Development Path:** `/root/BRAiN` (Active development on branch `claude/update-claude-md-Q9jY6`)
+**Current Status:** Migration from `/opt/brain-v2/` to clean `/srv/*` structure in progress.
 
 BRAiN v2.0 uses a **three-environment deployment strategy** on server `brain.falklabs.de` (46.224.37.114):
 
 | Environment | Path | Backend Port | Frontend Port | Domain | Status |
 |-------------|------|--------------|---------------|---------|--------|
-| **Development (Current)** | `/root/BRAiN` | 8001 | 3001 (control_deck), 3002 (axe_ui) | dev.brain.falklabs.de | 🟢 Active |
-| Development (Planned) | `/srv/dev/` | 8001 | 3001 | dev.brain.falklabs.de | ⏳ Future |
-| Staging | `/srv/stage/` | 8002 | 3003 | stage.brain.falklabs.de | ⏳ Future |
-| Production | `/srv/prod/` | 8000 | 3000 | brain.falklabs.de | ⏳ Future |
+| **Dev Workspace** | `/root/BRAiN` | - | - | - | 🟢 Active Development |
+| Development | `/srv/dev/` | 8001 | 3001 (control_deck), 3002 (axe_ui) | dev.brain.falklabs.de | 🔄 Migration |
+| Staging | `/srv/stage/` | 8002 | 3003 (control_deck), 3004 (axe_ui) | stage.brain.falklabs.de | ⏳ Planned |
+| Production | `/srv/prod/` | 8000 | 3000 (control_deck), 3001 (axe_ui) | brain.falklabs.de | ⏳ Planned |
+| **OLD** | `/opt/brain-v2/` | - | - | - | ❌ To be removed |
 
-**Note:** Development currently uses `/root/BRAiN`. The `/srv/*` paths are planned for the final CI/CD pipeline.
+**Directory Structure Philosophy:**
+- **`/root/BRAiN`** - Personal development workspace (git clone, code editing)
+  - ✅ Fast root access for development
+  - ✅ Direct git operations
+  - ❌ Not for running production services
+
+- **`/srv/*`** - Service deployment directories (Docker containers, production data)
+  - ✅ Standard Linux FHS (Filesystem Hierarchy Standard)
+  - ✅ Clean separation: dev/stage/prod
+  - ✅ Proper permissions for multi-user servers
+  - ✅ CI/CD ready
+
+**Migration Note:** Old installation at `/opt/brain-v2/` will be backed up and removed during cleanup.
 
 ### Deployment Scripts
 
@@ -4046,19 +4061,22 @@ OLLAMA_MODEL=llama3.2:latest
   - ⭐ **control_deck** marked as PRIMARY frontend (system admin & monitoring)
   - ⭐ **axe_ui** marked as SECONDARY (only BRAiN interface, floating widget)
   - **brain_control_ui** clarified as FUTURE user interface (project admin, business dashboard)
-  - **brain_ui** marked as DEPRECATED (legacy chat interface)
+  - **brain_ui** corrected as F&E for first AXE version (avatar emotions, graphics, audio)
   - **OpenWebUI** documented as separate multi-LLM interface
 - **Development Focus Update:**
   - Backend: Hardening phase only - no new features
   - Frontend: Priority on control_deck, then axe_ui
 - **Deployment Path Clarification:**
-  - Current development path: `/root/BRAiN`
-  - Future deployment paths: `/srv/dev/`, `/srv/stage/`, `/srv/prod/`
+  - Development workspace: `/root/BRAiN` (git clone, code editing)
+  - Service deployment: `/srv/dev/`, `/srv/stage/`, `/srv/prod/` (Docker containers)
+  - Directory structure philosophy: Separation of workspace vs. deployment
+  - Migration from old `/opt/brain-v2/` to clean `/srv/*` structure
   - Docker Compose overrides documented (dev, stage, prod)
 - **Documentation Updates:**
   - Frontend roles and purposes clearly defined
   - Development priorities explicitly stated
-  - Deployment architecture status updated
+  - Deployment architecture with /root vs /srv distinction
+  - Migration plan for cleanup of old installation
 
 **0.6.0** (2025-12-31)
 - Initial comprehensive documentation release
