@@ -100,6 +100,9 @@ services:
       - brain_openwebui_data:/app/backend/data
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
+      # OpenWebUI uses SQLite by default - override Coolify's DATABASE_URL
+      # BRAiN backend uses PostgreSQL, but OpenWebUI is a separate app
+      - DATABASE_URL=sqlite:////app/backend/data/webui.db
     # ports:
     #   - "8080:8080"  # Removed for Coolify - Traefik handles routing
     depends_on:
