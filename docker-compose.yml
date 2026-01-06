@@ -93,23 +93,21 @@ services:
     networks:
       - brain_internal
 
-  openwebui:
-    image: ghcr.io/open-webui/open-webui:main
-    container_name: brain-openwebui
-    volumes:
-      - brain_openwebui_data:/app/backend/data
-    environment:
-      - OLLAMA_BASE_URL=http://ollama:11434
-      # OpenWebUI uses SQLite by default - override Coolify's DATABASE_URL
-      # BRAiN backend uses PostgreSQL, but OpenWebUI is a separate app
-      - DATABASE_URL=sqlite:////app/backend/data/webui.db
-    # ports:
-    #   - "8080:8080"  # Removed for Coolify - Traefik handles routing
-    depends_on:
-      - ollama
-    restart: unless-stopped
-    networks:
-      - brain_internal
+  # OpenWebUI temporarily disabled for initial deployment
+  # Uncomment when ready to deploy chat interface
+  # openwebui:
+  #   image: ghcr.io/open-webui/open-webui:main
+  #   container_name: brain-openwebui
+  #   volumes:
+  #     - brain_openwebui_data:/app/backend/data
+  #   environment:
+  #     - OLLAMA_BASE_URL=http://ollama:11434
+  #     - DATABASE_URL=sqlite:////app/backend/data/webui.db
+  #   depends_on:
+  #     - ollama
+  #   restart: unless-stopped
+  #   networks:
+  #     - brain_internal
 
 networks:
   brain_internal:
