@@ -111,17 +111,8 @@ services:
 networks:
   brain_internal:
     driver: bridge
-    internal: false  # Set to true for full isolation (blocks direct internet)
-    ipam:
-      driver: default
-      config:
-        - subnet: 172.20.0.0/16
-          gateway: 172.20.0.1
-
-  # Optional: Separate gateway network for services requiring internet access
-  # brain_gateway:
-  #   driver: bridge
-  #   internal: false
+    # Let Docker automatically assign a free subnet to avoid conflicts
+    # Coolify may already use 172.20.0.0/16 or other predefined subnets
 
 volumes:
   brain_pg_data:
