@@ -157,19 +157,24 @@ Build Pack:     Docker Compose
 **Docker Compose Einstellungen:**
 ```
 Compose File:        docker-compose.yml
-Additional Files:    docker-compose.dev.yml
 
-Command Override:    docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+Command Override:    (leer lassen - Standard ist "up")
+
+WICHTIG: docker-compose.yml enthält KEINE Port-Mappings mehr!
+         Alle Port-Mappings wurden entfernt für Coolify/Traefik.
+         Services kommunizieren intern via brain_internal Network.
+         Traefik routet extern basierend auf Labels.
 ```
 
 **Environment-Einstellungen:**
 ```
 Environment Name:    dev
-Domain:              dev.brain.falklabs.de
-Port Mappings:
-  - Backend:         8001 → 8000
-  - Control Deck:    3001 → 3000
-  - AXE UI:          3002 → 3000
+Domains:
+  - Backend + Control Deck:  dev.brain.falklabs.de
+  - AXE UI:                   axe.dev.brain.falklabs.de
+  - OpenWebUI:                chat.falklabs.de
+
+Port Mappings:       KEINE! Traefik routet basierend auf Domains.
 ```
 
 **Environment Variables:**
