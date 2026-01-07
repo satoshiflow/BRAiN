@@ -17,7 +17,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.backend.rule=Host(`dev.brain.falklabs.de`) && PathPrefix(`/api`)"
-      - "traefik.http.routers.backend.entrypoints=websecure"
+      - "traefik.http.routers.backend.entrypoints=https"
       - "traefik.http.routers.backend.tls=true"
       - "traefik.http.routers.backend.tls.certresolver=letsencrypt"
       - "traefik.http.services.backend.loadbalancer.server.port=8000"
@@ -39,7 +39,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.control_deck.rule=Host(`dev.brain.falklabs.de`)"
-      - "traefik.http.routers.control_deck.entrypoints=websecure"
+      - "traefik.http.routers.control_deck.entrypoints=https"
       - "traefik.http.routers.control_deck.tls=true"
       - "traefik.http.routers.control_deck.tls.certresolver=letsencrypt"
       - "traefik.http.services.control_deck.loadbalancer.server.port=3000"
@@ -62,7 +62,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.axe_ui.rule=Host(`axe.dev.brain.falklabs.de`)"
-      - "traefik.http.routers.axe_ui.entrypoints=websecure"
+      - "traefik.http.routers.axe_ui.entrypoints=https"
       - "traefik.http.routers.axe_ui.tls=true"
       - "traefik.http.routers.axe_ui.tls.certresolver=letsencrypt"
       - "traefik.http.services.axe_ui.loadbalancer.server.port=3000"
