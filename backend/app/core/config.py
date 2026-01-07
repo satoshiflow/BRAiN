@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Union
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
@@ -14,16 +15,39 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://localhost:6379/0"
 
-    # CORS - Accepts both CSV string and JSON array
-    cors_origins: list[str] = ["*"]
+    # CORS - Accepts CSV string, JSON array, or wildcard
+    # Type as Union to prevent Pydantic from auto-parsing as JSON before validation
+    cors_origins: Union[str, list[str]] = "*"
 
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, v):
-        """Parse CORS origins from CSV string or JSON array."""
+        """Parse CORS origins from CSV string, JSON array, or handle empty/None."""
+        # Handle None or empty string - default to wildcard
+        if v is None or v == "" or (isinstance(v, str) and not v.strip()):
+            return ["*"]
+
+        # Already a list (from JSON parsing)
+        if isinstance(v, list):
+            return v
+
+        # String value
         if isinstance(v, str):
-            # Split CSV string and strip whitespace
+            # Wildcard
+            if v.strip() == "*":
+                return ["*"]
+            # CSV string
             return [origin.strip() for origin in v.split(",") if origin.strip()]
+
+        # Fallback to wildcard for any other type
+        return ["*"]
+
+    @field_validator("cors_origins", mode="after")
+    @classmethod
+    def ensure_list(cls, v):
+        """Ensure cors_origins is always a list."""
+        if isinstance(v, str):
+            return [v]
         return v
 
     class Config:
