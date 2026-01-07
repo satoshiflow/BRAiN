@@ -6,13 +6,20 @@ services:
     env_file:
       - .env
     # ports:
-    #   - "8000:8000"  # Defined in environment-specific overrides
+    #   - "8000:8000"  # Removed for Coolify - Traefik handles routing
     depends_on:
       - postgres
       - redis
     restart: unless-stopped
     networks:
       - brain_internal
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend.rule=Host(`dev.brain.falklabs.de`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.backend.entrypoints=websecure"
+      - "traefik.http.routers.backend.tls=true"
+      - "traefik.http.routers.backend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.backend.loadbalancer.server.port=8000"
 
   control_deck:
     build:
@@ -21,12 +28,20 @@ services:
     environment:
       - NEXT_PUBLIC_BRAIN_API_BASE=http://backend:8000
     # ports:
-    #   - "3000:3000"  # Defined in environment-specific overrides
+    #   - "3000:3000"  # Removed for Coolify - Traefik handles routing
     depends_on:
       - backend
     restart: unless-stopped
     networks:
       - brain_internal
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.control_deck.rule=Host(`dev.brain.falklabs.de`)"
+      - "traefik.http.routers.control_deck.entrypoints=websecure"
+      - "traefik.http.routers.control_deck.tls=true"
+      - "traefik.http.routers.control_deck.tls.certresolver=letsencrypt"
+      - "traefik.http.services.control_deck.loadbalancer.server.port=3000"
+      - "traefik.http.routers.control_deck.priority=1"
 
   axe_ui:
     build:
@@ -35,12 +50,19 @@ services:
     environment:
       - NEXT_PUBLIC_BRAIN_API_BASE=http://backend:8000
     # ports:
-    #   - "3001:3000"  # Defined in environment-specific overrides
+    #   - "3001:3000"  # Removed for Coolify - Traefik handles routing
     depends_on:
       - backend
     restart: unless-stopped
     networks:
       - brain_internal
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.axe_ui.rule=Host(`axe.dev.brain.falklabs.de`)"
+      - "traefik.http.routers.axe_ui.entrypoints=websecure"
+      - "traefik.http.routers.axe_ui.tls=true"
+      - "traefik.http.routers.axe_ui.tls.certresolver=letsencrypt"
+      - "traefik.http.services.axe_ui.loadbalancer.server.port=3000"
 
   postgres:
     image: postgres:16
