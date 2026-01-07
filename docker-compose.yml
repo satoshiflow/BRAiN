@@ -13,6 +13,7 @@ services:
     restart: unless-stopped
     networks:
       - brain_internal
+      - mw0ck04s8go048c0g4so48cc
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.backend.rule=Host(`dev.brain.falklabs.de`) && PathPrefix(`/api`)"
@@ -34,6 +35,7 @@ services:
     restart: unless-stopped
     networks:
       - brain_internal
+      - mw0ck04s8go048c0g4so48cc
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.control_deck.rule=Host(`dev.brain.falklabs.de`)"
@@ -56,6 +58,7 @@ services:
     restart: unless-stopped
     networks:
       - brain_internal
+      - mw0ck04s8go048c0g4so48cc
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.axe_ui.rule=Host(`axe.dev.brain.falklabs.de`)"
@@ -136,6 +139,11 @@ networks:
     driver: bridge
     # Let Docker automatically assign a free subnet to avoid conflicts
     # Coolify may already use 172.20.0.0/16 or other predefined subnets
+
+  mw0ck04s8go048c0g4so48cc:
+    external: true
+    # External network created by Coolify for Traefik routing
+    # This network is shared with coolify-proxy (Traefik)
 
 volumes:
   brain_pg_data:
