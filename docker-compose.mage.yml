@@ -1,0 +1,64 @@
+# Phase 1: Mage.ai Services Extension
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.mage.yml up -d
+
+services:
+  # Override postgres with pgvector-enabled image
+  postgres:
+    image: pgvector/pgvector:pg16
+    # Inherit all other settings from docker-compose.yml
+    volumes:
+      - brain_pg_data:/var/lib/postgresql/data
+      - ./backend/scripts/init-pgvector.sql:/docker-entrypoint-initdb.d/init-pgvector.sql:ro
+
+  # Mage.ai - Data Pipeline Platform
+  mage:
+    image: mageai/mageai:latest
+    container_name: brain-mage
+    command: mage start brain_pipelines
+    environment:
+      # PostgreSQL Connection
+      - MAGE_DATABASE_CONNECTION_URL=postgresql+psycopg2://${POSTGRES_USER:-brain}:${POSTGRES_PASSWORD:-brain}@postgres:5432/${POSTGRES_DB:-brain}
+
+      # Ollama for AI features
+      - OLLAMA_HOST=http://ollama:11434
+      - OLLAMA_MODEL=llama3.2:latest
+
+      # Environment
+      - ENV=production
+      - PROJECT_TYPE=main
+
+      # Server config (internal only)
+      - MAGE_SERVER_HOST=0.0.0.0
+      - MAGE_SERVER_PORT=6789
+
+      # Disable public access features
+      - REQUIRE_USER_AUTHENTICATION=false
+      - REQUIRE_USER_PERMISSIONS=false
+
+    volumes:
+      - brain_mage_data:/home/src
+      - ./backend/mage_config:/home/src/mage_config:ro
+
+    ports:
+      - "127.0.0.1:6789:6789"  # Localhost only - NO external access
+
+    depends_on:
+      - postgres
+      - ollama
+
+    restart: unless-stopped
+
+    networks:
+      - brain_internal
+
+    # NO Traefik labels - internal only!
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6789/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  brain_mage_data:
+    # Mage.ai pipelines and metadata
