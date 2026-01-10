@@ -8,6 +8,7 @@
 import React from 'react';
 import { AxeMinimized } from './AxeMinimized';
 import { AxeExpanded } from './AxeExpanded';
+import { AxeCanvas } from './AxeCanvas';
 import { useAxeStore } from '../store/axeStore';
 import { cn } from '../utils/cn';
 import type { AxeWidgetProps } from '../types';
@@ -68,21 +69,12 @@ export function AxeWidget({
       )}
 
       {widgetState === 'canvas' && (
-        <div className="axe-canvas-placeholder">
-          {/* TODO: Implement AxeCanvas component */}
-          <div className="fixed inset-0 bg-background flex items-center justify-center">
-            <div className="text-center">
-              <h1 className="text-2xl font-bold mb-4">CANVAS Mode</h1>
-              <p className="text-muted-foreground">Coming soon...</p>
-              <button
-                onClick={handleExpand}
-                className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md"
-              >
-                Back to Chat
-              </button>
-            </div>
-          </div>
-        </div>
+        <AxeCanvas
+          mode={mode}
+          onModeChange={handleModeChange}
+          onClose={handleExpand}
+          locale={locale}
+        />
       )}
     </div>
   );
