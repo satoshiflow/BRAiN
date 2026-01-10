@@ -16,8 +16,8 @@ services:
     container_name: brain-mage
     command: mage start brain_pipelines
     environment:
-      # PostgreSQL Connection
-      - MAGE_DATABASE_CONNECTION_URL=postgresql+psycopg2://${POSTGRES_USER:-brain}:${POSTGRES_PASSWORD:-brain}@postgres:5432/${POSTGRES_DB:-brain}
+      # PostgreSQL Connection (use brain_dev database from Coolify deployment)
+      - MAGE_DATABASE_CONNECTION_URL=postgresql+psycopg2://${POSTGRES_USER:-brain}:${POSTGRES_PASSWORD:-brain}@postgres:5432/brain_dev
 
       # Ollama for AI features
       - OLLAMA_HOST=http://ollama:11434
