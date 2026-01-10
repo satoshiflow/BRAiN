@@ -18,6 +18,7 @@ import { DiffOverlay } from './DiffOverlay';
 import { useAxeStore } from '../store/axeStore';
 import { useDiffStore } from '../store/diffStore';
 import { useAxeWebSocket } from '../hooks/useAxeWebSocket';
+import { useEventTelemetry } from '../hooks/useEventTelemetry';
 import { generateMessageId, generateFileId } from '../utils/id';
 import { cn } from '../utils/cn';
 import type { AxeCanvasProps, AxeMessage } from '../types';
@@ -61,6 +62,18 @@ export function AxeCanvas({
     onConnected: () => console.log('[AxeCanvas] WebSocket connected'),
     onDisconnected: () => console.log('[AxeCanvas] WebSocket disconnected'),
     onError: (error) => console.error('[AxeCanvas] WebSocket error:', error)
+  });
+
+  // ============================================================================
+  // Event Telemetry (Phase 3)
+  // ============================================================================
+  const { trackMessage, trackClick, trackDiffAction } = useEventTelemetry({
+    backendUrl: process.env.NEXT_PUBLIC_BRAIN_API_BASE || 'http://localhost:8000',
+    sessionId: sessionId,
+    appId: config?.app_id || 'axe-canvas',
+    anonymizationLevel: config?.telemetry?.anonymization_level || 'pseudonymized',
+    telemetryEnabled: config?.telemetry?.enabled !== false,
+    trainingOptIn: config?.telemetry?.training_opt_in || false,
   });
 
   const activeFile = getActiveFile();
@@ -109,6 +122,13 @@ export function AxeCanvas({
     };
 
     sendChat(userMessage.content, context);
+
+    // Track telemetry event
+    trackMessage('user', userMessage.content, {
+      mode,
+      active_file: activeFile?.name,
+      message_length: userMessage.content.length
+    });
   };
 
   // ============================================================================
@@ -142,11 +162,23 @@ export function AxeCanvas({
   const handleApplyDiff = async (diffId: string) => {
     await applyDiff(diffId);
     sendDiffApplied(diffId);
+
+    // Track telemetry event
+    trackDiffAction('applied', diffId, {
+      file_name: currentDiff?.fileName,
+      language: currentDiff?.language
+    });
   };
 
   const handleRejectDiff = (diffId: string) => {
     rejectDiff(diffId);
     sendDiffRejected(diffId);
+
+    // Track telemetry event
+    trackDiffAction('rejected', diffId, {
+      file_name: currentDiff?.fileName,
+      language: currentDiff?.language
+    });
   };
 
   // ============================================================================

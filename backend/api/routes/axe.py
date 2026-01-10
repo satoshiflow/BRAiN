@@ -767,4 +767,167 @@ async def axe_websocket(websocket: WebSocket, session_id: str):
         await connection_manager.disconnect(session_id)
 
 
+# ============================================================================
+# EVENT TELEMETRY ENDPOINTS (Phase 3)
+# ============================================================================
+
+from backend.app.modules.telemetry.schemas import (
+    AxeEventCreate,
+    AxeEventBatchCreate,
+    AxeEventResponse,
+    AxeEventStats,
+    AxeEventQuery,
+)
+from backend.app.modules.telemetry.service import get_telemetry_service
+from backend.app.core.database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+
+
+@router.post("/events", response_model=list[AxeEventResponse])
+async def create_axe_events(
+    payload: AxeEventCreate | AxeEventBatchCreate,
+    context: AXERequestContext = Depends(validate_axe_request),
+    db: AsyncSession = Depends(get_db),
+) -> list[AxeEventResponse]:
+    """
+    Create AXE event(s) for telemetry tracking.
+
+    **Features:**
+    - Single event or batch upload (up to 100 events)
+    - Automatic anonymization based on privacy settings
+    - DSGVO-compliant data storage
+    - Training data opt-in support
+
+    **Example (Single Event):**
+    ```json
+    {
+      "event_type": "axe_message",
+      "session_id": "session-abc123",
+      "app_id": "widget-test",
+      "event_data": {
+        "message": "Hello AXE",
+        "role": "user"
+      },
+      "anonymization_level": "pseudonymized"
+    }
+    ```
+
+    **Example (Batch):**
+    ```json
+    {
+      "events": [
+        { "event_type": "axe_message", ... },
+        { "event_type": "axe_click", ... }
+      ]
+    }
+    ```
+
+    **Returns:**
+    List of created events with IDs and timestamps.
+    """
+    telemetry_service = get_telemetry_service()
+
+    # Determine if single event or batch
+    if isinstance(payload, AxeEventBatchCreate):
+        # Batch upload
+        logger.info(f"Batch telemetry upload: {len(payload.events)} events from {context.trust_tier}")
+        created_events = await telemetry_service.create_events_batch(db, payload.events)
+        return created_events
+    else:
+        # Single event
+        logger.info(f"Single telemetry event: {payload.event_type} from {context.trust_tier}")
+        created_event = await telemetry_service.create_event(db, payload)
+        return [created_event]
+
+
+@router.get("/events", response_model=list[AxeEventResponse])
+async def query_axe_events(
+    session_id: Optional[str] = None,
+    app_id: Optional[str] = None,
+    user_id: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0,
+    context: AXERequestContext = Depends(validate_axe_request),
+    db: AsyncSession = Depends(get_db),
+) -> list[AxeEventResponse]:
+    """
+    Query AXE events with filters.
+
+    **Query Parameters:**
+    - session_id: Filter by session
+    - app_id: Filter by app
+    - user_id: Filter by user (anonymized)
+    - limit: Max results (1-1000, default 100)
+    - offset: Pagination offset
+
+    **Example:**
+    ```
+    GET /api/axe/events?session_id=session-abc123&limit=50
+    ```
+
+    **Returns:**
+    List of matching events, ordered by created_at DESC.
+    """
+    telemetry_service = get_telemetry_service()
+
+    query_params = AxeEventQuery(
+        session_id=session_id,
+        app_id=app_id,
+        user_id=user_id,
+        limit=limit,
+        offset=offset,
+    )
+
+    events = await telemetry_service.query_events(db, query_params)
+    logger.info(f"Queried {len(events)} events for session={session_id}, app={app_id}")
+    return events
+
+
+@router.get("/events/stats", response_model=AxeEventStats)
+async def get_axe_event_stats(
+    session_id: Optional[str] = None,
+    app_id: Optional[str] = None,
+    context: AXERequestContext = Depends(validate_axe_request),
+    db: AsyncSession = Depends(get_db),
+) -> AxeEventStats:
+    """
+    Get statistics for AXE events.
+
+    **Query Parameters:**
+    - session_id: Filter by session
+    - app_id: Filter by app
+
+    **Example:**
+    ```
+    GET /api/axe/events/stats?app_id=widget-test
+    ```
+
+    **Returns:**
+    ```json
+    {
+      "total_events": 1234,
+      "event_type_counts": {
+        "axe_message": 567,
+        "axe_click": 345,
+        "axe_diff_applied": 89
+      },
+      "sessions": 42,
+      "apps": ["widget-test", "fewoheros"],
+      "date_range": {
+        "start": "2026-01-01T00:00:00Z",
+        "end": "2026-01-10T23:59:59Z"
+      },
+      "anonymization_breakdown": {
+        "pseudonymized": 1100,
+        "strict": 134
+      }
+    }
+    ```
+    """
+    telemetry_service = get_telemetry_service()
+    stats = await telemetry_service.get_stats(db, session_id=session_id, app_id=app_id)
+    logger.info(f"Event stats: {stats.total_events} events, {stats.sessions} sessions")
+    return stats
+
+
 # End of file
