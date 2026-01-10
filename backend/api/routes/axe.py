@@ -21,9 +21,11 @@ from __future__ import annotations
 import uuid
 import inspect
 import logging
+import json
+import asyncio
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, HTTPException, Request, Header, Depends
+from fastapi import APIRouter, HTTPException, Request, Header, Depends, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 from backend.modules.connector_hub.services import get_gateway
@@ -44,6 +46,101 @@ router = APIRouter(
     prefix="/api/axe",
     tags=["axe"],
 )
+
+
+# ============================================================================
+# WEBSOCKET CONNECTION MANAGER
+# ============================================================================
+
+
+class AxeConnectionManager:
+    """
+    Manages WebSocket connections for real-time AXE communication.
+
+    Each session can have one active WebSocket connection for:
+    - Real-time code diff streaming
+    - Live chat updates
+    - File change notifications
+    """
+
+    def __init__(self):
+        self.active_connections: Dict[str, WebSocket] = {}
+        self._lock = asyncio.Lock()
+
+    async def connect(self, session_id: str, websocket: WebSocket):
+        """Accept and register a new WebSocket connection."""
+        await websocket.accept()
+        async with self._lock:
+            # Disconnect existing connection for this session
+            if session_id in self.active_connections:
+                try:
+                    await self.active_connections[session_id].close()
+                except Exception:
+                    pass
+            self.active_connections[session_id] = websocket
+        logger.info(f"AXE WebSocket connected: session={session_id}")
+
+    async def disconnect(self, session_id: str):
+        """Remove a WebSocket connection."""
+        async with self._lock:
+            if session_id in self.active_connections:
+                del self.active_connections[session_id]
+        logger.info(f"AXE WebSocket disconnected: session={session_id}")
+
+    async def send_message(self, session_id: str, message: Dict[str, Any]) -> bool:
+        """
+        Send a message to a specific session.
+
+        Returns True if sent successfully, False if session not connected.
+        """
+        async with self._lock:
+            websocket = self.active_connections.get(session_id)
+
+        if not websocket:
+            return False
+
+        try:
+            await websocket.send_json(message)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to send WebSocket message to {session_id}: {e}")
+            await self.disconnect(session_id)
+            return False
+
+    async def send_diff(self, session_id: str, diff: Dict[str, Any]):
+        """Send a code diff to the client for Apply/Reject workflow."""
+        return await self.send_message(session_id, {
+            "type": "diff",
+            "payload": diff
+        })
+
+    async def send_file_update(self, session_id: str, file_id: str, content: str):
+        """Notify client of a file content update."""
+        return await self.send_message(session_id, {
+            "type": "file_update",
+            "payload": {
+                "file_id": file_id,
+                "content": content
+            }
+        })
+
+    async def send_chat_response(self, session_id: str, message: str, metadata: Optional[Dict] = None):
+        """Send a chat response message."""
+        return await self.send_message(session_id, {
+            "type": "chat_response",
+            "payload": {
+                "message": message,
+                "metadata": metadata or {}
+            }
+        })
+
+    def is_connected(self, session_id: str) -> bool:
+        """Check if a session has an active WebSocket connection."""
+        return session_id in self.active_connections
+
+
+# Global connection manager instance
+connection_manager = AxeConnectionManager()
 
 
 class AxeMessage(BaseModel):
@@ -387,6 +484,287 @@ async def axe_message(
             "request_id": context.request_id,
         },
     }
+
+
+# ============================================================================
+# AXE WIDGET CONFIG ENDPOINT
+# ============================================================================
+
+
+@router.get("/config/{app_id}")
+async def axe_config(
+    app_id: str,
+    context: AXERequestContext = Depends(validate_axe_request),
+) -> Dict[str, Any]:
+    """
+    Get AXE widget configuration for a specific app.
+
+    **GOVERNANCE**: Trust tier validated, audit logged.
+
+    Args:
+        app_id: Application identifier (e.g., 'fewoheros', 'satoshiflow')
+        context: Validated request context (injected)
+
+    Returns:
+        Widget configuration
+    """
+    # Default configuration
+    config = {
+        "app_id": app_id,
+        "display_name": f"{app_id.replace('_', ' ').title()} Assistant",
+        "avatar_url": None,
+        "theme": "dark",
+        "position": {"bottom": 20, "right": 20},
+        "default_open": False,
+        "mode": "assistant",
+        "training_mode": "per_app",
+        "allowed_scopes": [],
+        "knowledge_spaces": [],
+        "rate_limits": {
+            "requests_per_minute": 10,
+            "burst": 5
+        },
+        "telemetry": {
+            "enabled": True,
+            "anonymization_level": "pseudonymized",
+            "training_mode": "per_app",
+            "collect_context_snapshots": True,
+            "upload_interval_ms": 30000
+        },
+        "permissions": {
+            "can_run_tools": True,
+            "can_trigger_actions": False,
+            "can_access_apis": []
+        },
+        "ui": {
+            "show_context_panel": True,
+            "show_mode_selector": True,
+            "enable_canvas": True
+        },
+        "governance": {
+            "trust_tier": context.trust_tier.value,
+            "source_service": context.source_service,
+            "request_id": context.request_id,
+        }
+    }
+
+    # App-specific configurations
+    if app_id == "fewoheros":
+        config.update({
+            "display_name": "FeWoHeroes Assistant",
+            "allowed_scopes": ["bookings", "properties", "guests"],
+            "knowledge_spaces": ["fewoheros_docs", "booking_faq"],
+            "permissions": {
+                "can_run_tools": True,
+                "can_trigger_actions": True,
+                "can_access_apis": ["bookings", "properties"]
+            }
+        })
+    elif app_id == "satoshiflow":
+        config.update({
+            "display_name": "SatoshiFlow Assistant",
+            "allowed_scopes": ["transactions", "wallets", "analytics"],
+            "knowledge_spaces": ["satoshiflow_docs", "crypto_faq"],
+            "permissions": {
+                "can_run_tools": True,
+                "can_trigger_actions": False,
+                "can_access_apis": ["transactions", "wallets"]
+            }
+        })
+    elif app_id in ["widget-test", "axe-test"]:
+        config.update({
+            "display_name": "AXE Test Mode",
+            "mode": "builder",
+            "ui": {
+                "show_context_panel": True,
+                "show_mode_selector": True,
+                "enable_canvas": True
+            }
+        })
+
+    # Emit audit event
+    _emit_axe_audit_event(
+        event_type=AuditEventType.AXE_REQUEST_RECEIVED,
+        context=context,
+        success=True,
+        reason=f"AXE config requested for app: {app_id}",
+        app_id=app_id,
+    )
+
+    return config
+
+
+# ============================================================================
+# AXE WEBSOCKET ENDPOINT
+# ============================================================================
+
+
+@router.websocket("/ws/{session_id}")
+async def axe_websocket(websocket: WebSocket, session_id: str):
+    """
+    WebSocket endpoint for real-time AXE communication.
+
+    **Features**:
+    - Real-time code diff streaming
+    - Live chat responses
+    - File change notifications
+    - Apply/Reject feedback
+
+    **Message Types from Client**:
+    - `chat`: User chat message
+    - `diff_applied`: User applied a diff
+    - `diff_rejected`: User rejected a diff
+    - `file_updated`: File content changed
+    - `ping`: Keep-alive ping
+
+    **Message Types to Client**:
+    - `chat_response`: Assistant response
+    - `diff`: Code diff for Apply/Reject
+    - `file_update`: File content update
+    - `pong`: Keep-alive pong
+
+    Args:
+        websocket: WebSocket connection
+        session_id: Client session identifier
+    """
+    await connection_manager.connect(session_id, websocket)
+
+    try:
+        while True:
+            # Receive message from client
+            data = await websocket.receive_text()
+
+            try:
+                message = json.loads(data)
+            except json.JSONDecodeError:
+                await websocket.send_json({
+                    "type": "error",
+                    "payload": {"message": "Invalid JSON"}
+                })
+                continue
+
+            message_type = message.get("type")
+            payload = message.get("payload", {})
+
+            # ----------------------------------------------------------------
+            # Handle: chat
+            # ----------------------------------------------------------------
+            if message_type == "chat":
+                user_message = payload.get("message", "")
+                metadata = payload.get("metadata", {})
+
+                # Process chat message via LLM
+                client = get_llm_client()
+                system_prompt = (
+                    "Du bist AXE, die Execution-Engine von BRAiN. "
+                    "Beantworte kurz und präzise. Du kannst Code vorschlagen."
+                )
+
+                messages = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message},
+                ]
+
+                try:
+                    reply_text, raw = await client.simple_chat(
+                        messages=messages,
+                        extra_params=None,
+                    )
+
+                    # Send chat response back
+                    await connection_manager.send_chat_response(
+                        session_id,
+                        message=reply_text,
+                        metadata={"raw_llm": raw}
+                    )
+
+                    # Example: Generate a mock diff for demonstration
+                    # In production, parse LLM response for code blocks
+                    if "code" in user_message.lower() or "function" in user_message.lower():
+                        mock_diff = {
+                            "id": str(uuid.uuid4()),
+                            "fileId": "demo-file-1",
+                            "fileName": "example.tsx",
+                            "language": "typescript",
+                            "oldContent": "// Old code\n",
+                            "newContent": f"// Generated by AXE\n{reply_text}\n",
+                            "description": "Code suggestion from AXE"
+                        }
+                        await connection_manager.send_diff(session_id, mock_diff)
+
+                except Exception as exc:
+                    logger.error(f"WebSocket chat error: {exc}")
+                    await websocket.send_json({
+                        "type": "error",
+                        "payload": {"message": str(exc)}
+                    })
+
+            # ----------------------------------------------------------------
+            # Handle: diff_applied
+            # ----------------------------------------------------------------
+            elif message_type == "diff_applied":
+                diff_id = payload.get("diff_id")
+                logger.info(f"Diff applied: {diff_id} in session {session_id}")
+
+                # Send confirmation
+                await websocket.send_json({
+                    "type": "diff_applied_confirmed",
+                    "payload": {"diff_id": diff_id}
+                })
+
+            # ----------------------------------------------------------------
+            # Handle: diff_rejected
+            # ----------------------------------------------------------------
+            elif message_type == "diff_rejected":
+                diff_id = payload.get("diff_id")
+                logger.info(f"Diff rejected: {diff_id} in session {session_id}")
+
+                # Send confirmation
+                await websocket.send_json({
+                    "type": "diff_rejected_confirmed",
+                    "payload": {"diff_id": diff_id}
+                })
+
+            # ----------------------------------------------------------------
+            # Handle: file_updated
+            # ----------------------------------------------------------------
+            elif message_type == "file_updated":
+                file_id = payload.get("file_id")
+                content = payload.get("content")
+                logger.info(f"File updated: {file_id} in session {session_id}")
+
+                # Could trigger analysis, linting, etc.
+                # For now, just acknowledge
+                await websocket.send_json({
+                    "type": "file_updated_confirmed",
+                    "payload": {"file_id": file_id}
+                })
+
+            # ----------------------------------------------------------------
+            # Handle: ping (keep-alive)
+            # ----------------------------------------------------------------
+            elif message_type == "ping":
+                await websocket.send_json({
+                    "type": "pong",
+                    "payload": {"timestamp": payload.get("timestamp")}
+                })
+
+            # ----------------------------------------------------------------
+            # Unknown message type
+            # ----------------------------------------------------------------
+            else:
+                logger.warning(f"Unknown WebSocket message type: {message_type}")
+                await websocket.send_json({
+                    "type": "error",
+                    "payload": {"message": f"Unknown message type: {message_type}"}
+                })
+
+    except WebSocketDisconnect:
+        logger.info(f"WebSocket disconnected: session={session_id}")
+    except Exception as e:
+        logger.error(f"WebSocket error for session {session_id}: {e}")
+    finally:
+        await connection_manager.disconnect(session_id)
 
 
 # End of file
