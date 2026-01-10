@@ -6,8 +6,9 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, Minimize2, Maximize2, Send } from 'lucide-react';
+import { X, Minimize2, Maximize2, Send, Wifi, WifiOff } from 'lucide-react';
 import { useAxeStore } from '../store/axeStore';
+import { useAxeWebSocket } from '../hooks/useAxeWebSocket';
 import { generateMessageId } from '../utils/id';
 import { cn } from '../utils/cn';
 import type { AxeMode, AxeMessage } from '../types';
@@ -30,13 +31,24 @@ export function AxeExpanded({
   theme
 }: AxeExpandedProps) {
   const [input, setInput] = useState('');
-  const { messages, addMessage, config } = useAxeStore();
+  const { messages, addMessage, config, sessionId } = useAxeStore();
+
+  // ============================================================================
+  // WebSocket Connection
+  // ============================================================================
+  const { isConnected, sendChat } = useAxeWebSocket({
+    backendUrl: process.env.NEXT_PUBLIC_BRAIN_API_BASE || 'http://localhost:8000',
+    sessionId: sessionId,
+    onConnected: () => console.log('[AxeExpanded] WebSocket connected'),
+    onDisconnected: () => console.log('[AxeExpanded] WebSocket disconnected'),
+    onError: (error) => console.error('[AxeExpanded] WebSocket error:', error)
+  });
 
   // ============================================================================
   // Send Message Handler
   // ============================================================================
   const handleSend = () => {
-    if (!input.trim()) return;
+    if (!input.trim() || !isConnected) return;
 
     const userMessage: AxeMessage = {
       id: generateMessageId(),
@@ -48,19 +60,8 @@ export function AxeExpanded({
     addMessage(userMessage);
     setInput('');
 
-    // TODO: Send to backend API
-    console.log('Sending message:', userMessage);
-
-    // Mock response (for testing)
-    setTimeout(() => {
-      const assistantMessage: AxeMessage = {
-        id: generateMessageId(),
-        role: 'assistant',
-        content: `I received your message: "${userMessage.content}". How can I help you further?`,
-        timestamp: new Date().toISOString()
-      };
-      addMessage(assistantMessage);
-    }, 1000);
+    // Send via WebSocket
+    sendChat(userMessage.content, { mode });
   };
 
   return (
@@ -88,8 +89,13 @@ export function AxeExpanded({
             A
           </div>
           <div>
-            <h3 className="text-sm font-semibold">
+            <h3 className="text-sm font-semibold flex items-center gap-1.5">
               {config?.display_name || 'AXE Assistant'}
+              {isConnected ? (
+                <Wifi className="w-3 h-3 text-green-500" title="Connected" />
+              ) : (
+                <WifiOff className="w-3 h-3 text-red-500" title="Reconnecting..." />
+              )}
             </h3>
             <p className="text-xs text-muted-foreground capitalize">{mode}</p>
           </div>
@@ -195,7 +201,7 @@ export function AxeExpanded({
           />
           <button
             onClick={handleSend}
-            disabled={!input.trim()}
+            disabled={!input.trim() || !isConnected}
             className={cn(
               'p-2 rounded-md transition-colors',
               'bg-primary text-primary-foreground',
@@ -203,12 +209,17 @@ export function AxeExpanded({
               'disabled:opacity-50 disabled:cursor-not-allowed'
             )}
             aria-label="Send message"
+            title={!isConnected ? 'WebSocket disconnected' : 'Send message'}
           >
             <Send className="w-5 h-5" />
           </button>
         </div>
         <p className="text-xs text-muted-foreground mt-2">
-          Press Enter to send, Shift+Enter for new line
+          {isConnected ? (
+            <>Press Enter to send, Shift+Enter for new line</>
+          ) : (
+            <span className="text-red-500">⚠ Reconnecting to server...</span>
+          )}
         </p>
       </div>
     </div>

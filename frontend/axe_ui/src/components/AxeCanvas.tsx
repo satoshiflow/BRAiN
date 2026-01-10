@@ -6,7 +6,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, Minimize2, Send, Plus, FileCode } from 'lucide-react';
+import { X, Minimize2, Send, Plus, FileCode, Wifi, WifiOff } from 'lucide-react';
 import {
   ResizablePanelGroup,
   ResizablePanel,
@@ -17,6 +17,7 @@ import { FileTabs } from './FileTabs';
 import { DiffOverlay } from './DiffOverlay';
 import { useAxeStore } from '../store/axeStore';
 import { useDiffStore } from '../store/diffStore';
+import { useAxeWebSocket } from '../hooks/useAxeWebSocket';
 import { generateMessageId, generateFileId } from '../utils/id';
 import { cn } from '../utils/cn';
 import type { AxeCanvasProps, AxeMessage } from '../types';
@@ -31,6 +32,7 @@ export function AxeCanvas({
 
   const {
     config,
+    sessionId,
     messages,
     addMessage,
     files,
@@ -43,6 +45,23 @@ export function AxeCanvas({
   } = useAxeStore();
 
   const { currentDiff, applyDiff, rejectDiff } = useDiffStore();
+
+  // ============================================================================
+  // WebSocket Connection
+  // ============================================================================
+  const {
+    isConnected,
+    sendChat,
+    sendDiffApplied,
+    sendDiffRejected,
+    sendFileUpdate
+  } = useAxeWebSocket({
+    backendUrl: process.env.NEXT_PUBLIC_BRAIN_API_BASE || 'http://localhost:8000',
+    sessionId: sessionId,
+    onConnected: () => console.log('[AxeCanvas] WebSocket connected'),
+    onDisconnected: () => console.log('[AxeCanvas] WebSocket disconnected'),
+    onError: (error) => console.error('[AxeCanvas] WebSocket error:', error)
+  });
 
   const activeFile = getActiveFile();
 
@@ -67,7 +86,7 @@ export function AxeCanvas({
   // Handle Send Message
   // ============================================================================
   const handleSend = () => {
-    if (!input.trim()) return;
+    if (!input.trim() || !isConnected) return;
 
     const userMessage: AxeMessage = {
       id: generateMessageId(),
@@ -79,22 +98,17 @@ export function AxeCanvas({
     addMessage(userMessage);
     setInput('');
 
-    // TODO: Send to backend API
-    console.log('Sending message in CANVAS:', userMessage);
+    // Send via WebSocket to backend
+    const context = {
+      mode,
+      activeFile: activeFile ? {
+        id: activeFile.id,
+        name: activeFile.name,
+        language: activeFile.language
+      } : null
+    };
 
-    // Mock response with code suggestion (for testing)
-    setTimeout(() => {
-      const assistantMessage: AxeMessage = {
-        id: generateMessageId(),
-        role: 'assistant',
-        content: `I'll help you with that. Here's a suggestion for "${userMessage.content}".`,
-        timestamp: new Date().toISOString()
-      };
-      addMessage(assistantMessage);
-
-      // TODO: Add mock diff for testing
-      // useDiffStore.getState().addDiff({ ... });
-    }, 1000);
+    sendChat(userMessage.content, context);
   };
 
   // ============================================================================
@@ -115,7 +129,24 @@ export function AxeCanvas({
   const handleCodeChange = (value: string) => {
     if (activeFile) {
       updateFile(activeFile.id, value);
+
+      // Debounced WebSocket update (send after user stops typing)
+      // For now, we don't send every keystroke to avoid spam
+      // TODO: Implement debounced file sync
     }
+  };
+
+  // ============================================================================
+  // Handle Diff Actions
+  // ============================================================================
+  const handleApplyDiff = async (diffId: string) => {
+    await applyDiff(diffId);
+    sendDiffApplied(diffId);
+  };
+
+  const handleRejectDiff = (diffId: string) => {
+    rejectDiff(diffId);
+    sendDiffRejected(diffId);
   };
 
   // ============================================================================
@@ -136,6 +167,26 @@ export function AxeCanvas({
           {/* Mode Indicator */}
           <div className="px-3 py-1 bg-primary/10 text-primary text-xs font-medium rounded-full">
             {mode}
+          </div>
+
+          {/* Connection Status */}
+          <div className={cn(
+            "flex items-center gap-1.5 px-2 py-1 rounded-md text-xs",
+            isConnected
+              ? "bg-green-500/10 text-green-600 dark:text-green-400"
+              : "bg-red-500/10 text-red-600 dark:text-red-400"
+          )}>
+            {isConnected ? (
+              <>
+                <Wifi className="w-3 h-3" />
+                <span>Connected</span>
+              </>
+            ) : (
+              <>
+                <WifiOff className="w-3 h-3" />
+                <span>Offline</span>
+              </>
+            )}
           </div>
         </div>
 
@@ -270,7 +321,7 @@ export function AxeCanvas({
                   />
                   <button
                     onClick={handleSend}
-                    disabled={!input.trim()}
+                    disabled={!input.trim() || !isConnected}
                     className={cn(
                       'p-2 rounded-md transition-colors',
                       'bg-primary text-primary-foreground',
@@ -278,12 +329,17 @@ export function AxeCanvas({
                       'disabled:opacity-50 disabled:cursor-not-allowed'
                     )}
                     aria-label="Send message"
+                    title={!isConnected ? 'WebSocket disconnected' : 'Send message'}
                   >
                     <Send className="w-5 h-5" />
                   </button>
                 </div>
                 <p className="text-xs text-muted-foreground mt-2">
-                  Press Enter to send, Shift+Enter for new line
+                  {isConnected ? (
+                    <>Press Enter to send, Shift+Enter for new line</>
+                  ) : (
+                    <span className="text-red-500">⚠ Reconnecting to server...</span>
+                  )}
                 </p>
               </div>
             </div>
@@ -332,8 +388,8 @@ export function AxeCanvas({
                 {currentDiff && (
                   <DiffOverlay
                     diff={currentDiff}
-                    onApply={() => applyDiff(currentDiff.id)}
-                    onReject={() => rejectDiff(currentDiff.id)}
+                    onApply={() => handleApplyDiff(currentDiff.id)}
+                    onReject={() => handleRejectDiff(currentDiff.id)}
                   />
                 )}
               </div>
