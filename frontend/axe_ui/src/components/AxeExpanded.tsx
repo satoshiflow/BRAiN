@@ -9,6 +9,7 @@ import React, { useState } from 'react';
 import { X, Minimize2, Maximize2, Send, Wifi, WifiOff } from 'lucide-react';
 import { useAxeStore } from '../store/axeStore';
 import { useAxeWebSocket } from '../hooks/useAxeWebSocket';
+import { useEventTelemetry } from '../hooks/useEventTelemetry';
 import { generateMessageId } from '../utils/id';
 import { cn } from '../utils/cn';
 import type { AxeMode, AxeMessage } from '../types';
@@ -45,6 +46,18 @@ export function AxeExpanded({
   });
 
   // ============================================================================
+  // Event Telemetry (Phase 3)
+  // ============================================================================
+  const { trackMessage, trackClick } = useEventTelemetry({
+    backendUrl: process.env.NEXT_PUBLIC_BRAIN_API_BASE || 'http://localhost:8000',
+    sessionId: sessionId,
+    appId: config?.app_id || 'axe-expanded',
+    anonymizationLevel: config?.telemetry?.anonymization_level || 'pseudonymized',
+    telemetryEnabled: config?.telemetry?.enabled !== false,
+    trainingOptIn: config?.telemetry?.training_opt_in || false,
+  });
+
+  // ============================================================================
   // Send Message Handler
   // ============================================================================
   const handleSend = () => {
@@ -62,6 +75,13 @@ export function AxeExpanded({
 
     // Send via WebSocket
     sendChat(userMessage.content, { mode });
+
+    // Track telemetry event
+    trackMessage('user', userMessage.content, {
+      mode,
+      message_length: userMessage.content.length,
+      view: 'expanded'
+    });
   };
 
   return (
