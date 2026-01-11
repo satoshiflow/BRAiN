@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Tuple
 
 import httpx
 
-from backend.modules.llm_config import get_llm_config
+from modules.llm_config import get_llm_config
 
 logger = logging.getLogger(__name__)
 
