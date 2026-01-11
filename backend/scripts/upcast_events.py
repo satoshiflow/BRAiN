@@ -67,20 +67,20 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from loguru import logger
 
-from backend.app.modules.credits.event_sourcing.event_upcaster import (
+from app.modules.credits.event_sourcing.event_upcaster import (
     get_upcast_statistics,
     is_upcast_needed,
     upcast_event_if_needed,
 )
-from backend.app.modules.credits.event_sourcing.events import EventEnvelope
-from backend.app.modules.credits.event_sourcing.journal_factory import (
+from app.modules.credits.event_sourcing.events import EventEnvelope
+from app.modules.credits.event_sourcing.journal_factory import (
     create_event_journal,
 )
-from backend.app.modules.credits.event_sourcing.projections import (
+from app.modules.credits.event_sourcing.projections import (
     get_projection_manager,
 )
-from backend.app.modules.credits.event_sourcing.schema_versions import SCHEMA_REGISTRY
-from backend.app.modules.credits.event_sourcing.snapshot_manager import (
+from app.modules.credits.event_sourcing.schema_versions import SCHEMA_REGISTRY
+from app.modules.credits.event_sourcing.snapshot_manager import (
     get_snapshot_manager,
 )
 
@@ -162,7 +162,7 @@ async def upcast_events_command(args):
             logger.info("")
             logger.info("Creating backup snapshot before migration...")
 
-            from backend.app.modules.credits.event_sourcing.replay import (
+            from app.modules.credits.event_sourcing.replay import (
                 get_replay_engine,
             )
 
@@ -305,7 +305,7 @@ async def validate_upcasters_command(args):
     logger.info("=" * 80)
 
     try:
-        from backend.app.modules.credits.event_sourcing.event_upcaster import (
+        from app.modules.credits.event_sourcing.event_upcaster import (
             validate_upcaster,
         )
 

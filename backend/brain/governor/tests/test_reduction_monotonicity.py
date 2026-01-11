@@ -14,10 +14,10 @@ Created: 2026-01-02
 
 import pytest
 
-from backend.brain.agents.genesis_agent.dna_schema import AgentType
-from backend.brain.governor.constraints.defaults import get_default_constraints
-from backend.brain.governor.manifests.schema import ReductionSpec
-from backend.brain.governor.reductions.reducer import (
+from brain.agents.genesis_agent.dna_schema import AgentType
+from brain.governor.constraints.defaults import get_default_constraints
+from brain.governor.manifests.schema import ReductionSpec
+from brain.governor.reductions.reducer import (
     ConstraintReducer,
     InvalidReductionError,
     MonotonicityViolationError,

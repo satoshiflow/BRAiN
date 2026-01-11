@@ -8,7 +8,7 @@ import pytest
 from unittest.mock import Mock, patch, AsyncMock
 import os
 
-from backend.app.modules.ir_governance import (
+from app.modules.ir_governance import (
     IR,
     IRStep,
     IRAction,
@@ -16,17 +16,17 @@ from backend.app.modules.ir_governance import (
     IRValidationStatus,
     RiskTier,
 )
-from backend.app.modules.autonomous_pipeline.ir_config import (
+from app.modules.autonomous_pipeline.ir_config import (
     IRWebGenesisConfig,
     IRMode,
     reload_ir_config,
 )
-from backend.app.modules.autonomous_pipeline.ir_gateway import (
+from app.modules.autonomous_pipeline.ir_gateway import (
     IRGateway,
     IRGatewayResult,
 )
-from backend.app.modules.autonomous_pipeline.ir_mapper import IRWebGenesisMapper
-from backend.app.modules.autonomous_pipeline.schemas import (
+from app.modules.autonomous_pipeline.ir_mapper import IRWebGenesisMapper
+from app.modules.autonomous_pipeline.schemas import (
     ExecutionGraphSpec,
     ExecutionNodeSpec,
     ExecutionNodeType,
@@ -193,7 +193,7 @@ def test_ir_escalate_with_approval_allows():
     reload_ir_config()
     gateway = IRGateway()
 
-    from backend.app.modules.ir_governance import get_approvals_service, ir_hash
+    from app.modules.ir_governance import get_approvals_service, ir_hash
 
     # Create high-risk IR
     ir = IR(
@@ -234,8 +234,8 @@ def test_diff_audit_rejects_extra_dag_node():
     Expected: diff_audit_result.success=False, extra_dag_nodes=[...]
     """
     # Setup
-    from backend.app.modules.ir_governance.diff_audit import get_diff_audit_gate
-    from backend.app.modules.ir_governance import step_hash
+    from app.modules.ir_governance.diff_audit import get_diff_audit_gate
+    from app.modules.ir_governance import step_hash
 
     gate = get_diff_audit_gate()
 
@@ -277,15 +277,15 @@ def test_evidence_pack_contains_required_fields_no_secrets():
     Expected: evidence pack has ir, ir_hash, validation, diff_audit, NO raw token
     """
     # Setup
-    from backend.app.modules.ir_governance import ir_hash
-    from backend.app.modules.autonomous_pipeline.evidence_generator import (
+    from app.modules.ir_governance import ir_hash
+    from app.modules.autonomous_pipeline.evidence_generator import (
         PipelineEvidencePack,
         get_evidence_generator,
     )
-    from backend.app.modules.autonomous_pipeline.ir_evidence import (
+    from app.modules.autonomous_pipeline.ir_evidence import (
         get_ir_evidence_generator,
     )
-    from backend.app.modules.autonomous_pipeline.schemas import (
+    from app.modules.autonomous_pipeline.schemas import (
         ExecutionGraphResult,
         ExecutionNodeStatus,
     )
@@ -373,7 +373,7 @@ async def test_execute_false_dry_run_no_side_effects():
     )
 
     # Create graph
-    from backend.app.modules.autonomous_pipeline.execution_graph import (
+    from app.modules.autonomous_pipeline.execution_graph import (
         create_execution_graph,
     )
 
@@ -422,7 +422,7 @@ async def test_execute_true_execution_path_called():
     )
 
     # Create graph
-    from backend.app.modules.autonomous_pipeline.execution_graph import (
+    from app.modules.autonomous_pipeline.execution_graph import (
         create_execution_graph,
     )
 

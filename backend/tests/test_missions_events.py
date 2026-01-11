@@ -26,9 +26,9 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from backend.modules.missions.worker import MissionWorker
-from backend.modules.missions.queue import MissionQueue
-from backend.modules.missions.models import Mission, MissionPayload, MissionPriority
+from modules.missions.worker import MissionWorker
+from modules.missions.queue import MissionQueue
+from modules.missions.models import Mission, MissionPayload, MissionPriority
 from backend.mission_control_core.core import EventStream, EventType
 
 

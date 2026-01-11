@@ -95,7 +95,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """
     Unified lifespan management combining:
     - Core infrastructure (logging, redis) from app.core.lifecycle
-    - Mission worker from backend.modules.missions
+    - Mission worker from modules.missions
     """
     # Startup
     configure_logging()

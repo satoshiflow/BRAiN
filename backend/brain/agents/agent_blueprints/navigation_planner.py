@@ -90,8 +90,8 @@ All navigation decisions must respect safety constraints.""",
 
     "usage_example": """
 # Initialize NavigationAgent
-from backend.brain.agents.navigation_agent import NavigationAgent, Coordinates
-from backend.brain.agents.llm_client import get_llm_client
+from brain.agents.navigation_agent import NavigationAgent, Coordinates
+from brain.agents.llm_client import get_llm_client
 
 agent = NavigationAgent(llm_client=get_llm_client())
 

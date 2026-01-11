@@ -11,8 +11,8 @@ from typing import Any, Dict, List, Optional
 from datetime import datetime
 from enum import Enum
 
-from backend.brain.agents.base_agent import BaseAgent
-from backend.brain.agents.supervisor_agent import get_supervisor_agent, SupervisionRequest, RiskLevel
+from brain.agents.base_agent import BaseAgent
+from brain.agents.supervisor_agent import get_supervisor_agent, SupervisionRequest, RiskLevel
 
 
 class DocumentationType(str, Enum):

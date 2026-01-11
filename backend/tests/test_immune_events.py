@@ -25,8 +25,8 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from backend.app.modules.immune.core.service import ImmuneService
-from backend.app.modules.immune.schemas import (
+from app.modules.immune.core.service import ImmuneService
+from app.modules.immune.schemas import (
     ImmuneEvent,
     ImmuneSeverity,
     ImmuneEventType,

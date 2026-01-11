@@ -71,8 +71,8 @@ Always validate decisions through the Foundation and Policy layers.""",
 
     "usage_example": """
 # Initialize FleetAgent
-from backend.brain.agents.fleet_agent import FleetAgent
-from backend.brain.agents.llm_client import get_llm_client
+from brain.agents.fleet_agent import FleetAgent
+from brain.agents.llm_client import get_llm_client
 
 agent = FleetAgent(llm_client=get_llm_client())
 

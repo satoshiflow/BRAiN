@@ -43,9 +43,9 @@ from loguru import logger
 
 # Import Credit System components
 try:
-    from backend.app.modules.credits.integration_demo import get_credit_system_demo
-    from backend.app.modules.credits.event_sourcing.replay import ReplayEngine
-    from backend.app.modules.credits.event_sourcing.projections import ProjectionManager
+    from app.modules.credits.integration_demo import get_credit_system_demo
+    from app.modules.credits.event_sourcing.replay import ReplayEngine
+    from app.modules.credits.event_sourcing.projections import ProjectionManager
 except ImportError as e:
     logger.error(f"Failed to import credit system: {e}")
     sys.exit(1)
@@ -767,7 +767,7 @@ class LiveTestHarness:
         capped: bool = False,
     ) -> Any:
         """Create synergy reward event (mock)."""
-        from backend.app.modules.credits.event_sourcing.events import create_credit_allocated_event
+        from app.modules.credits.event_sourcing.events import create_credit_allocated_event
 
         return create_credit_allocated_event(
             entity_id=agent_id,

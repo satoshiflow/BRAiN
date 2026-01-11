@@ -12,16 +12,16 @@ Main exports:
 - GovernorConfig: Configuration
 
 Example:
-    >>> from backend.brain.governor import Governor, GovernorConfig
+    >>> from brain.governor import Governor, GovernorConfig
     >>> governor = Governor(redis, audit, config=GovernorConfig())
     >>> result = await governor.evaluate_creation(request)
 """
 
-from backend.brain.governor.constraints.defaults import (
+from brain.governor.constraints.defaults import (
     get_agent_type_caps,
     get_default_constraints,
 )
-from backend.brain.governor.constraints.schema import (
+from brain.governor.constraints.schema import (
     BudgetConstraints,
     CapabilityConstraints,
     EffectiveConstraints,
@@ -29,7 +29,7 @@ from backend.brain.governor.constraints.schema import (
     LockConstraints,
     RuntimeConstraints,
 )
-from backend.brain.governor.decision.models import (
+from brain.governor.decision.models import (
     ActorContext,
     DecisionRequest,
     DecisionResult,
@@ -38,8 +38,8 @@ from backend.brain.governor.decision.models import (
     RequestContext,
     RiskTier,
 )
-from backend.brain.governor.events import GovernorEvents
-from backend.brain.governor.governor import (
+from brain.governor.events import GovernorEvents
+from brain.governor.governor import (
     ApprovalResponse,
     Governor,
     GovernorApproval,

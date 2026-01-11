@@ -18,9 +18,9 @@ Created: 2026-01-02
 import pytest
 import redis.asyncio as redis
 
-from backend.brain.agents.genesis_agent.dna_schema import AgentDNA, AgentType
-from backend.brain.agents.genesis_agent.events import SimpleAuditLog
-from backend.brain.governor import (
+from brain.agents.genesis_agent.dna_schema import AgentDNA, AgentType
+from brain.agents.genesis_agent.events import SimpleAuditLog
+from brain.governor import (
     ActorContext,
     DecisionRequest,
     Governor,
@@ -28,7 +28,7 @@ from backend.brain.governor import (
     GovernorConfig,
     RequestContext,
 )
-from backend.brain.governor.decision.models import DecisionType, ReasonCode, RiskTier
+from brain.governor.decision.models import DecisionType, ReasonCode, RiskTier
 
 
 # ============================================================================
@@ -447,7 +447,7 @@ async def test_governor_approval_wrapper(redis_client, audit_log):
     2. Call GovernorApproval.request_approval()
     3. Verify response matches Genesis protocol
     """
-    from backend.brain.agents.genesis_agent.dna_schema import (
+    from brain.agents.genesis_agent.dna_schema import (
         AgentDNA,
         AgentType,
         DNAMetadata,

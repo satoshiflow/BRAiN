@@ -38,7 +38,7 @@ except ImportError:
     logger.warning("[SystemHealth] ThreatsService not available")
 
 try:
-    from backend.modules.mission_system.service import MissionService
+    from modules.mission_system.service import MissionService
 except ImportError:
     MissionService = None
     logger.warning("[SystemHealth] MissionService not available")

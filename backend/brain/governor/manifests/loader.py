@@ -23,7 +23,7 @@ from typing import Dict, Optional
 import yaml
 from pydantic import ValidationError
 
-from backend.brain.governor.manifests.schema import GovernanceManifest
+from brain.governor.manifests.schema import GovernanceManifest
 
 
 logger = logging.getLogger(__name__)
@@ -195,7 +195,7 @@ class ManifestLoader:
         Returns:
             Default GovernanceManifest
         """
-        from backend.brain.governor.manifests.schema import (
+        from brain.governor.manifests.schema import (
             AppliesToSpec,
             ReductionSections,
             ReductionSpec,

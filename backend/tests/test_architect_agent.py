@@ -7,8 +7,8 @@ Tests system architecture and EU compliance auditing.
 import pytest
 from unittest.mock import Mock, AsyncMock
 
-from backend.brain.agents.architect_agent import ArchitectAgent, ComplianceViolation
-from backend.app.modules.supervisor.schemas import RiskLevel
+from brain.agents.architect_agent import ArchitectAgent, ComplianceViolation
+from app.modules.supervisor.schemas import RiskLevel
 
 
 @pytest.fixture

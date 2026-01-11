@@ -15,15 +15,15 @@ import time
 from typing import List, Dict, Any
 from unittest.mock import Mock, patch
 
-from backend.app.modules.neurorail.streams.publisher import SSEPublisher, get_sse_publisher
-from backend.app.modules.neurorail.streams.subscriber import SSESubscriber
-from backend.app.modules.neurorail.streams.schemas import (
+from app.modules.neurorail.streams.publisher import SSEPublisher, get_sse_publisher
+from app.modules.neurorail.streams.subscriber import SSESubscriber
+from app.modules.neurorail.streams.schemas import (
     StreamEvent,
     EventChannel,
     SubscriptionFilter,
 )
-from backend.app.modules.neurorail.rbac.schemas import Role, Permission, UserContext
-from backend.app.modules.neurorail.rbac.service import RBACService
+from app.modules.neurorail.rbac.schemas import Role, Permission, UserContext
+from app.modules.neurorail.rbac.service import RBACService
 
 
 class TestSSEE2E:

@@ -14,12 +14,12 @@ import asyncio
 from datetime import datetime
 from unittest.mock import Mock, AsyncMock, patch
 
-from backend.brain.agents.supervisor_agent import (
+from brain.agents.supervisor_agent import (
     SupervisorAgent,
     get_supervisor_agent,
     CONSTITUTIONAL_PROMPT,
 )
-from backend.app.modules.supervisor.schemas import (
+from app.modules.supervisor.schemas import (
     RiskLevel,
     SupervisionRequest,
     SupervisionResponse,

@@ -26,7 +26,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from backend.app.modules.ir_governance.schemas import (
+from app.modules.ir_governance.schemas import (
     IR,
     IRStep,
     IRAction,
@@ -36,14 +36,14 @@ from backend.app.modules.ir_governance.schemas import (
     ApprovalConsumeRequest,
     ApprovalStatus,
 )
-from backend.app.modules.ir_governance.canonicalization import (
+from app.modules.ir_governance.canonicalization import (
     canonical_json,
     ir_hash,
     step_hash,
 )
-from backend.app.modules.ir_governance.validator import IRValidator
-from backend.app.modules.ir_governance.approvals import ApprovalsService
-from backend.app.modules.ir_governance.diff_audit import DiffAuditGate
+from app.modules.ir_governance.validator import IRValidator
+from app.modules.ir_governance.approvals import ApprovalsService
+from app.modules.ir_governance.diff_audit import DiffAuditGate
 
 
 # ============================================================================

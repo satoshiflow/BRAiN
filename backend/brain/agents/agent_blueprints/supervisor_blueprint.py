@@ -4,8 +4,8 @@ Supervisor Agent Blueprint
 Pre-configured blueprint for the Constitutional Framework Guardian.
 """
 
-from backend.brain.agents.base_agent import AgentConfig
-from backend.brain.agents.supervisor_agent import CONSTITUTIONAL_PROMPT
+from brain.agents.base_agent import AgentConfig
+from brain.agents.supervisor_agent import CONSTITUTIONAL_PROMPT
 
 BLUEPRINT = {
     "id": "supervisor",

@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from enum import Enum
 from datetime import datetime
 
-from backend.brain.agents.base_agent import BaseAgent, AgentConfig, AgentResult, LLMClient
+from brain.agents.base_agent import BaseAgent, AgentConfig, AgentResult, LLMClient
 
 
 class NavigationState(str, Enum):

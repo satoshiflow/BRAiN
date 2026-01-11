@@ -21,9 +21,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from backend.brain.agents.genesis_agent.dna_schema import AgentType
-from backend.brain.governor.decision.models import RiskTier
-from backend.brain.governor.manifests.schema import ReductionSections
+from brain.agents.genesis_agent.dna_schema import AgentType
+from brain.governor.decision.models import RiskTier
+from brain.governor.manifests.schema import ReductionSections
 
 
 # ============================================================================

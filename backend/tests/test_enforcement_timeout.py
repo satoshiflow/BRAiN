@@ -6,9 +6,9 @@ Tests timeout enforcement, grace period handling, and immune integration.
 
 import pytest
 import asyncio
-from backend.app.modules.neurorail.enforcement.timeout import TimeoutEnforcer
-from backend.app.modules.governor.manifest.schemas import Budget
-from backend.app.modules.neurorail.errors import BudgetTimeoutExceededError
+from app.modules.neurorail.enforcement.timeout import TimeoutEnforcer
+from app.modules.governor.manifest.schemas import Budget
+from app.modules.neurorail.errors import BudgetTimeoutExceededError
 
 
 # ============================================================================

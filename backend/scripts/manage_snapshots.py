@@ -55,13 +55,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from loguru import logger
 
-from backend.app.modules.credits.event_sourcing.journal_factory import create_event_journal
-from backend.app.modules.credits.event_sourcing.projections import get_projection_manager
-from backend.app.modules.credits.event_sourcing.snapshot_manager import (
+from app.modules.credits.event_sourcing.journal_factory import create_event_journal
+from app.modules.credits.event_sourcing.projections import get_projection_manager
+from app.modules.credits.event_sourcing.snapshot_manager import (
     get_snapshot_manager,
     ProjectionSnapshot,
 )
-from backend.app.modules.credits.event_sourcing.replay import get_replay_engine
+from app.modules.credits.event_sourcing.replay import get_replay_engine
 
 
 async def create_snapshot_command(args):

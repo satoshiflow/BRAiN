@@ -39,7 +39,7 @@ from typing import Any, Dict, Optional
 import redis.asyncio as redis
 
 # Re-use Genesis AuditLog protocol
-from backend.brain.agents.genesis_agent.events import AuditLog
+from brain.agents.genesis_agent.events import AuditLog
 
 
 logger = logging.getLogger(__name__)

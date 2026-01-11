@@ -2,12 +2,12 @@
 
 import pytest
 import asyncio
-from backend.app.modules.neurorail.reflex.circuit_breaker import (
+from app.modules.neurorail.reflex.circuit_breaker import (
     CircuitBreaker,
     CircuitState,
     CircuitBreakerConfig,
 )
-from backend.app.modules.neurorail.errors import ReflexCircuitOpenError
+from app.modules.neurorail.errors import ReflexCircuitOpenError
 
 
 @pytest.mark.asyncio

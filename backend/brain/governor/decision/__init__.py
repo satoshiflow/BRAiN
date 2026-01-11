@@ -1,6 +1,6 @@
 """Decision models for Governor v1."""
 
-from backend.brain.governor.decision.models import (
+from brain.governor.decision.models import (
     ActorContext,
     DecisionRequest,
     DecisionResult,

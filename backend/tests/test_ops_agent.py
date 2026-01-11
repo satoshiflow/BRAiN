@@ -7,8 +7,8 @@ Tests operations and deployment with risk assessment.
 import pytest
 from unittest.mock import Mock, AsyncMock
 
-from backend.brain.agents.ops_agent import OpsAgent, OperationError
-from backend.app.modules.supervisor.schemas import RiskLevel
+from brain.agents.ops_agent import OpsAgent, OperationError
+from app.modules.supervisor.schemas import RiskLevel
 
 
 @pytest.fixture

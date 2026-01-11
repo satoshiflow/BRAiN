@@ -19,14 +19,14 @@ if ROOT not in sys.path:
 from fastapi.testclient import TestClient
 from backend.main import app
 
-from backend.app.modules.sovereign_mode.schemas import (
+from app.modules.sovereign_mode.schemas import (
     OperationMode,
     BundleStatus,
     Bundle,
     ValidationResult,
 )
-from backend.app.modules.sovereign_mode.hash_validator import HashValidator
-from backend.app.modules.sovereign_mode.network_guard import (
+from app.modules.sovereign_mode.hash_validator import HashValidator
+from app.modules.sovereign_mode.network_guard import (
     NetworkGuard,
     NetworkGuardException,
 )

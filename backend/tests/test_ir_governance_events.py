@@ -34,7 +34,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from backend.app.modules.ir_governance.schemas import (
+from app.modules.ir_governance.schemas import (
     IR,
     IRStep,
     IRAction,
@@ -45,9 +45,9 @@ from backend.app.modules.ir_governance.schemas import (
     ApprovalStatus,
     IRViolation,
 )
-from backend.app.modules.ir_governance.approvals import ApprovalsService
-from backend.app.modules.ir_governance.validator import IRValidator
-from backend.app.modules.ir_governance.diff_audit import DiffAuditGate
+from app.modules.ir_governance.approvals import ApprovalsService
+from app.modules.ir_governance.validator import IRValidator
+from app.modules.ir_governance.diff_audit import DiffAuditGate
 
 try:
     from backend.mission_control_core.core.event_stream import EventStream, Event, EventType
@@ -500,7 +500,7 @@ async def test_dag_diff_ok_event_published(mock_event_stream, sample_ir):
     gate = DiffAuditGate(event_stream=mock_event_stream)
 
     # Create matching DAG nodes
-    from backend.app.modules.ir_governance.canonicalization import step_hash
+    from app.modules.ir_governance.canonicalization import step_hash
 
     dag_nodes = [
         {
@@ -535,7 +535,7 @@ async def test_dag_diff_failed_event_published(mock_event_stream, sample_ir):
     gate = DiffAuditGate(event_stream=mock_event_stream)
 
     # Create mismatching DAG nodes (extra node)
-    from backend.app.modules.ir_governance.canonicalization import step_hash
+    from app.modules.ir_governance.canonicalization import step_hash
 
     dag_nodes = [
         {

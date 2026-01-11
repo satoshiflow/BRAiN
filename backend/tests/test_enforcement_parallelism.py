@@ -6,9 +6,9 @@ Tests parallelism limits, semaphore management, and immune integration.
 
 import pytest
 import asyncio
-from backend.app.modules.neurorail.enforcement.parallelism import ParallelismLimiter
-from backend.app.modules.governor.manifest.schemas import Budget
-from backend.app.modules.neurorail.errors import BudgetParallelismExceededError
+from app.modules.neurorail.enforcement.parallelism import ParallelismLimiter
+from app.modules.governor.manifest.schemas import Budget
+from app.modules.neurorail.errors import BudgetParallelismExceededError
 
 
 # ============================================================================

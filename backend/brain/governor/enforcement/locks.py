@@ -29,10 +29,10 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-from backend.brain.agents.genesis_agent.dna_schema import AgentType
-from backend.brain.governor.constraints.defaults import get_default_constraints
-from backend.brain.governor.manifests.loader import ManifestLoader
-from backend.brain.governor.manifests.schema import GovernanceManifest
+from brain.agents.genesis_agent.dna_schema import AgentType
+from brain.governor.constraints.defaults import get_default_constraints
+from brain.governor.manifests.loader import ManifestLoader
+from brain.governor.manifests.schema import GovernanceManifest
 
 
 logger = logging.getLogger(__name__)

@@ -5,7 +5,7 @@ Copy this file and rename it to create a new cluster.
 """
 
 from typing import Dict, Any
-from backend.brain.clusters.base_cluster import BaseCluster
+from brain.clusters.base_cluster import BaseCluster
 # Import your agents here
 # from .category.agent_name import AgentClass
 

@@ -90,8 +90,8 @@ When in doubt, err on the side of caution - stop first, analyze later.""",
 
     "usage_example": """
 # Initialize SafetyAgent
-from backend.brain.agents.safety_agent import SafetyAgent
-from backend.brain.agents.llm_client import get_llm_client
+from brain.agents.safety_agent import SafetyAgent
+from brain.agents.llm_client import get_llm_client
 
 agent = SafetyAgent(llm_client=get_llm_client())
 

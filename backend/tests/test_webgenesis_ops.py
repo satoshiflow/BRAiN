@@ -177,7 +177,7 @@ def test_releases_list_response_structure():
 
 def test_valid_release_id_format():
     """Test that valid release IDs are accepted."""
-    from backend.app.modules.webgenesis.releases import validate_release_id
+    from app.modules.webgenesis.releases import validate_release_id
 
     valid_ids = [
         "rel_1735660800_a1b2c3d4",
@@ -191,7 +191,7 @@ def test_valid_release_id_format():
 
 def test_invalid_release_id_format():
     """Test that invalid release IDs are rejected."""
-    from backend.app.modules.webgenesis.releases import validate_release_id
+    from app.modules.webgenesis.releases import validate_release_id
 
     invalid_ids = [
         "invalid",
@@ -213,7 +213,7 @@ def test_invalid_release_id_format():
 
 def test_valid_site_id_format():
     """Test that valid site IDs are accepted."""
-    from backend.app.modules.webgenesis.service import validate_site_id
+    from app.modules.webgenesis.service import validate_site_id
 
     valid_ids = [
         "test-site",
@@ -229,7 +229,7 @@ def test_valid_site_id_format():
 
 def test_invalid_site_id_format():
     """Test that invalid site IDs are rejected."""
-    from backend.app.modules.webgenesis.service import validate_site_id
+    from app.modules.webgenesis.service import validate_site_id
 
     invalid_ids = [
         "",  # Empty
@@ -252,7 +252,7 @@ def test_invalid_site_id_format():
 
 def test_lifecycle_status_enum_values():
     """Test that SiteLifecycleStatus enum has all required values."""
-    from backend.app.modules.webgenesis.schemas import SiteLifecycleStatus
+    from app.modules.webgenesis.schemas import SiteLifecycleStatus
 
     required_statuses = [
         "running",
@@ -278,7 +278,7 @@ def test_lifecycle_status_enum_values():
 
 def test_health_status_enum_values():
     """Test that HealthStatus enum has all required values."""
-    from backend.app.modules.webgenesis.schemas import HealthStatus
+    from app.modules.webgenesis.schemas import HealthStatus
 
     required_statuses = [
         "healthy",
@@ -298,7 +298,7 @@ def test_health_status_enum_values():
 
 def test_release_metadata_model():
     """Test ReleaseMetadata model validation."""
-    from backend.app.modules.webgenesis.schemas import ReleaseMetadata
+    from app.modules.webgenesis.schemas import ReleaseMetadata
 
     # Valid metadata
     metadata = ReleaseMetadata(
@@ -319,7 +319,7 @@ def test_release_metadata_model():
 
 def test_rollback_request_optional_fields():
     """Test that RollbackRequest has optional fields."""
-    from backend.app.modules.webgenesis.schemas import RollbackRequest
+    from app.modules.webgenesis.schemas import RollbackRequest
 
     # All fields optional
     request1 = RollbackRequest()
@@ -334,7 +334,7 @@ def test_rollback_request_optional_fields():
 
 def test_rollback_response_model():
     """Test RollbackResponse model structure."""
-    from backend.app.modules.webgenesis.schemas import (
+    from app.modules.webgenesis.schemas import (
         RollbackResponse,
         SiteLifecycleStatus,
         HealthStatus,
@@ -362,7 +362,7 @@ def test_rollback_response_model():
 
 def test_remove_request_default_values():
     """Test RemoveRequest default values."""
-    from backend.app.modules.webgenesis.schemas import RemoveRequest
+    from app.modules.webgenesis.schemas import RemoveRequest
 
     # Default should be keep_data=True (safer default)
     request = RemoveRequest()
@@ -371,7 +371,7 @@ def test_remove_request_default_values():
 
 def test_remove_response_model():
     """Test RemoveResponse model structure."""
-    from backend.app.modules.webgenesis.schemas import RemoveResponse
+    from app.modules.webgenesis.schemas import RemoveResponse
 
     response = RemoveResponse(
         success=True,

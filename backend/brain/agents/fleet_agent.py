@@ -22,7 +22,7 @@ import asyncio
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
 
-from backend.brain.agents.base_agent import BaseAgent, AgentConfig, AgentResult, LLMClient
+from brain.agents.base_agent import BaseAgent, AgentConfig, AgentResult, LLMClient
 
 
 @dataclass

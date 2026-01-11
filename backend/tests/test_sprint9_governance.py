@@ -20,24 +20,24 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 # Sprint 9-A: Governor
-from backend.app.modules.autonomous_pipeline.governor_schemas import (
+from app.modules.autonomous_pipeline.governor_schemas import (
     ExecutionBudget,
     ExecutionPolicy,
     BudgetLimitType,
     GovernorDecisionType,
 )
-from backend.app.modules.autonomous_pipeline.governor import (
+from app.modules.autonomous_pipeline.governor import (
     ExecutionGovernor,
     BudgetExceededException,
     ApprovalRequiredException,
 )
 
 # Sprint 9-B: Run Contracts
-from backend.app.modules.autonomous_pipeline.run_contract import (
+from app.modules.autonomous_pipeline.run_contract import (
     RunContractService,
     RunContract,
 )
-from backend.app.modules.autonomous_pipeline.schemas import (
+from app.modules.autonomous_pipeline.schemas import (
     ExecutionGraphSpec,
     ExecutionNodeSpec,
     ExecutionNodeType,
@@ -45,19 +45,19 @@ from backend.app.modules.autonomous_pipeline.schemas import (
 )
 
 # Sprint 9-C: Workspace Isolation
-from backend.app.modules.autonomous_pipeline.workspace_schemas import (
+from app.modules.autonomous_pipeline.workspace_schemas import (
     Workspace,
     WorkspaceStatus,
     WorkspaceCreateRequest,
     ProjectCreateRequest,
 )
-from backend.app.modules.autonomous_pipeline.workspace_service import (
+from app.modules.autonomous_pipeline.workspace_service import (
     WorkspaceService,
     QuotaExceededError,
 )
 
 # Sprint 9-D: Operational Hardening
-from backend.app.modules.autonomous_pipeline.operational_hardening import (
+from app.modules.autonomous_pipeline.operational_hardening import (
     RetryPolicy,
     CircuitBreaker,
     CircuitBreakerOpen,

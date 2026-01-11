@@ -7,7 +7,7 @@ Tests hash chain validation, versioning, and activation gate enforcement.
 import pytest
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
-from backend.app.modules.governor.manifest.schemas import (
+from app.modules.governor.manifest.schemas import (
     GovernorManifest,
     ManifestRule,
     RuleCondition,
@@ -15,8 +15,8 @@ from backend.app.modules.governor.manifest.schemas import (
     ShadowReport,
     ActivationGateConfig,
 )
-from backend.app.modules.governor.manifest.registry import ManifestRegistry
-from backend.app.modules.neurorail.errors import (
+from app.modules.governor.manifest.registry import ManifestRegistry
+from app.modules.neurorail.errors import (
     ManifestHashMismatchError,
     ActivationGateBlockedError,
 )

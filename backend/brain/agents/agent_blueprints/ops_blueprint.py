@@ -4,8 +4,8 @@ Ops Agent Blueprint
 Pre-configured blueprint for operations and deployment.
 """
 
-from backend.brain.agents.base_agent import AgentConfig
-from backend.brain.agents.ops_agent import OPS_CONSTITUTIONAL_PROMPT
+from brain.agents.base_agent import AgentConfig
+from brain.agents.ops_agent import OPS_CONSTITUTIONAL_PROMPT
 
 BLUEPRINT = {
     "id": "ops",

@@ -7,13 +7,13 @@ Tests JSON loading, schema validation, and default manifest creation.
 import pytest
 import json
 from datetime import datetime
-from backend.app.modules.governor.manifest.schemas import (
+from app.modules.governor.manifest.schemas import (
     GovernorManifest,
     Budget,
     RiskClass,
 )
-from backend.app.modules.governor.manifest.loader import ManifestLoader
-from backend.app.modules.governor.decision.models import RecoveryStrategy
+from app.modules.governor.manifest.loader import ManifestLoader
+from app.modules.governor.decision.models import RecoveryStrategy
 
 
 # ============================================================================

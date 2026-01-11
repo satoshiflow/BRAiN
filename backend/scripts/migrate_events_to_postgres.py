@@ -32,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from loguru import logger
 
-from backend.app.modules.credits.event_sourcing.journal_factory import migrate_file_to_postgres
+from app.modules.credits.event_sourcing.journal_factory import migrate_file_to_postgres
 
 
 async def main():
@@ -82,7 +82,7 @@ async def main():
     if args.dry_run:
         logger.info(f"Dry run: Counting events in {args.source}...")
 
-        from backend.app.modules.credits.event_sourcing.event_journal import EventJournal
+        from app.modules.credits.event_sourcing.event_journal import EventJournal
 
         journal = EventJournal(file_path=args.source)
         await journal.initialize()

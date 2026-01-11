@@ -9,7 +9,7 @@ Version: 1.0.0
 Created: 2026-01-04
 """
 
-from backend.brain.governor.enforcement.locks import (
+from brain.governor.enforcement.locks import (
     LockedFieldEnforcer,
     LockedFieldViolation,
     PolicyViolationError,

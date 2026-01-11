@@ -27,8 +27,8 @@ from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 from loguru import logger
 
-from backend.brain.agents.base_agent import BaseAgent, AgentConfig, AgentResult, LLMClient
-from backend.app.modules.supervisor.schemas import (
+from brain.agents.base_agent import BaseAgent, AgentConfig, AgentResult, LLMClient
+from app.modules.supervisor.schemas import (
     RiskLevel,
     SupervisionRequest,
     SupervisionResponse,
@@ -36,8 +36,8 @@ from backend.app.modules.supervisor.schemas import (
 
 # Policy Engine integration
 try:
-    from backend.app.modules.policy.service import PolicyEngine
-    from backend.app.modules.policy.schemas import (
+    from app.modules.policy.service import PolicyEngine
+    from app.modules.policy.schemas import (
         PolicyEvaluationContext,
         PolicyEffect,
     )
@@ -48,7 +48,7 @@ except ImportError:
 
 # Foundation layer integration
 try:
-    from backend.app.modules.foundation.service import FoundationService
+    from app.modules.foundation.service import FoundationService
     FOUNDATION_AVAILABLE = True
 except ImportError:
     FOUNDATION_AVAILABLE = False
@@ -152,7 +152,7 @@ class SupervisorAgent(BaseAgent):
 
         # Allow None llm_client for testing/standalone mode
         if llm_client is None:
-            from backend.brain.agents.llm_client import get_llm_client
+            from brain.agents.llm_client import get_llm_client
             llm_client = get_llm_client()
 
         super().__init__(llm_client, config)

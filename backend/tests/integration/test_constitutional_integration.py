@@ -16,12 +16,12 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from backend.brain.agents.supervisor_agent import SupervisorAgent, get_supervisor_agent
-from backend.brain.agents.coder_agent import CoderAgent, get_coder_agent
-from backend.brain.agents.ops_agent import OpsAgent, get_ops_agent
-from backend.brain.agents.architect_agent import ArchitectAgent, get_architect_agent
-from backend.brain.agents.axe_agent import AXEAgent, get_axe_agent
-from backend.app.modules.supervisor.schemas import (
+from brain.agents.supervisor_agent import SupervisorAgent, get_supervisor_agent
+from brain.agents.coder_agent import CoderAgent, get_coder_agent
+from brain.agents.ops_agent import OpsAgent, get_ops_agent
+from brain.agents.architect_agent import ArchitectAgent, get_architect_agent
+from brain.agents.axe_agent import AXEAgent, get_axe_agent
+from app.modules.supervisor.schemas import (
     RiskLevel,
     SupervisionRequest,
     SupervisionResponse,

@@ -28,9 +28,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, Tuple
 
-from backend.brain.agents.genesis_agent.dna_schema import AgentType
-from backend.brain.governor.constraints.defaults import get_agent_type_caps
-from backend.brain.governor.decision.models import ReasonCode
+from brain.agents.genesis_agent.dna_schema import AgentType
+from brain.governor.constraints.defaults import get_agent_type_caps
+from brain.governor.decision.models import ReasonCode
 
 
 # ============================================================================

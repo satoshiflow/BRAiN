@@ -26,8 +26,8 @@ from __future__ import annotations
 
 from typing import Dict
 
-from backend.brain.agents.genesis_agent.dna_schema import AgentType
-from backend.brain.governor.constraints.schema import (
+from brain.agents.genesis_agent.dna_schema import AgentType
+from brain.governor.constraints.schema import (
     BudgetConstraints,
     CapabilityConstraints,
     EffectiveConstraints,
