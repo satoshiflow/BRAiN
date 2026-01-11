@@ -5,8 +5,8 @@ Tests role-based authorization and permission checks.
 """
 
 import pytest
-from backend.app.modules.neurorail.rbac.service import RBACService
-from backend.app.modules.neurorail.rbac.schemas import (
+from app.modules.neurorail.rbac.service import RBACService
+from app.modules.neurorail.rbac.schemas import (
     Role,
     Permission,
     UserContext,

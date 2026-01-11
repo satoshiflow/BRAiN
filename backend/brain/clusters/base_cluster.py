@@ -6,7 +6,7 @@ Abstract base class for all agent clusters.
 
 from abc import ABC, abstractmethod
 from typing import Dict, Optional, Any
-from backend.brain.agents.base_agent import BaseAgent
+from brain.agents.base_agent import BaseAgent
 
 
 class BaseCluster(ABC):

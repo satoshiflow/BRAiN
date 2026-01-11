@@ -20,7 +20,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from backend.app.modules.credits.event_sourcing import (
+from app.modules.credits.event_sourcing import (
     # Core
     EventEnvelope,
     EventType,

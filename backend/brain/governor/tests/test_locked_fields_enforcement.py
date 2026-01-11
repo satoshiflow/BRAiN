@@ -19,15 +19,15 @@ import pytest
 from unittest.mock import Mock, AsyncMock, MagicMock
 import time
 
-from backend.brain.agents.genesis_agent.dna_schema import AgentType
-from backend.brain.governor.enforcement.locks import (
+from brain.agents.genesis_agent.dna_schema import AgentType
+from brain.governor.enforcement.locks import (
     LockedFieldEnforcer,
     LockedFieldViolation,
     PolicyViolationError,
 )
-from backend.brain.governor.manifests.loader import ManifestLoader
-from backend.brain.governor.governor import Governor
-from backend.brain.governor.decision.models import (
+from brain.governor.manifests.loader import ManifestLoader
+from brain.governor.governor import Governor
+from brain.governor.decision.models import (
     DecisionRequest,
     ActorContext,
     RequestContext,

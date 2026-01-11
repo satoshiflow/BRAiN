@@ -26,11 +26,11 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi_limiter.depends import RateLimiter
 
-from backend.app.core.redis_client import get_redis
-from backend.brain.agents.genesis_agent.config import get_genesis_settings
-from backend.brain.agents.genesis_agent.dna_validator import ValidationError
-from backend.brain.agents.genesis_agent.events import SimpleAuditLog
-from backend.brain.agents.genesis_agent.genesis_agent import (
+from app.core.redis_client import get_redis
+from brain.agents.genesis_agent.config import get_genesis_settings
+from brain.agents.genesis_agent.dna_validator import ValidationError
+from brain.agents.genesis_agent.events import SimpleAuditLog
+from brain.agents.genesis_agent.genesis_agent import (
     GenesisAgent,
     InMemoryBudget,
     InMemoryRegistry,

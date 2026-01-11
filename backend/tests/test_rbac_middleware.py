@@ -6,8 +6,8 @@ Tests authorization decorator and middleware.
 
 import pytest
 from fastapi import HTTPException
-from backend.app.modules.neurorail.rbac.middleware import require_permission, get_current_user_placeholder
-from backend.app.modules.neurorail.rbac.schemas import Role, Permission, UserContext
+from app.modules.neurorail.rbac.middleware import require_permission, get_current_user_placeholder
+from app.modules.neurorail.rbac.schemas import Role, Permission, UserContext
 
 
 # ============================================================================

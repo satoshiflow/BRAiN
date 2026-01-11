@@ -17,9 +17,9 @@ Created: 2026-01-02
 
 import pytest
 
-from backend.brain.agents.genesis_agent.dna_schema import AgentType
-from backend.brain.governor.decision.models import ReasonCode
-from backend.brain.governor.policy import rules
+from brain.agents.genesis_agent.dna_schema import AgentType
+from brain.governor.decision.models import ReasonCode
+from brain.governor.policy import rules
 
 
 # ============================================================================

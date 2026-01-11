@@ -22,9 +22,9 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from backend.main import app
-from backend.app.modules.neurorail.streams.publisher import get_sse_publisher
-from backend.app.modules.neurorail.streams.schemas import StreamEvent, EventChannel
-from backend.app.modules.neurorail.rbac.schemas import Role, Permission
+from app.modules.neurorail.streams.publisher import get_sse_publisher
+from app.modules.neurorail.streams.schemas import StreamEvent, EventChannel
+from app.modules.neurorail.rbac.schemas import Role, Permission
 
 client = TestClient(app)
 

@@ -26,14 +26,14 @@ import pytest
 import asyncpg
 
 from backend.mission_control_core.core.event_stream import EventStream, Event, EventType
-from backend.app.modules.course_distribution.distribution_service import DistributionService
-from backend.app.modules.course_distribution.distribution_models import (
+from app.modules.course_distribution.distribution_service import DistributionService
+from app.modules.course_distribution.distribution_models import (
     CourseDistribution,
     CourseVisibility,
     CourseSEO,
     CourseCTA,
 )
-from backend.app.modules.course_distribution.event_consumer import DistributionEventConsumer
+from app.modules.course_distribution.event_consumer import DistributionEventConsumer
 
 
 # ============================================================================

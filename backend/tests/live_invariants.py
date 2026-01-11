@@ -452,7 +452,7 @@ async def main():
 
     sys.path.insert(0, str(Path(__file__).parent.parent))
 
-    from backend.app.modules.credits.integration_demo import get_credit_system_demo
+    from app.modules.credits.integration_demo import get_credit_system_demo
 
     logger.info("Initializing credit system...")
     credit_system = await get_credit_system_demo()

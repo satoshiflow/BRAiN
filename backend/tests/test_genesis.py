@@ -16,9 +16,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.main import app
-from backend.app.modules.genesis.blueprints import get_blueprint_library
-from backend.app.modules.genesis.traits import get_trait_service
-from backend.app.modules.genesis.foundation import get_foundation_layer
+from app.modules.genesis.blueprints import get_blueprint_library
+from app.modules.genesis.traits import get_trait_service
+from app.modules.genesis.foundation import get_foundation_layer
 
 client = TestClient(app)
 
@@ -314,7 +314,7 @@ def test_trait_categories():
     trait_service = get_trait_service()
     definitions = trait_service.get_all_definitions()
 
-    from backend.app.modules.genesis.traits.schemas import TraitCategory
+    from app.modules.genesis.traits.schemas import TraitCategory
 
     categories = set(d.category for d in definitions)
 

@@ -306,7 +306,7 @@ async def register_mission_hooks() -> None:
     try:
         # Try to import mission system
         try:
-            from backend.modules.mission_system import register_hooks
+            from modules.mission_system import register_hooks
         except ImportError:
             logger.warning("Mission system not available, hooks not registered")
             return

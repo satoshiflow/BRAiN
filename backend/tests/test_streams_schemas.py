@@ -7,7 +7,7 @@ Tests event formatting and filtering.
 import pytest
 import time
 import json
-from backend.app.modules.neurorail.streams.schemas import (
+from app.modules.neurorail.streams.schemas import (
     StreamEvent,
     EventChannel,
     SubscriptionFilter,

@@ -54,8 +54,8 @@ from fastapi.testclient import TestClient
 # Import BRAiN components
 try:
     from backend.main import app
-    from backend.modules.mission_system.models import MissionStatus, MissionPriority, MissionType
-    from backend.modules.mission_system.orchestrator import AgentProfile, AgentStatus
+    from modules.mission_system.models import MissionStatus, MissionPriority, MissionType
+    from modules.mission_system.orchestrator import AgentProfile, AgentStatus
 except ImportError as e:
     print(f"Failed to import BRAiN components: {e}")
     print(f"Current path: {sys.path}")

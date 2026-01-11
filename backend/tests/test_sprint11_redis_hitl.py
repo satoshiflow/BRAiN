@@ -23,14 +23,14 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from backend.app.modules.ir_governance.schemas import (
+from app.modules.ir_governance.schemas import (
     ApprovalRequest,
     ApprovalStatus,
     ApprovalConsumeRequest,
 )
-from backend.app.modules.ir_governance.approvals import ApprovalsService, InMemoryApprovalStore
-from backend.app.modules.ir_governance.redis_approval_store import RedisApprovalStore
-from backend.app.modules.ir_governance.approval_cleanup_worker import ApprovalCleanupWorker
+from app.modules.ir_governance.approvals import ApprovalsService, InMemoryApprovalStore
+from app.modules.ir_governance.redis_approval_store import RedisApprovalStore
+from app.modules.ir_governance.approval_cleanup_worker import ApprovalCleanupWorker
 
 
 # ============================================================================
@@ -350,7 +350,7 @@ def test_feature_flag_store_selection():
     """Test approval store selection via environment variable."""
     # Test memory store (default)
     with patch.dict(os.environ, {"APPROVAL_STORE": "memory"}):
-        from backend.app.modules.ir_governance.approvals import get_approvals_service
+        from app.modules.ir_governance.approvals import get_approvals_service
 
         # Reset singleton
         import backend.app.modules.ir_governance.approvals as approvals_module

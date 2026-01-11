@@ -23,8 +23,8 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from backend.mission_control_core.core.event_stream import EventStream, Event, EventType
-from backend.app.modules.course_factory.service import CourseFactoryService
-from backend.app.modules.course_factory.schemas import (
+from app.modules.course_factory.service import CourseFactoryService
+from app.modules.course_factory.schemas import (
     CourseGenerationRequest,
     CourseLanguage,
     CourseTargetAudience,

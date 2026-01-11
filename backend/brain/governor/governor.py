@@ -39,11 +39,11 @@ from typing import Any, Dict, List, Optional
 
 import redis.asyncio as redis
 
-from backend.brain.agents.genesis_agent.dna_schema import AgentType
-from backend.brain.agents.genesis_agent.events import AuditLog
-from backend.brain.governor.constraints.defaults import get_default_constraints
-from backend.brain.governor.constraints.schema import EffectiveConstraints
-from backend.brain.governor.decision.models import (
+from brain.agents.genesis_agent.dna_schema import AgentType
+from brain.agents.genesis_agent.events import AuditLog
+from brain.governor.constraints.defaults import get_default_constraints
+from brain.governor.constraints.schema import EffectiveConstraints
+from brain.governor.decision.models import (
     ActorContext,
     DecisionRequest,
     DecisionResult,
@@ -52,16 +52,16 @@ from backend.brain.governor.decision.models import (
     RequestContext,
     RiskTier,
 )
-from backend.brain.governor.events import GovernorEvents
-from backend.brain.governor.manifests.loader import get_manifest_loader
-from backend.brain.governor.manifests.schema import GovernanceManifest
-from backend.brain.governor.policy import rules
-from backend.brain.governor.reductions.reducer import ConstraintReducer
-from backend.brain.governor.reductions.rules import (
+from brain.governor.events import GovernorEvents
+from brain.governor.manifests.loader import get_manifest_loader
+from brain.governor.manifests.schema import GovernanceManifest
+from brain.governor.policy import rules
+from brain.governor.reductions.reducer import ConstraintReducer
+from brain.governor.reductions.rules import (
     ReductionContext,
     get_applicable_reductions,
 )
-from backend.brain.governor.enforcement.locks import (
+from brain.governor.enforcement.locks import (
     LockedFieldEnforcer,
     PolicyViolationError,
 )
@@ -916,7 +916,7 @@ class GovernorApproval:
             ...     raise Exception(f"Rejected: {response.reason}")
         """
         # Import here to avoid circular dependency
-        from backend.brain.agents.genesis_agent.dna_schema import AgentDNA
+        from brain.agents.genesis_agent.dna_schema import AgentDNA
 
         # Convert Pydantic model to dict
         if isinstance(dna, AgentDNA):

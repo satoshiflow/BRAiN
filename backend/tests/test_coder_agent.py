@@ -7,13 +7,13 @@ Tests secure code generation with supervisor integration.
 import pytest
 from unittest.mock import Mock, AsyncMock
 
-from backend.brain.agents.coder_agent import (
+from brain.agents.coder_agent import (
     CoderAgent,
     CodeGenerationError,
     SupervisionDeniedError,
     HumanApprovalRequiredError,
 )
-from backend.app.modules.supervisor.schemas import RiskLevel
+from app.modules.supervisor.schemas import RiskLevel
 
 
 @pytest.fixture

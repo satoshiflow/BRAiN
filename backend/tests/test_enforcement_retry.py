@@ -6,9 +6,9 @@ Tests retry logic, exponential backoff, retriability classification, and immune 
 
 import pytest
 import asyncio
-from backend.app.modules.neurorail.enforcement.retry import RetryHandler
-from backend.app.modules.governor.manifest.schemas import Budget
-from backend.app.modules.neurorail.errors import BudgetRetryExhaustedError
+from app.modules.neurorail.enforcement.retry import RetryHandler
+from app.modules.governor.manifest.schemas import Budget
+from app.modules.neurorail.errors import BudgetRetryExhaustedError
 
 
 # ============================================================================

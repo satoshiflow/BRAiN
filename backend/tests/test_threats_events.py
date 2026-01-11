@@ -18,7 +18,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from backend.app.modules.threats.models import (
+from app.modules.threats.models import (
     ThreatCreate,
     ThreatSeverity,
     ThreatStatus,
@@ -119,7 +119,7 @@ def setup_threats_module(mock_redis, mock_event_stream):
     service_module.Event = MockEvent
 
     # Set event stream
-    from backend.app.modules.threats.service import set_event_stream
+    from app.modules.threats.service import set_event_stream
     set_event_stream(mock_event_stream)
 
     yield mock_redis, mock_event_stream
@@ -172,7 +172,7 @@ async def test_threat_detected_event(setup_threats_module, sql_injection_threat)
     mock_redis, mock_event_stream = setup_threats_module
 
     # Import service functions after patching
-    from backend.app.modules.threats.service import create_threat
+    from app.modules.threats.service import create_threat
 
     # Execute
     threat = await create_threat(sql_injection_threat)
@@ -213,7 +213,7 @@ async def test_threat_status_changed_event(setup_threats_module, sql_injection_t
     mock_redis, mock_event_stream = setup_threats_module
 
     # Import service functions after patching
-    from backend.app.modules.threats.service import create_threat, update_threat_status
+    from app.modules.threats.service import create_threat, update_threat_status
 
     # Create threat first
     threat = await create_threat(sql_injection_threat)
@@ -253,7 +253,7 @@ async def test_threat_escalated_event(setup_threats_module, sql_injection_threat
     mock_redis, mock_event_stream = setup_threats_module
 
     # Import service functions after patching
-    from backend.app.modules.threats.service import create_threat, update_threat_status
+    from app.modules.threats.service import create_threat, update_threat_status
 
     # Create threat and start investigation
     threat = await create_threat(sql_injection_threat)
@@ -297,7 +297,7 @@ async def test_threat_mitigated_event(setup_threats_module, sql_injection_threat
     mock_redis, mock_event_stream = setup_threats_module
 
     # Import service functions after patching
-    from backend.app.modules.threats.service import create_threat, update_threat_status
+    from app.modules.threats.service import create_threat, update_threat_status
 
     # Create threat and start investigation
     threat = await create_threat(sql_injection_threat)
@@ -343,7 +343,7 @@ async def test_event_lifecycle_full(setup_threats_module, sql_injection_threat):
     mock_redis, mock_event_stream = setup_threats_module
 
     # Import service functions after patching
-    from backend.app.modules.threats.service import create_threat, update_threat_status
+    from app.modules.threats.service import create_threat, update_threat_status
 
     # Clear events
     mock_event_stream.clear()
@@ -400,7 +400,7 @@ async def test_event_lifecycle_escalation(setup_threats_module, xss_threat):
     mock_redis, mock_event_stream = setup_threats_module
 
     # Import service functions after patching
-    from backend.app.modules.threats.service import create_threat, update_threat_status
+    from app.modules.threats.service import create_threat, update_threat_status
 
     # Clear events
     mock_event_stream.clear()
@@ -464,7 +464,7 @@ async def test_threats_work_without_eventstream(mock_redis, sql_injection_threat
 
     try:
         # Import service functions after patching
-        from backend.app.modules.threats.service import create_threat, update_threat_status, set_event_stream
+        from app.modules.threats.service import create_threat, update_threat_status, set_event_stream
 
         # Set EventStream to None
         set_event_stream(None)
@@ -506,7 +506,7 @@ async def test_event_envelope_charter_compliance(setup_threats_module, sql_injec
     mock_redis, mock_event_stream = setup_threats_module
 
     # Import service functions after patching
-    from backend.app.modules.threats.service import create_threat
+    from app.modules.threats.service import create_threat
 
     # Execute action
     threat = await create_threat(sql_injection_threat)

@@ -4,8 +4,8 @@ Architect Agent Blueprint
 Pre-configured blueprint for architecture and compliance auditing.
 """
 
-from backend.brain.agents.base_agent import AgentConfig
-from backend.brain.agents.architect_agent import ARCHITECT_CONSTITUTIONAL_PROMPT
+from brain.agents.base_agent import AgentConfig
+from brain.agents.architect_agent import ARCHITECT_CONSTITUTIONAL_PROMPT
 
 BLUEPRINT = {
     "id": "architect",

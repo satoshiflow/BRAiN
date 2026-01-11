@@ -6,13 +6,13 @@ Tests state transitions, cooldown periods, and reflex actions.
 
 import pytest
 import time
-from backend.app.modules.neurorail.reflex.lifecycle import (
+from app.modules.neurorail.reflex.lifecycle import (
     JobLifecycle,
     JobLifecycleState,
     ALLOWED_TRANSITIONS,
     get_job_lifecycle,
 )
-from backend.app.modules.neurorail.errors import ReflexLifecycleInvalidError
+from app.modules.neurorail.errors import ReflexLifecycleInvalidError
 
 
 # ============================================================================

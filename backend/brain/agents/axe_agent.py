@@ -24,7 +24,7 @@ from typing import Any, Dict, List, Optional
 from datetime import datetime
 from loguru import logger
 
-from backend.brain.agents.base_agent import BaseAgent, AgentConfig, AgentResult, LLMClient
+from brain.agents.base_agent import BaseAgent, AgentConfig, AgentResult, LLMClient
 
 
 # ============================================================================
@@ -113,7 +113,7 @@ class AXEAgent(BaseAgent):
             )
 
         if llm_client is None:
-            from backend.brain.agents.llm_client import get_llm_client
+            from brain.agents.llm_client import get_llm_client
             llm_client = get_llm_client()
 
         super().__init__(llm_client, config)

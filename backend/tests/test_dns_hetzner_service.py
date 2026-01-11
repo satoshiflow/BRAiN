@@ -105,7 +105,7 @@ def test_dns_zones_list_blocks_dmz():
 
 def test_dns_record_type_enum_values():
     """Test that DNSRecordType enum has all required values."""
-    from backend.app.modules.dns_hetzner.schemas import DNSRecordType
+    from app.modules.dns_hetzner.schemas import DNSRecordType
 
     required_types = [
         "A",
@@ -132,7 +132,7 @@ def test_dns_record_type_enum_values():
 
 def test_dns_record_apply_request_model():
     """Test DNSRecordApplyRequest model validation."""
-    from backend.app.modules.dns_hetzner.schemas import DNSRecordApplyRequest
+    from app.modules.dns_hetzner.schemas import DNSRecordApplyRequest
 
     # Valid request
     request = DNSRecordApplyRequest(
@@ -152,7 +152,7 @@ def test_dns_record_apply_request_model():
 
 def test_dns_record_apply_request_optional_value():
     """Test that DNSRecordApplyRequest allows optional value (for ENV defaults)."""
-    from backend.app.modules.dns_hetzner.schemas import DNSRecordApplyRequest
+    from app.modules.dns_hetzner.schemas import DNSRecordApplyRequest
 
     # Value is optional (will use ENV default)
     request = DNSRecordApplyRequest(
@@ -167,7 +167,7 @@ def test_dns_record_apply_request_optional_value():
 
 def test_dns_record_apply_request_default_ttl():
     """Test that DNSRecordApplyRequest has default TTL of 300."""
-    from backend.app.modules.dns_hetzner.schemas import DNSRecordApplyRequest
+    from app.modules.dns_hetzner.schemas import DNSRecordApplyRequest
 
     request = DNSRecordApplyRequest(
         zone="example.com",
@@ -181,7 +181,7 @@ def test_dns_record_apply_request_default_ttl():
 
 def test_dns_apply_result_model():
     """Test DNSApplyResult model structure."""
-    from backend.app.modules.dns_hetzner.schemas import DNSApplyResult
+    from app.modules.dns_hetzner.schemas import DNSApplyResult
 
     result = DNSApplyResult(
         success=True,
@@ -200,7 +200,7 @@ def test_dns_apply_result_model():
 
 def test_dns_apply_result_action_enum():
     """Test that action field uses correct enum values."""
-    from backend.app.modules.dns_hetzner.schemas import DNSApplyResult
+    from app.modules.dns_hetzner.schemas import DNSApplyResult
 
     valid_actions = ["created", "updated", "no_change"]
 
@@ -225,7 +225,7 @@ def test_dns_apply_result_action_enum():
 
 def test_hetzner_dns_config_model():
     """Test HetznerDNSConfig model with defaults."""
-    from backend.app.modules.dns_hetzner.schemas import HetznerDNSConfig
+    from app.modules.dns_hetzner.schemas import HetznerDNSConfig
 
     config = HetznerDNSConfig(
         api_token="test_token",
@@ -246,8 +246,8 @@ def test_hetzner_dns_config_model():
 @pytest.mark.asyncio
 async def test_dns_service_enforces_allowlist():
     """Test that DNS service blocks zones not in allowlist."""
-    from backend.app.modules.dns_hetzner.service import HetznerDNSService
-    from backend.app.modules.dns_hetzner.schemas import (
+    from app.modules.dns_hetzner.service import HetznerDNSService
+    from app.modules.dns_hetzner.schemas import (
         HetznerDNSConfig,
         DNSRecordType,
     )
@@ -278,8 +278,8 @@ async def test_dns_service_enforces_allowlist():
 @pytest.mark.asyncio
 async def test_dns_service_allows_allowlisted_zones():
     """Test that DNS service allows zones in allowlist."""
-    from backend.app.modules.dns_hetzner.service import HetznerDNSService
-    from backend.app.modules.dns_hetzner.schemas import (
+    from app.modules.dns_hetzner.service import HetznerDNSService
+    from app.modules.dns_hetzner.schemas import (
         HetznerDNSConfig,
         DNSRecordType,
         DNSZone,
@@ -332,8 +332,8 @@ async def test_dns_service_allows_allowlisted_zones():
 @pytest.mark.asyncio
 async def test_dns_service_creates_new_record():
     """Test that DNS service creates record if it doesn't exist."""
-    from backend.app.modules.dns_hetzner.service import HetznerDNSService
-    from backend.app.modules.dns_hetzner.schemas import (
+    from app.modules.dns_hetzner.service import HetznerDNSService
+    from app.modules.dns_hetzner.schemas import (
         HetznerDNSConfig,
         DNSRecordType,
         DNSZone,
@@ -385,8 +385,8 @@ async def test_dns_service_creates_new_record():
 @pytest.mark.asyncio
 async def test_dns_service_updates_existing_record():
     """Test that DNS service updates record if value changed."""
-    from backend.app.modules.dns_hetzner.service import HetznerDNSService
-    from backend.app.modules.dns_hetzner.schemas import (
+    from app.modules.dns_hetzner.service import HetznerDNSService
+    from app.modules.dns_hetzner.schemas import (
         HetznerDNSConfig,
         DNSRecordType,
         DNSZone,
@@ -450,8 +450,8 @@ async def test_dns_service_updates_existing_record():
 @pytest.mark.asyncio
 async def test_dns_service_no_change_if_same():
     """Test that DNS service returns no_change if record identical."""
-    from backend.app.modules.dns_hetzner.service import HetznerDNSService
-    from backend.app.modules.dns_hetzner.schemas import (
+    from app.modules.dns_hetzner.service import HetznerDNSService
+    from app.modules.dns_hetzner.schemas import (
         HetznerDNSConfig,
         DNSRecordType,
         DNSZone,
@@ -509,8 +509,8 @@ async def test_dns_service_no_change_if_same():
 @pytest.mark.asyncio
 async def test_dns_service_uses_env_default_for_ipv4():
     """Test that DNS service uses BRAIN_PUBLIC_IPV4 when value not provided."""
-    from backend.app.modules.dns_hetzner.service import HetznerDNSService
-    from backend.app.modules.dns_hetzner.schemas import (
+    from app.modules.dns_hetzner.service import HetznerDNSService
+    from app.modules.dns_hetzner.schemas import (
         HetznerDNSConfig,
         DNSRecordType,
     )
@@ -526,7 +526,7 @@ async def test_dns_service_uses_env_default_for_ipv4():
     with patch.object(service.client, "get_zone_by_name") as mock_get_zone:
         with patch.object(service.client, "find_record") as mock_find_record:
             with patch.object(service.client, "create_record") as mock_create_record:
-                from backend.app.modules.dns_hetzner.schemas import DNSZone, DNSRecord
+                from app.modules.dns_hetzner.schemas import DNSZone, DNSRecord
 
                 mock_get_zone.return_value = DNSZone(
                     id="zone123", name="example.com", ttl=3600

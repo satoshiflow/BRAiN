@@ -5,18 +5,18 @@ Tests automated reflex actions: SUSPEND, THROTTLE, ALERT, CANCEL.
 """
 
 import pytest
-from backend.app.modules.neurorail.reflex.actions import (
+from app.modules.neurorail.reflex.actions import (
     ReflexAction,
     ReflexActionType,
     ReflexActionResult,
     get_reflex_action,
 )
-from backend.app.modules.neurorail.reflex.lifecycle import (
+from app.modules.neurorail.reflex.lifecycle import (
     JobLifecycle,
     JobLifecycleState,
     get_job_lifecycle,
 )
-from backend.app.modules.neurorail.errors import ReflexActionFailedError
+from app.modules.neurorail.errors import ReflexActionFailedError
 
 
 # ============================================================================

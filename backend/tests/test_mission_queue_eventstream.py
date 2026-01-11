@@ -13,8 +13,8 @@ os.environ["USE_EVENT_STREAM"] = "true"
 
 # Import MissionQueueManager
 try:
-    from backend.modules.mission_system.queue import MissionQueueManager
-    from backend.modules.mission_system.models import (
+    from modules.mission_system.queue import MissionQueueManager
+    from modules.mission_system.models import (
         Mission, MissionStatus, MissionPriority, MissionType, AgentRequirements
     )
     MISSION_SYSTEM_AVAILABLE = True

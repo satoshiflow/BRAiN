@@ -36,7 +36,7 @@ from .events import AuditLog, GenesisEvents, SimpleAuditLog
 
 # Governor v1 integration (Phase 2a)
 try:
-    from backend.brain.governor import GovernorApproval as Governor_v1_Approval
+    from brain.governor import GovernorApproval as Governor_v1_Approval
     GOVERNOR_V1_AVAILABLE = True
 except ImportError:
     GOVERNOR_V1_AVAILABLE = False

@@ -25,12 +25,12 @@ from typing import Any, Dict, List, Optional
 from datetime import datetime
 from loguru import logger
 
-from backend.brain.agents.base_agent import BaseAgent, AgentConfig, AgentResult, LLMClient
-from backend.app.modules.supervisor.schemas import RiskLevel, SupervisionRequest
+from brain.agents.base_agent import BaseAgent, AgentConfig, AgentResult, LLMClient
+from app.modules.supervisor.schemas import RiskLevel, SupervisionRequest
 
 # Supervisor integration
 try:
-    from backend.brain.agents.supervisor_agent import get_supervisor_agent
+    from brain.agents.supervisor_agent import get_supervisor_agent
     SUPERVISOR_AVAILABLE = True
 except ImportError:
     SUPERVISOR_AVAILABLE = False
@@ -163,7 +163,7 @@ class ArchitectAgent(BaseAgent):
             )
 
         if llm_client is None:
-            from backend.brain.agents.llm_client import get_llm_client
+            from brain.agents.llm_client import get_llm_client
             llm_client = get_llm_client()
 
         super().__init__(llm_client, config)

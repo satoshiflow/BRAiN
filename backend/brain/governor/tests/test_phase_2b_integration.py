@@ -19,17 +19,17 @@ Created: 2026-01-02
 import pytest
 import redis.asyncio as redis
 
-from backend.brain.agents.genesis_agent.dna_schema import AgentType
-from backend.brain.agents.genesis_agent.events import SimpleAuditLog
-from backend.brain.governor import (
+from brain.agents.genesis_agent.dna_schema import AgentType
+from brain.agents.genesis_agent.events import SimpleAuditLog
+from brain.governor import (
     ActorContext,
     DecisionRequest,
     Governor,
     GovernorConfig,
     RequestContext,
 )
-from backend.brain.governor.decision.models import DecisionType, ReasonCode, RiskTier
-from backend.brain.governor.manifests.schema import (
+from brain.governor.decision.models import DecisionType, ReasonCode, RiskTier
+from brain.governor.manifests.schema import (
     AppliesToSpec,
     GovernanceManifest,
     LockSpec,

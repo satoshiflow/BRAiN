@@ -396,9 +396,63 @@ from pydantic import BaseModel, Field
 import redis.asyncio as redis
 
 # Local
-from backend.modules.missions.models import Mission
-from backend.modules.llm_client import get_llm_client
+from modules.missions.models import Mission
+from modules.llm_client import get_llm_client
+from app.core.config import get_settings
+from brain.agents.base_agent import BaseAgent
 ```
+
+#### Import Path Rules (Container Structure)
+
+**⚠️ CRITICAL:** Code is in `backend/` directory on host, but runs at `/app/` in Docker container.
+
+**Container Structure (Runtime):**
+```
+/app/
+├── main.py           # Entry point
+├── app/              # Modern modules (has __init__.py)
+├── brain/            # Agent system (has __init__.py)
+├── modules/          # Legacy modules
+├── mission_control_core/  # Event stream
+└── backend/          # Empty marker for PYTHONPATH
+```
+
+**Docker Configuration:**
+- `WORKDIR /app`
+- `PYTHONPATH=/app:/app/backend`
+- Code copied from `backend/` → `/app/`
+
+**✅ CORRECT Import Patterns:**
+```python
+# Import from /app level (NO backend. prefix)
+from app.core.config import settings
+from app.modules.policy.service import PolicyService
+from brain.agents.base_agent import BaseAgent
+from brain.governor.governor import Governor
+from modules.missions.models import Mission
+from modules.supervisor.supervisor import Supervisor
+from mission_control_core.core.event_stream import EventStream
+```
+
+**❌ WRONG Import Patterns:**
+```python
+# NEVER use backend. prefix (these FAIL in container)
+from backend.brain.agents.base_agent import BaseAgent  # ❌ FAILS
+from backend.app.core.config import settings  # ❌ FAILS
+from backend.modules.missions.models import Mission  # ❌ FAILS
+```
+
+**Why This Matters:**
+- Host filesystem: `/home/user/BRAiN/backend/brain/governor/governor.py`
+- Container path: `/app/brain/governor/governor.py`
+- With `PYTHONPATH=/app`, import is: `from brain.governor.governor import Governor`
+- The `backend/` directory marker exists only for legacy PYTHONPATH support
+
+**Common Mistake:**
+Adding `backend.` prefix because code is in `backend/` directory on host. In container, code is at `/app/`, not `/app/backend/`.
+
+**Package Markers:**
+Both `app/` and `brain/` have `__init__.py` files to ensure proper package recognition.
 
 #### Module Structure Pattern
 Every module should follow this structure:

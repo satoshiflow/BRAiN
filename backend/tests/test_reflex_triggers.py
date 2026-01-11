@@ -6,12 +6,12 @@ Tests error rate monitoring, budget violation tracking, and trigger activation.
 
 import pytest
 import time
-from backend.app.modules.neurorail.reflex.triggers import (
+from app.modules.neurorail.reflex.triggers import (
     ReflexTrigger,
     TriggerConfig,
     get_reflex_trigger,
 )
-from backend.app.modules.neurorail.errors import ReflexTriggerActivatedError
+from app.modules.neurorail.errors import ReflexTriggerActivatedError
 
 
 # ============================================================================

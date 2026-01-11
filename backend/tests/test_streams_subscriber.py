@@ -7,9 +7,9 @@ Tests event subscription and filtering.
 import pytest
 import asyncio
 import time
-from backend.app.modules.neurorail.streams.subscriber import SSESubscriber
-from backend.app.modules.neurorail.streams.publisher import get_sse_publisher
-from backend.app.modules.neurorail.streams.schemas import (
+from app.modules.neurorail.streams.subscriber import SSESubscriber
+from app.modules.neurorail.streams.publisher import get_sse_publisher
+from app.modules.neurorail.streams.schemas import (
     StreamEvent,
     EventChannel,
     SubscriptionFilter,

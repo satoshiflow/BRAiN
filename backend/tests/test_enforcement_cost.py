@@ -5,9 +5,9 @@ Tests cost tracking, budget violations, and immune integration.
 """
 
 import pytest
-from backend.app.modules.neurorail.enforcement.cost import CostTracker, CostAccumulator
-from backend.app.modules.governor.manifest.schemas import Budget
-from backend.app.modules.neurorail.errors import BudgetCostExceededError
+from app.modules.neurorail.enforcement.cost import CostTracker, CostAccumulator
+from app.modules.governor.manifest.schemas import Budget
+from app.modules.neurorail.errors import BudgetCostExceededError
 
 
 # ============================================================================

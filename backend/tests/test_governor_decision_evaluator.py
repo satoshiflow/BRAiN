@@ -7,18 +7,18 @@ and immune system integration.
 
 import pytest
 from datetime import datetime
-from backend.app.modules.governor.manifest.schemas import (
+from app.modules.governor.manifest.schemas import (
     GovernorManifest,
     ManifestRule,
     RuleCondition,
     Budget,
     RiskClass,
 )
-from backend.app.modules.governor.decision.models import (
+from app.modules.governor.decision.models import (
     DecisionContext,
     RecoveryStrategy,
 )
-from backend.app.modules.governor.decision.evaluator import DecisionEvaluator
+from app.modules.governor.decision.evaluator import DecisionEvaluator
 
 
 # ============================================================================

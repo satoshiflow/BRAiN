@@ -4,8 +4,8 @@ Coder Agent Blueprint
 Pre-configured blueprint for secure code generation.
 """
 
-from backend.brain.agents.base_agent import AgentConfig
-from backend.brain.agents.coder_agent import CODER_CONSTITUTIONAL_PROMPT
+from brain.agents.base_agent import AgentConfig
+from brain.agents.coder_agent import CODER_CONSTITUTIONAL_PROMPT
 
 BLUEPRINT = {
     "id": "coder",

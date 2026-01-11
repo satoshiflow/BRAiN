@@ -19,14 +19,14 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from backend.brain.governor.constraints.schema import (
+from brain.governor.constraints.schema import (
     BudgetConstraints,
     CapabilityConstraints,
     EffectiveConstraints,
     LifecycleConstraints,
     RuntimeConstraints,
 )
-from backend.brain.governor.manifests.schema import ReductionSpec
+from brain.governor.manifests.schema import ReductionSpec
 
 
 logger = logging.getLogger(__name__)

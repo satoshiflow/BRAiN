@@ -20,7 +20,7 @@ if ROOT not in sys.path:
 import pytest
 from fastapi.testclient import TestClient
 from backend.main import app
-from backend.app.modules.axe_governance import (
+from app.modules.axe_governance import (
     AXETrustValidator,
     TrustTier,
     get_axe_trust_validator,

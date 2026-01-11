@@ -7,8 +7,8 @@ Tests event publishing, subscriber management, and buffering.
 import pytest
 import asyncio
 import time
-from backend.app.modules.neurorail.streams.publisher import SSEPublisher
-from backend.app.modules.neurorail.streams.schemas import StreamEvent, EventChannel
+from app.modules.neurorail.streams.publisher import SSEPublisher
+from app.modules.neurorail.streams.schemas import StreamEvent, EventChannel
 
 
 # ============================================================================

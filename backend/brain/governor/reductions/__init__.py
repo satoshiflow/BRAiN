@@ -8,7 +8,7 @@ Exports:
 - apply_reduction: Convenience function
 """
 
-from backend.brain.governor.reductions.reducer import (
+from brain.governor.reductions.reducer import (
     ConstraintReducer,
     apply_reduction,
 )
