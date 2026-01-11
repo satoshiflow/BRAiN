@@ -3816,6 +3816,61 @@ nginx/
 - `nginx.conf` + `conf.d/*` use localhost ports (e.g., `localhost:8001`)
 - Snippets provide reusable proxy settings (avoid duplicate directives)
 
+### Claude User SSH Configuration
+
+**⚠️ IMPORTANT:** For AI assistants working on server deployments.
+
+The production server `brain.falklabs.de` uses a dedicated **claude** user for GitHub operations with SSH key authentication.
+
+**Configuration:**
+- **User:** `claude`
+- **SSH Key Path:** `/home/claude/.ssh/id_ed25519`
+- **GitHub Remote:** `git@github.com:satoshiflow/BRAiN.git`
+- **Project Path:** `/srv/dev` (deployment), `/root/BRAiN` (development workspace)
+
+**Git Operations with Claude User:**
+
+```bash
+# Configure Git to use claude user SSH key
+export GIT_SSH_COMMAND="ssh -i /home/claude/.ssh/id_ed25519 -o IdentitiesOnly=yes"
+
+# Clone repository (if needed)
+git clone git@github.com:satoshiflow/BRAiN.git /srv/dev
+
+# Set remote to SSH (not HTTPS)
+cd /srv/dev
+git remote set-url origin git@github.com:satoshiflow/BRAiN.git
+
+# Pull latest changes
+git pull origin v2
+
+# Push changes
+git push -u origin <branch-name>
+```
+
+**Important Notes:**
+1. **Always use SSH remote** (`git@github.com:...`), NOT HTTPS (`https://github.com/...`)
+2. **Export GIT_SSH_COMMAND** before git operations to use claude's SSH key
+3. **SSH key has read/write access** to the repository
+4. **Root user** can also perform git operations, but claude user is preferred for consistency
+
+**Troubleshooting:**
+
+If you encounter "Permission denied (publickey)" errors:
+```bash
+# Verify SSH key exists and has correct permissions
+ls -la /home/claude/.ssh/id_ed25519
+# Should show: -rw------- (600)
+
+# Test GitHub SSH connection
+ssh -i /home/claude/.ssh/id_ed25519 -T git@github.com
+# Should show: "Hi satoshiflow! You've successfully authenticated..."
+
+# If permission issues persist, check key ownership
+sudo chown claude:claude /home/claude/.ssh/id_ed25519
+sudo chmod 600 /home/claude/.ssh/id_ed25519
+```
+
 ### Common Deployment Issues & Solutions
 
 #### Issue 1: Frontend TypeScript Build Errors
