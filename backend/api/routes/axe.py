@@ -28,14 +28,14 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, HTTPException, Request, Header, Depends, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
-from backend.modules.connector_hub.services import get_gateway
-from backend.modules.llm_client import get_llm_client
-from backend.app.modules.axe_governance import (
+from modules.connector_hub.services import get_gateway
+from modules.llm_client import get_llm_client
+from app.modules.axe_governance import (
     get_axe_trust_validator,
     TrustTier,
     AXERequestContext,
 )
-from backend.app.modules.sovereign_mode.schemas import (
+from app.modules.sovereign_mode.schemas import (
     AuditEventType,
     AuditSeverity,
 )
@@ -166,7 +166,7 @@ def _emit_axe_audit_event(
     Uses sovereign_mode audit system for governance tracking.
     """
     try:
-        from backend.app.modules.sovereign_mode.service import get_sovereign_service
+        from app.modules.sovereign_mode.service import get_sovereign_service
 
         service = get_sovereign_service()
 
@@ -771,15 +771,15 @@ async def axe_websocket(websocket: WebSocket, session_id: str):
 # EVENT TELEMETRY ENDPOINTS (Phase 3)
 # ============================================================================
 
-from backend.app.modules.telemetry.schemas import (
+from app.modules.telemetry.schemas import (
     AxeEventCreate,
     AxeEventBatchCreate,
     AxeEventResponse,
     AxeEventStats,
     AxeEventQuery,
 )
-from backend.app.modules.telemetry.service import get_telemetry_service
-from backend.app.core.database import get_db
+from app.modules.telemetry.service import get_telemetry_service
+from app.core.database import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -931,3 +931,47 @@ async def get_axe_event_stats(
 
 
 # End of file
+
+
+# ============================================================================
+# TEST ENDPOINT (Development Only - No Governance)
+# ============================================================================
+
+@router.post("/events/test", tags=["axe-test"])
+async def log_event_test(event: dict, db: AsyncSession = Depends(get_db)) -> dict:
+    """
+    TEST ENDPOINT: Log AXE event directly to database (no governance).
+    For development/testing only.
+    """
+    from sqlalchemy import text
+    import uuid
+    from datetime import datetime
+    
+    event_id = uuid.uuid4()
+    
+    query = text("""
+        INSERT INTO axe_events (
+            id, event_type, session_id, app_id, user_id,
+            anonymization_level, event_data, client_version, client_platform, created_at
+        ) VALUES (
+            :id, :event_type, :session_id, :app_id, :user_id,
+            :anonymization_level, :event_data, :client_version, :client_platform, :created_at
+        )
+    """)
+    
+    await db.execute(query, {
+        "id": event_id,
+        "event_type": event["event_type"],
+        "session_id": event["session_id"],
+        "app_id": event["app_id"],
+        "user_id": event.get("user_id"),
+        "anonymization_level": event.get("anonymization_level", "pseudonymized"),
+        "event_data": json.dumps(event["event_data"]),
+        "client_version": event.get("client_version"),
+        "client_platform": event.get("client_platform"),
+        "created_at": datetime.utcnow()
+    })
+    
+    await db.commit()
+    
+    return {"success": True, "event_id": str(event_id), "message": "Test event logged"}
