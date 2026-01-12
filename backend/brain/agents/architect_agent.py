@@ -43,9 +43,9 @@ except ImportError:
 
 ARCHITECT_CONSTITUTIONAL_PROMPT = """Du bist der Architektur-Agent (ArchitectAgent) des BRAiN-Systems.
 
-Deine Aufgabe: **Systemarchitektur-Bewertung mit EU-Rechtskonformität**.
+Deine Aufgabe: **Systemarchitektur-Bewertung mit EU-Rechtskonformitt**.
 
-=Ü VERFASSUNGSRAHMEN:
+= VERFASSUNGSRAHMEN:
 
 1. **EU AI Act Compliance (Regulation 2024/1689)**
    - Art. 5: Verbotene KI-Praktiken erkennen
@@ -56,24 +56,24 @@ Deine Aufgabe: **Systemarchitektur-Bewertung mit EU-Rechtskonformität**.
 
 2. **DSGVO Compliance (EU 2016/679)**
    - Art. 25: Privacy by Design & by Default
-   - Art. 32: Technische Sicherheitsmaßnahmen
-   - Art. 35: Datenschutz-Folgenabschätzung
+   - Art. 32: Technische Sicherheitsmanahmen
+   - Art. 35: Datenschutz-Folgenabschtzung
    - Art. 44-50: Internationale Datentransfers
 
 3. **Architekturprinzipien**
-   - **Modularität**: Lose Kopplung, hohe Kohäsion
+   - **Modularitt**: Lose Kopplung, hohe Kohsion
    - **Skalierbarkeit**: Horizontal skalierbar
    - **Resilience**: Fehlertoleranz, Graceful Degradation
    - **Security by Design**: Defense in Depth
    - **Vendor Independence**: Keine Lock-ins
 
-=« ARCHITECTURAL RED FLAGS:
+= ARCHITECTURAL RED FLAGS:
 - Monolithische Systeme ohne Modulgrenzen
 - Hardcodierte Cloud-Provider (AWS, GCP) ohne Abstraction
 - Fehlende Fehlerbehandlung
 - Keine Audit-Trails
 - Biometrische Datenverarbeitung ohne Rechtsgrundlage
-- US-Cloud-Abhängigkeiten ohne DPA
+- US-Cloud-Abhngigkeiten ohne DPA
 
  BEST PRACTICES:
 - Microservices/Modular Monolith
@@ -81,12 +81,12 @@ Deine Aufgabe: **Systemarchitektur-Bewertung mit EU-Rechtskonformität**.
 - API-First Design
 - CQRS/Event Sourcing wo sinnvoll
 - EU-Hosting (Hetzner, OVH, etc.)
-- Open Standards (keine proprietären Formate)
+- Open Standards (keine proprietren Formate)
 
 AUSGABE:
 - compliance_score: 0-100
 - risk_level: LOW/MEDIUM/HIGH/CRITICAL
-- violations: Liste von Verstößen
+- violations: Liste von VerstÃ¶ÃŸen
 - recommendations: Architektur-Empfehlungen
 """
 
@@ -179,7 +179,7 @@ class ArchitectAgent(BaseAgent):
         self.assessments: List[Dict[str, Any]] = []
 
         logger.info(
-            "<Û ArchitectAgent initialized | Supervisor: %s",
+            "< ArchitectAgent initialized | Supervisor: %s",
             "enabled" if SUPERVISOR_AVAILABLE else "disabled"
         )
 
@@ -210,7 +210,7 @@ class ArchitectAgent(BaseAgent):
         Returns:
             AgentResult with assessment
         """
-        logger.info("<Û Architecture review requested | system=%s high_risk=%s", system_name, high_risk_ai)
+        logger.info("< Architecture review requested | system=%s high_risk=%s", system_name, high_risk_ai)
 
         assessment = ArchitectureAssessment()
 
@@ -307,7 +307,7 @@ class ArchitectAgent(BaseAgent):
         Returns:
             AgentResult with compliance status
         """
-        logger.info("<ê<ú EU compliance check requested")
+        logger.info("<< EU compliance check requested")
 
         violations: List[Dict[str, Any]] = []
 
@@ -378,7 +378,7 @@ class ArchitectAgent(BaseAgent):
         Returns:
             AgentResult with scalability assessment
         """
-        logger.info("=È Scalability assessment requested")
+        logger.info("= Scalability assessment requested")
 
         issues: List[str] = []
         recommendations: List[str] = []
@@ -502,7 +502,7 @@ class ArchitectAgent(BaseAgent):
         Returns:
             AgentResult with prioritized recommendations
         """
-        logger.info("=¡ Generating improvement recommendations")
+        logger.info("= Generating improvement recommendations")
 
         # Use LLM to generate prioritized recommendations
         prompt = f"""Basierend auf dieser Architektur-Bewertung:
@@ -511,17 +511,17 @@ Compliance Score: {assessment_result.get('compliance_score', 0)}
 Risk Level: {assessment_result.get('risk_level', 'UNKNOWN')}
 Violations: {assessment_result.get('violations', [])}
 
-Erstelle eine **priorisierte Liste** von Verbesserungsvorschlägen:
+Erstelle eine **priorisierte Liste** von Verbesserungsvorschlgen:
 
 1. **KRITISCH** (sofort umsetzen)
-2. **HOCH** (in nächsten 2 Wochen)
-3. **MITTEL** (in nächsten 2 Monaten)
+2. **HOCH** (in nchsten 2 Wochen)
+3. **MITTEL** (in nchsten 2 Monaten)
 4. **NIEDRIG** (langfristig)
 
-Für jeden Vorschlag:
-- Konkrete Maßnahme
-- Begründung (EU AI Act/DSGVO Artikel)
-- Geschätzter Aufwand (Stunden)
+Fr jeden Vorschlag:
+- Konkrete Manahme
+- Begrndung (EU AI Act/DSGVO Artikel)
+- Geschtzter Aufwand (Stunden)
 """
 
         recommendations_text = await self.call_llm(prompt)

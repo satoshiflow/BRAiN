@@ -46,40 +46,40 @@ OPS_CONSTITUTIONAL_PROMPT = """Du bist der Operations-Agent (OpsAgent) des BRAiN
 
 Deine Aufgabe: **Sichere Systemverwaltung und Deployment-Operationen**.
 
-=Ü VERFASSUNGSRAHMEN:
+= VERFASSUNGSRAHMEN:
 - **Sicherheit vor Geschwindigkeit** - keine riskanten Deployments
 - **Vier-Augen-Prinzip** bei kritischen Operationen
-- **Rollback-Fähigkeit** ist Pflicht
-- **Transparenz** - alle Operationen müssen nachvollziehbar sein
-- **Produktionssicherheit** - keine ungetesteten Änderungen in Production
+- **Rollback-Fhigkeit** ist Pflicht
+- **Transparenz** - alle Operationen mssen nachvollziehbar sein
+- **Produktionssicherheit** - keine ungetesteten nderungen in Production
 
-=4 KRITISCHE OPERATIONEN (IMMER SUPERVISOR + HUMAN):
+ðŸ”´ KRITISCHE OPERATIONEN (IMMER SUPERVISOR + HUMAN):
 - Production-Deployments
 - Datenbank-Migrationen in Production
-- Systemweite Konfigurationsänderungen
+- Systemweite Konfigurationsnderungen
 - Sicherheits-Updates
 - Service-Neustarts in Production
 
-=á MITTLERE RISIKOOPERATIONEN (SUPERVISOR):
+= MITTLERE RISIKOOPERATIONEN (SUPERVISOR):
 - Staging-Deployments
-- Development-Datenbank-Änderungen
+- Development-Datenbank-nderungen
 - Service-Konfigurationen in Non-Prod
 - Log-Rotationen
 - Cache-Clearing
 
-=â NIEDRIGE RISIKOOPERATIONEN (AUTO-APPROVE):
+= NIEDRIGE RISIKOOPERATIONEN (AUTO-APPROVE):
 - Status-Checks
 - Log-Analysen
 - Monitoring-Abfragen
 - Read-Only Operationen
 
-=à TECHNISCHE ANFORDERUNGEN:
+= TECHNISCHE ANFORDERUNGEN:
 - Immer Backups vor kritischen Operationen
-- Dry-Run vor tatsächlicher Ausführung
+- Dry-Run vor tatschlicher Ausfhrung
 - Health-Checks nach Deployment
 - Rollback-Plan dokumentieren
 
-Handle verantwortungsvoll - Systemausfälle kosten Geld und Vertrauen.
+Handle verantwortungsvoll - Systemausflle kosten Geld und Vertrauen.
 """
 
 
@@ -160,7 +160,7 @@ class OpsAgent(BaseAgent):
         self.operation_history: List[Dict[str, Any]] = []
 
         logger.info(
-            "™ OpsAgent initialized | Supervisor: %s",
+            " OpsAgent initialized | Supervisor: %s",
             "enabled" if SUPERVISOR_AVAILABLE else "disabled"
         )
 
@@ -188,7 +188,7 @@ class OpsAgent(BaseAgent):
             AgentResult with deployment status
         """
         logger.info(
-            "=€ Deployment requested | app=%s version=%s env=%s",
+            "= Deployment requested | app=%s version=%s env=%s",
             app_name,
             version,
             environment
@@ -335,7 +335,7 @@ class OpsAgent(BaseAgent):
             AgentResult with migration status
         """
         logger.info(
-            "=¾ Migration requested | name=%s env=%s dry_run=%s",
+            "= Migration requested | name=%s env=%s dry_run=%s",
             migration_name,
             environment,
             dry_run
@@ -411,7 +411,7 @@ class OpsAgent(BaseAgent):
             AgentResult with configuration status
         """
         logger.info(
-            "™ Service configuration requested | service=%s env=%s",
+            " Service configuration requested | service=%s env=%s",
             service_name,
             environment
         )
@@ -488,7 +488,7 @@ class OpsAgent(BaseAgent):
         Returns:
             Health check results
         """
-        logger.info("<å Health check | app=%s env=%s", app_name, environment)
+        logger.info("< Health check | app=%s env=%s", app_name, environment)
 
         # Simulated health check - in reality would ping /health endpoints
         try:
@@ -673,7 +673,7 @@ class OpsAgent(BaseAgent):
         """Create backup/snapshot before deployment"""
         backup_id = f"backup-{app_name}-{environment}-{uuid.uuid4().hex[:8]}"
 
-        logger.info("=¾ Creating backup | id=%s", backup_id)
+        logger.info("= Creating backup | id=%s", backup_id)
 
         # Simulated - in reality would create actual backup
         return backup_id
@@ -686,7 +686,7 @@ class OpsAgent(BaseAgent):
         config: Optional[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """Execute the actual deployment"""
-        logger.info("=€ Executing deployment | app=%s version=%s", app_name, version)
+        logger.info("= Executing deployment | app=%s version=%s", app_name, version)
 
         # Simulated deployment
         # In reality: docker pull, kubectl apply, etc.
@@ -707,7 +707,7 @@ class OpsAgent(BaseAgent):
 
         self.operation_history.append(operation)
 
-        logger.debug("=Ý Operation recorded | type=%s", operation.get("type"))
+        logger.debug("= Operation recorded | type=%s", operation.get("type"))
 
 
 # ============================================================================
