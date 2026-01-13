@@ -180,3 +180,27 @@ class MissionQueue:
             "preview_limit": preview_limit,
             "preview": [entry.model_dump() for entry in preview],
         }
+
+    async def get_health_metrics(self) -> Dict[str, Any]:
+        """
+        Get health metrics for SystemHealthService.
+        Returns current queue status including depth and mission counts by status.
+        """
+        await self.connect()
+
+        queue_length = await self.get_queue_length()
+        preview = await self.get_queue_preview(limit=100)
+
+        # Count by status
+        running = len([m for m in preview if m.status == "RUNNING"])
+        pending = len([m for m in preview if m.status == "QUEUED"])
+
+        # TODO: Get completed/failed counts from mission history/database
+        # For now, return zeros for these
+        return {
+            "queue_depth": queue_length,
+            "running_missions": running,
+            "pending_missions": pending,
+            "completed_today": 0,  # Placeholder until mission history implemented
+            "failed_today": 0,     # Placeholder until mission history implemented
+        }
