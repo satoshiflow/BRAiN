@@ -1,10 +1,12 @@
 import os
 import shutil
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Literal
 
 import typer
 import subprocess
+
+from brain_cli.commands import status_command
 
 app = typer.Typer(help="BRAiN Developer CLI")
 
@@ -110,6 +112,38 @@ def module_check():
     else:
         typer.echo(f"Module check finished with {errors} errors.")
         raise typer.Exit(code=1)
+
+
+@app.command("status")
+def status(
+    format: Literal["text", "json", "summary"] = typer.Option(
+        "text",
+        "--format",
+        "-f",
+        help="Output format: text, json, or summary",
+    ),
+    watch: bool = typer.Option(
+        False,
+        "--watch",
+        "-w",
+        help="Watch mode (refresh every 5s)",
+    ),
+    api_url: str = typer.Option(
+        "http://localhost:8000",
+        "--api-url",
+        help="Backend API URL",
+    ),
+):
+    """
+    Check BRAiN system status and health.
+
+    Examples:
+        brain-cli status                    # Show detailed text output
+        brain-cli status --format=json      # Show JSON output
+        brain-cli status --format=summary   # Show one-line summary
+        brain-cli status --watch            # Watch mode (updates every 5s)
+    """
+    status_command(format=format, watch=watch, api_url=api_url)
 
 
 def run():

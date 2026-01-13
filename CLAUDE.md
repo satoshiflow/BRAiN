@@ -2233,7 +2233,42 @@ export const usePresenceStore = create<PresenceState>((set) => ({
 |--------|----------|-------------|
 | GET | `/` | Root info |
 | GET | `/api/health` | Global health check |
+| GET | `/api/system/health` | Comprehensive system health with bottleneck detection |
+| GET | `/api/system/health/summary` | Lightweight health summary |
+| GET | `/api/system/health/status` | Simple health check for load balancers |
 | GET | `/debug/routes` | List all registered routes |
+
+### Deployment Status (`/api/deployment`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/deployment/status` | Get comprehensive deployment status |
+
+**Deployment Status Response:**
+```json
+{
+  "git": {
+    "branch": "claude/check-project-status-y4koZ",
+    "commit": "cc16a31",
+    "dirty": false,
+    "behind_remote": 0
+  },
+  "containers": {
+    "backend": {"status": "running", "container_id": "abc123"},
+    "postgres": {"status": "running", "container_id": "def456"},
+    "redis": {"status": "running", "container_id": "ghi789"},
+    "qdrant": {"status": "running", "container_id": "jkl012"}
+  },
+  "services": {
+    "api": {"status": "reachable", "response_time_ms": 12.3},
+    "postgres": {"status": "reachable", "response_time_ms": 5.1},
+    "redis": {"status": "reachable", "response_time_ms": 2.8},
+    "qdrant": {"status": "reachable", "response_time_ms": 15.2}
+  },
+  "environment": "development",
+  "version": "0.6.1"
+}
+```
 
 ### Agent System (`/api/agents`)
 
@@ -3297,6 +3332,98 @@ test("renders missions dashboard", async () => {
    - Set appropriate `refetchInterval` for live data
    - Use `staleTime` to reduce unnecessary refetches
    - Implement optimistic updates for better UX
+
+---
+
+## CLI Tools
+
+### BRAiN CLI (`brain-cli`)
+
+Command-line interface for BRAiN system management and monitoring.
+
+**Installation:**
+```bash
+cd backend
+pip install -e .
+```
+
+**Status Command:**
+
+Check BRAiN system status and health.
+
+```bash
+# Show detailed status (default)
+brain-cli status
+
+# Show JSON output
+brain-cli status --format=json
+
+# Show one-line summary
+brain-cli status --format=summary
+
+# Watch mode (updates every 5s)
+brain-cli status --watch
+
+# Custom API URL
+brain-cli status --api-url=http://localhost:8001
+```
+
+**Output includes:**
+- Overall system health status (healthy/degraded/critical)
+- Immune system metrics (active/critical issues, event rates)
+- Mission system statistics (queue depth, running/pending missions, completion rate)
+- Agent system information (total/active/idle agents, utilization)
+- Performance metrics (latency, memory, CPU usage, edge-of-chaos score)
+- Bottleneck detection with severity levels
+- Optimization recommendations with priority levels
+
+**Example Output:**
+```
+╭─────────────────────────────────────────────────────────╮
+│       BRAiN System Status Report                        │
+│  Timestamp: 2026-01-13 10:30:45 UTC                    │
+╰─────────────────────────────────────────────────────────╯
+
+Overall Status: ✅ HEALTHY
+Uptime: 2h 34m 12s
+
+🛡️  Immune System
+────────────────────────────────────────────────────────────
+  Status: ✅ HEALTHY
+  Active Issues: 0
+  Critical Issues: 0
+  Event Rate: 42.5 events/min
+
+📋 Mission System
+────────────────────────────────────────────────────────────
+  Queue Depth: 5
+  Running: 2
+  Pending: 3
+  Completion Rate: 95.2%
+
+🤖 Agent System
+────────────────────────────────────────────────────────────
+  Total Agents: 4
+  Active: 0
+  Idle: 0
+  Utilization: 0.0%
+
+📊 Performance Metrics
+────────────────────────────────────────────────────────────
+  Avg Latency: 45.2ms
+  P95 Latency: 123.4ms
+  Memory Usage: 512.3 MB
+  CPU Usage: 35.2%
+  Edge-of-Chaos Score: 0.65
+```
+
+**Other Commands:**
+- `brain-cli module-create <name>` - Create new module skeleton
+- `brain-cli module-check` - Check module structure
+- `brain-cli dev-up` - Start docker-compose
+- `brain-cli dev-test [path]` - Run tests
+
+**Documentation:** See `backend/brain_cli/README.md` for complete CLI documentation.
 
 ---
 

@@ -219,24 +219,39 @@ class SystemHealthService:
 
     async def _get_mission_health(self) -> Optional[MissionHealthData]:
         """Get health data from Mission System"""
-        # TODO: Implement when MissionService health API is available
-        # For now, return mock data
-        return MissionHealthData(
-            queue_depth=0,
-            running_missions=0,
-            pending_missions=0,
-            completed_today=0,
-            failed_today=0,
-        )
+        try:
+            from modules.missions.queue import MissionQueue
+            from app.core.config import get_settings
+
+            settings = get_settings()
+            queue = MissionQueue(redis_url=settings.REDIS_URL)
+            metrics = await queue.get_health_metrics()
+
+            return MissionHealthData(**metrics)
+        except Exception as e:
+            logger.error(f"Failed to get mission health: {e}")
+            # Return None to indicate health check failed
+            return None
 
     async def _get_agent_health(self) -> Optional[AgentHealthData]:
         """Get health data from Agent System"""
-        # TODO: Implement when AgentManager health API is available
-        return AgentHealthData(
-            total_agents=0,
-            active_agents=0,
-            idle_agents=0,
-        )
+        try:
+            # Use hardcoded agent list from agents.py as a basic count
+            # TODO: Implement proper agent registry with runtime state tracking
+            from app.api.routes.agents import AGENTS
+
+            total = len(AGENTS)
+
+            # Runtime state tracking not yet implemented
+            # This would require tracking which agents are actively executing missions
+            return AgentHealthData(
+                total_agents=total,
+                active_agents=0,  # Requires runtime state tracking
+                idle_agents=0,    # Requires runtime state tracking
+            )
+        except Exception as e:
+            logger.error(f"Failed to get agent health: {e}")
+            return None
 
     async def _get_audit_metrics(
         self,
