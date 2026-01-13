@@ -1,27 +1,9 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
-import {
-  fetchCoreHealth,
-  fetchMissionsHealth,
-  fetchSupervisorHealth,
-  fetchMissionsOverviewStats,
-  fetchThreatsOverviewStats,
-  fetchImmuneHealth,
-  type CoreHealth,
-  type MissionsHealth,
-  type SupervisorHealth,
-  type MissionsOverviewStats,
-  type ThreatsOverviewStats,
-  type ImmuneHealthSummary,
-} from "@/lib/dashboardApi";
-import { fetchMissions, type Mission } from "@/lib/missionsApi";
-
-type LoadState<T> = {
-  data?: T;
-  loading: boolean;
-  error?: string;
-};
+import React, { useMemo } from "react";
+import { useDashboardData } from "@/hooks/useDashboard";
+import { useMissions } from "@/hooks/useMissions";
+import type { Mission } from "@/lib/missionsApi";
 
 type MissionStatus = Mission["status"];
 
@@ -34,89 +16,38 @@ const STATUS_ORDER: MissionStatus[] = [
 ];
 
 export default function DashboardPage() {
-  const [coreHealth, setCoreHealth] = useState<LoadState<CoreHealth>>({
-    loading: true,
-  });
-  const [missionsHealth, setMissionsHealth] =
-    useState<LoadState<MissionsHealth>>({
-      loading: true,
+  // Fetch all dashboard data with React Query
+  const {
+    coreHealth,
+    missionsHealth,
+    supervisorHealth,
+    missionsStats,
+    threatsStats,
+    immuneHealth,
+    isLoading,
+    isError,
+    errors,
+  } = useDashboardData();
+
+  // Fetch missions list
+  const { data: missionsData, isLoading: missionsLoading, error: missionsError } = useMissions();
+
+  // Sort missions by status and date
+  const sortedMissions = useMemo(() => {
+    if (!missionsData) return [];
+    return [...missionsData].sort((a, b) => {
+      const ai = STATUS_ORDER.indexOf(a.status);
+      const bi = STATUS_ORDER.indexOf(b.status);
+      const ascore = ai === -1 ? STATUS_ORDER.length : ai;
+      const bscore = bi === -1 ? STATUS_ORDER.length : bi;
+      if (ascore !== bscore) return ascore - bscore;
+      const at = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const bt = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return bt - at;
     });
-  const [supervisorHealth, setSupervisorHealth] =
-    useState<LoadState<SupervisorHealth>>({
-      loading: true,
-    });
-  const [missionsStats, setMissionsStats] =
-    useState<LoadState<MissionsOverviewStats>>({
-      loading: true,
-    });
-  const [threatsStats, setThreatsStats] =
-    useState<LoadState<ThreatsOverviewStats>>({
-      loading: true,
-    });
-  const [immuneState, setImmuneState] =
-    useState<LoadState<ImmuneHealthSummary>>({
-      loading: true,
-    });
-  const [missionsState, setMissionsState] = useState<LoadState<Mission[]>>({
-    loading: true,
-  });
+  }, [missionsData]);
 
-  useEffect(() => {
-    fetchCoreHealth()
-      .then((d) => setCoreHealth({ data: d, loading: false }))
-      .catch((e) =>
-        setCoreHealth({ loading: false, error: String(e) }),
-      );
-
-    fetchMissionsHealth()
-      .then((d) => setMissionsHealth({ data: d, loading: false }))
-      .catch((e) =>
-        setMissionsHealth({ loading: false, error: String(e) }),
-      );
-
-    fetchSupervisorHealth()
-      .then((d) => setSupervisorHealth({ data: d, loading: false }))
-      .catch((e) =>
-        setSupervisorHealth({ loading: false, error: String(e) }),
-      );
-
-    fetchMissionsOverviewStats()
-      .then((d) => setMissionsStats({ data: d, loading: false }))
-      .catch((e) =>
-        setMissionsStats({ loading: false, error: String(e) }),
-      );
-
-    fetchThreatsOverviewStats()
-      .then((d) => setThreatsStats({ data: d, loading: false }))
-      .catch((e) =>
-        setThreatsStats({ loading: false, error: String(e) }),
-      );
-
-    fetchImmuneHealth()
-      .then((d) => setImmuneState({ data: d, loading: false }))
-      .catch((e) =>
-        setImmuneState({ loading: false, error: String(e) }),
-      );
-
-    fetchMissions()
-      .then((list) => {
-        const sorted = [...list].sort((a, b) => {
-          const ai = STATUS_ORDER.indexOf(a.status);
-          const bi = STATUS_ORDER.indexOf(b.status);
-          const ascore = ai === -1 ? STATUS_ORDER.length : ai;
-          const bscore = bi === -1 ? STATUS_ORDER.length : bi;
-          if (ascore !== bscore) return ascore - bscore;
-          const at = a.created_at ? new Date(a.created_at).getTime() : 0;
-          const bt = b.created_at ? new Date(b.created_at).getTime() : 0;
-          return bt - at;
-        });
-        setMissionsState({ data: sorted, loading: false });
-      })
-      .catch((e) =>
-        setMissionsState({ loading: false, error: String(e) }),
-      );
-  }, []);
-
+  // Extract data with fallbacks
   const coreStatus = coreHealth.data?.status ?? "unknown";
   const missionsRunning = missionsHealth.data?.running ?? 0;
   const missionsPending = missionsHealth.data?.pending ?? 0;
@@ -132,11 +63,11 @@ export default function DashboardPage() {
   const threatsTotal = threatsStats.data?.total ?? 0;
   const threatsCritical = threatsStats.data?.critical ?? 0;
 
-  const immuneCritical = immuneState.data?.critical_issues ?? 0;
+  const immuneCritical = immuneHealth.data?.critical_issues ?? 0;
 
   const latestMissions = useMemo(
-    () => (missionsState.data ?? []).slice(0, 5),
-    [missionsState.data],
+    () => sortedMissions.slice(0, 5),
+    [sortedMissions],
   );
 
   return (
@@ -159,8 +90,8 @@ export default function DashboardPage() {
               ? `Version: ${coreHealth.data.version}`
               : undefined,
           ].filter(Boolean) as string[]}
-          loading={coreHealth.loading}
-          error={coreHealth.error}
+          loading={coreHealth.isLoading}
+          error={coreHealth.error?.message}
         />
         <MissionsSummaryCard
           title="MISSIONS"
@@ -169,8 +100,8 @@ export default function DashboardPage() {
           pending={missionsPending}
           completed={missionsCompleted}
           failed={missionsFailed}
-          loading={missionsHealth.loading || missionsStats.loading}
-          error={missionsHealth.error || missionsStats.error}
+          loading={missionsHealth.isLoading || missionsStats.isLoading}
+          error={missionsHealth.error?.message || missionsStats.error?.message}
         />
         <SupervisorSummaryCard
           title="SUPERVISOR"
@@ -179,8 +110,8 @@ export default function DashboardPage() {
           completed={supervisorCompleted}
           failed={supervisorFailed}
           cancelled={supervisorCancelled}
-          loading={supervisorHealth.loading}
-          error={supervisorHealth.error}
+          loading={supervisorHealth.isLoading}
+          error={supervisorHealth.error?.message}
         />
       </section>
 
@@ -189,18 +120,18 @@ export default function DashboardPage() {
         <ImmuneThreatsCard
           threatsTotal={threatsTotal}
           threatsCritical={threatsCritical}
-          activeIssues={immuneState.data?.active_issues ?? 0}
+          activeIssues={immuneHealth.data?.active_issues ?? 0}
           criticalIssues={immuneCritical}
-          loading={immuneState.loading || threatsStats.loading}
-          error={immuneState.error || threatsStats.error}
+          loading={immuneHealth.isLoading || threatsStats.isLoading}
+          error={immuneHealth.error?.message || threatsStats.error?.message}
         />
       </section>
 
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <LatestMissionsCard
           missions={latestMissions}
-          loading={missionsState.loading}
-          error={missionsState.error}
+          loading={missionsLoading}
+          error={missionsError?.message}
         />
         <QuickActionsCard />
       </section>
