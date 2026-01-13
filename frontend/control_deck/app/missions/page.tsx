@@ -1,25 +1,12 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
-import {
-  createMission,
-  fetchMissions,
-  updateMissionStatus,
-  type Mission,
-  type MissionStatus,
-} from "@/lib/missionsApi";
-
-type LoadState<T> = {
-  data?: T;
-  loading: boolean;
-  error?: string;
-};
+import React, { useMemo, useState } from "react";
+import { useMissions, useCreateMission, useUpdateMission } from "@/hooks/useMissions";
+import type { Mission, MissionStatus } from "@/lib/missionsApi";
 
 type FormState = {
   name: string;
   description: string;
-  submitting: boolean;
-  error?: string;
 };
 
 const STATUS_ORDER: MissionStatus[] = [
@@ -31,81 +18,60 @@ const STATUS_ORDER: MissionStatus[] = [
 ];
 
 export default function MissionsOverviewPage() {
-  const [missionsState, setMissionsState] = useState<LoadState<Mission[]>>({
-    loading: true,
-  });
   const [formState, setFormState] = useState<FormState>({
     name: "",
     description: "",
-    submitting: false,
   });
 
-  useEffect(() => {
-    loadMissions();
-  }, []);
+  // React Query hooks - automatic fetching, caching, and refetching
+  const { data: rawMissions, isLoading, error } = useMissions();
+  const createMissionMutation = useCreateMission();
+  const updateMissionMutation = useUpdateMission();
 
-  async function loadMissions() {
-    setMissionsState((prev) => ({ ...prev, loading: true, error: undefined }));
-    try {
-      const missions = await fetchMissions();
-      missions.sort((a, b) => {
-        const ai = STATUS_ORDER.indexOf(a.status);
-        const bi = STATUS_ORDER.indexOf(b.status);
-        const ascore = ai === -1 ? STATUS_ORDER.length : ai;
-        const bscore = bi === -1 ? STATUS_ORDER.length : bi;
-        if (ascore !== bscore) return ascore - bscore;
-        const at = a.created_at ? new Date(a.created_at).getTime() : 0;
-        const bt = b.created_at ? new Date(b.created_at).getTime() : 0;
-        return bt - at;
-      });
-      setMissionsState({ data: missions, loading: false });
-    } catch (err) {
-      setMissionsState({
-        loading: false,
-        error: String(err),
-      });
-    }
-  }
+  // Sort missions by status priority, then by created_at
+  const sortedMissions = useMemo(() => {
+    if (!rawMissions) return [];
+    const missions = [...rawMissions];
+    missions.sort((a, b) => {
+      const ai = STATUS_ORDER.indexOf(a.status);
+      const bi = STATUS_ORDER.indexOf(b.status);
+      const ascore = ai === -1 ? STATUS_ORDER.length : ai;
+      const bscore = bi === -1 ? STATUS_ORDER.length : bi;
+      if (ascore !== bscore) return ascore - bscore;
+      const at = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const bt = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return bt - at;
+    });
+    return missions;
+  }, [rawMissions]);
 
-  async function handleCreateMission(e: React.FormEvent) {
+  function handleCreateMission(e: React.FormEvent) {
     e.preventDefault();
     if (!formState.name.trim()) return;
-    setFormState((prev) => ({
-      ...prev,
-      submitting: true,
-      error: undefined,
-    }));
-    try {
-      await createMission({
+
+    createMissionMutation.mutate(
+      {
         name: formState.name.trim(),
         description: formState.description.trim() || undefined,
-      });
-      setFormState({
-        name: "",
-        description: "",
-        submitting: false,
-      });
-      await loadMissions();
-    } catch (err) {
-      setFormState((prev) => ({
-        ...prev,
-        submitting: false,
-        error: String(err),
-      }));
-    }
+      },
+      {
+        onSuccess: () => {
+          // Reset form on success
+          setFormState({ name: "", description: "" });
+        },
+      }
+    );
   }
 
-  async function handleStatusChange(id: string, status: MissionStatus) {
-    try {
-      await updateMissionStatus(id, status);
-      await loadMissions();
-    } catch (err) {
-      console.error(err);
-    }
+  function handleStatusChange(id: string, status: MissionStatus) {
+    updateMissionMutation.mutate({
+      id,
+      payload: { status },
+    });
   }
 
   const stats = useMemo(() => {
-    const list = missionsState.data ?? [];
+    const list = sortedMissions ?? [];
     const byStatus: Record<string, number> = {};
     for (const m of list) {
       const key = m.status ?? "UNKNOWN";
@@ -119,7 +85,7 @@ export default function MissionsOverviewPage() {
       failed: byStatus.FAILED ?? 0,
       cancelled: byStatus.CANCELLED ?? 0,
     };
-  }, [missionsState.data]);
+  }, [sortedMissions]);
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -176,16 +142,18 @@ export default function MissionsOverviewPage() {
               />
             </div>
 
-            {formState.error && (
-              <div className="text-xs text-red-400">{formState.error}</div>
+            {createMissionMutation.error && (
+              <div className="text-xs text-red-400">
+                {createMissionMutation.error.message}
+              </div>
             )}
 
             <button
               type="submit"
-              disabled={formState.submitting || !formState.name.trim()}
+              disabled={createMissionMutation.isPending || !formState.name.trim()}
               className="mt-1 inline-flex h-9 items-center justify-center rounded-full bg-emerald-600 px-4 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {formState.submitting ? "Wird angelegt…" : "Mission anlegen"}
+              {createMissionMutation.isPending ? "Wird angelegt…" : "Mission anlegen"}
             </button>
           </form>
         </div>
@@ -193,27 +161,27 @@ export default function MissionsOverviewPage() {
         <div className="lg:col-span-2 rounded-2xl border border-neutral-800 bg-neutral-900/70 p-4">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-white">Live Missions</h2>
-            {missionsState.loading && (
+            {isLoading && (
               <span className="text-xs text-neutral-500">Lade…</span>
             )}
           </div>
 
-          {missionsState.error && (
+          {error && (
             <div className="text-xs text-red-400">
               Missionen konnten nicht geladen werden:
               <br />
-              {missionsState.error}
+              {error.message}
             </div>
           )}
 
-          {!missionsState.loading && (missionsState.data ?? []).length === 0 && (
+          {!isLoading && sortedMissions.length === 0 && (
             <div className="text-xs text-neutral-500">
               Noch keine Missionen angelegt.
             </div>
           )}
 
           <div className="flex flex-col gap-2">
-            {(missionsState.data ?? []).map((mission) => (
+            {sortedMissions.map((mission) => (
               <MissionRow
                 key={mission.id}
                 mission={mission}
