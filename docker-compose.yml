@@ -16,11 +16,31 @@ services:
       - mw0ck04s8go048c0g4so48cc
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.backend.rule=Host(`dev.brain.falklabs.de`)"
-      - "traefik.http.routers.backend.entrypoints=https"
-      - "traefik.http.routers.backend.tls=true"
-      - "traefik.http.routers.backend.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.backend.priority=10"
+      # Backend API Router - High Priority
+      - "traefik.http.routers.backend-api.rule=Host(`dev.brain.falklabs.de`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.backend-api.priority=100"
+      - "traefik.http.routers.backend-api.entrypoints=https"
+      - "traefik.http.routers.backend-api.tls=true"
+      - "traefik.http.routers.backend-api.service=backend"
+      # Backend Docs Router - High Priority
+      - "traefik.http.routers.backend-docs.rule=Host(`dev.brain.falklabs.de`) && PathPrefix(`/docs`)"
+      - "traefik.http.routers.backend-docs.priority=100"
+      - "traefik.http.routers.backend-docs.entrypoints=https"
+      - "traefik.http.routers.backend-docs.tls=true"
+      - "traefik.http.routers.backend-docs.service=backend"
+      # Backend Redoc Router - High Priority
+      - "traefik.http.routers.backend-redoc.rule=Host(`dev.brain.falklabs.de`) && PathPrefix(`/redoc`)"
+      - "traefik.http.routers.backend-redoc.priority=100"
+      - "traefik.http.routers.backend-redoc.entrypoints=https"
+      - "traefik.http.routers.backend-redoc.tls=true"
+      - "traefik.http.routers.backend-redoc.service=backend"
+      # Backend OpenAPI Router - High Priority
+      - "traefik.http.routers.backend-openapi.rule=Host(`dev.brain.falklabs.de`) && Path(`/openapi.json`)"
+      - "traefik.http.routers.backend-openapi.priority=100"
+      - "traefik.http.routers.backend-openapi.entrypoints=https"
+      - "traefik.http.routers.backend-openapi.tls=true"
+      - "traefik.http.routers.backend-openapi.service=backend"
+      # Backend Service (shared by all routers)
       - "traefik.http.services.backend.loadbalancer.server.port=8000"
 
   control_deck:
