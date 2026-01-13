@@ -16,7 +16,7 @@ services:
       - mw0ck04s8go048c0g4so48cc
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.backend.rule=Host(`dev.brain.falklabs.de`) && (PathPrefix(`/api`) || PathPrefix(`/docs`) || PathPrefix(`/redoc`) || Path(`/openapi.json`))"
+      - "traefik.http.routers.backend.rule=Host(`dev.brain.falklabs.de`)"
       - "traefik.http.routers.backend.entrypoints=https"
       - "traefik.http.routers.backend.tls=true"
       - "traefik.http.routers.backend.tls.certresolver=letsencrypt"
