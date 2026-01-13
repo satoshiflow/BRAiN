@@ -145,7 +145,7 @@ class DeploymentService:
 
             # Parse DATABASE_URL to extract connection parameters
             # Format: postgresql://user:pass@host:port/database
-            url = str(settings.DATABASE_URL)
+            url = str(settings.database_url)
             conn = await asyncio.wait_for(
                 asyncpg.connect(url),
                 timeout=5.0,
@@ -178,7 +178,7 @@ class DeploymentService:
             settings = get_settings()
             start_time = time.time()
 
-            r = redis.from_url(str(settings.REDIS_URL), decode_responses=True)
+            r = redis.from_url(str(settings.redis_url), decode_responses=True)
             await asyncio.wait_for(r.ping(), timeout=5.0)
             await r.aclose()
 
@@ -209,7 +209,7 @@ class DeploymentService:
             start_time = time.time()
 
             # Qdrant health check endpoint
-            qdrant_url = f"{settings.QDRANT_HOST}:{settings.QDRANT_PORT}/health"
+            qdrant_url = f"{settings.qdrant_host}:{settings.qdrant_port}/health"
 
             async with httpx.AsyncClient() as client:
                 response = await asyncio.wait_for(
