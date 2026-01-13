@@ -25,7 +25,7 @@ async def get_deployment_status():
     try:
         settings = get_settings()
         service = DeploymentService(
-            environment=settings.ENVIRONMENT,
+            environment=settings.environment,
             version="0.6.1",  # TODO: Read from version file
         )
 
