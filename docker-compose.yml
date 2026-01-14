@@ -2,6 +2,8 @@ services:
   backend:
     build:
       context: ./backend
+    expose:
+      - "8000"  # Required for Traefik to discover backend port
     env_file:
       - .env
     depends_on:
