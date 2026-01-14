@@ -3,6 +3,7 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { API_BASE } from "@/lib/api";
 
 // ============================================================================
 // Types
@@ -63,8 +64,6 @@ function getAuthHeaders(): Record<string, string> {
   }
   return {};
 }
-
-const API_BASE = process.env.NEXT_PUBLIC_BRAIN_API_BASE ?? "http://localhost:8000";
 
 async function authenticatedRequest<T>(
   method: string,

@@ -11,6 +11,16 @@ import {
   Shield,
   Settings2,
   Workflow,
+  Radio,
+  Cpu,
+  Dna,
+  Database,
+  Coins,
+  GraduationCap,
+  Briefcase,
+  Scale,
+  Users,
+  Boxes,
 } from "lucide-react";
 
 import { NavMain } from "@/components/nav-main";
@@ -143,6 +153,94 @@ const data = {
         {
           title: "Events",
           url: "/immune/events",
+        },
+      ],
+    },
+    {
+      title: "System Monitoring",
+      url: "/telemetry",
+      icon: Radio,
+      isActive: false,
+      items: [
+        {
+          title: "Telemetry",
+          url: "/telemetry",
+        },
+        {
+          title: "Hardware",
+          url: "/hardware",
+        },
+      ],
+    },
+    {
+      title: "AI Evolution",
+      url: "/dna",
+      icon: Dna,
+      isActive: false,
+      items: [
+        {
+          title: "DNA Evolution",
+          url: "/dna",
+        },
+        {
+          title: "Knowledge Graph",
+          url: "/knowledge-graph",
+        },
+      ],
+    },
+    {
+      title: "Governance",
+      url: "/policy-engine",
+      icon: Scale,
+      isActive: false,
+      items: [
+        {
+          title: "Policy Engine",
+          url: "/policy-engine",
+        },
+        {
+          title: "Constitutional Agents",
+          url: "/constitutional",
+        },
+      ],
+    },
+    {
+      title: "Resources",
+      url: "/credits",
+      icon: Coins,
+      isActive: false,
+      items: [
+        {
+          title: "Credits System",
+          url: "/credits",
+        },
+      ],
+    },
+    {
+      title: "Education",
+      url: "/courses",
+      icon: GraduationCap,
+      isActive: false,
+      items: [
+        {
+          title: "Course Factory",
+          url: "/courses",
+        },
+        {
+          title: "Business Factory",
+          url: "/business",
+        },
+      ],
+    },
+    {
+      title: "Fleet Management",
+      url: "/fleet-management",
+      icon: Boxes,
+      isActive: false,
+      items: [
+        {
+          title: "Fleet Overview",
+          url: "/fleet-management",
         },
       ],
     },
