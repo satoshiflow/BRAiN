@@ -14,6 +14,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { API_BASE } from "@/lib/api";
 
 // ============================================================================
 // Types
@@ -115,7 +116,6 @@ export interface RefundCreditsResponse {
 // API Client
 // ============================================================================
 
-const API_BASE = process.env.NEXT_PUBLIC_BRAIN_API_BASE ?? "http://localhost:8000";
 
 async function apiCall<T>(
   endpoint: string,
