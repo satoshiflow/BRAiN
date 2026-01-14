@@ -2,11 +2,8 @@ services:
   backend:
     build:
       context: ./backend
-    container_name: brain-backend
     env_file:
       - .env
-    # ports:
-    #   - "8000:8000"  # Removed for Coolify - Traefik handles routing
     depends_on:
       - postgres
       - redis
@@ -14,83 +11,33 @@ services:
     networks:
       - brain_internal
       - mw0ck04s8go048c0g4so48cc
-    labels:
-      - "traefik.enable=true"
-      # Backend API Router - High Priority
-      - "traefik.http.routers.backend-api.rule=Host(`dev.brain.falklabs.de`) && PathPrefix(`/api`)"
-      - "traefik.http.routers.backend-api.priority=100"
-      - "traefik.http.routers.backend-api.entrypoints=https"
-      - "traefik.http.routers.backend-api.tls=true"
-      - "traefik.http.routers.backend-api.service=backend"
-      # Backend Docs Router - High Priority
-      - "traefik.http.routers.backend-docs.rule=Host(`dev.brain.falklabs.de`) && PathPrefix(`/docs`)"
-      - "traefik.http.routers.backend-docs.priority=100"
-      - "traefik.http.routers.backend-docs.entrypoints=https"
-      - "traefik.http.routers.backend-docs.tls=true"
-      - "traefik.http.routers.backend-docs.service=backend"
-      # Backend Redoc Router - High Priority
-      - "traefik.http.routers.backend-redoc.rule=Host(`dev.brain.falklabs.de`) && PathPrefix(`/redoc`)"
-      - "traefik.http.routers.backend-redoc.priority=100"
-      - "traefik.http.routers.backend-redoc.entrypoints=https"
-      - "traefik.http.routers.backend-redoc.tls=true"
-      - "traefik.http.routers.backend-redoc.service=backend"
-      # Backend OpenAPI Router - High Priority
-      - "traefik.http.routers.backend-openapi.rule=Host(`dev.brain.falklabs.de`) && Path(`/openapi.json`)"
-      - "traefik.http.routers.backend-openapi.priority=100"
-      - "traefik.http.routers.backend-openapi.entrypoints=https"
-      - "traefik.http.routers.backend-openapi.tls=true"
-      - "traefik.http.routers.backend-openapi.service=backend"
-      # Backend Service (shared by all routers)
-      - "traefik.http.services.backend.loadbalancer.server.port=8000"
 
   control_deck:
     build:
       context: ./frontend/control_deck
-    container_name: brain-control-deck
     environment:
       - NEXT_PUBLIC_BRAIN_API_BASE=http://backend:8000
-    # ports:
-    #   - "3000:3000"  # Removed for Coolify - Traefik handles routing
     depends_on:
       - backend
     restart: unless-stopped
     networks:
       - brain_internal
       - mw0ck04s8go048c0g4so48cc
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.control_deck.rule=Host(`dev.brain.falklabs.de`)"
-      - "traefik.http.routers.control_deck.entrypoints=https"
-      - "traefik.http.routers.control_deck.tls=true"
-      - "traefik.http.routers.control_deck.tls.certresolver=letsencrypt"
-      - "traefik.http.services.control_deck.loadbalancer.server.port=3000"
-      - "traefik.http.routers.control_deck.priority=1"
 
   axe_ui:
     build:
       context: ./frontend/axe_ui
-    container_name: brain-axe-ui
     environment:
       - NEXT_PUBLIC_BRAIN_API_BASE=http://backend:8000
-    # ports:
-    #   - "3001:3000"  # Removed for Coolify - Traefik handles routing
     depends_on:
       - backend
     restart: unless-stopped
     networks:
       - brain_internal
       - mw0ck04s8go048c0g4so48cc
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.axe_ui.rule=Host(`axe.dev.brain.falklabs.de`)"
-      - "traefik.http.routers.axe_ui.entrypoints=https"
-      - "traefik.http.routers.axe_ui.tls=true"
-      - "traefik.http.routers.axe_ui.tls.certresolver=letsencrypt"
-      - "traefik.http.services.axe_ui.loadbalancer.server.port=3000"
 
   postgres:
     image: postgres:16
-    container_name: brain-postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-brain}
       POSTGRES_USER: ${POSTGRES_USER:-brain}
@@ -105,7 +52,6 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: brain-redis
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -119,7 +65,6 @@ services:
 
   qdrant:
     image: qdrant/qdrant:latest
-    container_name: brain-qdrant
     volumes:
       - brain_qdrant_data:/qdrant/storage
     # ports:
@@ -130,7 +75,6 @@ services:
 
   ollama:
     image: ollama/ollama:latest
-    container_name: brain-ollama
     volumes:
       - brain_ollama_data:/root/.ollama
     # ports:
