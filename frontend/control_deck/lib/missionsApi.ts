@@ -18,6 +18,17 @@ export type Mission = {
   updated_at?: string;
 };
 
+export type CreateMissionPayload = {
+  name: string;
+  description?: string;
+};
+
+export type UpdateMissionPayload = {
+  name?: string;
+  description?: string;
+  status?: MissionStatus;
+};
+
 type RawMission = any;
 
 function mapMission(raw: RawMission): Mission {
@@ -49,15 +60,30 @@ export async function fetchMissions(): Promise<Mission[]> {
   return Array.isArray(data) ? data.map(mapMission) : [];
 }
 
-export async function createMission(payload: {
-  name: string;
-  description?: string;
-}): Promise<Mission> {
+export async function createMission(
+  payload: CreateMissionPayload,
+): Promise<Mission> {
   const res = await fetch(`${API_BASE}/api/missions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+  const data = await handleJson<RawMission>(res);
+  return mapMission(data);
+}
+
+export async function updateMission(
+  missionId: string,
+  payload: UpdateMissionPayload,
+): Promise<Mission> {
+  const res = await fetch(
+    `${API_BASE}/api/missions/${encodeURIComponent(missionId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
   const data = await handleJson<RawMission>(res);
   return mapMission(data);
 }
