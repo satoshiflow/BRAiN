@@ -17,6 +17,8 @@ services:
   control_deck:
     build:
       context: ./frontend/control_deck
+    expose:
+      - "3000"  # Required for Traefik to discover frontend port
     environment:
       - NEXT_PUBLIC_BRAIN_API_BASE=http://backend:8000
     depends_on:
@@ -29,6 +31,8 @@ services:
   axe_ui:
     build:
       context: ./frontend/axe_ui
+    expose:
+      - "3000"  # Required for Traefik to discover frontend port
     environment:
       - NEXT_PUBLIC_BRAIN_API_BASE=http://backend:8000
     depends_on:
