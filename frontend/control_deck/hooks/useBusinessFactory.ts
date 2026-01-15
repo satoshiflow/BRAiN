@@ -121,70 +121,161 @@ export interface ProcessExecution {
 }
 
 // ============================================================================
-// API Functions (Placeholder - will be implemented when backend is ready)
+// API Functions
 // ============================================================================
 
 async function fetchProcessStats(): Promise<ProcessStats> {
-  // TODO: Implement when backend endpoint is ready
-  // For now, return mock data
+  const response = await fetch(`${API_BASE}/api/business/processes`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch process stats: ${response.statusText}`);
+  }
+  const data = await response.json();
+
+  // Calculate stats from processes list
+  const processes = data.processes || [];
+  const totalExecutions = processes.reduce((sum: number, p: any) => sum + (p.total_executions || 0), 0);
+  const successfulExecutions = processes.reduce((sum: number, p: any) => sum + (p.successful_executions || 0), 0);
+  const failedExecutions = processes.reduce((sum: number, p: any) => sum + (p.failed_executions || 0), 0);
+
+  const processesByCategory = processes.reduce((acc: Record<string, number>, p: any) => {
+    const category = p.category || 'Uncategorized';
+    acc[category] = (acc[category] || 0) + 1;
+    return acc;
+  }, {});
+
   return {
-    total_processes: 18,
-    active: 12,
-    draft: 5,
-    deprecated: 1,
-    processes_by_category: {
-      'Sales': 5,
-      'Support': 4,
-      'Operations': 3,
-      'Marketing': 3,
-      'Finance': 3,
-    },
-    total_executions: 2847,
-    successful_executions: 2653,
-    failed_executions: 194,
-    average_success_rate: 93.2,
-    total_steps: 89,
+    total_processes: data.total || 0,
+    active: processes.filter((p: any) => p.enabled).length,
+    draft: processes.filter((p: any) => !p.enabled).length,
+    deprecated: 0,
+    processes_by_category: processesByCategory,
+    total_executions: totalExecutions,
+    successful_executions: successfulExecutions,
+    failed_executions: failedExecutions,
+    average_success_rate: totalExecutions > 0 ? (successfulExecutions / totalExecutions) * 100 : 0,
+    total_steps: processes.reduce((sum: number, p: any) => sum + (p.steps?.length || 0), 0),
   };
 }
 
 async function fetchBusinessProcesses(): Promise<BusinessProcess[]> {
-  // TODO: Implement when backend endpoint is ready
-  return [];
+  const response = await fetch(`${API_BASE}/api/business/processes`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch processes: ${response.statusText}`);
+  }
+  const data = await response.json();
+  return data.processes || [];
 }
 
 async function fetchBusinessProcess(id: string): Promise<BusinessProcess> {
-  // TODO: Implement when backend endpoint is ready
-  throw new Error('Not implemented');
+  const response = await fetch(`${API_BASE}/api/business/processes/${id}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch process: ${response.statusText}`);
+  }
+  return await response.json();
 }
 
 async function createBusinessProcess(request: CreateProcessRequest): Promise<BusinessProcess> {
-  // TODO: Implement when backend endpoint is ready
-  throw new Error('Not implemented');
+  const response = await fetch(`${API_BASE}/api/business/processes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to create process: ${response.statusText}`);
+  }
+  return await response.json();
 }
 
 async function updateBusinessProcess(id: string, request: UpdateProcessRequest): Promise<BusinessProcess> {
-  // TODO: Implement when backend endpoint is ready
-  throw new Error('Not implemented');
+  const response = await fetch(`${API_BASE}/api/business/processes/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to update process: ${response.statusText}`);
+  }
+  return await response.json();
 }
 
 async function deleteBusinessProcess(id: string): Promise<void> {
-  // TODO: Implement when backend endpoint is ready
-  throw new Error('Not implemented');
+  const response = await fetch(`${API_BASE}/api/business/processes/${id}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to delete process: ${response.statusText}`);
+  }
 }
 
 async function duplicateBusinessProcess(id: string, newName: string): Promise<BusinessProcess> {
-  // TODO: Implement when backend endpoint is ready
-  throw new Error('Not implemented');
+  // Fetch original process
+  const original = await fetchBusinessProcess(id);
+
+  // Create duplicate with new name
+  const duplicate: CreateProcessRequest = {
+    name: newName,
+    description: original.description,
+    category: original.category,
+    status: 'draft' as ProcessStatus,
+    triggers: original.triggers,
+    steps: original.steps,
+    variables: original.variables,
+    tags: original.tags,
+  };
+
+  return await createBusinessProcess(duplicate);
 }
 
 async function executeBusinessProcess(request: ExecuteProcessRequest): Promise<ExecuteProcessResponse> {
-  // TODO: Implement when backend endpoint is ready
-  throw new Error('Not implemented');
+  const response = await fetch(`${API_BASE}/api/business/processes/${request.process_id}/execute`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      input_data: request.input_variables,
+      triggered_by: 'ui_user',
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to execute process: ${response.statusText}`);
+  }
+  const execution = await response.json();
+
+  return {
+    execution_id: execution.id,
+    process_id: execution.process_id,
+    status: execution.status === 'pending' ? 'running' : execution.status,
+    started_at: execution.created_at,
+    completed_at: execution.completed_at,
+    result: execution.output_data,
+    error: execution.error_message,
+  };
 }
 
 async function fetchProcessExecutions(processId?: string): Promise<ProcessExecution[]> {
-  // TODO: Implement when backend endpoint is ready
-  return [];
+  const url = processId
+    ? `${API_BASE}/api/business/processes/${processId}/executions`
+    : `${API_BASE}/api/business/executions`;
+
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch executions: ${response.statusText}`);
+  }
+  const data = await response.json();
+  const executions = data.executions || [];
+
+  return executions.map((exec: any) => ({
+    id: exec.id,
+    process_id: exec.process_id,
+    process_name: '', // Not returned by backend
+    status: exec.status,
+    started_at: exec.started_at || exec.created_at,
+    completed_at: exec.completed_at,
+    duration_ms: exec.duration_seconds ? exec.duration_seconds * 1000 : undefined,
+    steps_completed: 0, // Not tracked yet
+    steps_total: 0, // Not tracked yet
+    result: exec.output_data,
+    error: exec.error_message,
+  }));
 }
 
 // ============================================================================

@@ -102,68 +102,137 @@ export interface DuplicateCourseResponse {
 }
 
 // ============================================================================
-// API Functions (Placeholder - will be implemented when backend is ready)
+// API Functions
 // ============================================================================
 
 async function fetchCourseStats(): Promise<CourseStats> {
-  // TODO: Implement when backend endpoint is ready
-  // For now, return mock data
+  const response = await fetch(`${API_BASE}/api/courses/stats`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch course stats: ${response.statusText}`);
+  }
+  const data = await response.json();
+
+  // Get templates for additional stats
+  const templatesResponse = await fetch(`${API_BASE}/api/courses/templates`);
+  if (!templatesResponse.ok) {
+    throw new Error(`Failed to fetch templates: ${templatesResponse.statusText}`);
+  }
+  const templatesData = await templatesResponse.json();
+  const templates = templatesData.courses || [];
+
+  const templatesByCategory = templates.reduce((acc: Record<string, number>, t: any) => {
+    const category = t.category || 'Uncategorized';
+    acc[category] = (acc[category] || 0) + 1;
+    return acc;
+  }, {});
+
+  const templatesByDifficulty = templates.reduce((acc: Record<DifficultyLevel, number>, t: any) => {
+    const difficulty = t.difficulty_level || 'beginner';
+    acc[difficulty as DifficultyLevel] = (acc[difficulty as DifficultyLevel] || 0) + 1;
+    return acc;
+  }, {} as Record<DifficultyLevel, number>);
+
+  const totalDuration = templates.reduce((sum: number, t: any) => sum + (t.estimated_duration_hours || 0), 0);
+
   return {
-    total_templates: 12,
-    published: 8,
-    draft: 3,
-    archived: 1,
-    templates_by_category: {
-      'Programming': 5,
-      'AI/ML': 3,
-      'DevOps': 2,
-      'Business': 2,
-    },
-    templates_by_difficulty: {
-      beginner: 4,
-      intermediate: 5,
-      advanced: 2,
-      expert: 1,
-    },
-    total_modules: 45,
-    total_lessons: 178,
-    average_duration_hours: 12.5,
+    total_templates: data.total_courses || 0,
+    published: data.published_courses || 0,
+    draft: data.draft_courses || 0,
+    archived: 0,
+    templates_by_category: templatesByCategory,
+    templates_by_difficulty: templatesByDifficulty,
+    total_modules: data.total_modules || 0,
+    total_lessons: data.total_lessons || 0,
+    average_duration_hours: templates.length > 0 ? totalDuration / templates.length : 0,
   };
 }
 
 async function fetchCourseTemplates(): Promise<CourseTemplate[]> {
-  // TODO: Implement when backend endpoint is ready
-  return [];
+  const response = await fetch(`${API_BASE}/api/courses/templates`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch course templates: ${response.statusText}`);
+  }
+  const data = await response.json();
+  return data.courses || [];
 }
 
 async function fetchCourseTemplate(id: string): Promise<CourseTemplate> {
-  // TODO: Implement when backend endpoint is ready
-  throw new Error('Not implemented');
+  const response = await fetch(`${API_BASE}/api/courses/templates/${id}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch course template: ${response.statusText}`);
+  }
+  return await response.json();
 }
 
 async function createCourseTemplate(request: CreateCourseRequest): Promise<CourseTemplate> {
-  // TODO: Implement when backend endpoint is ready
-  throw new Error('Not implemented');
+  const response = await fetch(`${API_BASE}/api/courses/templates`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to create course template: ${response.statusText}`);
+  }
+  return await response.json();
 }
 
 async function updateCourseTemplate(id: string, request: UpdateCourseRequest): Promise<CourseTemplate> {
-  // TODO: Implement when backend endpoint is ready
-  throw new Error('Not implemented');
+  const response = await fetch(`${API_BASE}/api/courses/templates/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to update course template: ${response.statusText}`);
+  }
+  return await response.json();
 }
 
 async function deleteCourseTemplate(id: string): Promise<void> {
-  // TODO: Implement when backend endpoint is ready
-  throw new Error('Not implemented');
+  const response = await fetch(`${API_BASE}/api/courses/templates/${id}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to delete course template: ${response.statusText}`);
+  }
 }
 
 async function duplicateCourseTemplate(id: string, newName: string): Promise<DuplicateCourseResponse> {
-  // TODO: Implement when backend endpoint is ready
-  throw new Error('Not implemented');
+  // Fetch original template
+  const original = await fetchCourseTemplate(id);
+
+  // Create duplicate with new name
+  const duplicate: CreateCourseRequest = {
+    name: newName,
+    description: original.description,
+    category: original.category,
+    difficulty: original.difficulty,
+    status: 'draft',
+    modules: original.modules,
+    prerequisites: original.prerequisites,
+    learning_objectives: original.learning_objectives,
+    tags: original.tags,
+  };
+
+  const newTemplate = await createCourseTemplate(duplicate);
+
+  return {
+    id: newTemplate.id,
+    name: newTemplate.name,
+    message: `Successfully duplicated course template as "${newName}"`,
+  };
 }
 
 async function publishCourseTemplate(id: string): Promise<CourseTemplate> {
-  // TODO: Implement when backend endpoint is ready
-  throw new Error('Not implemented');
+  const response = await fetch(`${API_BASE}/api/courses/templates/${id}/publish`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ publish: true }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to publish course template: ${response.statusText}`);
+  }
+  return await response.json();
 }
 
 // ============================================================================
