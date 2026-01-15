@@ -28,7 +28,7 @@ services:
       - "traefik.http.routers.http-0-mw0ck04s8go048c0g4so48cc-control_deck.service=control_deck"
       - "traefik.http.routers.https-0-mw0ck04s8go048c0g4so48cc-control_deck.service=control_deck"
     environment:
-      - NEXT_PUBLIC_BRAIN_API_BASE=http://backend:8000
+      - NEXT_PUBLIC_BRAIN_API_BASE=https://api.dev.brain.falklabs.de
     depends_on:
       - backend
     restart: unless-stopped
@@ -46,7 +46,7 @@ services:
       - "traefik.http.routers.http-0-mw0ck04s8go048c0g4so48cc-axe_ui.service=axe_ui"
       - "traefik.http.routers.https-0-mw0ck04s8go048c0g4so48cc-axe_ui.service=axe_ui"
     environment:
-      - NEXT_PUBLIC_BRAIN_API_BASE=http://backend:8000
+      - NEXT_PUBLIC_BRAIN_API_BASE=https://api.dev.brain.falklabs.de
     depends_on:
       - backend
     restart: unless-stopped

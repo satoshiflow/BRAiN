@@ -4162,6 +4162,146 @@ Then run:
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 ```
 
+### Coolify Deployment Best Practices
+
+**Context:** BRAiN is deployed on brain.falklabs.de using [Coolify v4](https://coolify.io/) (self-hosted PaaS) with Traefik v3 as reverse proxy.
+
+**Deployment URL Structure:**
+| Service | Subdomain | Port | Purpose |
+|---------|-----------|------|---------|
+| Backend API | api.dev.brain.falklabs.de | 8000 | REST API + WebSocket |
+| Control Deck | control.dev.brain.falklabs.de | 3000 | System Admin UI |
+| AXE UI | axe.dev.brain.falklabs.de | 3000 | Conversational Interface |
+
+#### Critical Traefik Labels
+
+**Problem:** Coolify does NOT auto-generate `traefik.http.services.*.loadbalancer.server.port` from `expose:` directives.
+
+**Solution:** Explicitly define all required labels in `docker-compose.yml`:
+
+```yaml
+services:
+  backend:
+    expose:
+      - "8000"
+    labels:
+      # Port discovery (REQUIRED)
+      - "traefik.http.services.backend.loadbalancer.server.port=8000"
+
+      # Router-to-service binding (REQUIRED for multiple services on same port)
+      - "traefik.http.routers.http-0-mw0ck04s8go048c0g4so48cc-backend.service=backend"
+      - "traefik.http.routers.https-0-mw0ck04s8go048c0g4so48cc-backend.service=backend"
+```
+
+**Why Router-to-Service Binding is Required:**
+- Coolify generates UUID-based router names (e.g., `http-0-mw0ck04s8go048c0g4so48cc-backend`)
+- When multiple services share the same port (3000 for frontends), Traefik cannot auto-match routers to services
+- Explicit binding: `traefik.http.routers.<router-name>.service=<service-name>` is mandatory
+
+**UUID Portability Note:**
+The `mw0ck04s8go048c0g4so48cc` UUID is specific to this Coolify project. When deploying to new servers, replace with the new project's UUID.
+
+#### Gateway Timeout Troubleshooting
+
+**Symptoms:**
+- `curl https://control.dev.brain.falklabs.de` → HTTP 504 Gateway Timeout
+- Container is running and healthy
+- Direct connection works: `docker exec coolify-proxy wget http://control_deck:3000` → HTML response
+- All Traefik labels are present
+
+**Root Cause:** Traefik Service Discovery Cache
+Traefik caches service discovery. If labels are added/changed after initial deployment, Traefik may not re-discover the service.
+
+**Solution: Force Service Re-Discovery**
+
+**Option A (Recommended):** Redeploy container
+```bash
+# Stop and remove container
+docker stop <container-name>
+docker rm <container-name>
+
+# Redeploy in Coolify UI
+Coolify → BRAiN Project → <Service> → "Deploy"
+```
+
+**Option B:** Restart Traefik
+```bash
+docker restart coolify-proxy
+# Wait 10s for service discovery
+sleep 10
+```
+
+**⚠️ Important:** Do NOT just `docker restart <container>` - this does NOT trigger Traefik re-discovery!
+
+#### Deployment Verification Script
+
+**Location:** `/root/brain-test-v2.sh` on production server
+
+**Usage:**
+```bash
+~/brain-test-v2.sh
+```
+
+**What it checks:**
+1. 🌐 External reachability (HTTP status codes)
+2. 🐳 Container status (running/stopped)
+3. 🏷️ Traefik labels (port + router-to-service binding)
+4. 🌐 DNS resolution (Docker network)
+5. 🔌 Direct container connectivity (bypass Traefik)
+6. 📋 Container logs (error detection)
+
+**Output:** Color-coded results with intelligent diagnosis and fix recommendations.
+
+**Expected Result:** 100% success rate (16/16 tests passed)
+
+#### Environment Variables Best Practices
+
+**Backend (.env):**
+```bash
+ENVIRONMENT=production
+REDIS_URL=redis://redis:6379/0  # Use Docker service name, NOT localhost
+CORS_ORIGINS=["https://api.dev.brain.falklabs.de","https://control.dev.brain.falklabs.de","https://axe.dev.brain.falklabs.de"]
+```
+
+**Frontend (docker-compose.yml):**
+```yaml
+environment:
+  # Use public API URL for browser access
+  - NEXT_PUBLIC_BRAIN_API_BASE=https://api.dev.brain.falklabs.de
+  # NOT: http://backend:8000 (only works inside Docker network)
+```
+
+#### Coolify Deployment Workflow
+
+1. **Code Changes:** Push to `claude/review-and-plan-TtwLT` branch
+2. **PR Review:** Create PR to `v2` branch
+3. **Merge:** Merge PR (Coolify should auto-deploy, but currently requires manual trigger)
+4. **Manual Deploy:** Coolify UI → BRAiN Project → "Deploy All" (or "Force Deploy" to rebuild)
+5. **Verify:** Run `~/brain-test-v2.sh` on server
+6. **Check Logs:** Coolify UI → <Service> → Logs
+
+#### Common Pitfalls
+
+1. **❌ Internal URLs in Frontend ENV**
+   Problem: `NEXT_PUBLIC_BRAIN_API_BASE=http://backend:8000`
+   Fix: Use public URL `https://api.dev.brain.falklabs.de`
+
+2. **❌ Missing Router-to-Service Binding**
+   Problem: Multiple services on port 3000, Traefik routes to wrong service
+   Fix: Add explicit `traefik.http.routers.<router>.service=<service>` labels
+
+3. **❌ Localhost in Backend Redis URL**
+   Problem: `REDIS_URL=redis://localhost:6379/0`
+   Fix: Use Docker service name `redis://redis:6379/0`
+
+4. **❌ CORS Wildcard in Production**
+   Problem: `CORS_ORIGINS=["*"]`
+   Fix: Restrict to specific domains
+
+5. **❌ Stopping Deployment Mid-Build**
+   Impact: Coolify deletes ALL containers (including databases)
+   Fix: Let deployments complete or use "Stop Deployment" carefully
+
 ### Manual Deployment Steps
 
 If automated scripts fail, perform manual deployment:
