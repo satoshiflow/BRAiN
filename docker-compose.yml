@@ -4,6 +4,8 @@ services:
       context: ./backend
     expose:
       - "8000"  # Required for Traefik to discover backend port
+    labels:
+      - "traefik.http.services.backend.loadbalancer.server.port=8000"
     env_file:
       - .env
     depends_on:
@@ -19,6 +21,8 @@ services:
       context: ./frontend/control_deck
     expose:
       - "3000"  # Required for Traefik to discover frontend port
+    labels:
+      - "traefik.http.services.control_deck.loadbalancer.server.port=3000"
     environment:
       - NEXT_PUBLIC_BRAIN_API_BASE=http://backend:8000
     depends_on:
@@ -33,6 +37,8 @@ services:
       context: ./frontend/axe_ui
     expose:
       - "3000"  # Required for Traefik to discover frontend port
+    labels:
+      - "traefik.http.services.axe_ui.loadbalancer.server.port=3000"
     environment:
       - NEXT_PUBLIC_BRAIN_API_BASE=http://backend:8000
     depends_on:
