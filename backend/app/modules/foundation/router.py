@@ -4,18 +4,23 @@ Foundation Module - API Routes
 FastAPI endpoints for Foundation layer operations.
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 from loguru import logger
 
 from .schemas import (
     FoundationConfig,
     FoundationStatus,
+    FoundationInfo,
     BehaviorTreeNode,
     BehaviorTreeExecutionResult,
     ActionValidationRequest,
     ActionValidationResponse,
+    AuthorizationRequest,
+    AuthorizationResponse,
+    AuditLogRequest,
+    AuditLogResponse,
 )
 from .service import get_foundation_service
 
@@ -251,6 +256,159 @@ async def validate_behavior_tree(tree: BehaviorTreeNode):
         "total_actions": len(actions),
         "issues": issues,
     }
+
+
+# ============================================================================
+# System Info & Authorization Endpoints
+# ============================================================================
+
+
+@router.get("/info", response_model=FoundationInfo)
+async def get_foundation_info():
+    """
+    Get Foundation system information.
+
+    Returns:
+        Foundation system details including:
+        - System name and version
+        - Available capabilities
+        - Current status
+        - Uptime
+
+    Example:
+        ```json
+        GET /api/foundation/info
+        {
+          "name": "BRAiN Foundation Layer",
+          "version": "1.0.0",
+          "capabilities": [
+            "action_validation",
+            "ethics_rules",
+            "safety_patterns",
+            "behavior_trees",
+            "authorization",
+            "audit_logging"
+          ],
+          "status": "operational",
+          "uptime": 3600.5
+        }
+        ```
+    """
+    service = get_foundation_service()
+    return await service.get_info()
+
+
+@router.post("/authorize", response_model=AuthorizationResponse)
+async def authorize_action(request: AuthorizationRequest):
+    """
+    Check if agent is authorized to perform an action.
+
+    This checks permissions/authorization (different from ethics validation).
+
+    Args:
+        request: Authorization request containing:
+            - agent_id: Agent requesting authorization
+            - action: Action to authorize
+            - resource: Resource being accessed
+            - context: Additional context
+
+    Returns:
+        Authorization result indicating if action is authorized
+
+    Raises:
+        HTTPException 403: If action is not authorized
+
+    Example:
+        ```json
+        POST /api/foundation/authorize
+        {
+          "agent_id": "ops_agent",
+          "action": "deploy_to_production",
+          "resource": "brain-backend",
+          "context": {"environment": "production"}
+        }
+        ```
+    """
+    service = get_foundation_service()
+    result = service.authorize_action(request)
+
+    # If not authorized, return 403 Forbidden
+    if not result.authorized:
+        logger.warning(
+            f"Authorization denied: {request.action} for agent {request.agent_id}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "Action not authorized",
+                "agent_id": request.agent_id,
+                "action": request.action,
+                "resource": request.resource,
+                "reason": result.reason,
+                "audit_id": result.audit_id,
+            },
+        )
+
+    return result
+
+
+@router.get("/audit-log", response_model=AuditLogResponse)
+async def get_audit_log(
+    agent_id: Optional[str] = Query(None, description="Filter by agent ID"),
+    action: Optional[str] = Query(None, description="Filter by action"),
+    event_type: Optional[str] = Query(None, description="Filter by event type"),
+    outcome: Optional[str] = Query(None, description="Filter by outcome"),
+    limit: int = Query(100, ge=1, le=1000, description="Maximum entries to return"),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
+):
+    """
+    Retrieve audit log entries.
+
+    Query Foundation audit trail with optional filters.
+
+    Query Parameters:
+        - agent_id: Filter by agent ID
+        - action: Filter by action name
+        - event_type: Filter by event type (validation, authorization)
+        - outcome: Filter by outcome (allowed, blocked, authorized, denied)
+        - limit: Maximum entries to return (1-1000, default 100)
+        - offset: Pagination offset (default 0)
+
+    Returns:
+        Paginated audit log entries
+
+    Example:
+        ```
+        GET /api/foundation/audit-log?agent_id=ops_agent&outcome=blocked&limit=50
+        {
+          "entries": [
+            {
+              "audit_id": "audit_20260115_170000",
+              "timestamp": "2026-01-15T17:00:00Z",
+              "event_type": "validation",
+              "agent_id": "ops_agent",
+              "action": "delete_all",
+              "outcome": "blocked",
+              "reason": "Action is in blacklist",
+              "details": {}
+            }
+          ],
+          "total": 1,
+          "limit": 50,
+          "offset": 0
+        }
+        ```
+    """
+    service = get_foundation_service()
+    request = AuditLogRequest(
+        agent_id=agent_id,
+        action=action,
+        event_type=event_type,
+        outcome=outcome,
+        limit=limit,
+        offset=offset,
+    )
+    return service.query_audit_log(request)
 
 
 # ============================================================================
