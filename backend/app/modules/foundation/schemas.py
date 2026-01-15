@@ -243,3 +243,161 @@ class EthicsRule(BaseModel):
                 "priority": 100,
             }
         }
+
+
+# ============================================================================
+# Foundation Info (System Information)
+# ============================================================================
+
+
+class FoundationInfo(BaseModel):
+    """Foundation system information"""
+
+    name: str = Field(..., description="Foundation system name")
+    version: str = Field(..., description="Foundation version")
+    capabilities: List[str] = Field(..., description="List of system capabilities")
+    status: Literal["operational", "degraded", "offline"] = Field(
+        ..., description="Current system status"
+    )
+    uptime: float = Field(..., description="System uptime in seconds")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "name": "BRAiN Foundation Layer",
+                "version": "1.0.0",
+                "capabilities": [
+                    "action_validation",
+                    "ethics_rules",
+                    "safety_patterns",
+                    "behavior_trees",
+                ],
+                "status": "operational",
+                "uptime": 86400.0,
+            }
+        }
+
+
+# ============================================================================
+# Authorization Models
+# ============================================================================
+
+
+class AuthorizationRequest(BaseModel):
+    """Request to check action authorization"""
+
+    agent_id: str = Field(..., description="Agent requesting authorization")
+    action: str = Field(..., description="Action to authorize")
+    resource: str = Field(..., description="Resource being accessed")
+    context: Dict[str, Any] = Field(
+        default_factory=dict, description="Additional context"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "agent_id": "ops_agent",
+                "action": "deploy_to_production",
+                "resource": "brain-backend",
+                "context": {"environment": "production"},
+            }
+        }
+
+
+class AuthorizationResponse(BaseModel):
+    """Response from authorization check"""
+
+    authorized: bool = Field(..., description="Whether action is authorized")
+    reason: str = Field(..., description="Reason for authorization result")
+    required_permissions: List[str] = Field(
+        default_factory=list, description="Required permissions for this action"
+    )
+    audit_id: str = Field(..., description="Audit trail identifier")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "authorized": True,
+                "reason": "Agent has required permissions",
+                "required_permissions": [],
+                "audit_id": "audit_20260115_170000",
+            }
+        }
+
+
+# ============================================================================
+# Audit Log Models
+# ============================================================================
+
+
+class AuditLogEntry(BaseModel):
+    """Single audit log entry"""
+
+    audit_id: str = Field(..., description="Unique audit identifier")
+    timestamp: datetime = Field(..., description="Event timestamp")
+    event_type: Literal["validation", "authorization"] = Field(
+        ..., description="Type of event"
+    )
+    agent_id: Optional[str] = Field(None, description="Agent ID (if applicable)")
+    action: str = Field(..., description="Action that was checked")
+    outcome: Literal["allowed", "blocked", "authorized", "denied"] = Field(
+        ..., description="Event outcome"
+    )
+    reason: str = Field(..., description="Reason for outcome")
+    details: Dict[str, Any] = Field(
+        default_factory=dict, description="Additional event details"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "audit_id": "audit_20260115_170000",
+                "timestamp": "2026-01-15T17:00:00Z",
+                "event_type": "validation",
+                "agent_id": "ops_agent",
+                "action": "deploy_to_production",
+                "outcome": "blocked",
+                "reason": "Action is in blacklist",
+                "details": {"environment": "production"},
+            }
+        }
+
+
+class AuditLogRequest(BaseModel):
+    """Request to query audit log"""
+
+    agent_id: Optional[str] = Field(None, description="Filter by agent ID")
+    action: Optional[str] = Field(None, description="Filter by action")
+    event_type: Optional[str] = Field(None, description="Filter by event type")
+    outcome: Optional[str] = Field(None, description="Filter by outcome")
+    limit: int = Field(100, ge=1, le=1000, description="Maximum entries to return")
+    offset: int = Field(0, ge=0, description="Pagination offset")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "agent_id": "ops_agent",
+                "outcome": "blocked",
+                "limit": 50,
+                "offset": 0,
+            }
+        }
+
+
+class AuditLogResponse(BaseModel):
+    """Response containing audit log entries"""
+
+    entries: List[AuditLogEntry] = Field(..., description="List of audit entries")
+    total: int = Field(..., description="Total matching entries")
+    limit: int = Field(..., description="Query limit")
+    offset: int = Field(..., description="Query offset")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "entries": [],
+                "total": 42,
+                "limit": 50,
+                "offset": 0,
+            }
+        }
