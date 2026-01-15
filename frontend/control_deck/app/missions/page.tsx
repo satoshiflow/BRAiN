@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState } from "react";
 import { useMissions, useCreateMission, useUpdateMission } from "@/hooks/useMissions";
+import { useMissionWebSocket } from "@/hooks/useMissionWebSocket";
 import type { Mission, MissionStatus } from "@/lib/missionsApi";
 
 type FormState = {
@@ -27,6 +28,9 @@ export default function MissionsOverviewPage() {
   const { data: rawMissions, isLoading, error } = useMissions();
   const createMissionMutation = useCreateMission();
   const updateMissionMutation = useUpdateMission();
+
+  // WebSocket for real-time mission updates
+  const { isConnected: wsConnected } = useMissionWebSocket();
 
   // Sort missions by status priority, then by created_at
   const sortedMissions = useMemo(() => {

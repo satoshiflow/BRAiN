@@ -3,6 +3,7 @@
 import React, { useMemo } from "react";
 import { useDashboardData } from "@/hooks/useDashboard";
 import { useMissions } from "@/hooks/useMissions";
+import { useHealthSSE } from "@/hooks/useHealthSSE";
 import type { Mission } from "@/lib/missionsApi";
 
 type MissionStatus = Mission["status"];
@@ -28,6 +29,9 @@ export default function DashboardPage() {
     isError,
     errors,
   } = useDashboardData();
+
+  // SSE for real-time health/telemetry updates
+  useHealthSSE();
 
   // Fetch missions list
   const { data: missionsData, isLoading: missionsLoading, error: missionsError } = useMissions();
