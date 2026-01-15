@@ -371,6 +371,121 @@ class TestFoundationEdgeCases:
 
 
 # ============================================================================
+# New Endpoints Tests (C.4)
+# ============================================================================
+
+
+class TestFoundationNewEndpoints:
+    """Tests for new Foundation endpoints (/info, /authorize, /audit-log)"""
+
+    def test_get_foundation_info(self):
+        """Test GET /api/foundation/info endpoint"""
+        response = client.get("/api/foundation/info")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["name"] == "BRAiN Foundation Layer"
+        assert data["version"] == "1.0.0"
+        assert "capabilities" in data
+        assert len(data["capabilities"]) >= 6
+        assert "authorization" in data["capabilities"]
+        assert "audit_logging" in data["capabilities"]
+        assert data["status"] == "operational"
+        assert "uptime" in data
+        assert data["uptime"] >= 0
+
+    def test_authorize_action_allowed(self):
+        """Test POST /api/foundation/authorize - allowed action"""
+        response = client.post(
+            "/api/foundation/authorize",
+            json={
+                "agent_id": "test_agent",
+                "action": "read_file",
+                "resource": "/data/test.txt",
+                "context": {"environment": "test"},
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["authorized"] is True
+        assert "reason" in data
+        assert "audit_id" in data
+        assert data["audit_id"].startswith("audit_")
+
+    def test_authorize_action_blocked(self):
+        """Test POST /api/foundation/authorize - blocked action"""
+        response = client.post(
+            "/api/foundation/authorize",
+            json={
+                "agent_id": "test_agent",
+                "action": "delete_all",
+                "resource": "/data",
+                "context": {},
+            },
+        )
+
+        # Should return 403 Forbidden for blocked actions
+        assert response.status_code == 403
+        data = response.json()
+        assert "detail" in data
+        assert "error" in data["detail"]
+        assert data["detail"]["action"] == "delete_all"
+        assert "blocked" in data["detail"]["reason"].lower()
+
+    def test_audit_log_query(self):
+        """Test GET /api/foundation/audit-log endpoint"""
+        # First, create some audit entries via validation
+        client.post(
+            "/api/foundation/validate",
+            json={
+                "action": "test_action_1",
+                "params": {},
+                "context": {"agent_id": "test_agent"},
+            },
+        )
+
+        client.post(
+            "/api/foundation/validate",
+            json={
+                "action": "test_action_2",
+                "params": {},
+                "context": {"agent_id": "test_agent"},
+            },
+        )
+
+        # Query audit log without filters
+        response = client.get("/api/foundation/audit-log?limit=100")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "entries" in data
+        assert "total" in data
+        assert "limit" in data
+        assert "offset" in data
+        assert data["total"] >= 2
+
+        # Verify entry structure
+        if len(data["entries"]) > 0:
+            entry = data["entries"][0]
+            assert "audit_id" in entry
+            assert "timestamp" in entry
+            assert "event_type" in entry
+            assert "action" in entry
+            assert "outcome" in entry
+            assert "reason" in entry
+
+        # Query with filters
+        filtered_response = client.get(
+            "/api/foundation/audit-log?agent_id=test_agent&limit=10"
+        )
+
+        assert filtered_response.status_code == 200
+        filtered_data = filtered_response.json()
+        assert filtered_data["total"] >= 2
+
+
+# ============================================================================
 # Run Tests
 # ============================================================================
 

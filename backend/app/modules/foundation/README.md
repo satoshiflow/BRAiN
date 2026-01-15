@@ -131,6 +131,55 @@ response = await client.put(
 )
 ```
 
+### 4. Check Action Authorization
+
+```python
+from backend.app.modules.foundation.service import get_foundation_service
+from backend.app.modules.foundation.schemas import AuthorizationRequest
+
+foundation = get_foundation_service()
+
+# Check if agent is authorized to perform an action
+result = foundation.authorize_action(AuthorizationRequest(
+    agent_id="ops_agent",
+    action="deploy_to_production",
+    resource="brain-backend",
+    context={"environment": "production"}
+))
+
+if not result.authorized:
+    print(f"❌ Unauthorized: {result.reason}")
+    print(f"📋 Audit ID: {result.audit_id}")
+else:
+    print(f"✅ Authorized: {result.reason}")
+    print(f"📋 Audit ID: {result.audit_id}")
+```
+
+### 5. Query Audit Log
+
+```python
+from backend.app.modules.foundation.schemas import AuditLogRequest
+
+# Retrieve recent validation/authorization events
+result = foundation.query_audit_log(AuditLogRequest(
+    agent_id="ops_agent",
+    outcome="blocked",
+    limit=50
+))
+
+print(f"Found {result.total} blocked actions for ops_agent")
+for entry in result.entries:
+    print(f"{entry.timestamp}: {entry.action} - {entry.outcome} - {entry.reason}")
+
+# Filter by event type
+auth_events = foundation.query_audit_log(AuditLogRequest(
+    event_type="authorization",
+    limit=100
+))
+
+print(f"\nAuthorization Events: {auth_events.total}")
+```
+
 ---
 
 ## Configuration
