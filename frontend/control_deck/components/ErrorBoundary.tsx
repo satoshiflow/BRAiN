@@ -26,6 +26,10 @@ export class ErrorBoundary extends Component<Props, State> {
     console.error("ErrorBoundary caught an error:", error, errorInfo);
   }
 
+  resetError = () => {
+    this.setState({ hasError: false, error: null });
+  };
+
   render() {
     if (this.state.hasError) {
       if (this.props.fallback) {
@@ -75,12 +79,20 @@ export class ErrorBoundary extends Component<Props, State> {
               </div>
             )}
 
-            <button
-              onClick={() => window.location.reload()}
-              className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-            >
-              Reload Page
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={this.resetError}
+                className="flex-1 py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+              >
+                Try Again
+              </button>
+              <button
+                onClick={() => window.location.reload()}
+                className="flex-1 py-2 px-4 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
+              >
+                Reload Page
+              </button>
+            </div>
           </div>
         </div>
       );

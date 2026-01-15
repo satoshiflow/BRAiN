@@ -5,6 +5,7 @@ import { useDashboardData } from "@/hooks/useDashboard";
 import { useMissions } from "@/hooks/useMissions";
 import { useHealthSSE } from "@/hooks/useHealthSSE";
 import type { Mission } from "@/lib/missionsApi";
+import { PageSkeleton } from "@/components/skeletons/PageSkeleton";
 
 type MissionStatus = Mission["status"];
 
@@ -73,6 +74,11 @@ export default function DashboardPage() {
     () => sortedMissions.slice(0, 5),
     [sortedMissions],
   );
+
+  // Show loading skeleton
+  if (isLoading || missionsLoading) {
+    return <PageSkeleton variant="dashboard" />;
+  }
 
   return (
     <div className="flex flex-col gap-6 p-6">

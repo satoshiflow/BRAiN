@@ -1,20 +1,38 @@
 "use client";
 
 import { useState } from "react";
+import { PageSkeleton } from "@/components/skeletons/PageSkeleton";
 import { useTelemetryInfo, useRobotMetrics, useIsRobotHealthy } from "@/hooks/useTelemetry";
+import { PageSkeleton } from "@/components/skeletons/PageSkeleton";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageSkeleton } from "@/components/skeletons/PageSkeleton";
 import { Badge } from "@/components/ui/badge";
+import { PageSkeleton } from "@/components/skeletons/PageSkeleton";
 import { Input } from "@/components/ui/input";
+import { PageSkeleton } from "@/components/skeletons/PageSkeleton";
 import { Label } from "@/components/ui/label";
+import { PageSkeleton } from "@/components/skeletons/PageSkeleton";
 import { Button } from "@/components/ui/button";
+import { PageSkeleton } from "@/components/skeletons/PageSkeleton";
 import { Loader2, Activity, Zap, Thermometer, Cpu, Battery, MapPin } from "lucide-react";
+import { PageSkeleton } from "@/components/skeletons/PageSkeleton";
 
 export default function TelemetryPage() {
   const [selectedRobotId, setSelectedRobotId] = useState<string>("");
   const [robotIdInput, setRobotIdInput] = useState<string>("");
 
   const { data: info, isLoading: infoLoading } = useTelemetryInfo();
+  
+  // Show loading skeleton
+  if (isLoading) {
+    return <PageSkeleton variant="dashboard" />;
+  }
   const { data: metrics, isLoading: metricsLoading, error: metricsError } = useRobotMetrics(selectedRobotId || undefined);
+  
+  // Show loading skeleton
+  if (isLoading) {
+    return <PageSkeleton variant="dashboard" />;
+  }
   const isHealthy = useIsRobotHealthy(selectedRobotId || undefined);
 
   const handleLoadMetrics = () => {

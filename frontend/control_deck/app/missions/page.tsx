@@ -4,6 +4,7 @@ import React, { useMemo, useState } from "react";
 import { useMissions, useCreateMission, useUpdateMission } from "@/hooks/useMissions";
 import { useMissionWebSocket } from "@/hooks/useMissionWebSocket";
 import type { Mission, MissionStatus } from "@/lib/missionsApi";
+import { PageSkeleton } from "@/components/skeletons/PageSkeleton";
 
 type FormState = {
   name: string;
@@ -90,6 +91,11 @@ export default function MissionsOverviewPage() {
       cancelled: byStatus.CANCELLED ?? 0,
     };
   }, [sortedMissions]);
+
+  // Show loading skeleton
+  if (isLoading) {
+    return <PageSkeleton variant="list" />;
+  }
 
   return (
     <div className="flex flex-col gap-6 p-6">
