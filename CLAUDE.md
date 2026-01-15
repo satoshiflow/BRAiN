@@ -2863,21 +2863,46 @@ bash backend/tests/test_neurorail_curl.sh
 
 ### Foundation Layer (`/api/foundation`) 🆕
 
+Core ethics, safety, and authorization layer for all agent operations.
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/foundation/info` | Foundation system info |
-| POST | `/api/foundation/safety-check` | Perform safety verification |
+| GET | `/api/foundation/info` | Foundation system information |
+| GET | `/api/foundation/status` | System status & metrics |
+| GET | `/api/foundation/config` | Get configuration |
+| PUT | `/api/foundation/config` | Update configuration |
+| POST | `/api/foundation/validate` | Validate action (ethics/safety) |
+| POST | `/api/foundation/validate-batch` | Batch validation |
 | POST | `/api/foundation/authorize` | Check action authorization |
 | GET | `/api/foundation/audit-log` | Retrieve audit trail |
+| POST | `/api/foundation/behavior-tree/execute` | Execute behavior tree |
+| POST | `/api/foundation/behavior-tree/validate` | Validate behavior tree |
+| GET | `/api/foundation/health` | Health check |
 
-**Safety Check Request:**
+**Key Features:**
+- Action validation against ethics/safety rules
+- Authorization checks (separate from ethics validation)
+- In-memory audit log (10k entries circular buffer)
+- Query audit trail with filters (agent_id, action, event_type, outcome)
+- Blacklist/whitelist enforcement
+- Behavior tree execution (placeholder for ROS2)
+
+**Validate Action Request:**
 ```json
 {
-  "action": "move_robot",
-  "parameters": {
-    "robot_id": "robot_001",
-    "target_position": {"x": 10.0, "y": 5.0}
-  }
+  "action": "robot.move",
+  "params": {"distance": 10, "speed": 2},
+  "context": {"agent_id": "robot_001"}
+}
+```
+
+**Authorization Request:**
+```json
+{
+  "agent_id": "ops_agent",
+  "action": "deploy_to_production",
+  "resource": "brain-backend",
+  "context": {"environment": "production"}
 }
 ```
 
