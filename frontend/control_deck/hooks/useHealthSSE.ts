@@ -1,23 +1,60 @@
-import { useSSE } from './use-sse';
+import { useState, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
+interface SSEEvent {
+  channel: string;
+  event_type: string;
+  timestamp: number;
+  data: any;
+}
+
 export function useHealthSSE(enabled: boolean = true) {
+  const [isConnected, setIsConnected] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
   const queryClient = useQueryClient();
 
-  return useSSE({
-    channels: ['health', 'telemetry'],
-    eventTypes: ['health_update', 'metrics_update'],
-    autoReconnect: true,
-    enabled,
-    onEvent: (event) => {
-      // Invalidate health/telemetry queries
-      if (event.event_type === 'health_update') {
-        queryClient.invalidateQueries({ queryKey: ['health'] });
-        queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+  useEffect(() => {
+    if (!enabled) return;
+
+    const baseUrl = process.env.NEXT_PUBLIC_BRAIN_API_BASE || 'http://localhost:8000';
+    const url = `${baseUrl}/api/system/stream`;
+
+    const eventSource = new EventSource(url);
+
+    eventSource.onopen = () => {
+      setIsConnected(true);
+      setError(null);
+    };
+
+    eventSource.onmessage = (event) => {
+      try {
+        const data: SSEEvent = JSON.parse(event.data);
+
+        if (data.event_type === 'health_update') {
+          queryClient.invalidateQueries({ queryKey: ['health'] });
+          queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+        }
+        if (data.event_type === 'metrics_update') {
+          queryClient.invalidateQueries({ queryKey: ['telemetry'] });
+        }
+      } catch (err) {
+        console.error('Failed to parse SSE message:', err);
       }
-      if (event.event_type === 'metrics_update') {
-        queryClient.invalidateQueries({ queryKey: ['telemetry'] });
-      }
-    },
-  });
+    };
+
+    eventSource.onerror = () => {
+      setError(new Error('SSE connection failed'));
+      setIsConnected(false);
+      eventSource.close();
+    };
+
+    eventSourceRef.current = eventSource;
+
+    return () => {
+      eventSource.close();
+    };
+  }, [enabled, queryClient]);
+
+  return { isConnected, error };
 }
