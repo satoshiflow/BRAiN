@@ -2,7 +2,9 @@
 
 import React, { useMemo, useState } from "react";
 import { useMissions, useCreateMission, useUpdateMission } from "@/hooks/useMissions";
+import { useMissionWebSocket } from "@/hooks/useMissionWebSocket";
 import type { Mission, MissionStatus } from "@/lib/missionsApi";
+import { PageSkeleton } from "@/components/skeletons/PageSkeleton";
 
 type FormState = {
   name: string;
@@ -27,6 +29,9 @@ export default function MissionsOverviewPage() {
   const { data: rawMissions, isLoading, error } = useMissions();
   const createMissionMutation = useCreateMission();
   const updateMissionMutation = useUpdateMission();
+
+  // WebSocket for real-time mission updates
+  const { isConnected: wsConnected } = useMissionWebSocket();
 
   // Sort missions by status priority, then by created_at
   const sortedMissions = useMemo(() => {
@@ -86,6 +91,11 @@ export default function MissionsOverviewPage() {
       cancelled: byStatus.CANCELLED ?? 0,
     };
   }, [sortedMissions]);
+
+  // Show loading skeleton
+  if (isLoading) {
+    return <PageSkeleton variant="list" />;
+  }
 
   return (
     <div className="flex flex-col gap-6 p-6">

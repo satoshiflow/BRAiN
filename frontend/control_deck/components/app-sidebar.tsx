@@ -21,6 +21,14 @@ import {
   Scale,
   Users,
   Boxes,
+  Wrench,
+  Heart,
+  GitBranch,
+  UserCog,
+  AlertTriangle,
+  PlusCircle,
+  Network,
+  Clock,
 } from "lucide-react";
 
 import { NavMain } from "@/components/nav-main";
@@ -49,177 +57,105 @@ const data = {
   ],
   navMain: [
     {
-      title: "Dashboard",
-      url: "/",
-      icon: LayoutDashboard,
-      isActive: false,
+      title: "Monitoring & Überwachung",
+      url: "#",
+      icon: Activity,
+      isActive: true,
       items: [
         {
-          title: "System Overview",
-          url: "/",
-        },
-      ],
-    },
-    {
-      title: "Core",
-      url: "/core",
-      icon: Workflow,
-      isActive: false,
-      items: [
-        {
-          title: "Modules",
-          url: "/core/modules",
+          title: "System Dashboard",
+          url: "/dashboard",
         },
         {
-          title: "System Agents",
-          url: "/core/agents",
+          title: "System Health",
+          url: "/health",
         },
-      ],
-    },
-    {
-      title: "Missions",
-      url: "/missions",
-      icon: Map,
-      isActive: false,
-      items: [
         {
-          title: "Overview",
+          title: "Missions Overview",
           url: "/missions",
         },
         {
-          title: "History",
+          title: "Mission History",
           url: "/missions/history",
         },
-      ],
-    },
-    {
-      title: "NeuroRail",
-      url: "/neurorail",
-      icon: Activity,
-      isActive: false,
-      items: [
         {
-          title: "Trace Explorer",
-          url: "/neurorail/trace-explorer",
+          title: "Agent Management",
+          url: "/core/agents",
         },
         {
-          title: "Health Matrix",
-          url: "/neurorail/health-matrix",
+          title: "Supervisor Panel",
+          url: "/supervisor",
         },
-      ],
-    },
-    {
-      title: "Agents",
-      url: "/agents",
-      icon: Bot,
-      isActive: false,
-      items: [
-        {
-          title: "Overview",
-          url: "/agents",
-        },
-        {
-          title: "New Agent",
-          url: "/agents/new",
-        },
-      ],
-    },
-    {
-      title: "WebGenesis",
-      url: "/webgenesis",
-      icon: Globe,
-      isActive: false,
-      items: [
-        {
-          title: "Sites",
-          url: "/webgenesis",
-        },
-        {
-          title: "Create New Site",
-          url: "/webgenesis/new",
-        },
-      ],
-    },
-    {
-      title: "Immune & Threats",
-      url: "/immune",
-      icon: Shield,
-      isActive: false,
-      items: [
-        {
-          title: "Threats",
-          url: "/immune",
-        },
-        {
-          title: "Events",
-          url: "/immune/events",
-        },
-      ],
-    },
-    {
-      title: "System Monitoring",
-      url: "/telemetry",
-      icon: Radio,
-      isActive: false,
-      items: [
         {
           title: "Telemetry",
           url: "/telemetry",
         },
         {
-          title: "Hardware",
+          title: "Hardware Resources",
           url: "/hardware",
         },
+        {
+          title: "Immune System",
+          url: "/immune",
+        },
+        {
+          title: "Threat Events",
+          url: "/immune/events",
+        },
+        {
+          title: "NeuroRail Trace",
+          url: "/neurorail/trace-explorer",
+        },
+        {
+          title: "NeuroRail Health",
+          url: "/neurorail/health-matrix",
+        },
+        {
+          title: "Fleet Management",
+          url: "/fleet-management",
+        },
       ],
     },
     {
-      title: "AI Evolution",
-      url: "/dna",
-      icon: Dna,
+      title: "BRAiN Einstellungen",
+      url: "#",
+      icon: Settings2,
       isActive: false,
       items: [
         {
-          title: "DNA Evolution",
-          url: "/dna",
+          title: "System Settings",
+          url: "/settings",
         },
         {
-          title: "Knowledge Graph",
-          url: "/knowledge-graph",
+          title: "API Configuration",
+          url: "/settings/api",
         },
-      ],
-    },
-    {
-      title: "Governance",
-      url: "/policy-engine",
-      icon: Scale,
-      isActive: false,
-      items: [
+        {
+          title: "Identity & Access",
+          url: "/settings/identity",
+        },
+        {
+          title: "LLM Configuration",
+          url: "/settings/llm",
+        },
         {
           title: "Policy Engine",
           url: "/policy-engine",
         },
         {
-          title: "Constitutional Agents",
-          url: "/constitutional",
-        },
-      ],
-    },
-    {
-      title: "Resources",
-      url: "/credits",
-      icon: Coins,
-      isActive: false,
-      items: [
-        {
           title: "Credits System",
           url: "/credits",
         },
+        {
+          title: "Core Modules",
+          url: "/core/modules",
+        },
       ],
     },
     {
-      title: "Education",
-      url: "/courses",
-      icon: GraduationCap,
+      title: "Tools/Desktop",
+      url: "#",
+      icon: Wrench,
       isActive: false,
       items: [
         {
@@ -230,37 +166,29 @@ const data = {
           title: "Business Factory",
           url: "/business",
         },
-      ],
-    },
-    {
-      title: "Fleet Management",
-      url: "/fleet-management",
-      icon: Boxes,
-      isActive: false,
-      items: [
         {
-          title: "Fleet Overview",
-          url: "/fleet-management",
-        },
-      ],
-    },
-    {
-      title: "Settings",
-      url: "/settings",
-      icon: Settings2,
-      isActive: false,
-      items: [
-        {
-          title: "System",
-          url: "/settings",
+          title: "WebGenesis Sites",
+          url: "/webgenesis",
         },
         {
-          title: "API Keys",
-          url: "/settings/api",
+          title: "Create New Site",
+          url: "/webgenesis/new",
         },
         {
-          title: "Identity",
-          url: "/settings/identity",
+          title: "Create Agent",
+          url: "/agents/new",
+        },
+        {
+          title: "Constitutional Agents",
+          url: "/constitutional",
+        },
+        {
+          title: "DNA Evolution",
+          url: "/dna",
+        },
+        {
+          title: "Knowledge Graph",
+          url: "/knowledge-graph",
         },
       ],
     },

@@ -7,6 +7,7 @@
 "use client";
 
 import React, { useState } from 'react';
+import { PageSkeleton } from "@/components/skeletons/PageSkeleton";
 import {
   useCourseStats,
   useCourseTemplates,
@@ -19,18 +20,37 @@ import {
   type CourseStatus,
 } from '@/hooks/useCourseFactory';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { PageSkeleton } from "@/components/skeletons/PageSkeleton";
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { PageSkeleton } from "@/components/skeletons/PageSkeleton";
 import { Button } from '@/components/ui/button';
+import { PageSkeleton } from "@/components/skeletons/PageSkeleton";
 import { Input } from '@/components/ui/input';
+import { PageSkeleton } from "@/components/skeletons/PageSkeleton";
 import { Label } from '@/components/ui/label';
+import { PageSkeleton } from "@/components/skeletons/PageSkeleton";
 import { Textarea } from '@/components/ui/textarea';
+import { PageSkeleton } from "@/components/skeletons/PageSkeleton";
 import { Badge } from '@/components/ui/badge';
+import { PageSkeleton } from "@/components/skeletons/PageSkeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { PageSkeleton } from "@/components/skeletons/PageSkeleton";
 import { Loader2, BookOpen, Plus, Edit, Copy, Trash2, CheckCircle2, AlertTriangle, GraduationCap, Clock, Target } from 'lucide-react';
+import { PageSkeleton } from "@/components/skeletons/PageSkeleton";
 
 export default function CourseFactoryPage() {
   const { data: stats, isLoading: statsLoading } = useCourseStats();
+  
+  // Show loading skeleton
+  if (isLoading) {
+    return <PageSkeleton variant="list" />;
+  }
   const { data: templates, isLoading: templatesLoading, error: templatesError } = useCourseTemplates();
+  
+  // Show loading skeleton
+  if (isLoading) {
+    return <PageSkeleton variant="list" />;
+  }
   const [searchQuery, setSearchQuery] = useState('');
 
   if (statsLoading || templatesLoading) {

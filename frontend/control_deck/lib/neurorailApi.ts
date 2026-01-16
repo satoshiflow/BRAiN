@@ -4,7 +4,7 @@
  */
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_BRAIN_API_URL ?? "http://localhost:8000";
+  process.env.NEXT_PUBLIC_BRAIN_API_BASE ?? "http://localhost:8000";
 
 // ============================================================================
 // Type Definitions

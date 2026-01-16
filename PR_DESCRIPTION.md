@@ -1,161 +1,84 @@
-# Pull Request: Critical Features Merge
+# Control Deck UI Improvements (P1-P5)
 
-**Create PR here:** https://github.com/satoshiflow/BRAiN/pull/new/claude/merge-critical-features-h1NXi
-
----
-
-## Title
-```
-feat: Merge critical features - NeuroRail + WebGenesis (33k LOC)
-```
+Umfassende Verbesserungen der Control Deck Oberfläche mit 5 aufeinander aufbauenden Phasen.
 
 ---
 
-## Description
+## ✅ P1: API Config Fix (f773376)
 
-```markdown
-# Critical Feature Merge: NeuroRail + WebGenesis
+**Problem:** Inkonsistente Environment-Variable für API Base URL  
+**Lösung:** Standardisierung auf `NEXT_PUBLIC_BRAIN_API_BASE`
 
-This PR merges **3 major feature branches** that were previously unmerged into v2:
-
-## 📊 Summary
-
-- **102 files changed**
-- **33,030 lines added**
-- **4 lines deleted**
-- **32 commits merged**
+### Geänderte Dateien (5):
+- frontend/control_deck/lib/dashboardApi.ts
+- frontend/control_deck/lib/neurorailApi.ts
+- frontend/control_deck/lib/coreOverviewApi.ts
+- frontend/control_deck/lib/missionsApi.ts
+- frontend/control_deck/lib/agentsApi.ts
 
 ---
 
-## 🚀 Features Included
+## ✅ P2: WebSocket/SSE Real-time Updates (5070b55)
 
-### 1. NeuroRail Implementation (13,847 LOC) ✅
+**Neue Features:**
+- **WebSocket** für bidirektionale Mission-Updates mit Auto-Reconnect (3s delay)
+- **Server-Sent Events (SSE)** für Health/Telemetry Streams
 
-**Branch:** `claude/implement-egr-neuroail-mx4cJ`
+### Neue Backend Dateien:
+- backend/api/routes/system_stream.py - SSE Endpoint mit psutil
 
-Complete NeuroRail Governance Platform - Sprints 1-7 (Phase 1-3)
-
-**Phase 1: Observe-only**
-- ✅ Complete trace chain (mission → plan → job → attempt → resource)
-- ✅ Deterministic state machines with one-way door transitions
-- ✅ Immutable audit trail (PostgreSQL + EventStream)
-- ✅ Prometheus metrics (9 new metrics)
-
-**Phase 2: Enforcement**
-- ✅ Budget Enforcement (Sprint 2): Token tracking, time-based budgets, cost attribution
-- ✅ Reflex System (Sprint 3): Cooldown periods, probing strategies, auto-suspend
-
-**Phase 3: Advanced Features**
-- ✅ SSE Streams & RBAC (Sprint 4): Real-time updates, role-based access
-- ✅ NeuroRail ControlDeck UI (Sprints 5-6): Trace Explorer, Health Matrix, Budget monitoring
-- ✅ Testing + Documentation (Sprint 7): E2E tests, integration guides
-
-**New Endpoints:**
-- `/api/neurorail/v1/identity/*` - Trace chain management
-- `/api/neurorail/v1/lifecycle/*` - State transitions
-- `/api/neurorail/v1/audit/*` - Immutable event log
-- `/api/neurorail/v1/telemetry/*` - Metrics & snapshots
-- `/api/governor/v1/*` - Mode decisions
+### Neue Frontend Hooks:
+- frontend/control_deck/hooks/useMissionWebSocket.ts
+- frontend/control_deck/hooks/useHealthSSE.ts
 
 ---
 
-### 2. WebGenesis Sprints 1-3 (18k+ LOC) ✅
+## ✅ P3: Sidebar Restructuring (b6fd45e)
 
-**Sprint 1: Static Site Generator (5,209 LOC)**
-- ✅ Jinja2 template engine + artifact hashing
-- ✅ Trust tier enforcement (GENESIS/TRUSTED/COMMUNITY/UNTRUSTED)
-- ✅ Docker deployment automation
+**Transformation:** 14 flache Navigationsgruppen → 3 hierarchische Hauptbereiche
 
-**Sprint 2: Ops & DNS (7k+ LOC)**
-- ✅ Hetzner DNS integration
-- ✅ SSL/TLS provisioning (Let's Encrypt)
-- ✅ Zero-downtime deployments + rollback
-- ✅ Site lifecycle management
-
-**Sprint 3: UI Dashboard (6,617 LOC)**
-- ✅ Interactive WebsiteSpec Builder wizard
-- ✅ Sites management dashboard
-- ✅ Real-time status updates
-- ✅ WCAG 2.1 AA accessibility
-- ✅ 21 new React components
-
-**New Pages:**
-- `/webgenesis` - Main dashboard
-- `/webgenesis/new` - Create site wizard
-- `/webgenesis/sites` - Sites table
-- `/webgenesis/sites/[id]` - Site detail view
+### Neue Struktur:
+1. **Monitoring & Überwachung** (13 Pages)
+2. **BRAiN Einstellungen** (7 Pages)
+3. **Tools/Desktop** (8 Pages)
 
 ---
 
-## 🧪 Testing
+## ✅ P4: Backend APIs + PostgreSQL (33ae1b6)
 
-- ✅ **NeuroRail:** 15 test files (E2E, integration, unit)
-- ✅ **WebGenesis:** 3 test files (MVP, Ops, UI)
+**Umfang:** 17 REST Endpoints, 9 PostgreSQL-Tabellen, 17 Frontend TODOs entfernt
 
+### Neue Backend-Komponenten:
+- backend/app/models/business.py
+- backend/app/models/courses.py
+- backend/alembic/versions/007_business_course_factory.py
+- backend/api/routes/business.py (9 Endpoints)
+- backend/api/routes/courses.py (8 Endpoints)
+
+---
+
+## ✅ P5: UX Polish (00afc58)
+
+- Skeleton Components mit 3 Varianten
+- Enhanced Error Boundary mit "Try Again" Button
+- Integration in 5+ Pages
+
+---
+
+## 📊 Gesamtstatistik
+
+- 5 Commits committed und gepusht
+- 23 Dateien geändert (8 neu, 15 modifiziert)
+- ~1500 Zeilen Code hinzugefügt
+- 17 TODOs entfernt
+- 9 PostgreSQL-Tabellen erstellt
+- 17 REST Endpoints implementiert
+
+---
+
+## 🚀 Deployment auf dev.brain.falklabs.de
+
+Nach Merge Migration ausführen:
 ```bash
-pytest backend/tests/test_neurorail*.py
-pytest backend/tests/test_webgenesis*.py
-```
-
----
-
-## 🔧 Migration
-
-### Database
-```bash
-cd backend
-alembic upgrade head  # Applies neurorail_schema
-```
-
-### Environment Variables (optional)
-```bash
-# WebGenesis DNS (optional)
-HETZNER_DNS_API_TOKEN=your_token
-HETZNER_DNS_ALLOWED_ZONES=example.com
-```
-
-See `.env.example` for full config (already updated).
-
----
-
-## ⚡ Breaking Changes
-
-**None.** All additive features:
-- New modules in isolated directories
-- New API endpoints only (no modifications)
-- Database additions only (no schema changes)
-
----
-
-## ✅ Verification
-
-- [x] All merges conflict-free (1 minor .env conflict resolved)
-- [x] Clean git history
-- [x] Tests included
-- [x] Documentation complete
-- [ ] Run tests after merge
-- [ ] Build frontend after merge
-- [ ] Run migrations
-
----
-
-## 🚀 Next Steps
-
-1. Database migration: `alembic upgrade head`
-2. Add `HETZNER_DNS_API_TOKEN` to `.env` (if using DNS)
-3. Frontend build: `cd frontend/control_deck && npm run build`
-4. Restart: `docker-compose up -d --build`
-5. Test endpoints:
-   - NeuroRail UI: http://localhost:3000/neurorail
-   - WebGenesis UI: http://localhost:3000/webgenesis
-
----
-
-**Merged Branches:**
-- ✅ `claude/implement-egr-neuroail-mx4cJ`
-- ✅ `claude/webgenesis-sprint1-mvp-OgCyN`
-- ✅ `claude/webgenesis-sprint2-ops-dns-OgCyN`
-- ✅ `claude/webgenesis-sprint3-ui-OgCyN`
-
-**Impact:** 33,030 LOC of production-ready code! 🚀
+docker exec brain-backend alembic upgrade head
 ```
