@@ -9,11 +9,17 @@ class Settings(BaseSettings):
 
     api_prefix: str = "/api"
 
-    # Database
-    db_url: str = "postgresql+asyncpg://brain:brain@localhost:5432/brain"
+    # Database (updated for Coolify separate services)
+    database_url: str = "postgresql+asyncpg://brain:brain@localhost:5432/brain"
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"
+
+    # Qdrant (NEW - separate Coolify service)
+    qdrant_url: str = "http://localhost:6333"
+
+    # Ollama (NEW - separate Coolify service)
+    ollama_host: str = "http://localhost:11434"
 
     # CORS - Accepts CSV string, JSON array, or wildcard
     # Type as Union to prevent Pydantic from auto-parsing as JSON before validation
