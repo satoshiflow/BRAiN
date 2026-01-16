@@ -83,6 +83,8 @@ services:
 
   qdrant:
     image: qdrant/qdrant:latest
+    profiles:
+      - local  # Only start with: docker compose --profile local up
     volumes:
       - brain_qdrant_data:/qdrant/storage
     # ports:
@@ -93,6 +95,8 @@ services:
 
   ollama:
     image: ollama/ollama:latest
+    profiles:
+      - local  # Only start with: docker compose --profile local up
     volumes:
       - brain_ollama_data:/root/.ollama
     # ports:
