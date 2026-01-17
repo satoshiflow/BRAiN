@@ -7,9 +7,13 @@ Provides JWT-based authentication with login, token management, and user info.
 from datetime import timedelta
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
+
+# Rate Limiting (Task 2.3)
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from app.core.security import (
     User,
@@ -28,6 +32,9 @@ from app.core.security import (
 
 
 router = APIRouter(prefix="/api/auth", tags=["authentication"])
+
+# Rate limiter instance
+limiter = Limiter(key_func=get_remote_address)
 
 
 # ============================================================================
@@ -71,9 +78,12 @@ class UpdateUserRequest(BaseModel):
 # ============================================================================
 
 @router.post("/login", response_model=Token)
-async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+@limiter.limit("5/minute")  # Rate limit: Max 5 login attempts per minute (DoS protection)
+async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends()):
     """
     Authenticate user and return JWT access token.
+
+    Rate limited to 5 attempts per minute to prevent brute force attacks.
 
     Default users:
     - username: admin, password: password (roles: admin, operator, viewer)
