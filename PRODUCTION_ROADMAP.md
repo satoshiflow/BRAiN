@@ -121,9 +121,9 @@ cors_origins = settings.cors_origins if hasattr(settings, 'cors_origins') else [
     "*",  # ❌ REMOVE THIS!
 ]
 
-# NACHHER:
+# NACHHER (Updated 2026-01-17):
 cors_origins = [
-    # Production
+    # Production Domains
     "https://api.dev.brain.falklabs.de",
     "https://control.dev.brain.falklabs.de",
     "https://axe.dev.brain.falklabs.de",
@@ -138,14 +138,24 @@ cors_origins = [
     "http://127.0.0.1:3000",
     "http://127.0.0.1:3001",
     "http://127.0.0.1:3002",
+    # Traefik Internal Health Checks (CRITICAL - do not remove!)
+    "http://10.0.39.7:8000",
 ]
 ```
+
+**⚠️ Important Note:**
+The Traefik internal IP (`http://10.0.39.7:8000`) is REQUIRED for health checks.
+Removing it will break the deployment. See: https://github.com/satoshiflow/BRAiN/blob/v2/plans/sunny-sleeping-zebra.md
 
 **Verification:**
 ```bash
 # Test CORS Header
 curl -H "Origin: https://evil.com" https://api.dev.brain.falklabs.de/api/health -I
 # Should NOT have: Access-Control-Allow-Origin: *
+
+# Test Traefik health check (from server)
+curl -H "Origin: http://10.0.39.7:8000" http://localhost:8000/api/health -I
+# Should have: Access-Control-Allow-Origin: http://10.0.39.7:8000
 ```
 
 **Commit:**
