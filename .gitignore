@@ -96,6 +96,14 @@ docker.env
 docker-compose.override.yml
 
 
+####################################
+# CONFIDENTIAL DOCUMENTATION      #
+####################################
+
+# Security documentation (NOT for GitHub)
+AUTHENTICATION_SYSTEM_DESIGN.md
+
+
 ############################
 # OS / IDE / EDITOR FILES #
 ############################
