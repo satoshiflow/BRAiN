@@ -107,7 +107,26 @@ class TokenData(BaseModel):
 # In-Memory User Storage (Replace with Database in Production)
 # ============================================================================
 
-# Default users (password is "password" for all)
+# Load passwords from environment variables (Security Fix - Task 2.1)
+ADMIN_PASSWORD = os.getenv("BRAIN_ADMIN_PASSWORD", "password")  # Default for dev only
+OPERATOR_PASSWORD = os.getenv("BRAIN_OPERATOR_PASSWORD", "password")  # Default for dev only
+VIEWER_PASSWORD = os.getenv("BRAIN_VIEWER_PASSWORD", "password")  # Default for dev only
+
+# Production Security Check: Fail fast if default passwords are used in production
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+if ENVIRONMENT == "production":
+    if ADMIN_PASSWORD == "password":
+        raise RuntimeError(
+            "FATAL SECURITY ERROR: BRAIN_ADMIN_PASSWORD must be set in production! "
+            "Default password is not allowed. Set BRAIN_ADMIN_PASSWORD in .env file."
+        )
+    if OPERATOR_PASSWORD == "password":
+        raise RuntimeError(
+            "FATAL SECURITY ERROR: BRAIN_OPERATOR_PASSWORD must be set in production! "
+            "Default password is not allowed. Set BRAIN_OPERATOR_PASSWORD in .env file."
+        )
+
+# User database with environment-based passwords
 USERS_DB: Dict[str, UserInDB] = {
     "admin": UserInDB(
         username="admin",
@@ -115,7 +134,7 @@ USERS_DB: Dict[str, UserInDB] = {
         full_name="Administrator",
         disabled=False,
         roles=["admin", "operator", "viewer"],
-        hashed_password=pwd_context.hash("password"),
+        hashed_password=pwd_context.hash(ADMIN_PASSWORD),
     ),
     "operator": UserInDB(
         username="operator",
@@ -123,7 +142,7 @@ USERS_DB: Dict[str, UserInDB] = {
         full_name="Operator User",
         disabled=False,
         roles=["operator", "viewer"],
-        hashed_password=pwd_context.hash("password"),
+        hashed_password=pwd_context.hash(OPERATOR_PASSWORD),
     ),
     "viewer": UserInDB(
         username="viewer",
@@ -131,7 +150,7 @@ USERS_DB: Dict[str, UserInDB] = {
         full_name="Viewer User",
         disabled=False,
         roles=["viewer"],
-        hashed_password=pwd_context.hash("password"),
+        hashed_password=pwd_context.hash(VIEWER_PASSWORD),
     ),
 }
 

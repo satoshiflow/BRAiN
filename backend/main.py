@@ -27,6 +27,11 @@ from fastapi.routing import APIRoute
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
+# Rate Limiting (Task 2.3)
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
 # Core infrastructure
 from app.core.config import get_settings
 from app.core.logging import configure_logging
@@ -181,6 +186,15 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    # Rate Limiter Setup (Task 2.3 - DoS Protection)
+    limiter = Limiter(
+        key_func=get_remote_address,
+        default_limits=["100/minute"],  # Global default: 100 requests per minute
+        storage_uri=settings.redis_url,  # Use Redis for distributed rate limiting
+    )
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
     # CORS (from settings for production, with fallback)
     cors_origins = settings.cors_origins if hasattr(settings, 'cors_origins') else [
         "http://localhost",
@@ -209,6 +223,28 @@ def create_app() -> FastAPI:
             return response
 
     app.add_middleware(UTF8Middleware)
+
+    # Security Headers Middleware (OWASP Recommendations - Task 2.2)
+    class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            response = await call_next(request)
+
+            # OWASP Security Headers
+            response.headers.update({
+                "X-Content-Type-Options": "nosniff",  # Prevent MIME sniffing
+                "X-Frame-Options": "DENY",  # Prevent clickjacking
+                "X-XSS-Protection": "1; mode=block",  # Enable XSS filter
+                "Referrer-Policy": "strict-origin-when-cross-origin",  # Privacy
+                "Permissions-Policy": "geolocation=(), microphone=(), camera=()",  # Disable sensitive APIs
+            })
+
+            # HSTS only in production (enforce HTTPS)
+            if settings.environment == "production":
+                response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+
+            return response
+
+    app.add_middleware(SecurityHeadersMiddleware)
 
     # -------------------------------------------------------
     # Root & Health Endpoints

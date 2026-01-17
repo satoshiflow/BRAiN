@@ -48,6 +48,9 @@ passlib[bcrypt]==1.7.4              # Password hashing (bcrypt)
 # --- Background Jobs / Scheduling ---
 APScheduler==3.10.4             # Background task scheduling
 
+# --- Rate Limiting ---
+slowapi==0.1.9                  # Rate limiting middleware (Task 2.3)
+
 # --- CLI Tools ---
 typer==0.9.0                    # CLI interface for brain_cli
 rich==13.7.0                    # Beautiful terminal output
