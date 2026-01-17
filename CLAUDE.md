@@ -1,12 +1,12 @@
 # CLAUDE.md - AI Assistant Guide for BRAiN
 
-**Version:** 0.6.1
-**Last Updated:** 2026-01-05
+**Version:** 0.7.0
+**Last Updated:** 2026-01-17
 **Purpose:** Comprehensive guide for AI assistants working with the BRAiN codebase
 
 ---
 
-## 🎯 Current Development Focus (2026-01-05)
+## 🎯 Current Development Focus (2026-01-17)
 
 **Backend:** Hardening phase only - no new features
 **Frontend Priority:**
@@ -14,6 +14,41 @@
 2. **axe_ui** ⭐ SECONDARY - BRAiN interface & floating widget
 3. **brain_control_ui** - Future user interface (pending backend coordination)
 4. **OpenWebUI** - Multi-LLM interface (separate project)
+
+---
+
+## 🚀 Production Roadmap
+
+**⚠️ IMPORTANT:** See **[PRODUCTION_ROADMAP.md](./PRODUCTION_ROADMAP.md)** for the complete production readiness plan.
+
+### Quick Status (2026-01-17)
+
+| System | Status | Production-Ready | Critical Blockers |
+|--------|--------|------------------|-------------------|
+| **Backend** | 🟡 75% | ⚠️ Security Fixes | Rate Limiting, CORS Wildcard, Default Passwords |
+| **Control Deck** | 🟡 60% | ⚠️ Connection + Responsive | .env.local missing, Sidebar not responsive |
+| **AXE UI** | 🟡 75% | ⚠️ Connection | .env.local missing, Ollama config |
+
+### Current Sprint: Phase 0 - Quick Wins (Day 1-3)
+
+**Focus:** Fix critical blockers with minimal effort (max 2h per task)
+
+**Top Priorities:**
+1. ✅ Create `.env.local` for frontends → Fix "TypeError: Failed to fetch"
+2. ✅ Remove CORS wildcard → Close XSS vulnerability
+3. ⏳ Add Rate Limiting → Prevent DoS attacks
+4. ⏳ Change default passwords → Fix Auth bypass
+5. ⏳ Add Security Headers → OWASP compliance
+
+**Timeline:** Production-ready in 3-4 weeks
+
+**Key Milestones:**
+- Week 1: Security Hardening ✅
+- Week 2: Core Features (Responsive UI, Caching)
+- Week 3: UX Polish (i18n, Tooltips, Monitoring)
+- Week 4: Production Deployment 🚀
+
+**👉 For detailed task breakdown, dependencies, and acceptance criteria, see [PRODUCTION_ROADMAP.md](./PRODUCTION_ROADMAP.md)**
 
 ---
 
