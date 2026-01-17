@@ -210,6 +210,28 @@ def create_app() -> FastAPI:
 
     app.add_middleware(UTF8Middleware)
 
+    # Security Headers Middleware (OWASP Recommendations - Task 2.2)
+    class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            response = await call_next(request)
+
+            # OWASP Security Headers
+            response.headers.update({
+                "X-Content-Type-Options": "nosniff",  # Prevent MIME sniffing
+                "X-Frame-Options": "DENY",  # Prevent clickjacking
+                "X-XSS-Protection": "1; mode=block",  # Enable XSS filter
+                "Referrer-Policy": "strict-origin-when-cross-origin",  # Privacy
+                "Permissions-Policy": "geolocation=(), microphone=(), camera=()",  # Disable sensitive APIs
+            })
+
+            # HSTS only in production (enforce HTTPS)
+            if settings.environment == "production":
+                response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+
+            return response
+
+    app.add_middleware(SecurityHeadersMiddleware)
+
     # -------------------------------------------------------
     # Root & Health Endpoints
     # -------------------------------------------------------
