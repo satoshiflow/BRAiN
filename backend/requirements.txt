@@ -6,28 +6,28 @@
 # ============================================================================
 
 # --- Core FastAPI + Server ---
-fastapi>=0.116.2,<1.0.0         # Updated for cognee compatibility
-uvicorn[standard]>=0.34.0,<1.0.0 # ✅ Fixed: cognee requires >=0.34.0
-python-multipart>=0.0.20,<1.0.0 # ✅ Fixed: cognee needs >=0.0.20
+fastapi==0.116.2                # Updated for cognee compatibility
+uvicorn[standard]==0.34.0       # ✅ Fixed: cognee requires >=0.34.0
+python-multipart==0.0.20        # ✅ Fixed: cognee needs >=0.0.20
 
 # --- ASGI / Web Server ---
 # starlette - removed, fastapi brings correct version automatically
-websockets>=15.0.1,<16.0.0      # ✅ Fixed: cognee requires >=15.0.1
+websockets==15.0.1              # ✅ Fixed: cognee requires >=15.0.1
 
 # --- Database ---
-sqlalchemy[asyncio]>=2.0.39,<2.1.0  # ORM with async support (cognee requires >=2.0.39)
-asyncpg==0.29.0                     # Async PostgreSQL driver
-alembic>=1.13.3,<2.0.0              # Database migrations (cognee requires >=1.13.3)
+sqlalchemy[asyncio]==2.0.39     # ORM with async support (cognee requires >=2.0.39)
+asyncpg==0.29.0                 # Async PostgreSQL driver
+alembic==1.13.3                 # Database migrations (cognee requires >=1.13.3)
 
 # --- Redis ---
 redis[hiredis]==5.0.1           # Redis client with hiredis for performance
 
 # --- Pydantic (Data Validation) ---
-pydantic>=2.10.5,<2.12.0        # ✅ Fixed: cognee compatible range
-pydantic-settings>=2.2.1,<3     # ✅ Fixed: cognee compatible range
+pydantic==2.10.5                # ✅ Fixed: cognee compatible range
+pydantic-settings==2.2.1        # ✅ Fixed: cognee compatible range
 
 # --- HTTP Client ---
-httpx>=0.24,<1.0                # Async HTTP client (qdrant needs httpx[http2], allow wide range)
+httpx==0.27.2                   # Async HTTP client (qdrant needs httpx[http2])
 
 # --- Payment Processing ---
 stripe==8.0.0                   # Stripe payment gateway SDK (PayCore module)
@@ -63,7 +63,7 @@ qdrant-client==1.7.3            # Qdrant vector database client
 cognee==0.5.1                   # Knowledge graph + vector memory platform
 
 # --- LLM Providers ---
-litellm>=1.76.0                 # Multi-LLM provider abstraction
+litellm==1.76.0                 # Multi-LLM provider abstraction
 
 # --- Development / Testing ---
 pytest==8.0.1
