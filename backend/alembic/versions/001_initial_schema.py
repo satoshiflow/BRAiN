@@ -37,7 +37,7 @@ def upgrade() -> None:
     """
     # TODO: Create tables for:
     # - DNA snapshots (app.modules.dna)
-    # - Missions (app.modules.missions)
+    # - Missions (modules/missions - legacy)
     # - Agent metadata
     # - KARMA scores
     # - Threats

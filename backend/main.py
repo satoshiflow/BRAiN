@@ -70,7 +70,6 @@ from app.modules.credits.router import router as credits_router
 from app.modules.policy.router import router as policy_router
 from app.modules.threats.router import router as threats_router
 from app.modules.supervisor.router import router as app_supervisor_router
-# DISABLED: from app.modules.missions.router import router as app_missions_router  # Sprint 2: Using LEGACY instead
 from app.modules.foundation.router import router as foundation_router
 from app.modules.sovereign_mode.router import router as sovereign_mode_router
 from app.modules.dmz_control.router import router as dmz_control_router
@@ -309,12 +308,6 @@ def create_app() -> FastAPI:
     app.include_router(neurorail_telemetry_router, tags=["neurorail-telemetry"])
     app.include_router(neurorail_execution_router, tags=["neurorail-execution"])
     app.include_router(governor_router, tags=["governor"])
-
-    # DISABLED: app.include_router(app_missions_router, tags=["missions"])
-    # Reason: Route collision with LEGACY missions implementation
-    # Decision: Sprint 2 - Migrate LEGACY instead (see SPRINT2_MISSIONS_ARCHITECTURE_DECISION.md)
-    # NEW missions router creates orphaned missions (no worker integration)
-    # LEGACY missions router is functional (queue + worker + partial EventStream)
 
     # 3. Auto-discover routes from backend/api/routes/*
     _include_legacy_routers(app)
