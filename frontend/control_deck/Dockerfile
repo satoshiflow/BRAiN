@@ -7,9 +7,9 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 
 # Install dependencies with BuildKit cache mount
-# Replaces --legacy-peer-deps with npm ci for faster, reproducible builds
+# Using --legacy-peer-deps due to peer dependency conflicts
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --prefer-offline --no-audit --loglevel=error
+    npm ci --legacy-peer-deps --prefer-offline --no-audit --loglevel=error
 
 # Stage 2: Build application
 FROM node:22-alpine AS builder
