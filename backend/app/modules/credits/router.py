@@ -41,6 +41,14 @@ class RefundCreditsRequest(BaseModel):
     actor_id: str = Field(default="system", description="Who initiated refund")
 
 
+class AddCreditsRequest(BaseModel):
+    """Request to add credits to existing agent."""
+    agent_id: str = Field(..., description="Agent receiving credits")
+    amount: float = Field(..., gt=0, description="Credits to add")
+    reason: str = Field(..., description="Why credits are added")
+    actor_id: str = Field(default="system", description="Who initiated addition")
+
+
 # ============================================================================
 # Basic Endpoints
 # ============================================================================
@@ -165,6 +173,49 @@ async def refund_credits(
         )
     except ValueError as e:
         raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+
+
+@router.post("/add", response_model=Dict)
+async def add_credits(
+    request: AddCreditsRequest,
+    principal: Principal = Depends(get_current_principal),
+):
+    """
+    Add credits to existing agent (Event Sourcing).
+
+    Use cases:
+        - Monthly budget top-up
+        - Performance bonus
+        - Manual credit allocation
+        - Subscription renewal
+
+    Returns:
+        - agent_id
+        - amount
+        - balance_after
+        - reason
+
+    Example:
+        ```json
+        {
+            "agent_id": "agent_001",
+            "amount": 100.0,
+            "reason": "Monthly budget top-up",
+            "actor_id": "admin"
+        }
+        ```
+    """
+    try:
+        return await service.add_agent_credits(
+            agent_id=request.agent_id,
+            amount=request.amount,
+            reason=request.reason,
+            actor_id=request.actor_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 

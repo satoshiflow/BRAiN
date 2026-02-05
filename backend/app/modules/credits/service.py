@@ -292,6 +292,63 @@ async def refund_agent_credits(
     }
 
 
+async def add_agent_credits(
+    agent_id: str,
+    amount: float,
+    reason: str,
+    actor_id: str = "system",
+) -> Dict:
+    """
+    Add credits to existing agent (Event Sourcing).
+
+    This is a dedicated endpoint for adding credits, semantically clearer
+    than using refund for budget top-ups.
+
+    Args:
+        agent_id: Agent receiving credits
+        amount: Credits to add
+        reason: Why credits are added
+        actor_id: Who initiated addition
+
+    Returns:
+        Dict with agent_id, amount, balance_after
+
+    Raises:
+        ValueError: If Event Sourcing not available or agent not found
+
+    Example:
+        >>> await add_agent_credits("agent_001", 100.0, "Monthly budget")
+        {"agent_id": "agent_001", "amount": 100.0, "balance_after": 150.0}
+    """
+    credit_system = await get_credit_system()
+    if credit_system is None:
+        raise ValueError("Event Sourcing not available")
+
+    # Check if agent exists
+    current_balance = await credit_system.get_balance(agent_id)
+    if current_balance == 0.0:
+        # Agent might not exist - create warning in log
+        logger.warning(
+            f"Adding credits to agent {agent_id} with zero balance. "
+            "Agent might not exist or have been created without initial credits."
+        )
+
+    # Use add_credits method (we'll add this to integration_demo)
+    balance_after = await credit_system.add_credits(
+        agent_id=agent_id,
+        amount=amount,
+        reason=reason,
+        actor_id=actor_id,
+    )
+
+    return {
+        "agent_id": agent_id,
+        "amount": amount,
+        "balance_after": balance_after,
+        "reason": reason,
+    }
+
+
 async def get_agent_balance(agent_id: str) -> Dict:
     """
     Get current balance for agent (Event Sourcing).

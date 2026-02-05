@@ -278,6 +278,62 @@ class CreditSystemDemo:
 
         return new_balance
 
+    async def add_credits(
+        self,
+        agent_id: str,
+        amount: float,
+        reason: str,
+        actor_id: str = "system",
+    ) -> float:
+        """
+        Add credits to existing agent.
+
+        This method is semantically clearer than using refund for budget top-ups.
+        Uses CREDIT_ALLOCATED event to represent credit addition.
+
+        Args:
+            agent_id: Agent receiving credits
+            amount: Credits to add (must be > 0)
+            reason: Why credits are added
+            actor_id: Who initiated addition
+
+        Returns:
+            Balance after addition
+
+        Example:
+            >>> await demo.add_credits("agent_001", 100.0, "Monthly budget top-up")
+            150.0
+        """
+        self._check_initialized()
+
+        # Get current balance
+        current_balance = self.projections.balance.get_balance(agent_id)
+
+        # Calculate new balance
+        new_balance = current_balance + amount
+
+        # Create and publish CREDIT_ALLOCATED event
+        # Using ALLOCATED (not REFUNDED) for semantic clarity
+        event = create_credit_allocated_event(
+            entity_id=agent_id,
+            entity_type="agent",
+            amount=amount,
+            reason=reason,
+            balance_after=new_balance,
+            actor_id=actor_id,
+        )
+
+        await self.event_bus.publish(event)
+
+        logger.info(
+            f"Credits added: {agent_id}, amount: {amount}, balance: {new_balance}",
+            agent_id=agent_id,
+            amount=amount,
+            balance=new_balance,
+        )
+
+        return new_balance
+
     async def get_balance(self, agent_id: str) -> float:
         """
         Get current balance for agent.
