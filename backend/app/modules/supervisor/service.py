@@ -5,8 +5,8 @@ from typing import List, Optional
 import time
 import logging
 
-from ..missions.models import MissionStatus
-from ..missions.service import get_stats
+# Import from LEGACY missions module (modules.missions, not app.modules.missions which was deleted)
+from modules.missions.models import MissionStatus
 from .schemas import AgentStatus, SupervisorHealth, SupervisorStatus
 
 logger = logging.getLogger(__name__)
@@ -85,19 +85,18 @@ async def get_status() -> SupervisorStatus:
 
     Events:
         - supervisor.status_queried: Status queried with statistics
+
+    Note:
+        Mission statistics currently stubbed (app.modules.missions was removed).
+        TODO: Integrate with legacy modules.missions or NeuroRail for real stats.
     """
-    stats_response = await get_stats()
-    stats = stats_response.stats
-
-    def count(status: MissionStatus) -> int:
-        return int(stats.by_status.get(status, 0))
-
-    total = int(stats.total)
-    running = count(MissionStatus.RUNNING)
-    pending = count(MissionStatus.PENDING)
-    completed = count(MissionStatus.COMPLETED)
-    failed = count(MissionStatus.FAILED)
-    cancelled = count(MissionStatus.CANCELLED)
+    # STUB: Return zero counts until missions integration is restored
+    total = 0
+    running = 0
+    pending = 0
+    completed = 0
+    failed = 0
+    cancelled = 0
 
     agents: List[AgentStatus] = []
 
