@@ -202,5 +202,34 @@ async def missions_agents_info() -> dict:
         "description": "Placeholder für Agent<->Mission Zuordnung.",
         "agents": [],
     }
+
+
+@router.get("/stats/overview")
+async def missions_stats_overview() -> dict:
+    """
+    Mission statistics overview for Control Deck dashboard.
+    Returns aggregate stats compatible with MissionsOverviewStats type.
+    """
+    runtime = get_mission_runtime()
+
+    try:
+        stats = await runtime.get_queue_stats(preview_limit=0)
+        # Convert runtime stats to dashboard-compatible format
+        return {
+            "total": int(stats.get("length", 0)),
+            "running": 0,  # TODO: Track running missions
+            "pending": int(stats.get("length", 0)),
+            "completed": 0,  # TODO: Track completed missions
+            "failed": 0,  # TODO: Track failed missions
+        }
+    except Exception:
+        # Return safe defaults on error
+        return {
+            "total": 0,
+            "running": 0,
+            "pending": 0,
+            "completed": 0,
+            "failed": 0,
+        }
 # -----------------------------------------------------------------------------
 # backend/modules/missions/mission_control_runtime.py
