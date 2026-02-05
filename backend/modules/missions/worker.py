@@ -28,7 +28,7 @@ from .queue import MissionQueue
 
 # EventStream integration (Sprint 2)
 try:
-    from backend.mission_control_core.core import EventStream, Event, EventType, emit_task_event
+    from mission_control_core.core import EventStream, Event, EventType, emit_task_event
 except ImportError:
     EventStream = None
     Event = None

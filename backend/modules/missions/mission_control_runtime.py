@@ -21,7 +21,7 @@ import logging
 import os
 from typing import Any, Dict, List, Optional
 
-from backend.mission_control_core.core import (
+from mission_control_core.core import (
     EventStream,
     Event,
     EventType,

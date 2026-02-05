@@ -40,7 +40,7 @@ from .models import (
 # EventStream integration (ADR-001: EventStream is REQUIRED core infrastructure)
 # No optional fallback. Degraded mode only via explicit ENV flag.
 try:
-    from backend.mission_control_core.core.event_stream import (
+    from mission_control_core.core.event_stream import (
         EventStream, Event, EventType
     )
 except ImportError as e:
