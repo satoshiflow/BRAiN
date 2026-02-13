@@ -1,0 +1,99 @@
+# ============================================================================
+# BRAiN Backend - Fixed Requirements (Python Path Fix + Deps Resolved)
+# ============================================================================
+# Updated: 2026-01-03
+# Fix: All dependency conflicts resolved (cognee, litellm compatible)
+# ============================================================================
+
+# --- Core FastAPI + Server ---
+fastapi==0.116.2                # Updated for cognee compatibility
+uvicorn[standard]==0.34.0       # ✅ Fixed: cognee requires >=0.34.0
+python-multipart==0.0.20        # ✅ Fixed: cognee needs >=0.0.20
+
+# --- ASGI / Web Server ---
+# starlette - removed, fastapi brings correct version automatically
+websockets==15.0.1              # ✅ Fixed: cognee requires >=15.0.1
+
+# --- Database ---
+sqlalchemy[asyncio]==2.0.39     # ORM with async support (cognee requires >=2.0.39)
+asyncpg==0.29.0                 # Async PostgreSQL driver
+alembic==1.13.3                 # Database migrations (cognee requires >=1.13.3)
+
+# --- Redis ---
+redis[hiredis]==5.0.1           # Redis client with hiredis for performance
+
+# --- Pydantic (Data Validation) ---
+pydantic==2.10.5                # ✅ Fixed: cognee compatible range
+pydantic-settings==2.2.1        # ✅ Fixed: cognee compatible range
+
+# --- HTTP Client ---
+httpx>=0.28.1                   # Async HTTP client (upgraded for mistralai compatibility)
+
+# --- Payment Processing ---
+stripe==8.0.0                   # Stripe payment gateway SDK (PayCore module)
+
+# --- Environment ---
+python-dotenv==1.0.1
+
+# --- Logging ---
+loguru==0.7.2
+python-json-logger==2.0.7
+
+# --- Cryptography & Authentication ---
+cryptography==42.0.2                # Ed25519 signatures for bundle signing (G1)
+python-jose[cryptography]==3.3.0    # JWT token encoding/decoding
+bcrypt==4.2.1                       # ✅ Fixed: Updated for pwdlib (cognee) compatibility (>=4.1.2)
+passlib[bcrypt]==1.7.4              # Password hashing (bcrypt)
+
+# --- Background Jobs / Scheduling ---
+APScheduler==3.10.4             # Background task scheduling
+
+# --- Rate Limiting ---
+slowapi==0.1.9                  # Rate limiting middleware (Task 2.3)
+
+# --- CLI Tools ---
+typer==0.9.0                    # CLI interface for brain_cli
+rich==13.7.0                    # Beautiful terminal output
+
+# --- Supabase Integration ---
+# supabase - removed due to websockets conflict with cognee (realtime needs <13, cognee needs >=15)
+
+# --- Vector DB & Knowledge Graphs ---
+qdrant-client==1.7.3            # Qdrant vector database client
+cognee==0.5.1                   # Knowledge graph + vector memory platform
+
+# --- LLM Providers ---
+litellm==1.76.0                 # Multi-LLM provider abstraction
+
+# --- Development / Testing ---
+pytest==8.0.1
+pytest-asyncio==0.23.5
+pytest-cov==4.1.0
+# pytest-httpx removed - incompatible with httpx<0.26 required by supabase
+
+# --- Code Quality (Development) ---
+black==24.2.0                   # Code formatter
+ruff==0.2.2                     # Fast Python linter
+mypy==1.8.0                     # Static type checker
+
+# --- Type Stubs ---
+types-redis==4.6.0.20240218
+
+# --- Monitoring ---
+prometheus-client==0.20.0       # Metrics collection
+
+# ============================================================================
+# Key Fixes Applied (cognee 0.5.1 Compatibility):
+# 1. python-multipart: 0.0.9 → >=0.0.20,<1.0.0 (cognee requirement)
+# 2. pydantic: 2.6.1 → >=2.10.5,<2.12.0 (cognee requirement)
+# 3. pydantic-settings: 2.1.0 → >=2.2.1,<3 (cognee requirement)
+# 4. uvicorn: 0.27.1 → >=0.34.0,<1.0.0 (cognee requirement)
+# 5. websockets: 12.0 → >=15.0.1,<16.0.0 (cognee requirement)
+# 6. sqlalchemy: 2.0.27 → >=2.0.39,<2.1.0 (cognee requirement)
+# 7. alembic: 1.13.3 → >=1.13.3,<2.0.0 (cognee requirement)
+# 8. httpx: <0.26 → >=0.24,<1.0 (qdrant-client needs httpx[http2])
+# 9. starlette: removed (fastapi manages it automatically)
+# 10. litellm: added >=1.76.0 (user requirement)
+# 11. supabase: removed (websockets conflict: realtime<13 vs cognee>=15)
+# 12. pytest-httpx: removed (httpx version conflict)
+# ============================================================================

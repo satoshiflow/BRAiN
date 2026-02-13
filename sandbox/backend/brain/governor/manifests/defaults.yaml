@@ -1,0 +1,131 @@
+# Default Governance Manifest (Phase 2b)
+#
+# This manifest defines the baseline governance policy for agent creation.
+# It is applied by Governor v1 when evaluating creation requests.
+#
+# Version: 2b.1
+# Created: 2026-01-02
+# Author: Governor v1 System
+
+manifest_version: 1
+policy_version: "2b.1"
+name: "default"
+description: "Default governance manifest for BRAiN Agent System"
+
+# ============================================================================
+# Applicability Rules
+# ============================================================================
+# null = applies to all (most permissive)
+# Specific values restrict applicability
+
+applies_to:
+  agent_types: null              # Apply to all AgentTypes
+  template_names: null           # Apply to all templates
+  has_customizations: null       # Apply to both customized and non-customized
+
+# ============================================================================
+# Constraint Reductions
+# ============================================================================
+# Reductions are MONOTONIC - they can only reduce constraints, never expand.
+# Applied incrementally based on conditions.
+
+reductions:
+  # When agent has customizations (non-template DNA modifications)
+  on_customization:
+    max_llm_calls_per_day: "-30%"    # Reduce LLM calls by 30%
+    parallelism: "-50%"              # Reduce parallelism by 50%
+    # Rationale: Customizations increase unpredictability → reduce resource access
+
+  # When agent is classified as HIGH risk
+  on_high_risk:
+    network_access: "disable"        # Disable network access entirely
+    max_credits_per_mission: "100"   # Hard cap at 100 credits
+    # Rationale: High-risk agents require stricter resource limits
+
+  # When agent is deployed to production environment
+  on_production:
+    max_credits_per_mission: "500"   # Production cap at 500 credits
+    max_llm_tokens_per_call: "2000"  # Production cap at 2000 tokens
+    # Rationale: Production environments require predictable resource consumption
+
+  # When agent population is near limit (>80% capacity)
+  on_population_pressure:
+    max_lifetime_seconds: "1800"     # Limit lifetime to 30 minutes
+    # Rationale: Prevent resource exhaustion under load
+
+# ============================================================================
+# Risk Tier Overrides
+# ============================================================================
+# Override base risk tier based on conditions.
+# Higher risk tier → stricter supervision.
+
+risk_overrides:
+  if_customizations: "MEDIUM"              # Customizations → MEDIUM risk
+  if_template_not_in_allowlist: "HIGH"     # Unknown template → HIGH risk
+  if_capability_escalation: "CRITICAL"     # Capability escalation → CRITICAL risk
+
+# ============================================================================
+# Locked Fields
+# ============================================================================
+# Fields that CANNOT be modified, even by SYSTEM_ADMIN.
+# Defense in Depth for safety-critical invariants.
+
+locks:
+  locked_fields:
+    - "ethics_flags.human_override"      # MUST be 'always_allowed' (IMMUTABLE)
+    - "capabilities.can_create_agents"   # Only Genesis can create agents
+    - "capabilities.can_modify_governor" # Only authorized agents can modify governor
+  reason: "Safety-critical invariants enforced by EU AI Act Art. 16 and DSGVO Art. 25"
+
+# ============================================================================
+# Metadata
+# ============================================================================
+
+metadata:
+  compliance_frameworks:
+    - "DSGVO Art. 25 (Privacy by Design)"
+    - "EU AI Act Art. 16 (Human Oversight)"
+    - "EU AI Act Art. 5 (Prohibited Practices)"
+
+  audit_trail:
+    enabled: true
+    retention_days: 365
+
+  review_schedule:
+    frequency: "quarterly"
+    next_review: "2026-04-01"
+
+  contact:
+    owner: "BRAiN Governance Team"
+    email: "governance@brain.falklabs.de"
+
+# ============================================================================
+# Notes
+# ============================================================================
+#
+# Reduction Syntax:
+#   - Percentages: "-30%" (reduce by 30%)
+#   - Absolute values: "100" (set to 100)
+#   - Special keywords: "disable", "single", "none"
+#
+# Monotonicity Guarantee:
+#   - All reductions are MONOTONIC (can only reduce, never expand)
+#   - Validated by reduction engine before application
+#   - Violations trigger error and reject decision
+#
+# Priority:
+#   - Reductions are applied in order:
+#     1. on_customization
+#     2. on_high_risk
+#     3. on_production
+#     4. on_population_pressure
+#   - Later reductions may further reduce already-reduced constraints
+#
+# Risk Tier Escalation:
+#   - Risk tiers can only escalate (LOW → MEDIUM → HIGH → CRITICAL)
+#   - Multiple overrides → highest tier wins
+#
+# Locks:
+#   - Locked fields CANNOT be modified by ANY agent
+#   - Checked by Governor BEFORE reduction application
+#   - Violations → REJECT decision

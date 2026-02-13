@@ -3,12 +3,19 @@
 
 services:
   backend:
+    build:
+      context: ./backend
     container_name: dev-backend
     ports:
       - "8001:8000"  # Dev backend on port 8001
     environment:
       - APP_ENV=development
       - LOG_LEVEL=DEBUG
+      - DATABASE_URL=postgresql://brain:brain_dev_pass@postgres:5432/brain_dev
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - postgres
+      - redis
 
   control_deck:
     container_name: dev-control-deck
@@ -31,18 +38,40 @@ services:
       - NEXT_PUBLIC_BRAIN_API_BASE=http://localhost:8001
 
   postgres:
+    image: ankane/pgvector:latest
     container_name: dev-postgres
+    ports:
+      - "5433:5432"
     environment:
       POSTGRES_DB: brain_dev
+      POSTGRES_USER: brain
+      POSTGRES_PASSWORD: brain_dev_pass
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
 
   redis:
+    image: redis:7-alpine
     container_name: dev-redis
+    ports:
+      - "6380:6379"
 
   qdrant:
+    image: qdrant/qdrant:latest
     container_name: dev-qdrant
+    ports:
+      - "6334:6333"
 
   ollama:
+    image: ollama/ollama:latest
     container_name: dev-ollama
+    ports:
+      - "11435:11434"
+    volumes:
+      - ollama_dev_data:/root/.ollama
+
+volumes:
+  postgres_dev_data:
+  ollama_dev_data:
 
   # openwebui:
     # container_name: dev-openwebui

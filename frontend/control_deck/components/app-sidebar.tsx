@@ -4,6 +4,7 @@ import * as React from "react";
 import {
   Activity,
   Bot,
+  Code,
   Command,
   Globe,
   LayoutDashboard,
@@ -113,6 +114,26 @@ const data = {
         {
           title: "Fleet Management",
           url: "/fleet-management",
+        },
+      ],
+    },
+    {
+      title: "Development",
+      url: "#",
+      icon: Code,
+      isActive: false,
+      items: [
+        {
+          title: "Fred Bridge",
+          url: "/fred-bridge",
+        },
+        {
+          title: "AXE Widget",
+          url: "/axe-widget",
+        },
+        {
+          title: "DNA Evolution",
+          url: "/dna",
         },
       ],
     },

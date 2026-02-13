@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://brain:brain@localhost:5432/brain"
 
     # Redis
-    redis_url: str = "redis://localhost:6379/0"
+    redis_url: str = "redis://localhost:6380/0"
 
     # Qdrant (NEW - separate Coolify service)
     qdrant_url: str = "http://localhost:6333"
@@ -21,9 +21,24 @@ class Settings(BaseSettings):
     # Ollama (NEW - separate Coolify service)
     ollama_host: str = "http://localhost:11434"
 
+    # JWT Configuration (NEW - BRAiN Auth Foundation)
+    jwt_issuer: str = "https://brain.falklabs.de"
+    jwt_audience: str = "brain-api"
+    jwt_jwks_url: str = "https://brain.falklabs.de/.well-known/jwks.json"
+    jwks_cache_ttl_seconds: int = 3600  # 1 hour cache for JWKS keys
+
     # CORS - Accepts CSV string, JSON array, or wildcard
     # Type as Union to prevent Pydantic from auto-parsing as JSON before validation
     cors_origins: Union[str, list[str]] = "*"
+
+    # OpenRouter Configuration (Optional - for external LLM access)
+    openrouter_api_key: str = ""
+    openrouter_model: str = "moonshotai/kimi-k2.5"
+    openrouter_site_url: str = "http://localhost:3000"
+    openrouter_site_name: str = "BRAiN"
+
+    # DMZ Gateway Secret (Optional - for trust tier validation)
+    brain_dmz_gateway_secret: str = "dev-secret-change-in-production"
 
     @field_validator("cors_origins", mode="before")
     @classmethod

@@ -23,7 +23,13 @@ target_metadata = None
 
 def get_url():
     """Get database URL from environment or config"""
-    return os.getenv("DATABASE_URL", config.get_main_option("sqlalchemy.url"))
+    url = os.getenv("DATABASE_URL", config.get_main_option("sqlalchemy.url"))
+    # Convert asyncpg URL to psycopg2 for Alembic (sync migrations)
+    if url and "asyncpg" in url:
+        url = url.replace("postgresql+asyncpg", "postgresql+psycopg2")
+    elif url and url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+psycopg2://")
+    return url
 
 
 def run_migrations_offline() -> None:

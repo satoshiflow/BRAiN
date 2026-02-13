@@ -6,8 +6,16 @@ FastAPI endpoints for Foundation layer operations.
 
 from typing import Dict, Any, Optional
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, status, Depends, Request
 from loguru import logger
+
+from app.core.auth_deps import (
+    require_auth,
+    require_role,
+    SystemRole,
+    Principal,
+)
+from app.core.rate_limit import limiter, RateLimits
 
 from .schemas import (
     FoundationConfig,
@@ -26,6 +34,22 @@ from .service import get_foundation_service
 
 
 router = APIRouter(prefix="/api/foundation", tags=["foundation"])
+
+
+def _audit_log(
+    action: str,
+    principal: Principal,
+    details: Optional[dict] = None,
+):
+    """Log foundation operations for audit trail"""
+    audit_entry = {
+        "action": action,
+        "principal_id": principal.principal_id,
+        "principal_type": principal.principal_type.value,
+        "tenant_id": principal.tenant_id,
+        "details": details or {},
+    }
+    logger.info(f"[AUDIT] Foundation operation: {audit_entry}")
 
 
 # ============================================================================
@@ -50,7 +74,9 @@ async def get_foundation_status():
 
 
 @router.get("/config", response_model=FoundationConfig)
-async def get_foundation_config():
+async def get_foundation_config(
+    principal: Principal = Depends(require_auth),
+):
     """
     Get current Foundation configuration.
 
@@ -58,11 +84,15 @@ async def get_foundation_config():
         Current Foundation configuration settings
     """
     service = get_foundation_service()
+    _audit_log("get_foundation_config", principal)
     return service.config
 
 
 @router.put("/config", response_model=FoundationConfig)
-async def update_foundation_config(config: FoundationConfig):
+async def update_foundation_config(
+    config: FoundationConfig,
+    principal: Principal = Depends(require_role(SystemRole.ADMIN)),
+):
     """
     Update Foundation configuration.
 
@@ -72,6 +102,9 @@ async def update_foundation_config(config: FoundationConfig):
     - Strict mode
     - Allowed/blocked actions
 
+    **Requires ADMIN role** - This is a CRITICAL endpoint that modifies
+    ethics and safety settings.
+
     Args:
         config: New Foundation configuration
 
@@ -79,8 +112,26 @@ async def update_foundation_config(config: FoundationConfig):
         Updated configuration
     """
     service = get_foundation_service()
+
+    # Log the config change attempt with before/after for audit trail
+    _audit_log(
+        "update_foundation_config",
+        principal,
+        details={
+            "config_changes": config.model_dump(),
+            "previous_config": service.config.model_dump() if hasattr(service.config, 'model_dump') else str(service.config),
+        },
+    )
+
     updated_config = await service.update_config(config)
-    logger.info(f"Foundation config updated via API")
+    logger.info(f"Foundation config updated via API by {principal.principal_id}")
+
+    _audit_log(
+        "foundation_config_updated",
+        principal,
+        details={"config": updated_config.model_dump() if hasattr(updated_config, 'model_dump') else str(updated_config)},
+    )
+
     return updated_config
 
 
@@ -90,7 +141,11 @@ async def update_foundation_config(config: FoundationConfig):
 
 
 @router.post("/validate", response_model=ActionValidationResponse)
-async def validate_action(request: ActionValidationRequest):
+@limiter.limit(RateLimits.FOUNDATION_VALIDATE)
+async def validate_action(
+    request: Request,
+    validation_request: ActionValidationRequest,
+):
     """
     Validate if an action is ethically and safely permissible.
 
@@ -123,11 +178,11 @@ async def validate_action(request: ActionValidationRequest):
         ```
     """
     service = get_foundation_service()
-    result = await service.validate_action(request)
+    result = await service.validate_action(validation_request)
 
     # If action is blocked, return 403 Forbidden
     if not result.valid:
-        logger.warning(f"Action blocked: {request.action} - {result.reason}")
+        logger.warning(f"Action blocked: {validation_request.action} - {result.reason}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
@@ -299,7 +354,10 @@ async def get_foundation_info():
 
 
 @router.post("/authorize", response_model=AuthorizationResponse)
-async def authorize_action(request: AuthorizationRequest):
+async def authorize_action(
+    request: AuthorizationRequest,
+    principal: Principal = Depends(require_auth),
+):
     """
     Check if agent is authorized to perform an action.
 
@@ -330,12 +388,34 @@ async def authorize_action(request: AuthorizationRequest):
         ```
     """
     service = get_foundation_service()
+
+    _audit_log(
+        "authorize_action",
+        principal,
+        details={
+            "request_agent_id": request.agent_id,
+            "action": request.action,
+            "resource": request.resource,
+        },
+    )
+
     result = service.authorize_action(request)
 
     # If not authorized, return 403 Forbidden
     if not result.authorized:
         logger.warning(
-            f"Authorization denied: {request.action} for agent {request.agent_id}"
+            f"Authorization denied: {request.action} for agent {request.agent_id} by principal {principal.principal_id}"
+        )
+        _audit_log(
+            "authorize_action_denied",
+            principal,
+            details={
+                "request_agent_id": request.agent_id,
+                "action": request.action,
+                "resource": request.resource,
+                "reason": result.reason,
+                "audit_id": result.audit_id,
+            },
         )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -349,6 +429,17 @@ async def authorize_action(request: AuthorizationRequest):
             },
         )
 
+    _audit_log(
+        "authorize_action_granted",
+        principal,
+        details={
+            "request_agent_id": request.agent_id,
+            "action": request.action,
+            "resource": request.resource,
+            "audit_id": result.audit_id,
+        },
+    )
+
     return result
 
 
@@ -360,9 +451,12 @@ async def get_audit_log(
     outcome: Optional[str] = Query(None, description="Filter by outcome"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum entries to return"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
+    principal: Principal = Depends(require_role(SystemRole.ADMIN)),
 ):
     """
     Retrieve audit log entries.
+
+    **Requires ADMIN role** - Audit logs contain sensitive security information.
 
     Query Foundation audit trail with optional filters.
 
@@ -400,6 +494,22 @@ async def get_audit_log(
         ```
     """
     service = get_foundation_service()
+
+    _audit_log(
+        "query_audit_log",
+        principal,
+        details={
+            "filters": {
+                "agent_id": agent_id,
+                "action": action,
+                "event_type": event_type,
+                "outcome": outcome,
+                "limit": limit,
+                "offset": offset,
+            }
+        },
+    )
+
     request = AuditLogRequest(
         agent_id=agent_id,
         action=action,

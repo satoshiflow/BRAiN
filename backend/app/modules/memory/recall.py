@@ -15,12 +15,14 @@ KARMA integration:
 
 from __future__ import annotations
 
+import math
 import time
 from datetime import datetime, timedelta
 from typing import List, Optional
 
 from loguru import logger
 
+from .db_adapter import get_db_adapter
 from .schemas import (
     MemoryEntry,
     MemoryLayer,
@@ -115,6 +117,8 @@ class SelectiveRecall:
         )
 
         decayed = 0
+        db = await get_db_adapter()
+        
         for mem in memories:
             last_access = mem.last_accessed_at or mem.created_at
             days_idle = (now - last_access).total_seconds() / 86400
@@ -124,6 +128,11 @@ class SelectiveRecall:
                 new_importance = max(0.0, mem.importance - decay)
                 if new_importance != mem.importance:
                     mem.importance = new_importance
+                    # Persist decay to database
+                    await db.update_memory(
+                        mem.memory_id,
+                        importance=new_importance,
+                    )
                     decayed += 1
 
         if decayed:
@@ -156,7 +165,6 @@ class SelectiveRecall:
             recency = max(0.0, 100.0 - (age_days * 100.0 / 30.0))
 
             # Access frequency component (0-100): log scale
-            import math
             access = min(100.0, math.log2(mem.access_count + 1) * 20)
 
             # Composite score
@@ -193,4 +201,14 @@ class SelectiveRecall:
         """Boost importance of recalled memories (reinforcement learning)."""
         memory.access_count += 1
         memory.last_accessed_at = datetime.utcnow()
-        memory.importance = min(MAX_IMPORTANCE, memory.importance + RECALL_BOOST)
+        new_importance = min(MAX_IMPORTANCE, memory.importance + RECALL_BOOST)
+        memory.importance = new_importance
+        
+        # Persist reinforcement to database
+        db = await get_db_adapter()
+        await db.update_memory(
+            memory.memory_id,
+            access_count=memory.access_count,
+            last_accessed_at=memory.last_accessed_at,
+            importance=new_importance,
+        )

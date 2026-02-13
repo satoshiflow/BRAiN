@@ -17,42 +17,53 @@ export function useHealthSSE(enabled: boolean = true) {
   useEffect(() => {
     if (!enabled) return;
 
-    const baseUrl = process.env.NEXT_PUBLIC_BRAIN_API_BASE || 'http://localhost:8000';
+    const baseUrl = process.env.NEXT_PUBLIC_BRAIN_API_BASE || 'http://127.0.0.1:8000';
     const url = `${baseUrl}/api/system/stream`;
 
-    const eventSource = new EventSource(url);
+    let eventSource: EventSource | null = null;
 
-    eventSource.onopen = () => {
-      setIsConnected(true);
-      setError(null);
-    };
+    try {
+      eventSource = new EventSource(url);
 
-    eventSource.onmessage = (event) => {
-      try {
-        const data: SSEEvent = JSON.parse(event.data);
+      eventSource.onopen = () => {
+        setIsConnected(true);
+        setError(null);
+      };
 
-        if (data.event_type === 'health_update') {
-          queryClient.invalidateQueries({ queryKey: ['health'] });
-          queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      eventSource.onmessage = (event) => {
+        try {
+          const data: SSEEvent = JSON.parse(event.data);
+
+          if (data.event_type === 'health_update') {
+            queryClient.invalidateQueries({ queryKey: ['health'] });
+            queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+          }
+          if (data.event_type === 'metrics_update') {
+            queryClient.invalidateQueries({ queryKey: ['telemetry'] });
+          }
+        } catch (err) {
+          console.error('Failed to parse SSE message:', err);
         }
-        if (data.event_type === 'metrics_update') {
-          queryClient.invalidateQueries({ queryKey: ['telemetry'] });
-        }
-      } catch (err) {
-        console.error('Failed to parse SSE message:', err);
-      }
-    };
+      };
 
-    eventSource.onerror = () => {
-      setError(new Error('SSE connection failed'));
+      eventSource.onerror = () => {
+        // Silent fail - SSE ist optional
+        setIsConnected(false);
+        if (eventSource) {
+          eventSource.close();
+        }
+      };
+
+      eventSourceRef.current = eventSource;
+    } catch (err) {
+      // Silent fail - SSE ist optional
       setIsConnected(false);
-      eventSource.close();
-    };
-
-    eventSourceRef.current = eventSource;
+    }
 
     return () => {
-      eventSource.close();
+      if (eventSource) {
+        eventSource.close();
+      }
     };
   }, [enabled, queryClient]);
 

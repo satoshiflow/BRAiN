@@ -384,7 +384,7 @@ class ExecutorBase(ABC):
     # Validation Helpers
     # ========================================================================
 
-    def _validate_input_strict(
+    async def _validate_input_strict(
         self,
         step: ExecutionStep,
         context: ExecutionContext

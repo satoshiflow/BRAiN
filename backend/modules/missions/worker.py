@@ -251,7 +251,8 @@ _queue: Optional[MissionQueue] = None
 def _get_queue() -> MissionQueue:
     global _queue
     if _queue is None:
-        redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
+        # Use same Redis URL as the rest of the app (localhost:6380 for dev)
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6380/0")
         _queue = MissionQueue(redis_url=redis_url)
     return _queue
 

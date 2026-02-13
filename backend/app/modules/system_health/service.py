@@ -7,7 +7,7 @@ comprehensive system health overview.
 
 import time
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Any
 from loguru import logger
 
 from app.modules.system_health.schemas import (

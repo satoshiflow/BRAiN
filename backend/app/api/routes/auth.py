@@ -1,404 +1,459 @@
 """
-Authentication API Endpoints
+Auth Router - Test endpoints for JWT authentication
 
-Provides JWT-based authentication with login, token management, and user info.
+Provides:
+- /api/auth/me - Get current principal info
+- /api/auth/test/protected - Test protected endpoint
+- /api/auth/test/role/{role} - Test role-based access
+- /api/auth/test/scope/{scope} - Test scope-based access
 """
 
-from datetime import timedelta
-from typing import List
+from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.security import OAuth2PasswordRequestForm
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-# Rate Limiting (Task 2.3)
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-
-from app.core.security import (
-    User,
-    Token,
+from app.core.auth_deps import (
     Principal,
-    UserRole,
-    authenticate_user,
-    create_access_token,
     get_current_principal,
-    get_current_active_principal,
+    require_auth,
+    require_role,
+    require_scope,
     require_admin,
-    ACCESS_TOKEN_EXPIRE_MINUTES,
-    USERS_DB,
-    get_password_hash,
+    require_human,
+    require_agent,
+    SystemRole,
+    SystemScope,
 )
+from app.core.jwt_middleware import JWTBearer, TokenPayload
 
-
-router = APIRouter(prefix="/api/auth", tags=["authentication"])
-
-# Rate limiter instance
-limiter = Limiter(key_func=get_remote_address)
+router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 # ============================================================================
-# Request/Response Models
+# Response Models
 # ============================================================================
 
-class LoginRequest(BaseModel):
-    """Login request with username and password"""
-    username: str
-    password: str
+class PrincipalInfo(BaseModel):
+    """Principal information response"""
+    principal_id: str
+    principal_type: str
+    email: Optional[str]
+    name: Optional[str]
+    roles: list[str]
+    scopes: list[str]
+    tenant_id: Optional[str]
+    agent_id: Optional[str]
+    parent_agent_id: Optional[str]
+    is_authenticated: bool
+    is_human: bool
+    is_agent: bool
+    is_anonymous: bool
 
 
-class UserInfo(BaseModel):
-    """Current user information"""
-    username: str
-    email: str | None
-    full_name: str | None
-    roles: List[str]
-    is_admin: bool
+class TokenValidationResponse(BaseModel):
+    """Token validation test response"""
+    valid: bool
+    message: str
+    principal: Optional[PrincipalInfo] = None
+    error: Optional[str] = None
 
 
-class CreateUserRequest(BaseModel):
-    """Request to create a new user"""
-    username: str
-    password: str
-    email: str | None = None
-    full_name: str | None = None
-    roles: List[str] = []
-
-
-class UpdateUserRequest(BaseModel):
-    """Request to update user"""
-    email: str | None = None
-    full_name: str | None = None
-    roles: List[str] | None = None
-    disabled: bool | None = None
+class AccessTestResponse(BaseModel):
+    """Access test response"""
+    success: bool
+    message: str
+    principal_id: str
+    required_check: str
+    your_roles: list[str]
+    your_scopes: list[str]
 
 
 # ============================================================================
-# Authentication Endpoints
+# Auth Info Endpoints
 # ============================================================================
 
-@router.post("/login", response_model=Token)
-@limiter.limit("5/minute")  # Rate limit: Max 5 login attempts per minute (DoS protection)
-async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends()):
+@router.get("/me", response_model=PrincipalInfo)
+async def get_me(
+    principal: Principal = Depends(get_current_principal),
+) -> PrincipalInfo:
     """
-    Authenticate user and return JWT access token.
-
-    Rate limited to 5 attempts per minute to prevent brute force attacks.
-
-    Default users:
-    - username: admin, password: password (roles: admin, operator, viewer)
-    - username: operator, password: password (roles: operator, viewer)
-    - username: viewer, password: password (roles: viewer)
+    Get current authenticated principal information.
+    
+    Returns information about the currently authenticated user or agent.
+    Works with both valid tokens and anonymous requests.
     """
-    user = authenticate_user(form_data.username, form_data.password)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    # Create access token
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={
-            "sub": user.username,
-            "email": user.email,
-            "roles": user.roles,
-        },
-        expires_delta=access_token_expires,
-    )
-
-    return Token(
-        access_token=access_token,
-        token_type="bearer",
-        expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,  # in seconds
+    return PrincipalInfo(
+        principal_id=principal.principal_id,
+        principal_type=principal.principal_type.value,
+        email=principal.email,
+        name=principal.name,
+        roles=principal.roles,
+        scopes=principal.scopes,
+        tenant_id=principal.tenant_id,
+        agent_id=principal.agent_id,
+        parent_agent_id=principal.parent_agent_id,
+        is_authenticated=not principal.is_anonymous,
+        is_human=principal.is_human,
+        is_agent=principal.is_agent,
+        is_anonymous=principal.is_anonymous,
     )
 
 
-@router.post("/login/json", response_model=Token)
-async def login_json(request: LoginRequest):
+@router.get("/me/protected", response_model=PrincipalInfo)
+async def get_me_protected(
+    principal: Principal = Depends(require_auth),
+) -> PrincipalInfo:
     """
-    Authenticate user with JSON request body.
-
-    Alternative to OAuth2 password flow for frontend applications.
+    Get current principal info (authentication required).
+    
+    Same as /me but requires valid authentication.
     """
-    user = authenticate_user(request.username, request.password)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-        )
-
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={
-            "sub": user.username,
-            "email": user.email,
-            "roles": user.roles,
-        },
-        expires_delta=access_token_expires,
-    )
-
-    return Token(
-        access_token=access_token,
-        token_type="bearer",
-        expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-    )
-
-
-@router.get("/me", response_model=UserInfo)
-async def get_current_user_info(
-    principal: Principal = Depends(get_current_active_principal),
-):
-    """
-    Get current authenticated user information.
-
-    Requires valid JWT token.
-    """
-    from app.core.security import get_user
-
-    user = get_user(principal.username)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
-
-    return UserInfo(
-        username=user.username,
-        email=user.email,
-        full_name=user.full_name,
-        roles=user.roles,
-        is_admin=principal.is_admin(),
-    )
-
-
-@router.post("/refresh", response_model=Token)
-async def refresh_token(
-    principal: Principal = Depends(get_current_active_principal),
-):
-    """
-    Refresh JWT access token.
-
-    Returns a new token with extended expiration.
-    """
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={
-            "sub": principal.username,
-            "email": principal.email,
-            "roles": principal.roles,
-        },
-        expires_delta=access_token_expires,
-    )
-
-    return Token(
-        access_token=access_token,
-        token_type="bearer",
-        expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    return PrincipalInfo(
+        principal_id=principal.principal_id,
+        principal_type=principal.principal_type.value,
+        email=principal.email,
+        name=principal.name,
+        roles=principal.roles,
+        scopes=principal.scopes,
+        tenant_id=principal.tenant_id,
+        agent_id=principal.agent_id,
+        parent_agent_id=principal.parent_agent_id,
+        is_authenticated=True,
+        is_human=principal.is_human,
+        is_agent=principal.is_agent,
+        is_anonymous=False,
     )
 
 
 # ============================================================================
-# User Management Endpoints (Admin Only)
+# Token Validation Test
 # ============================================================================
 
-@router.get("/users", response_model=List[User])
-async def list_users(
-    _principal: Principal = Depends(require_admin),
-):
+@router.post("/test/validate", response_model=TokenValidationResponse)
+async def test_token_validation(
+    token_payload: Optional[TokenPayload] = Depends(JWTBearer(auto_error=False)),
+) -> TokenValidationResponse:
     """
-    List all users (admin only).
-
-    Returns user information without passwords.
+    Test token validation without requiring authentication.
+    
+    Returns whether the provided token is valid and its claims.
     """
-    users = []
-    for user in USERS_DB.values():
-        users.append(User(
-            username=user.username,
-            email=user.email,
-            full_name=user.full_name,
-            disabled=user.disabled,
-            roles=user.roles,
-        ))
-    return users
-
-
-@router.post("/users", response_model=User, status_code=status.HTTP_201_CREATED)
-async def create_user(
-    request: CreateUserRequest,
-    _principal: Principal = Depends(require_admin),
-):
-    """
-    Create a new user (admin only).
-
-    Password is hashed before storage.
-    """
-    from app.core.security import UserInDB
-
-    if request.username in USERS_DB:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already exists",
+    if token_payload is None:
+        return TokenValidationResponse(
+            valid=False,
+            message="No valid token provided",
+            error="Missing or invalid Authorization header",
         )
-
-    new_user = UserInDB(
-        username=request.username,
-        email=request.email,
-        full_name=request.full_name,
-        disabled=False,
-        roles=request.roles,
-        hashed_password=get_password_hash(request.password),
-    )
-
-    USERS_DB[request.username] = new_user
-
-    return User(
-        username=new_user.username,
-        email=new_user.email,
-        full_name=new_user.full_name,
-        disabled=new_user.disabled,
-        roles=new_user.roles,
-    )
-
-
-@router.get("/users/{username}", response_model=User)
-async def get_user_by_username(
-    username: str,
-    _principal: Principal = Depends(require_admin),
-):
-    """
-    Get user by username (admin only).
-    """
-    from app.core.security import get_user
-
-    user = get_user(username)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"User '{username}' not found",
-        )
-
-    return User(
-        username=user.username,
-        email=user.email,
-        full_name=user.full_name,
-        disabled=user.disabled,
-        roles=user.roles,
+    
+    return TokenValidationResponse(
+        valid=True,
+        message="Token is valid",
+        principal=PrincipalInfo(
+            principal_id=token_payload.sub,
+            principal_type=token_payload.token_type,
+            email=token_payload.email,
+            name=token_payload.name,
+            roles=token_payload.roles,
+            scopes=token_payload.scope,
+            tenant_id=token_payload.tenant_id,
+            agent_id=token_payload.agent_id,
+            parent_agent_id=token_payload.parent_agent_id,
+            is_authenticated=True,
+            is_human=token_payload.token_type == "human",
+            is_agent=token_payload.token_type == "agent",
+            is_anonymous=False,
+        ),
     )
 
 
-@router.put("/users/{username}", response_model=User)
-async def update_user(
-    username: str,
-    request: UpdateUserRequest,
-    _principal: Principal = Depends(require_admin),
-):
-    """
-    Update user information (admin only).
+# ============================================================================
+# Role-Based Access Tests
+# ============================================================================
 
-    Password cannot be updated through this endpoint.
-    """
-    if username not in USERS_DB:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"User '{username}' not found",
-        )
-
-    user = USERS_DB[username]
-
-    # Update fields
-    if request.email is not None:
-        user.email = request.email
-    if request.full_name is not None:
-        user.full_name = request.full_name
-    if request.roles is not None:
-        user.roles = request.roles
-    if request.disabled is not None:
-        user.disabled = request.disabled
-
-    return User(
-        username=user.username,
-        email=user.email,
-        full_name=user.full_name,
-        disabled=user.disabled,
-        roles=user.roles,
-    )
-
-
-@router.delete("/users/{username}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_user(
-    username: str,
+@router.get("/test/role/admin", response_model=AccessTestResponse)
+async def test_admin_access(
     principal: Principal = Depends(require_admin),
-):
+) -> AccessTestResponse:
     """
-    Delete user (admin only).
-
-    Cannot delete yourself or the last admin user.
+    Test admin role access.
+    
+    Requires 'admin' or 'SYSTEM_ADMIN' role.
     """
-    if username not in USERS_DB:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"User '{username}' not found",
+    return AccessTestResponse(
+        success=True,
+        message="You have admin access!",
+        principal_id=principal.principal_id,
+        required_check="admin role",
+        your_roles=principal.roles,
+        your_scopes=principal.scopes,
+    )
+
+
+@router.get("/test/role/operator", response_model=AccessTestResponse)
+async def test_operator_access(
+    principal: Principal = Depends(require_role("admin", "operator", "SYSTEM_ADMIN")),
+) -> AccessTestResponse:
+    """
+    Test operator role access.
+    
+    Requires 'admin', 'operator', or 'SYSTEM_ADMIN' role.
+    """
+    return AccessTestResponse(
+        success=True,
+        message="You have operator access!",
+        principal_id=principal.principal_id,
+        required_check="operator role",
+        your_roles=principal.roles,
+        your_scopes=principal.scopes,
+    )
+
+
+@router.get("/test/role/viewer", response_model=AccessTestResponse)
+async def test_viewer_access(
+    principal: Principal = Depends(require_role("admin", "operator", "viewer", "SYSTEM_ADMIN")),
+) -> AccessTestResponse:
+    """
+    Test viewer role access.
+    
+    Requires 'admin', 'operator', 'viewer', or 'SYSTEM_ADMIN' role.
+    """
+    return AccessTestResponse(
+        success=True,
+        message="You have viewer access!",
+        principal_id=principal.principal_id,
+        required_check="viewer role",
+        your_roles=principal.roles,
+        your_scopes=principal.scopes,
+    )
+
+
+@router.get("/test/role/custom/{role}", response_model=AccessTestResponse)
+async def test_custom_role(
+    role: str,
+    principal: Principal = Depends(require_auth),
+) -> AccessTestResponse:
+    """
+    Test specific role access.
+    
+    Provide a role name to check if you have it.
+    """
+    if principal.has_role(role):
+        return AccessTestResponse(
+            success=True,
+            message=f"You have the '{role}' role!",
+            principal_id=principal.principal_id,
+            required_check=f"{role} role",
+            your_roles=principal.roles,
+            your_scopes=principal.scopes,
         )
-
-    # Prevent self-deletion
-    if username == principal.username:
+    else:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot delete yourself",
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"You don't have the '{role}' role. Your roles: {principal.roles}",
         )
-
-    # Prevent deleting last admin
-    user = USERS_DB[username]
-    if "admin" in user.roles:
-        admin_count = sum(1 for u in USERS_DB.values() if "admin" in u.roles)
-        if admin_count <= 1:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cannot delete the last admin user",
-            )
-
-    del USERS_DB[username]
 
 
 # ============================================================================
-# Role Information Endpoints
+# Scope-Based Access Tests
 # ============================================================================
 
-@router.get("/roles")
-async def list_roles():
+@router.get("/test/scope/read", response_model=AccessTestResponse)
+async def test_read_scope(
+    principal: Principal = Depends(require_scope(SystemScope.READ)),
+) -> AccessTestResponse:
     """
-    List available user roles.
+    Test read scope access.
+    
+    Requires 'read' scope.
+    """
+    return AccessTestResponse(
+        success=True,
+        message="You have read access!",
+        principal_id=principal.principal_id,
+        required_check="read scope",
+        your_roles=principal.roles,
+        your_scopes=principal.scopes,
+    )
 
-    Returns role definitions and permissions.
+
+@router.get("/test/scope/write", response_model=AccessTestResponse)
+async def test_write_scope(
+    principal: Principal = Depends(require_scope(SystemScope.WRITE)),
+) -> AccessTestResponse:
+    """
+    Test write scope access.
+    
+    Requires 'write' scope.
+    """
+    return AccessTestResponse(
+        success=True,
+        message="You have write access!",
+        principal_id=principal.principal_id,
+        required_check="write scope",
+        your_roles=principal.roles,
+        your_scopes=principal.scopes,
+    )
+
+
+@router.get("/test/scope/admin", response_model=AccessTestResponse)
+async def test_admin_scope(
+    principal: Principal = Depends(require_scope(SystemScope.ADMIN)),
+) -> AccessTestResponse:
+    """
+    Test admin scope access.
+    
+    Requires 'admin' scope.
+    """
+    return AccessTestResponse(
+        success=True,
+        message="You have admin scope access!",
+        principal_id=principal.principal_id,
+        required_check="admin scope",
+        your_roles=principal.roles,
+        your_scopes=principal.scopes,
+    )
+
+
+@router.get("/test/scope/custom/{scope}", response_model=AccessTestResponse)
+async def test_custom_scope(
+    scope: str,
+    principal: Principal = Depends(require_auth),
+) -> AccessTestResponse:
+    """
+    Test specific scope access.
+    
+    Provide a scope name to check if you have it.
+    """
+    if principal.has_scope(scope):
+        return AccessTestResponse(
+            success=True,
+            message=f"You have the '{scope}' scope!",
+            principal_id=principal.principal_id,
+            required_check=f"{scope} scope",
+            your_roles=principal.roles,
+            your_scopes=principal.scopes,
+        )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"You don't have the '{scope}' scope. Your scopes: {principal.scopes}",
+        )
+
+
+# ============================================================================
+# Principal Type Tests
+# ============================================================================
+
+@router.get("/test/type/human", response_model=AccessTestResponse)
+async def test_human_access(
+    principal: Principal = Depends(require_human),
+) -> AccessTestResponse:
+    """
+    Test human-only access.
+    
+    Only human users can access this endpoint.
+    """
+    return AccessTestResponse(
+        success=True,
+        message="You are a human user!",
+        principal_id=principal.principal_id,
+        required_check="human principal type",
+        your_roles=principal.roles,
+        your_scopes=principal.scopes,
+    )
+
+
+@router.get("/test/type/agent", response_model=AccessTestResponse)
+async def test_agent_access(
+    principal: Principal = Depends(require_agent),
+) -> AccessTestResponse:
+    """
+    Test agent-only access.
+    
+    Only agents can access this endpoint.
+    """
+    return AccessTestResponse(
+        success=True,
+        message="You are an agent!",
+        principal_id=principal.principal_id,
+        required_check="agent principal type",
+        your_roles=principal.roles,
+        your_scopes=principal.scopes,
+    )
+
+
+# ============================================================================
+# Combined Tests
+# ============================================================================
+
+@router.post("/test/combined", response_model=AccessTestResponse)
+async def test_combined_access(
+    principal: Principal = Depends(require_auth),
+) -> AccessTestResponse:
+    """
+    Test combined role and scope checks programmatically.
+    
+    This endpoint accepts any authenticated user and returns
+    information about their access levels.
+    """
+    checks = []
+    
+    if principal.has_role("admin"):
+        checks.append("admin role")
+    if principal.has_scope("write"):
+        checks.append("write scope")
+    if principal.has_scope("admin"):
+        checks.append("admin scope")
+    if principal.is_human:
+        checks.append("human type")
+    if principal.is_agent:
+        checks.append("agent type")
+    
+    return AccessTestResponse(
+        success=True,
+        message=f"Passed checks: {', '.join(checks) if checks else 'none specific'}",
+        principal_id=principal.principal_id,
+        required_check="authenticated",
+        your_roles=principal.roles,
+        your_scopes=principal.scopes,
+    )
+
+
+# ============================================================================
+# Public Test Endpoints (No auth required)
+# ============================================================================
+
+@router.get("/test/public")
+async def test_public_access() -> dict:
+    """
+    Public test endpoint - no authentication required.
+    
+    Useful for testing connectivity without a token.
     """
     return {
-        "roles": [
-            {
-                "name": "admin",
-                "display_name": "Administrator",
-                "description": "Full system access including user management",
-                "permissions": ["all"],
-            },
-            {
-                "name": "operator",
-                "display_name": "Operator",
-                "description": "Can perform operations and deployments",
-                "permissions": ["read", "write", "execute", "deploy"],
-            },
-            {
-                "name": "viewer",
-                "display_name": "Viewer",
-                "description": "Read-only access to system",
-                "permissions": ["read"],
-            },
-            {
-                "name": "guest",
-                "display_name": "Guest",
-                "description": "Limited access (anonymous users)",
-                "permissions": ["read_public"],
-            },
-        ]
+        "message": "This is a public endpoint",
+        "auth_required": False,
+        "hint": "Try /api/auth/me with a Bearer token",
+    }
+
+
+@router.get("/health")
+async def auth_health_check() -> dict:
+    """
+    Auth module health check.
+    
+    Returns basic status of the auth system.
+    """
+    return {
+        "status": "ok",
+        "module": "auth",
+        "features": [
+            "jwt_validation",
+            "role_based_access",
+            "scope_based_access",
+            "human_agent_tokens",
+        ],
     }

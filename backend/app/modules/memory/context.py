@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
+from .db_adapter import get_db_adapter
 from .schemas import (
     ConversationTurn,
     MemoryEntry,
@@ -43,7 +44,7 @@ class ContextManager:
 
     def __init__(self, store: MemoryStore) -> None:
         self.store = store
-        # Track which agent has which active session
+        # Track which agent has which active session (still in-memory for fast lookup)
         self._agent_sessions: Dict[str, str] = {}  # agent_id → session_id
         logger.info("🧠 ContextManager initialized")
 
@@ -165,9 +166,23 @@ class ContextManager:
             metadata=metadata or {},
         )
 
+        # Persist turn to database
+        db = await get_db_adapter()
+        await db.add_turn(session_id, turn)
+        
+        # Update session state
         session.turns.append(turn)
         session.total_tokens += token_count
         session.last_activity_at = datetime.utcnow()
+        
+        # Persist session updates
+        await db.update_session(
+            session_id,
+            total_tokens=session.total_tokens,
+            last_activity_at=session.last_activity_at,
+            compressed_summary=session.compressed_summary,
+            compressed_turn_count=session.compressed_turn_count,
+        )
 
         # Check token budget
         if session.total_tokens > session.max_tokens * 0.85:
@@ -215,13 +230,20 @@ class ContextManager:
     # ------------------------------------------------------------------
 
     async def set_context_var(self, session_id: str, key: str, value: Any) -> bool:
+        """Set a context variable for a session."""
         session = await self.store.get_session(session_id)
         if not session:
             return False
+        
         session.context_vars[key] = value
+        
+        # Persist to database
+        db = await get_db_adapter()
+        await db.update_session(session_id, context_vars=session.context_vars)
         return True
 
     async def get_context_var(self, session_id: str, key: str) -> Optional[Any]:
+        """Get a context variable from a session."""
         session = await self.store.get_session(session_id)
         if not session:
             return None
@@ -292,6 +314,15 @@ class ContextManager:
         session.total_tokens -= compressed_tokens
         # Add summary token estimate
         session.total_tokens += _estimate_tokens(new_summary)
+
+        # Persist updates to database
+        db = await get_db_adapter()
+        await db.update_session(
+            session.session_id,
+            compressed_summary=session.compressed_summary,
+            compressed_turn_count=session.compressed_turn_count,
+            total_tokens=session.total_tokens,
+        )
 
         logger.info(
             "🗜️ Compressed %d turns in session %s (freed ~%d tokens)",

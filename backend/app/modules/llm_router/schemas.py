@@ -18,6 +18,9 @@ class LLMProvider(str, Enum):
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
 
+    # External OpenWebUI instance (e.g., running on Coolify)
+    OPENWEBUI = "openwebui"
+
     # Special
     AUTO = "auto"  # Auto-select based on context
 
@@ -184,6 +187,59 @@ class OpenRouterConfig(ProviderConfig):
 
     site_url: Optional[str] = Field(
         None,
+        description="Site URL for OpenRouter rankings",
+    )
+
+    site_name: Optional[str] = Field(
+        None,
+        description="Site name for OpenRouter rankings",
+    )
+
+
+class OpenWebUIConfig(ProviderConfig):
+    """OpenWebUI (external instance) provider configuration"""
+
+    host: str = Field(
+        "http://localhost:3000",
+        description="OpenWebUI server host (e.g., Coolify instance)",
+    )
+
+    api_key: Optional[str] = Field(
+        None,
+        description="OpenWebUI API key (if required)",
+    )
+
+    default_model: str = Field(
+        "llama3.2:latest",
+        description="Default model (as configured in OpenWebUI)",
+    )
+
+    timeout: float = Field(
+        60.0,
+        description="Request timeout in seconds",
+    )
+
+
+class OpenRouterConfig(ProviderConfig):
+    """OpenRouter (API) provider configuration"""
+
+    api_key: Optional[str] = Field(
+        None,
+        description="OpenRouter API key",
+    )
+
+    base_url: str = Field(
+        "https://openrouter.ai/api/v1",
+        description="OpenRouter API base URL",
+    )
+
+    default_model: str = Field(
+        "anthropic/claude-3.5-sonnet",
+        description="Default model",
+    )
+
+    site_url: Optional[str] = Field(
+        None,
         description="Your site URL (for OpenRouter analytics)",
     )
 
@@ -277,6 +333,10 @@ class LLMRouterConfig(BaseModel):
 
     openrouter: OpenRouterConfig = Field(
         default_factory=OpenRouterConfig,
+    )
+
+    openwebui: OpenWebUIConfig = Field(
+        default_factory=OpenWebUIConfig,
     )
 
     openai: OpenAIConfig = Field(

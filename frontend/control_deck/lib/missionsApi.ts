@@ -1,5 +1,5 @@
 const API_BASE =
-  process.env.NEXT_PUBLIC_BRAIN_API_BASE ?? "http://localhost:8000";
+  process.env.NEXT_PUBLIC_BRAIN_API_BASE ?? "http://127.0.0.1:8000";
 
 export type MissionStatus =
   | "PENDING"
@@ -29,17 +29,48 @@ export type UpdateMissionPayload = {
   status?: MissionStatus;
 };
 
-type RawMission = any;
+type RawMission = {
+  id?: string;
+  mission_id?: string;
+  name?: string;
+  title?: string;
+  description?: string;
+  status?: string;
+  progress?: number;
+  created_at?: string;
+  createdAt?: string;
+  updated_at?: string;
+  updatedAt?: string;
+};
+
+function mapStatus(rawStatus: string | undefined, progress?: number): MissionStatus {
+  if (!rawStatus) {
+    // Fallback basierend auf progress
+    if (progress === 100) return "COMPLETED";
+    if (progress && progress > 0) return "RUNNING";
+    return "PENDING";
+  }
+  
+  const status = rawStatus.toUpperCase();
+  if (status === "COMPLETED" || status === "DONE") return "COMPLETED";
+  if (status === "RUNNING" || status === "ACTIVE" || status === "IN_PROGRESS") return "RUNNING";
+  if (status === "PENDING" || status === "WAITING") return "PENDING";
+  if (status === "FAILED" || status === "ERROR") return "FAILED";
+  if (status === "CANCELLED" || status === "CANCELED") return "CANCELLED";
+  return status;
+}
 
 function mapMission(raw: RawMission): Mission {
+  const status = mapStatus(raw.status, raw.progress);
+  
   return {
     id: String(raw.id ?? raw.mission_id ?? ""),
     name: String(raw.name ?? raw.title ?? "Unnamed Mission"),
     description:
       typeof raw.description === "string" ? raw.description : null,
-    status: String(raw.status ?? "PENDING"),
-    created_at: raw.created_at ?? raw.createdAt ?? undefined,
-    updated_at: raw.updated_at ?? raw.updatedAt ?? undefined,
+    status: status,
+    created_at: raw.created_at ?? raw.createdAt ?? new Date().toISOString(),
+    updated_at: raw.updated_at ?? raw.updatedAt ?? new Date().toISOString(),
   };
 }
 
@@ -52,6 +83,7 @@ async function handleJson<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
 }
 
+// GET /api/missions - Verfügbarer Endpoint
 export async function fetchMissions(): Promise<Mission[]> {
   const res = await fetch(`${API_BASE}/api/missions`, {
     cache: "no-store",
@@ -60,6 +92,7 @@ export async function fetchMissions(): Promise<Mission[]> {
   return Array.isArray(data) ? data.map(mapMission) : [];
 }
 
+// POST /api/missions - Verfügbarer Endpoint
 export async function createMission(
   payload: CreateMissionPayload,
 ): Promise<Mission> {
@@ -72,6 +105,7 @@ export async function createMission(
   return mapMission(data);
 }
 
+// PATCH /api/missions/{id} - Optionaler Endpoint
 export async function updateMission(
   missionId: string,
   payload: UpdateMissionPayload,
@@ -88,6 +122,7 @@ export async function updateMission(
   return mapMission(data);
 }
 
+// POST /api/missions/{id}/status - Optionaler Endpoint
 export async function updateMissionStatus(
   missionId: string,
   status: MissionStatus,

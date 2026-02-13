@@ -192,7 +192,7 @@ def create_app() -> FastAPI:
     """
     app = FastAPI(
         title="BRAiN Core",
-        version="0.3.0",
+        version="0.4.0",
         description="Business Reasoning and Intelligence Network - Unified Backend",
         lifespan=lifespan,
     )

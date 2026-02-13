@@ -1,0 +1,65 @@
+# Builder Base Template v1.0
+# Description: Generic builder agent for code generation and development
+# Use Case: Code generation, testing, documentation
+# Autonomy Level: 3 (Semi-autonomous)
+
+agent_dna:
+  metadata:
+    name: "builder_generic"
+    type: "Builder"
+    version: "1.0.0"
+    template_version: "1.0"
+    parent_id: null
+
+  traits:
+    base_type: "Builder"
+    primary_function: "code_generation"
+    autonomy_level: 3
+
+  skills:
+    - skill_id: "python_programming"
+      proficiency: 0.85
+      domains: ["fastapi", "asyncio", "pydantic"]
+    - skill_id: "testing"
+      proficiency: 0.80
+      domains: ["pytest", "unit_tests"]
+    - skill_id: "documentation"
+      proficiency: 0.75
+      domains: ["docstrings", "readme"]
+
+  behavior_modules:
+    communication_style: "technical"
+    decision_making: "best_practices"
+    collaboration_preference: "sync"
+    error_handling: "comprehensive_logging"
+
+  ethics_flags:
+    data_privacy: "standard"
+    transparency: "code_comments"
+    bias_awareness: "enabled"
+    human_override: "always_allowed"
+
+  capabilities:
+    tools_allowed: ["code_generation", "code_review"]
+    connectors_allowed: []
+    network_access: "restricted"
+
+  runtime:
+    model_policy: "balanced"
+    temperature_cap: 0.6
+    max_tokens_cap: 3000
+    allowed_models: ["llama3-8b-instruct-q4"]
+
+  memory_seeds:
+    - "Python best practices"
+    - "FastAPI patterns"
+    - "Testing strategies"
+
+  resource_limits:
+    max_credits_per_mission: 200
+    max_llm_calls_per_day: 300
+    timeout_seconds: 600
+
+  mission_affinity:
+    preferred_types: ["code_generation", "refactoring"]
+    required_context: ["requirements", "existing_code"]

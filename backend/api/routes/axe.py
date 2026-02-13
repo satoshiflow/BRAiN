@@ -30,6 +30,21 @@ from pydantic import BaseModel
 
 from modules.connector_hub.services import get_gateway
 from modules.llm_client import get_llm_client
+
+# NEW: LLM Router for OpenRouter/Kimi support
+try:
+    from app.modules.llm_router.service import get_llm_router
+    from app.modules.llm_router.schemas import (
+        LLMRequest,
+        ChatMessage,
+        MessageRole,
+        LLMProvider
+    )
+    LLM_ROUTER_AVAILABLE = True
+except ImportError:
+    LLM_ROUTER_AVAILABLE = False
+    logger.warning("LLM Router not available - AXE will use legacy client")
+
 from app.modules.axe_governance import (
     get_axe_trust_validator,
     TrustTier,
@@ -426,8 +441,77 @@ async def axe_message(
             }
 
     # ---------------------------------------------------------------------
-    # 2) Fallback: LLM
+    # 2) Fallback: LLM Router (OpenRouter/Kimi) or Legacy Client
     # ---------------------------------------------------------------------
+    
+    # Try LLM Router first (OpenRouter/Kimi support)
+    if LLM_ROUTER_AVAILABLE:
+        try:
+            router = get_llm_router()
+            
+            # Build LLM Request for OpenRouter/Kimi
+            request = LLMRequest(
+                messages=[
+                    ChatMessage(
+                        role=MessageRole.SYSTEM,
+                        content="Du bist AXE, die Execution-Engine von BRAiN. "
+                                "Beantworte oder kommentiere die Nachricht kurz und präzise. "
+                                "Du kannst Code-Vorschläge machen und Systembefehle erklären."
+                    ),
+                    ChatMessage(
+                        role=MessageRole.USER,
+                        content=payload.message
+                    ),
+                ],
+                provider=LLMProvider.OPENROUTER,  # OpenRouter for Kimi
+                model=None,  # Use default from config
+                temperature=0.7,
+                max_tokens=2048,
+                stream=False,
+            )
+
+            # Send request
+            response = await router.chat(request, agent_id="axe_agent")
+            reply_text = response.content
+
+            # Emit FORWARDED audit event
+            _emit_axe_audit_event(
+                event_type=AuditEventType.AXE_REQUEST_FORWARDED,
+                context=context,
+                success=True,
+                reason="AXE request processed via OpenRouter",
+                mode="openrouter",
+                model=response.model,
+                provider=response.provider.value,
+            )
+
+            return {
+                "mode": "openrouter",
+                "gateway": getattr(gateway, "name", "none") if gateway else "none",
+                "input_message": payload.message,
+                "reply": reply_text,
+                "metadata": {
+                    **metadata,
+                    "llm_info": {
+                        "provider": response.provider.value,
+                        "model": response.model,
+                        "usage": response.usage,
+                    }
+                },
+                "governance": {
+                    "trust_tier": context.trust_tier.value,
+                    "source_service": context.source_service,
+                    "request_id": context.request_id,
+                },
+            }
+
+        except Exception as exc:
+            logger.error(f"AXE OpenRouter request failed: {exc}")
+            # Continue to Ollama fallback
+    
+    # -----------------------------------------------------------------
+    # 3) Final Fallback: Ollama (legacy client)
+    # -----------------------------------------------------------------
     client = get_llm_client()
     system_prompt = (
         "Du bist AXE, die Execution-Engine von BRAiN. "
@@ -445,12 +529,12 @@ async def axe_message(
             extra_params=None,
         )
     except Exception as exc:
-        logger.error(f"AXE LLM fallback failed: {exc}")
+        logger.error(f"AXE Ollama fallback failed: {exc}")
         return {
             "mode": "llm-fallback-error",
             "gateway": getattr(gateway, "name", "none") if gateway else "none",
             "input_message": payload.message,
-            "reply": "",
+            "reply": "Entschuldigung, alle LLM-Provider sind derzeit nicht verfügbar.",
             "metadata": metadata,
             "error": str(exc),
             "governance": {
@@ -465,12 +549,12 @@ async def axe_message(
         event_type=AuditEventType.AXE_REQUEST_FORWARDED,
         context=context,
         success=True,
-        reason="AXE request processed via LLM fallback",
-        mode="llm_fallback",
+        reason="AXE request processed via Ollama fallback",
+        mode="ollama_fallback",
     )
 
     return {
-        "mode": "llm-fallback",
+        "mode": "ollama-fallback",
         "gateway": getattr(gateway, "name", "none") if gateway else "none",
         "input_message": payload.message,
         "reply": reply_text,

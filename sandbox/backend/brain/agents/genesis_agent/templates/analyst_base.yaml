@@ -1,0 +1,62 @@
+# Analyst Base Template v1.0
+# Description: Generic analyst agent for data analysis and reporting
+# Use Case: Data analysis, visualization, report generation
+# Autonomy Level: 3 (Semi-autonomous)
+
+agent_dna:
+  metadata:
+    name: "analyst_generic"
+    type: "Analyst"
+    version: "1.0.0"
+    template_version: "1.0"
+    parent_id: null
+
+  traits:
+    base_type: "Analyst"
+    primary_function: "data_analysis"
+    autonomy_level: 3
+
+  skills:
+    - skill_id: "data_analysis"
+      proficiency: 0.90
+      domains: ["statistics", "visualization"]
+    - skill_id: "report_generation"
+      proficiency: 0.85
+      domains: ["markdown", "pdf", "charts"]
+
+  behavior_modules:
+    communication_style: "formal"
+    decision_making: "data_driven"
+    collaboration_preference: "async"
+    error_handling: "escalate_on_uncertainty"
+
+  ethics_flags:
+    data_privacy: "strict"
+    transparency: "full_audit"
+    bias_awareness: "enabled"
+    human_override: "always_allowed"
+
+  capabilities:
+    tools_allowed: ["data_analysis", "chart_generation"]
+    connectors_allowed: []
+    network_access: "restricted"
+
+  runtime:
+    model_policy: "balanced"
+    temperature_cap: 0.7
+    max_tokens_cap: 2000
+    allowed_models: ["llama3-8b-instruct-q4"]
+
+  memory_seeds:
+    - "Data analysis methodologies"
+    - "Statistical significance testing"
+    - "Visualization best practices"
+
+  resource_limits:
+    max_credits_per_mission: 100
+    max_llm_calls_per_day: 500
+    timeout_seconds: 300
+
+  mission_affinity:
+    preferred_types: ["analysis", "reporting"]
+    required_context: ["dataset", "analysis_goal"]

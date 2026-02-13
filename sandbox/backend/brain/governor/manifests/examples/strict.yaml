@@ -1,0 +1,129 @@
+# Strict Governance Manifest (Phase 2b Example)
+#
+# This manifest defines a STRICT governance policy with aggressive reductions.
+# Use this for high-security environments or untrusted agent populations.
+#
+# Version: 2b.1
+# Created: 2026-01-02
+# Author: Governor v1 System
+
+manifest_version: 1
+policy_version: "2b.1"
+name: "strict"
+description: "Strict governance manifest for high-security environments"
+
+# ============================================================================
+# Applicability Rules
+# ============================================================================
+# Apply to Worker agents with customizations (most common case)
+
+applies_to:
+  agent_types:
+    - "Worker"
+    - "Analyst"
+  template_names: null           # Apply to all templates
+  has_customizations: true       # Only apply to customized agents
+
+# ============================================================================
+# Constraint Reductions (AGGRESSIVE)
+# ============================================================================
+
+reductions:
+  # When agent has customizations
+  on_customization:
+    max_llm_calls_per_day: "-50%"    # Reduce LLM calls by 50%
+    max_llm_tokens_per_call: "-40%"  # Reduce tokens by 40%
+    parallelism: "-75%"              # Reduce parallelism by 75%
+    max_credits_per_mission: "-30%"  # Reduce credits by 30%
+    # Rationale: Aggressive reduction for untrusted customizations
+
+  # When agent is classified as HIGH risk
+  on_high_risk:
+    network_access: "disable"        # Disable network access entirely
+    max_credits_per_mission: "50"    # Hard cap at 50 credits (very low)
+    max_llm_tokens_per_call: "500"   # Hard cap at 500 tokens
+    parallelism: "single"            # Force single-threaded execution
+    # Rationale: High-risk agents get minimal resources
+
+  # When agent is deployed to production environment
+  on_production:
+    max_credits_per_mission: "200"   # Production cap at 200 credits (low)
+    max_llm_tokens_per_call: "1000"  # Production cap at 1000 tokens
+    max_lifetime_seconds: "3600"     # Max lifetime 1 hour
+    # Rationale: Production environments require strict limits
+
+  # When agent population is near limit (>80% capacity)
+  on_population_pressure:
+    max_lifetime_seconds: "900"      # Limit lifetime to 15 minutes
+    max_credits_per_mission: "25"    # Emergency cap at 25 credits
+    parallelism: "single"            # Force single-threaded
+    # Rationale: Aggressive resource reclamation under pressure
+
+# ============================================================================
+# Risk Tier Overrides (ESCALATE AGGRESSIVELY)
+# ============================================================================
+
+risk_overrides:
+  if_customizations: "HIGH"                # Customizations → HIGH risk (not MEDIUM)
+  if_template_not_in_allowlist: "CRITICAL" # Unknown template → CRITICAL risk
+  if_capability_escalation: "CRITICAL"     # Capability escalation → CRITICAL risk
+
+# ============================================================================
+# Locked Fields (EXPANDED)
+# ============================================================================
+
+locks:
+  locked_fields:
+    - "ethics_flags.human_override"       # MUST be 'always_allowed'
+    - "capabilities.can_create_agents"    # Only Genesis can create agents
+    - "capabilities.can_modify_governor"  # Only authorized agents can modify governor
+    - "capabilities.network_access"       # Network access locked to template default
+    - "resource_limits.max_credits_per_mission"  # Credits locked (prevent escalation)
+    - "traits.autonomy_level"             # Autonomy locked (prevent escalation)
+  reason: "High-security environment - strict invariants enforced"
+
+# ============================================================================
+# Metadata
+# ============================================================================
+
+metadata:
+  compliance_frameworks:
+    - "DSGVO Art. 25 (Privacy by Design)"
+    - "EU AI Act Art. 16 (Human Oversight)"
+    - "EU AI Act Art. 5 (Prohibited Practices)"
+    - "ISO/IEC 27001 (Information Security)"
+
+  audit_trail:
+    enabled: true
+    retention_days: 730  # 2 years for high-security
+
+  review_schedule:
+    frequency: "monthly"  # More frequent reviews
+    next_review: "2026-02-01"
+
+  contact:
+    owner: "BRAiN Security Team"
+    email: "security@brain.falklabs.de"
+
+# ============================================================================
+# Notes
+# ============================================================================
+#
+# Use Case:
+#   - High-security production environments
+#   - Untrusted agent populations
+#   - Regulatory compliance (finance, healthcare)
+#   - Resource-constrained deployments
+#
+# Differences from Default Manifest:
+#   - Aggressive reductions (-50% to -75% vs -30% to -50%)
+#   - Lower hard caps (50-200 vs 100-500 credits)
+#   - Risk tiers escalated (HIGH/CRITICAL vs MEDIUM/HIGH)
+#   - More locked fields (6 vs 3)
+#   - Applies only to Worker/Analyst with customizations
+#
+# Expected Impact:
+#   - Customized Worker agents will have ~50% fewer resources
+#   - High-risk agents will be severely constrained
+#   - Production agents will have strict lifetime limits
+#   - Capability escalations will be rejected immediately

@@ -1,28 +1,51 @@
 """
-Real-Time Learning Loop - Sprint 7B
+Learning Module - Real-Time Learning Loop
 
-Online learning, performance metrics, KARMA-integrated adaptive behavior,
-and A/B testing for BRAIN agents.
+BRAiN's learning system combining:
+- Performance tracking with PostgreSQL persistence
+- Adaptive behavior with KARMA integration
+- A/B testing with statistical evaluation
 
-Architecture:
-    PerformanceTracker  → Metric collection and time-series aggregation
-    AdaptiveBehavior    → KARMA-scored strategy selection and adaptation
-    ABTesting           → Experiment framework with statistical evaluation
-    LearningService     → Unified orchestration layer
+Models, schemas, and service for intelligent agent learning.
 """
 
+from .models import LearningStrategyORM, ExperimentORM, MetricORM
 from .schemas import (
-    MetricEntry,
-    MetricType,
-    LearningStrategy,
     Experiment,
+    ExperimentStatus,
     ExperimentVariant,
+    LearningInfo,
+    LearningStats,
+    LearningStrategy,
+    MetricEntry,
+    MetricQuery,
+    MetricSummary,
+    MetricType,
+    StrategyStatus,
 )
+from .service import LearningService, get_learning_service
+from .router import router
 
 __all__ = [
-    "MetricEntry",
-    "MetricType",
-    "LearningStrategy",
+    # ORM Models
+    "LearningStrategyORM",
+    "ExperimentORM",
+    "MetricORM",
+    # Schemas
     "Experiment",
+    "ExperimentStatus",
     "ExperimentVariant",
+    "LearningInfo",
+    "LearningStats",
+    "LearningStrategy",
+    "MetricEntry",
+    "MetricQuery",
+    "MetricSummary",
+    "MetricType",
+    "StrategyStatus",
+    # Service
+    "LearningService",
+    "get_learning_service",
+    # Router
+    "router",
 ]

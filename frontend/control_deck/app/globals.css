@@ -3,19 +3,158 @@
 @tailwind utilities;
 
 :root {
-  --background: #020617; /* slate-950 */
-  --foreground: #e5e7eb; /* slate-200 */
+  /* FalkLabs Dark Theme */
+  --background: 220 30% 4%;
+  --foreground: 210 20% 95%;
+  --card: 220 30% 7%;
+  --card-foreground: 210 20% 95%;
+  --popover: 220 30% 7%;
+  --popover-foreground: 210 20% 95%;
+  --primary: 200 90% 50%;
+  --primary-foreground: 220 30% 4%;
+  --secondary: 220 20% 12%;
+  --secondary-foreground: 210 20% 95%;
+  --muted: 220 20% 12%;
+  --muted-foreground: 215 15% 55%;
+  --accent: 220 20% 12%;
+  --accent-foreground: 210 20% 95%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 210 20% 98%;
+  --border: 220 20% 16%;
+  --input: 220 20% 16%;
+  --ring: 200 90% 50%;
+  --radius: 0.75rem;
 }
 
 html,
 body {
   height: 100%;
+  font-feature-settings: "rlig" 1, "calt" 1;
 }
 
 body {
-  @apply bg-slate-950 text-slate-50;
+  @apply bg-background text-foreground antialiased;
 }
 
-* {
-  box-sizing: border-box;
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--background));
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.3);
+}
+
+/* Glass effect for cards */
+.glass {
+  @apply bg-card/80 backdrop-blur-xl border border-border/50;
+}
+
+/* Status indicator pulse */
+.status-dot {
+  @apply relative inline-flex h-2.5 w-2.5 rounded-full;
+}
+
+.status-dot::after {
+  content: "";
+  @apply absolute inset-0 rounded-full animate-ping opacity-75;
+}
+
+.status-dot.online {
+  @apply bg-emerald-500;
+}
+
+.status-dot.online::after {
+  @apply bg-emerald-500;
+}
+
+.status-dot.warning {
+  @apply bg-amber-500;
+}
+
+.status-dot.warning::after {
+  @apply bg-amber-500;
+}
+
+.status-dot.offline {
+  @apply bg-red-500;
+}
+
+.status-dot.offline::after {
+  @apply bg-red-500;
+}
+
+/* FalkLabs Logo Gradient */
+.falk-gradient {
+  background: linear-gradient(135deg, #0c9cf0 0%, #06538b 50%, #0b4573 100%);
+}
+
+.falk-gradient-text {
+  background: linear-gradient(135deg, #7ccbfd 0%, #0c9cf0 50%, #027dd0 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* EU Sovereign AI Badge */
+.eu-badge {
+  @apply inline-flex items-center gap-1.5 rounded-full border border-eu-blue/30 bg-eu-blue/10 px-2 py-0.5 text-[10px] font-medium text-eu-blue;
+}
+
+.eu-badge::before {
+  content: "🇪🇺";
+}
+
+/* Gradient borders */
+.gradient-border {
+  position: relative;
+  background: hsl(var(--card));
+  border-radius: var(--radius);
+}
+
+.gradient-border::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: var(--radius);
+  background: linear-gradient(
+    135deg,
+    hsl(var(--primary) / 0.5),
+    transparent 50%,
+    hsl(var(--primary) / 0.2)
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Focus styles */
+*:focus-visible {
+  @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+}
+
+/* Selection */
+::selection {
+  @apply bg-primary/30 text-primary-foreground;
+}
+
+/* Tech grid background */
+.tech-grid {
+  background-image: 
+    linear-gradient(hsl(var(--border) / 0.3) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(var(--border) / 0.3) 1px, transparent 1px);
+  background-size: 50px 50px;
 }
