@@ -105,10 +105,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_logging()
     logger.info(f"🧠 BRAiN Core v0.3.0 starting (env: {settings.environment})")
 
-    # Initialize Redis
-    redis = await get_redis()
-    await redis.ping()
-    logger.info("✅ Redis connection established")
+    # Initialize Redis (optional - skip if not available)
+    redis = None
+    try:
+        redis = await get_redis()
+        await redis.ping()
+        logger.info("✅ Redis connection established")
+    except Exception as e:
+        logger.warning(f"⚠️ Redis not available: {e}")
+        logger.warning("⚠️ Running without Redis (EventStream and Mission Worker disabled)")
 
     # Start Event Stream (ADR-001: required by default)
     event_stream = None
@@ -139,10 +144,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.event_stream = None
 
     else:
-        raise ValueError(
-            f"Invalid BRAIN_EVENTSTREAM_MODE='{eventstream_mode}'. "
-            f"Must be 'required' (default) or 'degraded' (Dev/CI only)."
-        )
+        # DISABLED MODE: Skip EventStream if Redis not available
+        if redis is None:
+            logger.warning("⚠️ EventStream disabled (Redis not available)")
+            event_stream = None
+            app.state.event_stream = None
+        else:
+            raise ValueError(
+                f"Invalid BRAIN_EVENTSTREAM_MODE='{eventstream_mode}'. "
+                f"Must be 'required' (default) or 'degraded' (Dev/CI only)."
+            )
 
     # Start mission worker (if enabled) with EventStream integration (Sprint 2)
     mission_worker_task = None
@@ -163,7 +174,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await stop_mission_worker()
         logger.info("🛑 Mission worker stopped")
 
-    await redis.close()
+    if redis:
+        await redis.close()
     logger.info("🛑 BRAiN Core shutdown complete")
 
 

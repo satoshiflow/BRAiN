@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface Message {
   id: number;
@@ -11,15 +11,28 @@ interface Message {
 
 const API_BASE = process.env.NEXT_PUBLIC_BRAIN_API_BASE || "http://localhost:8000";
 
+// Format time safely (avoids hydration mismatch)
+function formatTime(date: Date): string {
+  if (typeof window === 'undefined') return '';
+  return date.toLocaleTimeString();
+}
+
 export default function ChatPage() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: 1,
-      role: "assistant",
-      content: "Hello! I'm the AXE (Auxiliary Execution Engine) agent. I can help you execute commands, analyze logs, and monitor system status. How can I assist you today?",
-      timestamp: new Date(),
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+    // Initialize first message on client only (avoids hydration mismatch)
+    setMessages([
+      {
+        id: 1,
+        role: "assistant",
+        content: "Hello! I'm the AXE (Auxiliary Execution Engine) agent. I can help you execute commands, analyze logs, and monitor system status. How can I assist you today?",
+        timestamp: new Date(),
+      },
+    ]);
+  }, []);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -106,8 +119,8 @@ export default function ChatPage() {
                   )}
                   <div className="flex-1">
                     <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                    <p className="text-xs opacity-70 mt-2">
-                      {message.timestamp.toLocaleTimeString()}
+                    <p className="text-xs opacity-70 mt-2" suppressHydrationWarning>
+                      {isClient ? formatTime(message.timestamp) : ''}
                     </p>
                   </div>
                 </div>
