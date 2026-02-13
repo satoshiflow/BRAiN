@@ -3,11 +3,13 @@ FROM node:22-alpine AS deps
 
 WORKDIR /app
 
+# Install build dependencies
+RUN apk add --no-cache libc6-compat
+
 # Copy dependency files
 COPY package.json package-lock.json* ./
 
 # Install dependencies with BuildKit cache mount
-# Using --legacy-peer-deps due to peer dependency conflicts
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --legacy-peer-deps --prefer-offline --no-audit --loglevel=error
 
@@ -16,9 +18,17 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
+# Install build dependencies for native modules
+RUN apk add --no-cache libc6-compat
+
 # Build-time arguments for Next.js
 ARG NEXT_PUBLIC_BRAIN_API_BASE=http://backend:8000
 ENV NEXT_PUBLIC_BRAIN_API_BASE=$NEXT_PUBLIC_BRAIN_API_BASE
+
+# Disable telemetry and enable CI mode
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV CI=true
+ENV NODE_ENV=production
 
 # Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
@@ -26,8 +36,9 @@ COPY --from=deps /app/node_modules ./node_modules
 # Copy source code
 COPY . .
 
-# Build Next.js application
-RUN npm run build
+# Build Next.js application with error output
+# Continue on error for now (remove '|| true' once build is stable)
+RUN npm run build 2>&1 || (echo "=== BUILD FAILED ===" && exit 1)
 
 # Ensure public directory exists
 RUN mkdir -p public
@@ -38,6 +49,7 @@ FROM node:22-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
 
 # Create non-root user for security
 RUN addgroup --system --gid 1001 nodejs && \
