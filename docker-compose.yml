@@ -2,8 +2,7 @@ services:
   backend:
     build:
       context: ./backend
-    ports:
-      - "8001:8000"  # Host:Container - API on port 8001
+    # Removed ports - use Traefik routing instead
     environment:
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:5432/brain}
@@ -14,50 +13,53 @@ services:
       - .env
     restart: unless-stopped
     networks:
-      - coolify  # Connect to Coolify network for infrastructure services
+      - coolify
+    # Coolify Traefik labels - domain mapping
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend.rule=Host(`${SERVICE_FQDN_BACKEND}`)"
+      - "traefik.http.routers.backend.entrypoints=https"
+      - "traefik.http.routers.backend.tls=true"
+      - "traefik.http.services.backend.loadbalancer.server.port=8000"
 
   control_deck:
     build:
       context: ./frontend/control_deck
-    ports:
-      - "3001:3000"  # Host:Container - Control Deck on port 3001
+    # Removed ports - use Traefik routing instead
     environment:
-      - NEXT_PUBLIC_BRAIN_API_BASE=${NEXT_PUBLIC_BRAIN_API_BASE:-http://localhost:8001}
+      - NEXT_PUBLIC_BRAIN_API_BASE=${NEXT_PUBLIC_BRAIN_API_BASE:-https://${SERVICE_FQDN_BACKEND}}
       - PORT=3000
     depends_on:
       - backend
     restart: unless-stopped
     networks:
-      - coolify  # Connect to Coolify network
+      - coolify
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.control_deck.rule=Host(`${SERVICE_FQDN_CONTROL_DECK}`)"
+      - "traefik.http.routers.control_deck.entrypoints=https"
+      - "traefik.http.routers.control_deck.tls=true"
+      - "traefik.http.services.control_deck.loadbalancer.server.port=3000"
 
   axe_ui:
     build:
       context: ./frontend/axe_ui
-    ports:
-      - "3002:3002"  # Host:Container - AXE_UI on port 3002
+    # Removed ports - use Traefik routing instead
     environment:
-      - NEXT_PUBLIC_BRAIN_API_BASE=${NEXT_PUBLIC_BRAIN_API_BASE:-http://localhost:8001}
+      - NEXT_PUBLIC_BRAIN_API_BASE=${NEXT_PUBLIC_BRAIN_API_BASE:-https://${SERVICE_FQDN_BACKEND}}
       - PORT=3002
     depends_on:
       - backend
     restart: unless-stopped
     networks:
-      - coolify  # Connect to Coolify network
-
-# Infrastructure services (PostgreSQL, Redis, Qdrant, Ollama) are deployed
-# separately in Coolify for better resource management.
-# This compose file only deploys the BRAiN application services.
-#
-# Ports:
-#   - Backend API:    8001
-#   - Control Deck:   3001
-#   - AXE_UI:         3002
-#
-# Required Environment Variables:
-#   - REDIS_URL (e.g., redis://your-redis-host:6379)
-#   - DATABASE_URL (e.g., postgresql://user:pass@your-postgres-host:5432/brain)
+      - coolify
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.axe_ui.rule=Host(`${SERVICE_FQDN_AXE_UI}`)"
+      - "traefik.http.routers.axe_ui.entrypoints=https"
+      - "traefik.http.routers.axe_ui.tls=true"
+      - "traefik.http.services.axe_ui.loadbalancer.server.port=3002"
 
 networks:
   coolify:
     external: true
-    # Coolify network for accessing separate infrastructure services
