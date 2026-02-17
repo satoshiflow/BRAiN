@@ -207,12 +207,15 @@ def create_app() -> FastAPI:
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
     # CORS (from settings for production, with fallback)
-    cors_origins = settings.cors_origins if hasattr(settings, 'cors_origins') else [
+    cors_origins = settings.cors_origins if hasattr(settings, 'cors_origins') and settings.cors_origins else [
         "http://localhost",
         "http://localhost:3000",
         "http://localhost:3001",
         "http://127.0.0.1:3000",
         "http://127.0.0.1:3001",
+        "https://axe.brain.falklabs.de",
+        "https://control.brain.falklabs.de",
+        "https://n8n.brain.falklabs.de",
         "*",
     ]
 
