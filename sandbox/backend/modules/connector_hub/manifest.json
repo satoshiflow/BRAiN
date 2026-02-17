@@ -1,0 +1,13 @@
+{
+  "name": "connector_hub",
+  "version": "1.0.0",
+  "description": "Security connector layer for all external inputs (chat, Axe, APIs, MCP, etc.)",
+  "enabled": true,
+  "permissions": {
+    "database_read": false,
+    "database_write": false,
+    "internet_read": false,
+    "internet_write": false,
+    "run_code": false
+  }
+}

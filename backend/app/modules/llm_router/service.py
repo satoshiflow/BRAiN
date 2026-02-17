@@ -72,10 +72,17 @@ class LLMRouterService:
             site_name=os.getenv("OPENROUTER_SITE_NAME", "BRAiN"),
         )
 
+        openwebui_config = OpenWebUIConfig(
+            host=os.getenv("OPENWEBUI_HOST", "http://localhost:3000"),
+            api_key=os.getenv("OPENWEBUI_API_KEY"),
+            default_model=os.getenv("OPENWEBUI_MODEL", "llama3.2:latest"),
+        )
+
         return LLMRouterConfig(
             default_provider=LLMProvider.OLLAMA,
             ollama=ollama_config,
             openrouter=openrouter_config,
+            openwebui=openwebui_config,
         )
 
     def _configure_litellm(self):
@@ -98,6 +105,8 @@ class LLMRouterService:
         logger.info("litellm configured with providers:")
         if self.config.ollama.enabled:
             logger.info(f"  - Ollama: {self.config.ollama.host}")
+        if self.config.openwebui.enabled:
+            logger.info(f"  - OpenWebUI: {self.config.openwebui.host}")
         if self.config.openrouter.enabled and self.config.openrouter.api_key:
             logger.info("  - OpenRouter: enabled")
         if self.config.openai.enabled and self.config.openai.api_key:
@@ -136,6 +145,11 @@ class LLMRouterService:
             model = model or self.config.anthropic.default_model
             return f"anthropic/{model}"
 
+        elif provider == LLMProvider.OPENWEBUI:
+            # OpenWebUI uses OpenAI-compatible API
+            model = model or self.config.openwebui.default_model
+            return f"openai/{model}"
+
         else:
             # Default to Ollama
             return f"ollama/{self.config.ollama.default_model}"
@@ -160,6 +174,12 @@ class LLMRouterService:
             params["api_base"] = self.config.openai.base_url
             if self.config.openai.organization:
                 params["organization"] = self.config.openai.organization
+
+        elif provider == LLMProvider.OPENWEBUI:
+            # OpenWebUI uses OpenAI-compatible API
+            params["api_base"] = f"{self.config.openwebui.host}/api"
+            if self.config.openwebui.api_key:
+                params["api_key"] = self.config.openwebui.api_key
 
         elif provider == LLMProvider.ANTHROPIC:
             params["api_base"] = self.config.anthropic.base_url
@@ -265,15 +285,20 @@ class LLMRouterService:
         Select LLM provider based on request and agent context
 
         Rules:
-        1. AXE Agent always uses Ollama (local)
+        1. AXE Agent - allow explicit provider, fallback to Ollama if AUTO
         2. If provider explicitly requested, use it
         3. Otherwise use default provider
         """
 
-        # Rule 1: AXE Agent restriction
+        # Rule 1: AXE Agent - allow explicit provider selection
         if agent_id and "axe" in agent_id.lower():
-            logger.debug(f"AXE Agent detected - forcing Ollama provider")
-            return LLMProvider.OLLAMA
+            if requested_provider == LLMProvider.AUTO:
+                logger.debug(f"AXE Agent detected - using default provider (Ollama)")
+                return LLMProvider.OLLAMA
+            else:
+                # AXE explicitly requested a provider (e.g., OpenRouter)
+                logger.debug(f"AXE Agent using explicit provider: {requested_provider}")
+                return requested_provider
 
         # Rule 2: Explicit provider request
         if requested_provider != LLMProvider.AUTO:

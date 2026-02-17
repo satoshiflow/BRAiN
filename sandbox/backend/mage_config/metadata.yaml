@@ -1,0 +1,45 @@
+# Mage.ai Configuration - Internal Only
+# Phase 1: Basic setup for BRAIN integration
+
+# Variables
+variables:
+  ollama_host: "http://ollama:11434"
+  ollama_model: "llama3.2:latest"
+  postgres_host: "postgres"
+  postgres_port: 5432
+  postgres_db: "brain"
+  postgres_user: "brain"
+  postgres_schema: "mage_metadata"
+
+# Notification settings (disabled for internal use)
+notification_config:
+  alert_on:
+    - trigger_failure
+    - trigger_success: false
+
+# Logging
+logging_config:
+  level: INFO
+  destination: console
+
+# Server settings (internal only)
+server:
+  host: "0.0.0.0"
+  port: 6789
+
+# Security (disabled for internal use)
+authentication:
+  mode: local
+
+# Integration with BRAIN Backend
+integrations:
+  ollama:
+    enabled: true
+    host: "http://ollama:11434"
+    models:
+      - "llama3.2:latest"
+      - "nomic-embed-text"
+
+  postgres:
+    enabled: true
+    connection_string: "postgresql+psycopg2://brain:brain@postgres:5432/brain"

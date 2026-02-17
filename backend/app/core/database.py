@@ -7,10 +7,13 @@ Provides async database session for endpoints.
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import declarative_base
-import os
 
-# Database URL from environment
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://brain:brain@postgres:5432/brain")
+# Import settings to ensure .env is loaded
+from app.core.config import get_settings
+
+# Database URL from settings (which loads from .env)
+settings = get_settings()
+DATABASE_URL = settings.database_url
 
 # Create async engine
 engine = create_async_engine(

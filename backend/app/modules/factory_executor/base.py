@@ -18,7 +18,7 @@ from enum import Enum
 from loguru import logger
 from pydantic import BaseModel, Field
 
-from backend.app.modules.business_factory.schemas import (
+from app.modules.business_factory.schemas import (
     ExecutionStep,
     StepResult,
     StepStatus,
@@ -26,14 +26,14 @@ from backend.app.modules.business_factory.schemas import (
 
 # Sprint 7: Metrics integration
 try:
-    from backend.app.modules.monitoring.metrics import get_metrics_collector
+    from app.modules.monitoring.metrics import get_metrics_collector
     METRICS_AVAILABLE = True
 except ImportError:
     METRICS_AVAILABLE = False
 
 # Sprint 7.4: Safe mode integration
 try:
-    from backend.app.modules.safe_mode.service import get_safe_mode_service
+    from app.modules.safe_mode.service import get_safe_mode_service
     SAFE_MODE_AVAILABLE = True
 except ImportError:
     SAFE_MODE_AVAILABLE = False
@@ -384,7 +384,7 @@ class ExecutorBase(ABC):
     # Validation Helpers
     # ========================================================================
 
-    def _validate_input_strict(
+    async def _validate_input_strict(
         self,
         step: ExecutionStep,
         context: ExecutionContext

@@ -24,6 +24,13 @@ from typing import AsyncIterator, List
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+
+# Rate Limiting (Task 2.3)
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 # Core infrastructure
 from app.core.config import get_settings
@@ -63,7 +70,6 @@ from app.modules.credits.router import router as credits_router
 from app.modules.policy.router import router as policy_router
 from app.modules.threats.router import router as threats_router
 from app.modules.supervisor.router import router as app_supervisor_router
-# DISABLED: from app.modules.missions.router import router as app_missions_router  # Sprint 2: Using LEGACY instead
 from app.modules.foundation.router import router as foundation_router
 from app.modules.sovereign_mode.router import router as sovereign_mode_router
 from app.modules.dmz_control.router import router as dmz_control_router
@@ -93,16 +99,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """
     Unified lifespan management combining:
     - Core infrastructure (logging, redis) from app.core.lifecycle
-    - Mission worker from backend.modules.missions
+    - Mission worker from modules.missions
     """
     # Startup
     configure_logging()
     logger.info(f"🧠 BRAiN Core v0.3.0 starting (env: {settings.environment})")
 
-    # Initialize Redis
-    redis = await get_redis()
-    await redis.ping()
-    logger.info("✅ Redis connection established")
+    # Initialize Redis (optional - skip if not available)
+    redis = None
+    try:
+        redis = await get_redis()
+        await redis.ping()
+        logger.info("✅ Redis connection established")
+    except Exception as e:
+        logger.warning(f"⚠️ Redis not available: {e}")
+        logger.warning("⚠️ Running without Redis (EventStream and Mission Worker disabled)")
 
     # Start Event Stream (ADR-001: required by default)
     event_stream = None
@@ -133,10 +144,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.event_stream = None
 
     else:
-        raise ValueError(
-            f"Invalid BRAIN_EVENTSTREAM_MODE='{eventstream_mode}'. "
-            f"Must be 'required' (default) or 'degraded' (Dev/CI only)."
-        )
+        # DISABLED MODE: Skip EventStream if Redis not available
+        if redis is None:
+            logger.warning("⚠️ EventStream disabled (Redis not available)")
+            event_stream = None
+            app.state.event_stream = None
+        else:
+            raise ValueError(
+                f"Invalid BRAIN_EVENTSTREAM_MODE='{eventstream_mode}'. "
+                f"Must be 'required' (default) or 'degraded' (Dev/CI only)."
+            )
 
     # Start mission worker (if enabled) with EventStream integration (Sprint 2)
     mission_worker_task = None
@@ -157,7 +174,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await stop_mission_worker()
         logger.info("🛑 Mission worker stopped")
 
-    await redis.close()
+    if redis:
+        await redis.close()
     logger.info("🛑 BRAiN Core shutdown complete")
 
 
@@ -174,10 +192,19 @@ def create_app() -> FastAPI:
     """
     app = FastAPI(
         title="BRAiN Core",
-        version="0.3.0",
+        version="0.4.0",
         description="Business Reasoning and Intelligence Network - Unified Backend",
         lifespan=lifespan,
     )
+
+    # Rate Limiter Setup (Task 2.3 - DoS Protection)
+    limiter = Limiter(
+        key_func=get_remote_address,
+        default_limits=["100/minute"],  # Global default: 100 requests per minute
+        storage_uri=settings.redis_url,  # Use Redis for distributed rate limiting
+    )
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
     # CORS (from settings for production, with fallback)
     cors_origins = settings.cors_origins if hasattr(settings, 'cors_origins') else [
@@ -196,6 +223,39 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # UTF-8 Middleware - Ensures all JSON responses have charset=utf-8
+    class UTF8Middleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            response = await call_next(request)
+            # Ensure Content-Type has charset=utf-8
+            if "application/json" in response.headers.get("content-type", ""):
+                response.headers["content-type"] = "application/json; charset=utf-8"
+            return response
+
+    app.add_middleware(UTF8Middleware)
+
+    # Security Headers Middleware (OWASP Recommendations - Task 2.2)
+    class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            response = await call_next(request)
+
+            # OWASP Security Headers
+            response.headers.update({
+                "X-Content-Type-Options": "nosniff",  # Prevent MIME sniffing
+                "X-Frame-Options": "DENY",  # Prevent clickjacking
+                "X-XSS-Protection": "1; mode=block",  # Enable XSS filter
+                "Referrer-Policy": "strict-origin-when-cross-origin",  # Privacy
+                "Permissions-Policy": "geolocation=(), microphone=(), camera=()",  # Disable sensitive APIs
+            })
+
+            # HSTS only in production (enforce HTTPS)
+            if settings.environment == "production":
+                response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+
+            return response
+
+    app.add_middleware(SecurityHeadersMiddleware)
 
     # -------------------------------------------------------
     # Root & Health Endpoints
@@ -260,12 +320,6 @@ def create_app() -> FastAPI:
     app.include_router(neurorail_telemetry_router, tags=["neurorail-telemetry"])
     app.include_router(neurorail_execution_router, tags=["neurorail-execution"])
     app.include_router(governor_router, tags=["governor"])
-
-    # DISABLED: app.include_router(app_missions_router, tags=["missions"])
-    # Reason: Route collision with LEGACY missions implementation
-    # Decision: Sprint 2 - Migrate LEGACY instead (see SPRINT2_MISSIONS_ARCHITECTURE_DECISION.md)
-    # NEW missions router creates orphaned missions (no worker integration)
-    # LEGACY missions router is functional (queue + worker + partial EventStream)
 
     # 3. Auto-discover routes from backend/api/routes/*
     _include_legacy_routers(app)

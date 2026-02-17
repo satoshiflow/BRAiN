@@ -4,6 +4,7 @@ import * as React from "react";
 import {
   Activity,
   Bot,
+  Code,
   Command,
   Globe,
   LayoutDashboard,
@@ -11,6 +12,24 @@ import {
   Shield,
   Settings2,
   Workflow,
+  Radio,
+  Cpu,
+  Dna,
+  Database,
+  Coins,
+  GraduationCap,
+  Briefcase,
+  Scale,
+  Users,
+  Boxes,
+  Wrench,
+  Heart,
+  GitBranch,
+  UserCog,
+  AlertTriangle,
+  PlusCircle,
+  Network,
+  Clock,
 } from "lucide-react";
 
 import { NavMain } from "@/components/nav-main";
@@ -39,130 +58,158 @@ const data = {
   ],
   navMain: [
     {
-      title: "Dashboard",
-      url: "/",
-      icon: LayoutDashboard,
-      isActive: false,
+      title: "Monitoring & Überwachung",
+      url: "#",
+      icon: Activity,
+      isActive: true,
       items: [
         {
-          title: "System Overview",
-          url: "/",
-        },
-      ],
-    },
-    {
-      title: "Core",
-      url: "/core",
-      icon: Workflow,
-      isActive: false,
-      items: [
-        {
-          title: "Modules",
-          url: "/core/modules",
+          title: "System Dashboard",
+          url: "/dashboard",
         },
         {
-          title: "System Agents",
-          url: "/core/agents",
+          title: "System Health",
+          url: "/health",
         },
-      ],
-    },
-    {
-      title: "Missions",
-      url: "/missions",
-      icon: Map,
-      isActive: false,
-      items: [
         {
-          title: "Overview",
+          title: "Missions Overview",
           url: "/missions",
         },
         {
-          title: "History",
+          title: "Mission History",
           url: "/missions/history",
         },
-      ],
-    },
-    {
-      title: "NeuroRail",
-      url: "/neurorail",
-      icon: Activity,
-      isActive: false,
-      items: [
         {
-          title: "Trace Explorer",
+          title: "Agent Management",
+          url: "/core/agents",
+        },
+        {
+          title: "Supervisor Panel",
+          url: "/supervisor",
+        },
+        {
+          title: "Telemetry",
+          url: "/telemetry",
+        },
+        {
+          title: "Hardware Resources",
+          url: "/hardware",
+        },
+        {
+          title: "Immune System",
+          url: "/immune",
+        },
+        {
+          title: "Threat Events",
+          url: "/immune/events",
+        },
+        {
+          title: "NeuroRail Trace",
           url: "/neurorail/trace-explorer",
         },
         {
-          title: "Health Matrix",
+          title: "NeuroRail Health",
           url: "/neurorail/health-matrix",
         },
-      ],
-    },
-    {
-      title: "Agents",
-      url: "/agents",
-      icon: Bot,
-      isActive: false,
-      items: [
         {
-          title: "Overview",
-          url: "/agents",
-        },
-        {
-          title: "New Agent",
-          url: "/agents/new",
+          title: "Fleet Management",
+          url: "/fleet-management",
         },
       ],
     },
     {
-      title: "WebGenesis",
-      url: "/webgenesis",
-      icon: Globe,
+      title: "Development",
+      url: "#",
+      icon: Code,
       isActive: false,
       items: [
         {
-          title: "Sites",
+          title: "Fred Bridge",
+          url: "/fred-bridge",
+        },
+        {
+          title: "AXE Widget",
+          url: "/axe-widget",
+        },
+        {
+          title: "DNA Evolution",
+          url: "/dna",
+        },
+      ],
+    },
+    {
+      title: "BRAiN Einstellungen",
+      url: "#",
+      icon: Settings2,
+      isActive: false,
+      items: [
+        {
+          title: "System Settings",
+          url: "/settings",
+        },
+        {
+          title: "API Configuration",
+          url: "/settings/api",
+        },
+        {
+          title: "Identity & Access",
+          url: "/settings/identity",
+        },
+        {
+          title: "LLM Configuration",
+          url: "/settings/llm",
+        },
+        {
+          title: "Policy Engine",
+          url: "/policy-engine",
+        },
+        {
+          title: "Credits System",
+          url: "/credits",
+        },
+        {
+          title: "Core Modules",
+          url: "/core/modules",
+        },
+      ],
+    },
+    {
+      title: "Tools/Desktop",
+      url: "#",
+      icon: Wrench,
+      isActive: false,
+      items: [
+        {
+          title: "Course Factory",
+          url: "/courses",
+        },
+        {
+          title: "Business Factory",
+          url: "/business",
+        },
+        {
+          title: "WebGenesis Sites",
           url: "/webgenesis",
         },
         {
           title: "Create New Site",
           url: "/webgenesis/new",
         },
-      ],
-    },
-    {
-      title: "Immune & Threats",
-      url: "/immune",
-      icon: Shield,
-      isActive: false,
-      items: [
         {
-          title: "Threats",
-          url: "/immune",
+          title: "Create Agent",
+          url: "/agents/new",
         },
         {
-          title: "Events",
-          url: "/immune/events",
-        },
-      ],
-    },
-    {
-      title: "Settings",
-      url: "/settings",
-      icon: Settings2,
-      isActive: false,
-      items: [
-        {
-          title: "System",
-          url: "/settings",
+          title: "Constitutional Agents",
+          url: "/constitutional",
         },
         {
-          title: "API Keys",
-          url: "/settings/api",
+          title: "DNA Evolution",
+          url: "/dna",
         },
         {
-          title: "Identity",
-          url: "/settings/identity",
+          title: "Knowledge Graph",
+          url: "/knowledge-graph",
         },
       ],
     },

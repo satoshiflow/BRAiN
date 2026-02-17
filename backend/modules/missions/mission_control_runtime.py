@@ -21,7 +21,7 @@ import logging
 import os
 from typing import Any, Dict, List, Optional
 
-from backend.mission_control_core.core import (
+from mission_control_core.core import (
     EventStream,
     Event,
     EventType,
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 class MissionControlRuntime:
     def __init__(self, redis_url: Optional[str] = None) -> None:
-        self.redis_url = redis_url or os.getenv("REDIS_URL", "redis://redis:6379/0")
+        self.redis_url = redis_url or os.getenv("REDIS_URL", "redis://localhost:6380/0")
 
         self.queue: Optional[MissionQueue] = None
         self.event_stream: Optional[EventStream] = None

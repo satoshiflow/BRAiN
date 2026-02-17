@@ -1,25 +1,37 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useMissions, useCreateMission, useUpdateMission } from "@/hooks/useMissions";
+import { useMissionWebSocket } from "@/hooks/useMissionWebSocket";
+import { useTemplates, useInstantiateTemplate } from "@/hooks/useMissionTemplates";
+import type { Mission, MissionStatus } from "@/lib/missionsApi";
+import type { MissionTemplate } from "@/lib/missionTemplatesApi";
+import { PageSkeleton } from "@/components/skeletons/PageSkeleton";
+import { Button } from "@/components/ui/button";
 import {
-  createMission,
-  fetchMissions,
-  updateMissionStatus,
-  type Mission,
-  type MissionStatus,
-} from "@/lib/missionsApi";
-
-type LoadState<T> = {
-  data?: T;
-  loading: boolean;
-  error?: string;
-};
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Plus, FileText, Rocket, LayoutGrid } from "lucide-react";
 
 type FormState = {
   name: string;
   description: string;
-  submitting: boolean;
-  error?: string;
 };
 
 const STATUS_ORDER: MissionStatus[] = [
@@ -30,82 +42,133 @@ const STATUS_ORDER: MissionStatus[] = [
   "CANCELLED",
 ];
 
-export default function MissionsOverviewPage() {
-  const [missionsState, setMissionsState] = useState<LoadState<Mission[]>>({
-    loading: true,
-  });
+// Wrapper component to handle suspense for useSearchParams
+export default function MissionsPageWrapper() {
+  return (
+    <Suspense fallback={<PageSkeleton variant="dashboard" />}>
+      <MissionsOverviewPage />
+    </Suspense>
+  );
+}
+
+function MissionsOverviewPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const templateIdFromUrl = searchParams?.get("template") || null;
+
   const [formState, setFormState] = useState<FormState>({
     name: "",
     description: "",
-    submitting: false,
   });
 
+  // Template dialog state
+  const [showTemplateDialog, setShowTemplateDialog] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const [templateVariables, setTemplateVariables] = useState<Record<string, unknown>>({});
+  const [missionName, setMissionName] = useState("");
+
+  // Data fetching
+  const { data: rawMissions, isLoading, error } = useMissions();
+  const { data: templatesData } = useTemplates();
+  const createMissionMutation = useCreateMission();
+  const instantiateTemplateMutation = useInstantiateTemplate();
+  const updateMissionMutation = useUpdateMission();
+
+  // WebSocket for real-time mission updates
+  const { isConnected: wsConnected } = useMissionWebSocket();
+
+  const templates = templatesData?.items || [];
+  const selectedTemplate = templates.find((t) => t.id === selectedTemplateId);
+
+  // Open dialog if template ID is in URL
   useEffect(() => {
-    loadMissions();
-  }, []);
-
-  async function loadMissions() {
-    setMissionsState((prev) => ({ ...prev, loading: true, error: undefined }));
-    try {
-      const missions = await fetchMissions();
-      missions.sort((a, b) => {
-        const ai = STATUS_ORDER.indexOf(a.status);
-        const bi = STATUS_ORDER.indexOf(b.status);
-        const ascore = ai === -1 ? STATUS_ORDER.length : ai;
-        const bscore = bi === -1 ? STATUS_ORDER.length : bi;
-        if (ascore !== bscore) return ascore - bscore;
-        const at = a.created_at ? new Date(a.created_at).getTime() : 0;
-        const bt = b.created_at ? new Date(b.created_at).getTime() : 0;
-        return bt - at;
-      });
-      setMissionsState({ data: missions, loading: false });
-    } catch (err) {
-      setMissionsState({
-        loading: false,
-        error: String(err),
-      });
+    if (templateIdFromUrl) {
+      setShowTemplateDialog(true);
+      setSelectedTemplateId(templateIdFromUrl);
     }
-  }
+  }, [templateIdFromUrl]);
 
-  async function handleCreateMission(e: React.FormEvent) {
+  // Sort missions by status priority, then by created_at
+  const sortedMissions = useMemo(() => {
+    if (!rawMissions) return [];
+    const missions = [...rawMissions];
+    missions.sort((a, b) => {
+      const ai = STATUS_ORDER.indexOf(a.status);
+      const bi = STATUS_ORDER.indexOf(b.status);
+      const ascore = ai === -1 ? STATUS_ORDER.length : ai;
+      const bscore = bi === -1 ? STATUS_ORDER.length : bi;
+      if (ascore !== bscore) return ascore - bscore;
+      const at = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const bt = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return bt - at;
+    });
+    return missions;
+  }, [rawMissions]);
+
+  function handleCreateMission(e: React.FormEvent) {
     e.preventDefault();
     if (!formState.name.trim()) return;
-    setFormState((prev) => ({
-      ...prev,
-      submitting: true,
-      error: undefined,
-    }));
-    try {
-      await createMission({
+
+    createMissionMutation.mutate(
+      {
         name: formState.name.trim(),
         description: formState.description.trim() || undefined,
+      },
+      {
+        onSuccess: () => {
+          setFormState({ name: "", description: "" });
+        },
+      }
+    );
+  }
+
+  function handleStatusChange(id: string, status: MissionStatus) {
+    updateMissionMutation.mutate({
+      id,
+      payload: { status },
+    });
+  }
+
+  function handleTemplateSelect(templateId: string) {
+    setSelectedTemplateId(templateId);
+    const template = templates.find((t) => t.id === templateId);
+    if (template) {
+      setMissionName(template.name);
+      // Initialize variables with defaults
+      const defaults: Record<string, unknown> = {};
+      Object.entries(template.variables || {}).forEach(([key, def]) => {
+        if (def.default !== undefined) {
+          defaults[key] = def.default;
+        }
       });
-      setFormState({
-        name: "",
-        description: "",
-        submitting: false,
-      });
-      await loadMissions();
-    } catch (err) {
-      setFormState((prev) => ({
-        ...prev,
-        submitting: false,
-        error: String(err),
-      }));
+      setTemplateVariables(defaults);
     }
   }
 
-  async function handleStatusChange(id: string, status: MissionStatus) {
-    try {
-      await updateMissionStatus(id, status);
-      await loadMissions();
-    } catch (err) {
-      console.error(err);
-    }
+  async function handleCreateFromTemplate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedTemplateId) return;
+
+    await instantiateTemplateMutation.mutateAsync({
+      id: selectedTemplateId,
+      payload: {
+        variables: templateVariables,
+        mission_name: missionName || undefined,
+      },
+    });
+
+    setShowTemplateDialog(false);
+    setSelectedTemplateId("");
+    setTemplateVariables({});
+    setMissionName("");
+  }
+
+  function handleVariableChange(key: string, value: unknown) {
+    setTemplateVariables((prev) => ({ ...prev, [key]: value }));
   }
 
   const stats = useMemo(() => {
-    const list = missionsState.data ?? [];
+    const list = sortedMissions ?? [];
     const byStatus: Record<string, number> = {};
     for (const m of list) {
       const key = m.status ?? "UNKNOWN";
@@ -119,15 +182,41 @@ export default function MissionsOverviewPage() {
       failed: byStatus.FAILED ?? 0,
       cancelled: byStatus.CANCELLED ?? 0,
     };
-  }, [missionsState.data]);
+  }, [sortedMissions]);
+
+  if (isLoading) {
+    return <PageSkeleton variant="list" />;
+  }
 
   return (
     <div className="flex flex-col gap-6 p-6">
       <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold text-white">Missions Overview</h1>
-        <p className="text-sm text-neutral-400">
-          Überblick über alle aktiven und historischen BRAiN-Missionen.
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold text-white">Missions Overview</h1>
+            <p className="text-sm text-neutral-400">
+              Überblick über alle aktiven und historischen BRAiN-Missionen.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowTemplateDialog(true)}
+              className="border-emerald-700 bg-transparent text-emerald-400 hover:bg-emerald-950/50"
+            >
+              <FileText className="mr-2 h-4 w-4" />
+              From Template
+            </Button>
+            <Button
+              onClick={() => router.push("/missions/templates")}
+              variant="outline"
+              className="border-neutral-700 bg-transparent text-neutral-300 hover:bg-neutral-800"
+            >
+              <LayoutGrid className="mr-2 h-4 w-4" />
+              Templates
+            </Button>
+          </div>
+        </div>
       </header>
 
       <section className="grid grid-cols-1 gap-4 md:grid-cols-5">
@@ -176,16 +265,18 @@ export default function MissionsOverviewPage() {
               />
             </div>
 
-            {formState.error && (
-              <div className="text-xs text-red-400">{formState.error}</div>
+            {createMissionMutation.error && (
+              <div className="text-xs text-red-400">
+                {createMissionMutation.error.message}
+              </div>
             )}
 
             <button
               type="submit"
-              disabled={formState.submitting || !formState.name.trim()}
+              disabled={createMissionMutation.isPending || !formState.name.trim()}
               className="mt-1 inline-flex h-9 items-center justify-center rounded-full bg-emerald-600 px-4 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {formState.submitting ? "Wird angelegt…" : "Mission anlegen"}
+              {createMissionMutation.isPending ? "Wird angelegt…" : "Mission anlegen"}
             </button>
           </form>
         </div>
@@ -193,27 +284,27 @@ export default function MissionsOverviewPage() {
         <div className="lg:col-span-2 rounded-2xl border border-neutral-800 bg-neutral-900/70 p-4">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-white">Live Missions</h2>
-            {missionsState.loading && (
+            {isLoading && (
               <span className="text-xs text-neutral-500">Lade…</span>
             )}
           </div>
 
-          {missionsState.error && (
+          {error && (
             <div className="text-xs text-red-400">
               Missionen konnten nicht geladen werden:
               <br />
-              {missionsState.error}
+              {error.message}
             </div>
           )}
 
-          {!missionsState.loading && (missionsState.data ?? []).length === 0 && (
+          {!isLoading && sortedMissions.length === 0 && (
             <div className="text-xs text-neutral-500">
               Noch keine Missionen angelegt.
             </div>
           )}
 
           <div className="flex flex-col gap-2">
-            {(missionsState.data ?? []).map((mission) => (
+            {sortedMissions.map((mission) => (
               <MissionRow
                 key={mission.id}
                 mission={mission}
@@ -223,7 +314,195 @@ export default function MissionsOverviewPage() {
           </div>
         </div>
       </section>
+
+      {/* Create from Template Dialog */}
+      <Dialog open={showTemplateDialog} onOpenChange={setShowTemplateDialog}>
+        <DialogContent className="border-neutral-800 bg-neutral-900 max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <FileText className="h-5 w-5 text-emerald-400" />
+              Create Mission from Template
+            </DialogTitle>
+            <DialogDescription className="text-neutral-400">
+              Select a template and configure variables to create a new mission.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleCreateFromTemplate} className="space-y-4">
+            {/* Template Selection */}
+            <div className="space-y-2">
+              <Label className="text-neutral-300">Template</Label>
+              <Select
+                value={selectedTemplateId}
+                onValueChange={handleTemplateSelect}
+              >
+                <SelectTrigger className="border-neutral-700 bg-neutral-950 text-neutral-100">
+                  <SelectValue placeholder="Select a template" />
+                </SelectTrigger>
+                <SelectContent className="border-neutral-700 bg-neutral-900">
+                  {templates.map((template) => (
+                    <SelectItem key={template.id} value={template.id}>
+                      <span className="text-neutral-100">{template.name}</span>
+                      <span className="ml-2 text-neutral-500">({template.category})</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Mission Name Override */}
+            {selectedTemplate && (
+              <div className="space-y-2">
+                <Label className="text-neutral-300">Mission Name</Label>
+                <Input
+                  value={missionName}
+                  onChange={(e) => setMissionName(e.target.value)}
+                  placeholder={selectedTemplate.name}
+                  className="border-neutral-700 bg-neutral-950 text-neutral-100"
+                />
+              </div>
+            )}
+
+            {/* Variables Section */}
+            {selectedTemplate && Object.keys(selectedTemplate.variables || {}).length > 0 && (
+              <div className="space-y-3">
+                <Label className="text-neutral-300">Variables</Label>
+                <div className="space-y-3">
+                  {Object.entries(selectedTemplate.variables || {}).map(([key, def]) => (
+                    <div key={key} className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm text-neutral-400">
+                          {key}
+                          {def.required && <span className="ml-1 text-red-400">*</span>}
+                        </Label>
+                        <span className="text-xs text-neutral-500">{def.type}</span>
+                      </div>
+                      {def.description && (
+                        <p className="text-xs text-neutral-500">{def.description}</p>
+                      )}
+                      <VariableInput
+                        type={def.type}
+                        value={templateVariables[key]}
+                        placeholder={def.default !== undefined ? String(def.default) : ""}
+                        onChange={(value) => handleVariableChange(key, value)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Template Info */}
+            {selectedTemplate && (
+              <div className="rounded-lg border border-neutral-800 bg-neutral-950/50 p-3">
+                <p className="text-xs text-neutral-400">
+                  <span className="text-neutral-500">Steps:</span>{" "}
+                  {selectedTemplate.steps?.length || 0} steps will be executed
+                </p>
+                {selectedTemplate.description && (
+                  <p className="mt-1 text-xs text-neutral-500">
+                    {selectedTemplate.description}
+                  </p>
+                )}
+              </div>
+            )}
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowTemplateDialog(false)}
+                className="border-neutral-700 bg-transparent text-neutral-300 hover:bg-neutral-800"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={!selectedTemplateId || instantiateTemplateMutation.isPending}
+                className="bg-emerald-600 hover:bg-emerald-700"
+              >
+                <Rocket className="mr-2 h-4 w-4" />
+                {instantiateTemplateMutation.isPending
+                  ? "Creating..."
+                  : "Create Mission"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
+  );
+}
+
+// ============================================================================
+// Sub-components
+// ============================================================================
+
+function VariableInput({
+  type,
+  value,
+  placeholder,
+  onChange,
+}: {
+  type: string;
+  value: unknown;
+  placeholder?: string;
+  onChange: (value: unknown) => void;
+}) {
+  if (type === "boolean") {
+    return (
+      <Select
+        value={value === undefined ? "" : String(value)}
+        onValueChange={(v) => onChange(v === "true")}
+      >
+        <SelectTrigger className="border-neutral-700 bg-neutral-950 text-neutral-100">
+          <SelectValue placeholder="Select..." />
+        </SelectTrigger>
+        <SelectContent className="border-neutral-700 bg-neutral-900">
+          <SelectItem value="true">True</SelectItem>
+          <SelectItem value="false">False</SelectItem>
+        </SelectContent>
+      </Select>
+    );
+  }
+
+  if (type === "number") {
+    return (
+      <Input
+        type="number"
+        value={value === undefined ? "" : String(value)}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value ? Number(e.target.value) : undefined)}
+        className="border-neutral-700 bg-neutral-950 text-neutral-100"
+      />
+    );
+  }
+
+  if (type === "object" || type === "array") {
+    return (
+      <Textarea
+        value={value === undefined ? "" : JSON.stringify(value, null, 2)}
+        placeholder={placeholder || '{"key": "value"}'}
+        onChange={(e) => {
+          try {
+            onChange(JSON.parse(e.target.value));
+          } catch {
+            onChange(e.target.value);
+          }
+        }}
+        className="border-neutral-700 bg-neutral-950 text-neutral-100 font-mono text-xs min-h-[80px]"
+      />
+    );
+  }
+
+  return (
+    <Input
+      type="text"
+      value={value === undefined ? "" : String(value)}
+      placeholder={placeholder}
+      onChange={(e) => onChange(e.target.value)}
+      className="border-neutral-700 bg-neutral-950 text-neutral-100"
+    />
   );
 }
 

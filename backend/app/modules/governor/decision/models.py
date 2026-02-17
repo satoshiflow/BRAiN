@@ -13,10 +13,11 @@ Key Concepts:
 from __future__ import annotations
 from typing import Optional, Dict, Any, List, Literal
 from datetime import datetime
+from enum import Enum
 from pydantic import BaseModel, Field
 import uuid
 
-from backend.app.modules.governor.manifest.schemas import Budget
+from app.modules.governor.manifest.schemas import Budget
 
 
 # ============================================================================
@@ -134,7 +135,7 @@ class BudgetResolution(BaseModel):
 # Recovery Strategy
 # ============================================================================
 
-class RecoveryStrategy(str):
+class RecoveryStrategy(str, Enum):
     """
     Recovery strategy for failed executions.
 

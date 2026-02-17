@@ -4,11 +4,13 @@ Safe Mode Router (Sprint 7.4)
 API endpoints for global safe mode control.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 from loguru import logger
+from datetime import datetime
 
-from backend.app.modules.safe_mode.service import get_safe_mode_service
+from app.modules.safe_mode.service import get_safe_mode_service
+from app.core.auth_deps import require_auth, require_role, Principal
 
 
 router = APIRouter(prefix="/api/safe-mode", tags=["safe-mode"])
@@ -24,6 +26,42 @@ class SafeModeDisableRequest(BaseModel):
     """Request to disable safe mode."""
 
     reason: str = Field(..., description="Reason for disabling safe mode")
+
+
+# ============================================================================
+# Audit Logging Helper
+# ============================================================================
+
+def _audit_safe_mode_change(
+    action: str,
+    principal: Principal,
+    reason: str,
+    success: bool = True,
+    details: dict = None
+) -> None:
+    """
+    Log safe mode state changes for audit trail.
+    
+    Args:
+        action: The action performed (enable/disable)
+        principal: The authenticated principal who performed the action
+        reason: The reason provided for the action
+        success: Whether the action was successful
+        details: Additional details to log
+    """
+    audit_event = {
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "event_type": f"safe_mode.{action}",
+        "principal_id": principal.principal_id,
+        "principal_type": principal.principal_type.value,
+        "principal_name": principal.name,
+        "principal_email": principal.email,
+        "reason": reason,
+        "success": success,
+        "details": details or {}
+    }
+    
+    logger.bind(audit=True).info(f"Safe mode {action} by {principal.principal_id}", **audit_event)
 
 
 @router.get("/info")
@@ -53,16 +91,21 @@ async def get_safe_mode_info():
 
 
 @router.get("/status")
-async def get_safe_mode_status():
+async def get_safe_mode_status(
+    principal: Principal = Depends(require_auth)
+):
     """
     Get current safe mode status.
 
-    Returns safe mode state, activation time, and blocked/allowed operations.
+    Requires authentication. Returns safe mode state, activation time, 
+    and blocked/allowed operations.
     """
     try:
         service = get_safe_mode_service()
         status = service.get_status()
 
+        logger.debug(f"Safe mode status retrieved by {principal.principal_id}")
+        
         return {
             "success": True,
             **status
@@ -77,9 +120,14 @@ async def get_safe_mode_status():
 
 
 @router.post("/enable")
-async def enable_safe_mode(request: SafeModeEnableRequest):
+async def enable_safe_mode(
+    request: SafeModeEnableRequest,
+    principal: Principal = Depends(require_role("admin"))
+):
     """
     Enable safe mode.
+
+    **Requires ADMIN role.**
 
     **Blocks:**
     - Factory executions
@@ -106,14 +154,20 @@ async def enable_safe_mode(request: SafeModeEnableRequest):
 
         was_enabled = service.enable_safe_mode(
             reason=request.reason,
-            enabled_by="api"
+            enabled_by=principal.principal_id
         )
 
         if was_enabled:
-            logger.critical(f"🛑 Safe mode ENABLED: {request.reason}")
+            logger.critical(f"🛑 Safe mode ENABLED by {principal.principal_id}: {request.reason}")
+            _audit_safe_mode_change(
+                action="enabled",
+                principal=principal,
+                reason=request.reason,
+                success=True
+            )
             message = "Safe mode enabled successfully"
         else:
-            logger.warning("Safe mode already enabled")
+            logger.warning(f"Safe mode already enabled (requested by {principal.principal_id})")
             message = "Safe mode was already enabled"
 
         status = service.get_status()
@@ -127,6 +181,13 @@ async def enable_safe_mode(request: SafeModeEnableRequest):
 
     except Exception as e:
         logger.error(f"Failed to enable safe mode: {e}")
+        _audit_safe_mode_change(
+            action="enabled",
+            principal=principal,
+            reason=request.reason,
+            success=False,
+            details={"error": str(e)}
+        )
         raise HTTPException(
             status_code=500,
             detail=f"Failed to enable safe mode: {str(e)}"
@@ -134,9 +195,14 @@ async def enable_safe_mode(request: SafeModeEnableRequest):
 
 
 @router.post("/disable")
-async def disable_safe_mode(request: SafeModeDisableRequest):
+async def disable_safe_mode(
+    request: SafeModeDisableRequest,
+    principal: Principal = Depends(require_role("admin"))
+):
     """
     Disable safe mode.
+
+    **Requires ADMIN role.**
 
     **Restores:**
     - Factory executions
@@ -157,14 +223,20 @@ async def disable_safe_mode(request: SafeModeDisableRequest):
 
         was_disabled = service.disable_safe_mode(
             reason=request.reason,
-            disabled_by="api"
+            disabled_by=principal.principal_id
         )
 
         if was_disabled:
-            logger.warning(f"✅ Safe mode DISABLED: {request.reason}")
+            logger.warning(f"✅ Safe mode DISABLED by {principal.principal_id}: {request.reason}")
+            _audit_safe_mode_change(
+                action="disabled",
+                principal=principal,
+                reason=request.reason,
+                success=True
+            )
             message = "Safe mode disabled successfully"
         else:
-            logger.info("Safe mode already disabled")
+            logger.info(f"Safe mode already disabled (requested by {principal.principal_id})")
             message = "Safe mode was already disabled"
 
         status = service.get_status()
@@ -178,6 +250,13 @@ async def disable_safe_mode(request: SafeModeDisableRequest):
 
     except Exception as e:
         logger.error(f"Failed to disable safe mode: {e}")
+        _audit_safe_mode_change(
+            action="disabled",
+            principal=principal,
+            reason=request.reason,
+            success=False,
+            details={"error": str(e)}
+        )
         raise HTTPException(
             status_code=500,
             detail=f"Failed to disable safe mode: {str(e)}"

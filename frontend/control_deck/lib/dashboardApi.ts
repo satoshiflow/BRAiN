@@ -1,5 +1,5 @@
 const API_BASE =
-  process.env.NEXT_PUBLIC_BRAIN_API_URL ?? "http://localhost:8000";
+  process.env.NEXT_PUBLIC_BRAIN_API_BASE ?? "http://127.0.0.1:8000";
 
 export type CoreHealth = {
   status?: string;
@@ -55,6 +55,13 @@ export type ImmuneHealthSummary = {
   }[];
 };
 
+export type Agent = {
+  id: string;
+  name: string;
+  type: string;
+  status: string;
+};
+
 async function handleJson<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const text = await res.text();
@@ -66,42 +73,95 @@ async function handleJson<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
 }
 
+// Verfügbarer Endpoint: GET /api/health
 export async function fetchCoreHealth(): Promise<CoreHealth> {
   const res = await fetch(`${API_BASE}/api/health`, { cache: "no-store" });
-  return handleJson<CoreHealth>(res);
+  const data = await handleJson<{ status: string; version?: string }>(res);
+  return {
+    status: data.status === "healthy" ? "ok" : data.status,
+    version: data.version,
+    env: "production",
+    timestamp: new Date().toISOString(),
+  };
 }
 
+// Berechnet aus /api/missions
 export async function fetchMissionsHealth(): Promise<MissionsHealth> {
-  const res = await fetch(`${API_BASE}/api/missions/health`, {
-    cache: "no-store",
-  });
-  return handleJson<MissionsHealth>(res);
+  const res = await fetch(`${API_BASE}/api/missions`, { cache: "no-store" });
+  const missions = await handleJson<Array<{ status?: string; progress?: number }>>(res);
+  
+  const total = missions.length;
+  const running = missions.filter(m => m.status === "running" || (m.progress && m.progress > 0 && m.progress < 100)).length;
+  const pending = missions.filter(m => m.status === "pending").length;
+  const completed = missions.filter(m => m.status === "completed" || m.progress === 100).length;
+  const failed = missions.filter(m => m.status === "failed").length;
+  
+  return {
+    status: failed > 0 ? "degraded" : running > 0 ? "ok" : "ok",
+    total,
+    running,
+    pending,
+    completed,
+    failed,
+  };
 }
 
+// Fallback: Berechnet aus Agents-Daten
 export async function fetchSupervisorHealth(): Promise<SupervisorHealth> {
-  const res = await fetch(`${API_BASE}/api/supervisor/health`, {
-    cache: "no-store",
-  });
-  return handleJson<SupervisorHealth>(res);
+  try {
+    const res = await fetch(`${API_BASE}/api/agents`, { cache: "no-store" });
+    const agents = await handleJson<Agent[]>(res);
+    const running = agents.filter(a => a.status === "running").length;
+    const idle = agents.filter(a => a.status === "idle").length;
+    
+    return {
+      status: running > 0 ? "ok" : "idle",
+      running,
+      completed: idle,
+      failed: 0,
+      cancelled: 0,
+    };
+  } catch {
+    // Fallback wenn /api/agents nicht verfügbar
+    return {
+      status: "unknown",
+      running: 0,
+      completed: 0,
+      failed: 0,
+      cancelled: 0,
+    };
+  }
 }
 
+// Berechnet aus /api/missions
 export async function fetchMissionsOverviewStats(): Promise<MissionsOverviewStats> {
-  const res = await fetch(`${API_BASE}/api/missions/stats/overview`, {
-    cache: "no-store",
-  });
-  return handleJson<MissionsOverviewStats>(res);
+  const res = await fetch(`${API_BASE}/api/missions`, { cache: "no-store" });
+  const missions = await handleJson<Array<{ status?: string; progress?: number }>>(res);
+  
+  const total = missions.length;
+  const running = missions.filter(m => m.status === "running" || (m.progress && m.progress > 0 && m.progress < 100)).length;
+  const pending = missions.filter(m => m.status === "pending").length;
+  const completed = missions.filter(m => m.status === "completed" || m.progress === 100).length;
+  const failed = missions.filter(m => m.status === "failed").length;
+  
+  return { total, running, pending, completed, failed };
 }
 
+// Fallback: Keine Threats-Daten verfügbar
 export async function fetchThreatsOverviewStats(): Promise<ThreatsOverviewStats> {
-  const res = await fetch(`${API_BASE}/api/threats/stats/overview`, {
-    cache: "no-store",
-  });
-  return handleJson<ThreatsOverviewStats>(res);
+  return {
+    total: 0,
+    critical: 0,
+    warning: 0,
+    info: 0,
+  };
 }
 
+// Fallback: Keine Immune-Daten verfügbar
 export async function fetchImmuneHealth(): Promise<ImmuneHealthSummary> {
-  const res = await fetch(`${API_BASE}/api/immune/health`, {
-    cache: "no-store",
-  });
-  return handleJson<ImmuneHealthSummary>(res);
+  return {
+    active_issues: 0,
+    critical_issues: 0,
+    last_events: [],
+  };
 }

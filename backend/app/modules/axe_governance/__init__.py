@@ -9,6 +9,7 @@ SECURITY PRINCIPLE:
 - Alle Requests müssen authentifiziert und auditiert werden
 """
 
+import os
 from enum import Enum
 from typing import Optional, Dict, Any
 from pydantic import BaseModel
@@ -56,9 +57,18 @@ class AXETrustValidator:
     FAIL-CLOSED: Im Zweifel wird Request als EXTERNAL eingestuft und blockiert.
     """
 
-    # DMZ Gateway Shared Secret (sollte aus Environment kommen)
+    # DMZ Gateway Shared Secret (loaded from environment variable)
     # In Production: Rotate regelmäßig, pro Gateway unterschiedlich
-    DMZ_GATEWAY_SECRET = "REPLACE_WITH_SECURE_SECRET_IN_PRODUCTION"
+    DMZ_GATEWAY_SECRET: str = ""
+
+    def __init__(self):
+        # Load secret from environment variable
+        self.DMZ_GATEWAY_SECRET = os.environ.get("BRAIN_DMZ_GATEWAY_SECRET", "")
+        if not self.DMZ_GATEWAY_SECRET:
+            raise ValueError(
+                "BRAIN_DMZ_GATEWAY_SECRET environment variable must be set"
+            )
+        logger.info("AXE Trust Validator initialized")
 
     # Bekannte DMZ Gateway Services
     KNOWN_DMZ_GATEWAYS = {
@@ -67,9 +77,6 @@ class AXETrustValidator:
         "discord_gateway",
         "email_gateway",
     }
-
-    def __init__(self):
-        logger.info("AXE Trust Validator initialized")
 
     async def validate_request(
         self,

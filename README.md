@@ -661,6 +661,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Built with ❤️ by the BRAiN Team**
+**Built with ❤️ by the BRAiN Team Oli**
 
 _Empowering the next generation of autonomous AI systems and business automation_

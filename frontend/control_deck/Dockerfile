@@ -1,27 +1,70 @@
+# Stage 1: Install dependencies with caching
+FROM node:22-alpine AS deps
+
+WORKDIR /app
+
+# Install build dependencies
+RUN apk add --no-cache libc6-compat
+
+# Copy dependency files
+COPY package.json package-lock.json* ./
+
+# Install dependencies with BuildKit cache mount
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --legacy-peer-deps --prefer-offline --no-audit --loglevel=error
+
+# Stage 2: Build application
 FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-COPY package.json package-lock.json* ./
-RUN npm install --legacy-peer-deps
+# Install build dependencies for native modules
+RUN apk add --no-cache libc6-compat
 
+# Build-time arguments for Next.js
+ARG NEXT_PUBLIC_BRAIN_API_BASE=http://backend:8000
+ENV NEXT_PUBLIC_BRAIN_API_BASE=$NEXT_PUBLIC_BRAIN_API_BASE
+
+# Disable telemetry and enable CI mode
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV CI=true
+ENV NODE_ENV=production
+
+# Copy dependencies from deps stage
+COPY --from=deps /app/node_modules ./node_modules
+
+# Copy source code
 COPY . .
-RUN npm run build
+
+# Build Next.js application with error output
+# Continue on error for now (remove '|| true' once build is stable)
+RUN npm run build 2>&1 || (echo "=== BUILD FAILED ===" && exit 1)
 
 # Ensure public directory exists
 RUN mkdir -p public
 
+# Stage 3: Production runtime with standalone output
 FROM node:22-alpine AS runner
 
 WORKDIR /app
 
 ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
 
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/node_modules ./node_modules
+# Create non-root user for security
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
+# Copy standalone output (much smaller than full node_modules)
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+
+USER nextjs
 
 EXPOSE 3000
 
-CMD ["npm", "start"]
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+CMD ["node", "server.js"]

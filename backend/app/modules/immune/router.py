@@ -1,8 +1,9 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from typing import Dict, Any
 
-from backend.app.modules.immune.core.service import ImmuneService
-from backend.app.modules.immune.schemas import ImmuneEvent, ImmuneHealthSummary
+from app.modules.immune.core.service import ImmuneService
+from app.modules.immune.schemas import ImmuneEvent, ImmuneHealthSummary
+from app.core.rate_limit import limiter, RateLimits
 
 router = APIRouter(prefix="/api/immune", tags=["Immune"])
 
@@ -16,7 +17,8 @@ immune_service = ImmuneService(enable_auto_protection=True)
 # =============================================================================
 
 @router.post("/event", response_model=int)
-async def publish_immune_event(payload: ImmuneEvent) -> int:
+@limiter.limit(RateLimits.IMMUNE_EVENTS)
+async def publish_immune_event(request: Request, payload: ImmuneEvent) -> int:
     """Publish immune event (async for EventStream integration)"""
     return await immune_service.publish_event(payload)
 

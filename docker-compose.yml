@@ -2,129 +2,64 @@ services:
   backend:
     build:
       context: ./backend
-    container_name: brain-backend
+    # Removed ports - use Traefik routing instead
+    environment:
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:5432/brain}
+      - ENABLE_MISSION_WORKER=${ENABLE_MISSION_WORKER:-true}
+      - BRAIN_EVENTSTREAM_MODE=${BRAIN_EVENTSTREAM_MODE:-required}
+      - BRAIN_LOG_LEVEL=${BRAIN_LOG_LEVEL:-info}
     env_file:
       - .env
-    ports:
-      - "8000:8000"
-    depends_on:
-      - postgres
-      - redis
     restart: unless-stopped
     networks:
-      - brain_internal
+      - coolify
+    # Coolify Traefik labels - domain mapping
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend.rule=Host(`${SERVICE_FQDN_BACKEND}`)"
+      - "traefik.http.routers.backend.entrypoints=https"
+      - "traefik.http.routers.backend.tls=true"
+      - "traefik.http.services.backend.loadbalancer.server.port=8000"
 
   control_deck:
     build:
       context: ./frontend/control_deck
-    container_name: brain-control-deck
+    # Removed ports - use Traefik routing instead
     environment:
-      - NEXT_PUBLIC_BRAIN_API_BASE=http://backend:8000
-    ports:
-      - "3000:3000"
+      - NEXT_PUBLIC_BRAIN_API_BASE=${NEXT_PUBLIC_BRAIN_API_BASE:-https://${SERVICE_FQDN_BACKEND}}
+      - PORT=3000
     depends_on:
       - backend
     restart: unless-stopped
     networks:
-      - brain_internal
+      - coolify
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.control_deck.rule=Host(`${SERVICE_FQDN_CONTROL_DECK}`)"
+      - "traefik.http.routers.control_deck.entrypoints=https"
+      - "traefik.http.routers.control_deck.tls=true"
+      - "traefik.http.services.control_deck.loadbalancer.server.port=3000"
 
   axe_ui:
     build:
       context: ./frontend/axe_ui
-    container_name: brain-axe-ui
+    # Removed ports - use Traefik routing instead
     environment:
-      - NEXT_PUBLIC_BRAIN_API_BASE=http://backend:8000
-    ports:
-      - "3001:3000"
+      - NEXT_PUBLIC_BRAIN_API_BASE=${NEXT_PUBLIC_BRAIN_API_BASE:-https://${SERVICE_FQDN_BACKEND}}
+      - PORT=3002
     depends_on:
       - backend
     restart: unless-stopped
     networks:
-      - brain_internal
-
-  postgres:
-    image: postgres:16
-    container_name: brain-postgres
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-brain}
-      POSTGRES_USER: ${POSTGRES_USER:-brain}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-brain}
-    volumes:
-      - brain_pg_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-    restart: unless-stopped
-    networks:
-      - brain_internal
-
-  redis:
-    image: redis:7-alpine
-    container_name: brain-redis
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    ports:
-      - "6379:6379"
-    restart: unless-stopped
-    networks:
-      - brain_internal
-
-  qdrant:
-    image: qdrant/qdrant:latest
-    container_name: brain-qdrant
-    volumes:
-      - brain_qdrant_data:/qdrant/storage
-    ports:
-      - "6333:6333"
-    restart: unless-stopped
-    networks:
-      - brain_internal
-
-  ollama:
-    image: ollama/ollama:latest
-    container_name: brain-ollama
-    volumes:
-      - brain_ollama_data:/root/.ollama
-    ports:
-      - "11434:11434"
-    restart: unless-stopped
-    networks:
-      - brain_internal
-
-  openwebui:
-    image: ghcr.io/open-webui/open-webui:main
-    container_name: brain-openwebui
-    volumes:
-      - brain_openwebui_data:/app/backend/data
-    environment:
-      - OLLAMA_BASE_URL=http://ollama:11434
-    ports:
-      - "8080:8080"
-    depends_on:
-      - ollama
-    restart: unless-stopped
-    networks:
-      - brain_internal
+      - coolify
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.axe_ui.rule=Host(`${SERVICE_FQDN_AXE_UI}`)"
+      - "traefik.http.routers.axe_ui.entrypoints=https"
+      - "traefik.http.routers.axe_ui.tls=true"
+      - "traefik.http.services.axe_ui.loadbalancer.server.port=3002"
 
 networks:
-  brain_internal:
-    driver: bridge
-    internal: false  # Set to true for full isolation (blocks direct internet)
-    ipam:
-      driver: default
-      config:
-        - subnet: 172.20.0.0/16
-          gateway: 172.20.0.1
-
-  # Optional: Separate gateway network for services requiring internet access
-  # brain_gateway:
-  #   driver: bridge
-  #   internal: false
-
-volumes:
-  brain_pg_data:
-  brain_qdrant_data:
-  brain_ollama_data:
-  brain_openwebui_data:
+  coolify:
+    external: true

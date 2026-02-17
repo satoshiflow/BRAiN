@@ -1,0 +1,30 @@
+{
+  "name": "knowledge_graph",
+  "version": "0.1.0",
+  "description": "Semantic memory and knowledge graph using Cognee",
+  "type": "core",
+  "status": "poc",
+  "dependencies": [
+    "cognee",
+    "qdrant-client"
+  ],
+  "endpoints": [
+    "/api/knowledge-graph/info",
+    "/api/knowledge-graph/add",
+    "/api/knowledge-graph/cognify",
+    "/api/knowledge-graph/search",
+    "/api/knowledge-graph/datasets",
+    "/api/knowledge-graph/reset",
+    "/api/knowledge-graph/missions/record",
+    "/api/knowledge-graph/missions/similar",
+    "/api/knowledge-graph/agents/{agent_id}/expertise",
+    "/api/knowledge-graph/health"
+  ],
+  "features": [
+    "semantic_search",
+    "knowledge_graphs",
+    "agent_memory",
+    "mission_context",
+    "audit_trail"
+  ]
+}

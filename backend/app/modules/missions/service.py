@@ -1,164 +1,251 @@
-from __future__ import annotations
+"""
+Mission Templates Service
 
-import json
-import time
+Business logic for mission template CRUD and instantiation.
+"""
+
+from typing import Dict, List, Any, Optional
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func, or_
 import uuid
-from typing import Any, Dict, List, Optional
+from datetime import datetime
 
-from ...core.redis_client import get_redis
-from .models import (
-    Mission,
-    MissionCreate,
-    MissionListResponse,
-    MissionLogEntry,
-    MissionLogResponse,
-    MissionStats,
-    MissionStatsResponse,
-    MissionStatus,
+from .models import MissionTemplate
+from .schemas import (
+    MissionTemplateCreate,
+    MissionTemplateUpdate,
+    InstantiateTemplateRequest,
+    InstantiateTemplateResponse,
 )
 
-MISSION_KEY_PREFIX = "brain:missions:mission:"
-MISSION_INDEX_KEY = "brain:missions:index"
-MISSION_LOG_PREFIX = "brain:missions:log:"
-MISSION_STATS_KEY = "brain:missions:stats"
 
-
-def _mission_key(mission_id: str) -> str:
-    return f"{MISSION_KEY_PREFIX}{mission_id}"
-
-
-def _mission_log_key(mission_id: str) -> str:
-    return f"{MISSION_LOG_PREFIX}{mission_id}"
-
-
-async def create_mission(payload: MissionCreate) -> Mission:
-    redis: Any = await get_redis()
-    mission_id = payload.id or str(uuid.uuid4())
-    now = time.time()
-    mission = Mission(
-        id=mission_id,
-        name=payload.name,
-        description=payload.description,
-        data=payload.data,
-        status=MissionStatus.PENDING,
-        created_at=now,
-        updated_at=now,
-    )
-    await redis.set(_mission_key(mission_id), mission.model_dump_json())
-    await redis.sadd(MISSION_INDEX_KEY, mission_id)
-    await _update_stats_on_create(redis, mission.status)
-    entry = MissionLogEntry(
-        level="info",
-        message="Mission created",
-        data={"name": mission.name, "description": mission.description},
-    )
-    await append_log_entry(mission_id, entry)
-    return mission
-
-
-async def get_mission(mission_id: str) -> Optional[Mission]:
-    redis: Any = await get_redis()
-    raw = await redis.get(_mission_key(mission_id))
-    if not raw:
-        return None
-    data = json.loads(raw)
-    return Mission.model_validate(data)
-
-
-async def list_missions(status: Optional[MissionStatus] = None) -> MissionListResponse:
-    redis: Any = await get_redis()
-    ids = await redis.smembers(MISSION_INDEX_KEY)
-    missions: List[Mission] = []
-    for mission_id in ids or []:
-        mission = await get_mission(mission_id)
-        if not mission:
-            continue
-        if status is not None and mission.status != status:
-            continue
-        missions.append(mission)
-    missions.sort(key=lambda m: m.created_at, reverse=True)
-    return MissionListResponse(missions=missions)
-
-
-async def append_log_entry(mission_id: str, entry: MissionLogEntry) -> None:
-    redis: Any = await get_redis()
-    await redis.rpush(_mission_log_key(mission_id), entry.model_dump_json())
-
-
-async def get_log(mission_id: str) -> MissionLogResponse:
-    redis: Any = await get_redis()
-    raw_entries = await redis.lrange(_mission_log_key(mission_id), 0, -1)
-    entries: List[MissionLogEntry] = []
-    for raw in raw_entries or []:
-        data = json.loads(raw)
-        entries.append(MissionLogEntry.model_validate(data))
-    return MissionLogResponse(mission_id=mission_id, log=entries)
-
-
-async def update_status(mission_id: str, status: MissionStatus) -> Optional[Mission]:
-    redis: Any = await get_redis()
-    mission = await get_mission(mission_id)
-    if not mission:
-        return None
-    old_status = mission.status
-    mission.status = status
-    mission.updated_at = time.time()
-    await redis.set(_mission_key(mission_id), mission.model_dump_json())
-    await _update_stats_on_status_change(redis, old_status, status)
-    entry = MissionLogEntry(
-        level="info",
-        message="Mission status changed",
-        data={"from": old_status, "to": status},
-    )
-    await append_log_entry(mission_id, entry)
-    return mission
-
-
-async def get_stats() -> MissionStatsResponse:
-    redis: Any = await get_redis()
-    raw = await redis.get(MISSION_STATS_KEY)
-    if not raw:
-        stats = MissionStats(total=0, by_status={s: 0 for s in MissionStatus})
-        return MissionStatsResponse(stats=stats)
-    data = json.loads(raw)
-    by_status: Dict[MissionStatus, int] = {}
-    for key, value in data.get("by_status", {}).items():
-        by_status[MissionStatus(key)] = int(value)
-    stats = MissionStats(
-        total=int(data.get("total", 0)),
-        by_status=by_status,
-        last_updated=float(data.get("last_updated", time.time())),
-    )
-    return MissionStatsResponse(stats=stats)
-
-
-async def _update_stats_on_create(redis: Any, status: MissionStatus) -> None:
-    raw = await redis.get(MISSION_STATS_KEY)
-    if raw:
-        data = json.loads(raw)
-    else:
-        data = {
-            "total": 0,
-            "by_status": {s.value: 0 for s in MissionStatus},
-            "last_updated": time.time(),
+class MissionTemplateService:
+    """Service for managing mission templates"""
+    
+    def __init__(self, db: AsyncSession):
+        self.db = db
+    
+    # ============================================================================
+    # CRUD Operations
+    # ============================================================================
+    
+    async def list_templates(
+        self,
+        category: Optional[str] = None,
+        search: Optional[str] = None,
+    ) -> List[MissionTemplate]:
+        """List all templates with optional filtering"""
+        query = select(MissionTemplate)
+        
+        if category:
+            query = query.where(MissionTemplate.category == category)
+        
+        if search:
+            search_term = f"%{search}%"
+            query = query.where(
+                or_(
+                    MissionTemplate.name.ilike(search_term),
+                    MissionTemplate.description.ilike(search_term),
+                )
+            )
+        
+        query = query.order_by(MissionTemplate.name)
+        result = await self.db.execute(query)
+        return result.scalars().all()
+    
+    async def get_template(self, template_id: str) -> Optional[MissionTemplate]:
+        """Get a single template by ID"""
+        result = await self.db.execute(
+            select(MissionTemplate).where(MissionTemplate.id == template_id)
+        )
+        return result.scalar_one_or_none()
+    
+    async def create_template(
+        self, 
+        data: MissionTemplateCreate, 
+        owner_id: Optional[str] = None
+    ) -> MissionTemplate:
+        """Create a new mission template"""
+        template = MissionTemplate(
+            id=str(uuid.uuid4()),
+            name=data.name,
+            description=data.description,
+            category=data.category,
+            steps=[step.model_dump() for step in data.steps],
+            variables={
+                name: var.model_dump(exclude_none=True) 
+                for name, var in data.variables.items()
+            },
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+        
+        # Set owner if provided
+        if owner_id:
+            template.owner_id = owner_id
+        
+        self.db.add(template)
+        await self.db.commit()
+        await self.db.refresh(template)
+        return template
+    
+    async def update_template(
+        self, 
+        template_id: str, 
+        data: MissionTemplateUpdate
+    ) -> Optional[MissionTemplate]:
+        """Update an existing template"""
+        template = await self.get_template(template_id)
+        if not template:
+            return None
+        
+        # Update fields if provided
+        if data.name is not None:
+            template.name = data.name
+        if data.description is not None:
+            template.description = data.description
+        if data.category is not None:
+            template.category = data.category
+        if data.steps is not None:
+            template.steps = [step.model_dump() for step in data.steps]
+        if data.variables is not None:
+            template.variables = {
+                name: var.model_dump(exclude_none=True)
+                for name, var in data.variables.items()
+            }
+        
+        template.updated_at = datetime.utcnow()
+        await self.db.commit()
+        await self.db.refresh(template)
+        return template
+    
+    async def delete_template(self, template_id: str) -> bool:
+        """Delete a template by ID"""
+        template = await self.get_template(template_id)
+        if not template:
+            return False
+        
+        await self.db.delete(template)
+        await self.db.commit()
+        return True
+    
+    # ============================================================================
+    # Categories
+    # ============================================================================
+    
+    async def get_categories(self) -> List[str]:
+        """Get all unique template categories"""
+        result = await self.db.execute(
+            select(MissionTemplate.category).distinct()
+        )
+        return sorted([row[0] for row in result.all()])
+    
+    # ============================================================================
+    # Template Instantiation
+    # ============================================================================
+    
+    async def instantiate_template(
+        self,
+        template_id: str,
+        request: InstantiateTemplateRequest,
+    ) -> InstantiateTemplateResponse:
+        """
+        Instantiate a template into a new mission.
+        
+        This creates a mission from the template with the provided variable values.
+        """
+        # Get template
+        template = await self.get_template(template_id)
+        if not template:
+            raise ValueError(f"Template not found: {template_id}")
+        
+        # Validate required variables
+        provided_vars = request.variables or {}
+        template_vars = template.variables or {}
+        
+        missing_required = []
+        final_variables = {}
+        
+        for var_name, var_def in template_vars.items():
+            var_def_dict = var_def if isinstance(var_def, dict) else var_def
+            is_required = var_def_dict.get("required", True)
+            
+            if var_name in provided_vars:
+                final_variables[var_name] = provided_vars[var_name]
+            elif "default" in var_def_dict:
+                final_variables[var_name] = var_def_dict["default"]
+            elif is_required:
+                missing_required.append(var_name)
+        
+        if missing_required:
+            raise ValueError(
+                f"Missing required variables: {', '.join(missing_required)}"
+            )
+        
+        # Generate mission name
+        mission_name = request.mission_name or f"{template.name} ({datetime.utcnow().strftime('%Y-%m-%d %H:%M')})"
+        
+        # Create mission ID
+        mission_id = str(uuid.uuid4())
+        
+        # Prepare steps with variable substitution
+        instantiated_steps = self._substitute_variables_in_steps(
+            template.steps, final_variables
+        )
+        
+        # Build mission payload
+        mission_payload = {
+            "id": mission_id,
+            "name": mission_name,
+            "description": template.description,
+            "template_id": template_id,
+            "steps": instantiated_steps,
+            "variables": final_variables,
+            "created_at": datetime.utcnow().isoformat(),
+            "status": "pending",
         }
-    data["total"] = int(data.get("total", 0)) + 1
-    by_status = data.get("by_status", {})
-    by_status[status.value] = int(by_status.get(status.value, 0)) + 1
-    data["by_status"] = by_status
-    data["last_updated"] = time.time()
-    await redis.set(MISSION_STATS_KEY, json.dumps(data))
+        
+        # Note: In a full implementation, this would enqueue the mission
+        # For now, we return the mission payload
+        
+        return InstantiateTemplateResponse(
+            mission_id=mission_id,
+            mission_name=mission_name,
+            status="created",
+            template_id=template_id,
+            variables_applied=final_variables,
+        )
+    
+    def _substitute_variables_in_steps(
+        self, 
+        steps: List[Dict[str, Any]], 
+        variables: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """
+        Substitute variable placeholders in step configurations.
+        
+        Replaces {{variable_name}} with the actual value.
+        """
+        import json
+        
+        # Convert steps to JSON string for easy substitution
+        steps_json = json.dumps(steps)
+        
+        # Substitute variables
+        for var_name, var_value in variables.items():
+            placeholder = f"{{{{{var_name}}}}}"
+            if isinstance(var_value, (dict, list)):
+                # For complex types, we need to JSON encode
+                steps_json = steps_json.replace(
+                    f'"{placeholder}"', json.dumps(var_value)
+                )
+            else:
+                steps_json = steps_json.replace(placeholder, str(var_value))
+        
+        # Parse back to list
+        return json.loads(steps_json)
 
 
-async def _update_stats_on_status_change(redis: Any, old_status: MissionStatus, new_status: MissionStatus) -> None:
-    raw = await redis.get(MISSION_STATS_KEY)
-    if not raw:
-        return
-    data = json.loads(raw)
-    by_status = data.get("by_status", {})
-    if old_status.value in by_status:
-        by_status[old_status.value] = max(0, int(by_status.get(old_status.value, 0)) - 1)
-    by_status[new_status.value] = int(by_status.get(new_status.value, 0)) + 1
-    data["by_status"] = by_status
-    data["last_updated"] = time.time()
-    await redis.set(MISSION_STATS_KEY, json.dumps(data))
+# Factory function for dependency injection
+def get_template_service(db: AsyncSession) -> MissionTemplateService:
+    return MissionTemplateService(db)

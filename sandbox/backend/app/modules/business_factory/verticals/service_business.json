@@ -1,0 +1,168 @@
+{
+  "vertical_id": "service_business_v1",
+  "name": "Service Business",
+  "description": "Professional services including consulting, agencies, legal, accounting, and advisory firms",
+  "version": "1.0.0",
+  "created_at": "2025-12-25",
+
+  "business_types": [
+    "consulting",
+    "agency",
+    "legal",
+    "accounting",
+    "advisory"
+  ],
+
+  "template_config": {
+    "website": {
+      "template_id": "professional_services_v1",
+      "required_pages": ["home", "services", "about", "team", "contact"],
+      "optional_pages": ["case-studies", "blog", "careers"],
+      "features": [
+        "contact_form",
+        "service_showcase",
+        "team_profiles",
+        "testimonials",
+        "blog"
+      ],
+      "seo_focus": [
+        "service_keywords",
+        "local_seo",
+        "professional_credentials"
+      ]
+    },
+
+    "erp": {
+      "required_modules": [
+        "crm",
+        "project",
+        "hr_timesheet",
+        "account",
+        "sale"
+      ],
+      "optional_modules": [
+        "project_timesheet",
+        "hr_expense",
+        "website"
+      ],
+      "workflows": [
+        "lead_to_project",
+        "timesheet_to_invoice",
+        "expense_approval"
+      ]
+    },
+
+    "integrations": [
+      {
+        "name": "Contact Form to CRM",
+        "source": "website",
+        "target": "odoo",
+        "type": "contact_form",
+        "priority": "high",
+        "config": {
+          "create_lead": true,
+          "assign_to": "sales_team",
+          "notify_email": true
+        }
+      },
+      {
+        "name": "Project to Invoicing",
+        "source": "odoo",
+        "target": "odoo",
+        "type": "internal_workflow",
+        "priority": "medium",
+        "config": {
+          "timesheet_to_invoice": true,
+          "auto_invoice_milestones": false
+        }
+      }
+    ]
+  },
+
+  "risk_profile": {
+    "overall_complexity": "medium",
+    "common_risks": [
+      {
+        "risk": "Client data privacy requirements",
+        "severity": "high",
+        "mitigation": "Ensure GDPR compliance in CRM setup",
+        "probability": "high"
+      },
+      {
+        "risk": "Time tracking accuracy",
+        "severity": "medium",
+        "mitigation": "Configure timesheet validation rules",
+        "probability": "medium"
+      },
+      {
+        "risk": "Invoice delays",
+        "severity": "medium",
+        "mitigation": "Set up automated reminders and workflows",
+        "probability": "low"
+      }
+    ],
+    "estimated_setup_time_minutes": 25,
+    "estimated_cost_euros": 0.0,
+    "rollback_complexity": "low"
+  },
+
+  "default_parameters": {
+    "website_config": {
+      "primary_color": "#1e40af",
+      "secondary_color": "#64748b",
+      "tagline": "Professional [Service] for Your Business",
+      "description": "Expert [service] solutions delivered with excellence",
+      "features": ["contact_form", "service_showcase", "testimonials"]
+    },
+    "erp_config": {
+      "currency": "EUR",
+      "fiscal_year_start": "01-01",
+      "language": "en_US",
+      "timezone": "UTC"
+    }
+  },
+
+  "validation_rules": {
+    "required_fields": [
+      "business_name",
+      "contact_email",
+      "industry"
+    ],
+    "recommended_fields": [
+      "services_offered",
+      "target_market",
+      "team_size"
+    ]
+  },
+
+  "success_metrics": {
+    "kpis": [
+      "leads_per_month",
+      "project_completion_rate",
+      "average_project_value",
+      "client_retention_rate"
+    ],
+    "dashboards": [
+      "sales_pipeline",
+      "project_profitability",
+      "resource_utilization"
+    ]
+  },
+
+  "examples": [
+    {
+      "name": "Acme Consulting GmbH",
+      "industry": "IT Consulting",
+      "services": ["Strategy", "Implementation", "Support"],
+      "team_size": "5-10",
+      "target_market": "SME in DACH region"
+    },
+    {
+      "name": "Bright Ideas Agency",
+      "industry": "Marketing Agency",
+      "services": ["Branding", "Digital Marketing", "Content Creation"],
+      "team_size": "10-25",
+      "target_market": "B2B and B2C brands"
+    }
+  ]
+}
