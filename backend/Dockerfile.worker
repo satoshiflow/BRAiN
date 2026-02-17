@@ -1,0 +1,49 @@
+# BRAiN Worker - Dockerfile
+# Horizontal scalable worker for cluster operations
+
+# ===== BUILD STAGE =====
+FROM python:3.11-slim AS builder
+
+WORKDIR /app
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY requirements.txt .
+
+# Install Python dependencies (to /root/.local)
+RUN pip install --no-cache-dir --user -r requirements.txt
+
+# ===== RUNTIME STAGE =====
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Create non-root user
+RUN useradd -m -u 1000 worker && \
+    chown -R worker:worker /app
+
+# Copy Python dependencies from builder
+COPY --from=builder --chown=worker:worker /root/.local /home/worker/.local
+
+# Set PATH
+ENV PATH=/home/worker/.local/bin:$PATH
+
+# Copy application code
+COPY --chown=worker:worker worker.py .
+COPY --chown=worker:worker app/ ./app/
+COPY --chown=worker:worker mission_control_core/ ./mission_control_core/
+
+# Switch to non-root user
+USER worker
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=20s \
+    CMD python -c "import redis; r=redis.from_url('${REDIS_URL}'); r.ping()"
+
+# Run worker
+CMD ["python", "worker.py"]
