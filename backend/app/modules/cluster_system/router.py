@@ -357,8 +357,26 @@ async def create_blueprint(
 
     Blueprint must be valid YAML matching schema.
     """
-    # TODO: Implement (Max's Task 3.2)
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    try:
+        service = ClusterService(db)
+        blueprint = await service.create_blueprint(
+            blueprint_id=data.id,
+            name=data.name,
+            version=data.version,
+            yaml_content=data.blueprint_yaml,
+            description=data.description,
+            tags=data.tags
+        )
+
+        logger.info(f"Blueprint created: {blueprint.id} by {principal.email}")
+        return BlueprintResponse.model_validate(blueprint)
+
+    except ValueError as e:
+        logger.warning(f"Blueprint creation failed: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Blueprint creation error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @blueprints_router.get(
@@ -373,8 +391,10 @@ async def list_blueprints(
     principal: Principal = Depends(get_current_principal)
 ):
     """List all available blueprints"""
-    # TODO: Implement (Max's Task 3.2)
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    service = ClusterService(db)
+    blueprints = await service.list_blueprints(active_only=active_only)
+
+    return [BlueprintResponse.model_validate(b) for b in blueprints]
 
 
 @blueprints_router.get(
@@ -390,5 +410,16 @@ async def get_blueprint(
     principal: Principal = Depends(get_current_principal)
 ):
     """Get blueprint details (optionally with full YAML)"""
-    # TODO: Implement (Max's Task 3.2)
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    service = ClusterService(db)
+    blueprint = await service.get_blueprint(blueprint_id)
+
+    if not blueprint:
+        raise HTTPException(status_code=404, detail="Blueprint not found")
+
+    response = BlueprintResponse.model_validate(blueprint)
+
+    # Optionally exclude YAML content to reduce payload size
+    if not include_yaml:
+        response.blueprint_yaml = None
+
+    return response

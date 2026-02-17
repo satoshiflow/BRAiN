@@ -37,9 +37,28 @@ class BlueprintLoader:
             FileNotFoundError: If file doesn't exist
             yaml.YAMLError: If YAML is invalid
         """
-        # TODO: Implement (Max's Task 3.2)
         logger.info(f"Loading blueprint from {filename}")
-        raise NotImplementedError("BlueprintLoader.load_from_file - To be implemented by Max")
+
+        file_path = self.blueprints_dir / filename
+
+        if not file_path.exists():
+            raise FileNotFoundError(f"Blueprint file not found: {filename}")
+
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                blueprint = yaml.safe_load(f)
+
+            blueprint_id = blueprint.get('metadata', {}).get('id', 'unknown')
+            logger.info(f"Successfully loaded blueprint: {blueprint_id}")
+
+            return blueprint
+
+        except yaml.YAMLError as e:
+            logger.error(f"YAML parsing error in {filename}: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Error loading blueprint {filename}: {e}")
+            raise
 
     def load_from_string(self, yaml_content: str) -> Dict[str, Any]:
         """
@@ -74,6 +93,25 @@ class BlueprintLoader:
         Returns:
             Path: Path to saved file
         """
-        # TODO: Implement (Max's Task 3.2)
         logger.info(f"Saving blueprint to {filename}")
-        raise NotImplementedError("BlueprintLoader.save_to_file - To be implemented by Max")
+
+        file_path = self.blueprints_dir / filename
+
+        try:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                yaml.dump(
+                    blueprint,
+                    f,
+                    default_flow_style=False,
+                    allow_unicode=True,
+                    sort_keys=False
+                )
+
+            blueprint_id = blueprint.get('metadata', {}).get('id', 'unknown')
+            logger.info(f"Successfully saved blueprint {blueprint_id} to {filename}")
+
+            return file_path
+
+        except Exception as e:
+            logger.error(f"Error saving blueprint to {filename}: {e}")
+            raise
