@@ -44,6 +44,9 @@ from modules.missions.worker import start_mission_worker, stop_mission_worker
 # Autoscaler worker (Cluster System auto-scaling)
 from app.workers.autoscaler import start_autoscaler, stop_autoscaler
 
+# Metrics collector (Cluster System metrics collection)
+from app.workers.metrics_collector import start_metrics_collector, stop_metrics_collector
+
 # Event Stream (ADR-001: REQUIRED core infrastructure)
 try:
     from mission_control_core.core.event_stream import EventStream
@@ -172,6 +175,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         mission_worker_task = await start_mission_worker(event_stream=event_stream)
         logger.info("✅ Mission worker started (EventStream: %s)", "enabled" if event_stream else "disabled")
 
+    # Start metrics collector worker (Cluster System metrics)
+    metrics_collector_task = None
+    if os.getenv("ENABLE_METRICS_COLLECTOR", "true").lower() == "true":
+        metrics_collector_task = asyncio.create_task(start_metrics_collector(collection_interval=30))
+        logger.info("✅ Metrics collector started (interval: 30s)")
+
     # Start autoscaler worker (Cluster System auto-scaling)
     autoscaler_task = None
     if os.getenv("ENABLE_AUTOSCALER", "true").lower() == "true":
@@ -190,6 +199,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if mission_worker_task:
         await stop_mission_worker()
         logger.info("🛑 Mission worker stopped")
+
+    if metrics_collector_task:
+        stop_metrics_collector()
+        logger.info("🛑 Metrics collector stopped")
 
     if autoscaler_task:
         stop_autoscaler()
