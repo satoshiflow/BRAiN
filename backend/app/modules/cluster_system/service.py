@@ -259,7 +259,7 @@ class ClusterService:
 
         # Update cluster
         cluster.target_workers = target
-        cluster.status = ClusterStatus.SCALING
+        cluster.status = ClusterStatus.SCALING_UP if target > current else ClusterStatus.SCALING_DOWN
 
         await self.db.commit()
 
