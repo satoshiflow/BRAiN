@@ -9,7 +9,18 @@ interface Message {
   timestamp: Date;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_BRAIN_API_BASE || "http://localhost:8000";
+interface ChatRequest {
+  messages: Array<{ role: "user" | "assistant" | "system"; content: string }>;
+  model?: string;
+  temperature?: number;
+}
+
+interface ChatResponse {
+  text: string;
+  raw?: string;
+}
+
+const API_BASE = process.env.NEXT_PUBLIC_BRAIN_API_BASE || "https://api.brain.falklabs.de";
 
 // Format time safely (avoids hydration mismatch)
 function formatTime(date: Date): string {
@@ -35,6 +46,7 @@ export default function ChatPage() {
   }, []);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSend = async () => {
     if (!input.trim() || loading) return;
@@ -46,32 +58,64 @@ export default function ChatPage() {
       timestamp: new Date(),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    // Update UI immediately with user message
+    const updatedMessages = [...messages, userMessage];
+    setMessages(updatedMessages);
     setInput("");
     setLoading(true);
+    setError(null);
 
     try {
-      const response = await fetch(`${API_BASE}/api/axe/message`, {
+      // Build messages array for API (excluding the welcome message if it's the first)
+      const apiMessages = updatedMessages
+        .filter(m => m.role !== "system") // Filter out any system messages if present
+        .map(m => ({
+          role: m.role,
+          content: m.content
+        }));
+
+      const requestBody: ChatRequest = {
+        messages: apiMessages,
+        model: "gpt-4o-mini",
+        temperature: 0.7
+      };
+
+      const response = await fetch(`${API_BASE}/api/axe/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMessage.content }),
+        headers: { 
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        body: JSON.stringify(requestBody),
       });
 
-      const data = await response.json();
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API error ${response.status}: ${errorText || response.statusText}`);
+      }
+
+      const data: ChatResponse = await response.json();
+
+      if (!data.text) {
+        throw new Error("Invalid response: missing 'text' field");
+      }
 
       const assistantMessage: Message = {
         id: messages.length + 2,
         role: "assistant",
-        content: data.response || "I received your message.",
+        content: data.text,
         timestamp: new Date(),
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
-    } catch (error) {
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "Unknown error occurred";
+      setError(errorMsg);
+      
       const errorMessage: Message = {
         id: messages.length + 2,
         role: "assistant",
-        content: "Sorry, I encountered an error processing your request. Please try again.",
+        content: `Sorry, I encountered an error: ${errorMsg}`,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
@@ -96,6 +140,13 @@ export default function ChatPage() {
           Conversational interface with the Auxiliary Execution Engine
         </p>
       </div>
+
+      {/* Error Banner */}
+      {error && (
+        <div className="mb-4 p-3 bg-red-900/50 border border-red-700 rounded-lg text-red-200 text-sm">
+          ⚠️ Error: {error}
+        </div>
+      )}
 
       {/* Chat Container */}
       <div className="flex-1 bg-slate-900 border border-slate-800 rounded-lg flex flex-col overflow-hidden">

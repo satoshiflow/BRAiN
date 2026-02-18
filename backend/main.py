@@ -95,6 +95,7 @@ from app.modules.neurorail.audit.router import router as neurorail_audit_router
 from app.modules.neurorail.telemetry.router import router as neurorail_telemetry_router
 from app.modules.neurorail.execution.router import router as neurorail_execution_router
 from app.modules.governor.router import router as governor_router
+from app.modules.axe_fusion.router import router as axe_fusion_router
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -346,8 +347,14 @@ def create_app() -> FastAPI:
     # Cluster System routers (Phase 3)
     app.include_router(cluster_router, tags=["clusters"])
 
+    # AXE Fusion Router (AXEllm Integration)
+    app.include_router(axe_fusion_router, prefix="/api", tags=["axe-fusion"])
+
     # Chat Router (AXE UI Integration)
     app.include_router(chat_router, prefix="/api", tags=["chat"])
+
+    # AXE Fusion Router (AXEllm Integration)
+    app.include_router(axe_fusion_router, prefix="/api", tags=["axe-fusion"])
 
     # 3. Auto-discover routes from backend/api/routes/*
     _include_legacy_routers(app)

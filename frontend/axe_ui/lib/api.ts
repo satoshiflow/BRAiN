@@ -1,9 +1,10 @@
-const API_BASE = process.env.NEXT_PUBLIC_BRAIN_API_BASE || "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_BRAIN_API_BASE || "https://api.brain.falklabs.de";
 
 export async function fetchJson<T>(path: string): Promise<T> {
     const res = await fetch(`${API_BASE}${path}`, {
         headers: {
             "Accept": "application/json",
+            "Content-Type": "application/json",
         },
         cache: "no-store",
     });
