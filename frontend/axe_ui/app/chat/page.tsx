@@ -68,9 +68,8 @@ export default function ChatPage() {
     try {
       // Build messages array for API (excluding the welcome message if it's the first)
       const apiMessages = updatedMessages
-        .filter(m => m.role !== "system") // Filter out any system messages if present
         .map(m => ({
-          role: m.role,
+          role: m.role as "user" | "assistant",
           content: m.content
         }));
 
