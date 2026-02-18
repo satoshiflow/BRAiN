@@ -553,13 +553,74 @@ class ClusterService:
         Returns:
             int: New target_workers if scaling needed, None otherwise
         """
-        # TODO: Implement (Max's Task 3.3)
-        # Logic:
-        # - Get latest metrics
-        # - Check load_percentage, queue_length
-        # - Compare against blueprint scaling rules
-        # - Return new target if scale up/down needed
-        raise NotImplementedError("ClusterService.check_scaling_needed - To be implemented by Max")
+        # 1. Get cluster
+        cluster = await self.get_cluster(cluster_id)
+        if not cluster or cluster.status != ClusterStatus.ACTIVE:
+            return None
+
+        # 2. Check cooldown period (last scaling + 5 minutes)
+        if cluster.last_active:
+            cooldown = datetime.utcnow() - cluster.last_active
+            if cooldown < timedelta(minutes=5):
+                logger.debug(f"Cluster {cluster_id}: Cooldown period active ({cooldown.seconds}s)")
+                return None
+
+        # 3. Get latest metrics
+        metrics = await self.get_metrics(cluster_id, limit=10)
+        if not metrics:
+            logger.debug(f"Cluster {cluster_id}: No metrics available")
+            return None
+
+        latest = metrics[0]
+        current_workers = cluster.current_workers
+
+        # 4. Load blueprint scaling config
+        try:
+            blueprint = self.blueprint_loader.load_from_file(f"{cluster.blueprint_id}.yaml")
+            scaling_config = blueprint.get("cluster", {}).get("scaling", {})
+        except Exception:
+            # Default scaling config
+            scaling_config = {
+                "metric": "task_queue_length",
+                "scale_up_threshold": 10,
+                "scale_down_threshold": 2
+            }
+
+        metric_type = scaling_config.get("metric", "task_queue_length")
+        scale_up_threshold = scaling_config.get("scale_up_threshold", 10)
+        scale_down_threshold = scaling_config.get("scale_down_threshold", 2)
+
+        # 5. Calculate scaling decision
+        if metric_type == "task_queue_length":
+            queue_length = latest.queue_length or 0
+
+            if queue_length > scale_up_threshold and current_workers < cluster.max_workers:
+                # Scale up by 20%, min +1
+                new_target = min(int(current_workers * 1.2) + 1, cluster.max_workers)
+                logger.info(f"Scale UP: {current_workers} -> {new_target} (queue: {queue_length})")
+                return new_target
+
+            elif queue_length < scale_down_threshold and current_workers > cluster.min_workers:
+                # Scale down by 20%, min -1
+                new_target = max(int(current_workers * 0.8), cluster.min_workers)
+                if new_target < current_workers:
+                    logger.info(f"Scale DOWN: {current_workers} -> {new_target} (queue: {queue_length})")
+                    return new_target
+
+        elif metric_type == "cpu_usage":
+            cpu = latest.cpu_usage or 0
+            # Similar logic for CPU
+            if cpu > scale_up_threshold and current_workers < cluster.max_workers:
+                new_target = min(int(current_workers * 1.2) + 1, cluster.max_workers)
+                logger.info(f"Scale UP: {current_workers} -> {new_target} (CPU: {cpu}%)")
+                return new_target
+            elif cpu < scale_down_threshold and current_workers > cluster.min_workers:
+                new_target = max(int(current_workers * 0.8), cluster.min_workers)
+                if new_target < current_workers:
+                    logger.info(f"Scale DOWN: {current_workers} -> {new_target} (CPU: {cpu}%)")
+                    return new_target
+
+        return None  # No scaling needed
 
     # ===== BLUEPRINT MANAGEMENT =====
 

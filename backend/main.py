@@ -18,6 +18,7 @@ import os
 import importlib
 import pkgutil
 import logging
+import asyncio
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, List
 
@@ -39,6 +40,9 @@ from app.core.redis_client import get_redis
 
 # Mission worker (from old backend/main.py)
 from modules.missions.worker import start_mission_worker, stop_mission_worker
+
+# Autoscaler worker (Cluster System auto-scaling)
+from app.workers.autoscaler import start_autoscaler, stop_autoscaler
 
 # Event Stream (ADR-001: REQUIRED core infrastructure)
 try:
@@ -83,7 +87,7 @@ from app.modules.paycore.router import router as paycore_router  # NEW: PayCore 
 from app.modules.cluster_system.router import router as cluster_router, blueprints_router
 
 # Chat Router (AXE UI Integration)
-from app.modules.chat.router import router as chat_router
+from api.routes.chat import router as chat_router
 
 # NeuroRail routers (EGR v1.0 - Phase 1: Observe-only)
 from app.modules.neurorail.identity.router import router as neurorail_identity_router
@@ -92,6 +96,7 @@ from app.modules.neurorail.audit.router import router as neurorail_audit_router
 from app.modules.neurorail.telemetry.router import router as neurorail_telemetry_router
 from app.modules.neurorail.execution.router import router as neurorail_execution_router
 from app.modules.governor.router import router as governor_router
+from app.modules.axe_fusion.router import router as axe_fusion_router
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -167,6 +172,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         mission_worker_task = await start_mission_worker(event_stream=event_stream)
         logger.info("✅ Mission worker started (EventStream: %s)", "enabled" if event_stream else "disabled")
 
+    # Start autoscaler worker (Cluster System auto-scaling)
+    autoscaler_task = None
+    if os.getenv("ENABLE_AUTOSCALER", "true").lower() == "true":
+        autoscaler_task = asyncio.create_task(start_autoscaler(check_interval=60))
+        logger.info("✅ Autoscaler worker started (interval: 60s)")
+
     logger.info("✅ All systems operational")
 
     yield
@@ -179,6 +190,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if mission_worker_task:
         await stop_mission_worker()
         logger.info("🛑 Mission worker stopped")
+
+    if autoscaler_task:
+        stop_autoscaler()
+        logger.info("🛑 Autoscaler worker stopped")
 
     if redis:
         await redis.close()
@@ -334,8 +349,14 @@ def create_app() -> FastAPI:
     app.include_router(cluster_router, tags=["clusters"])
     app.include_router(blueprints_router, tags=["blueprints"])
 
+    # AXE Fusion Router (AXEllm Integration)
+    app.include_router(axe_fusion_router, prefix="/api", tags=["axe-fusion"])
+
     # Chat Router (AXE UI Integration)
     app.include_router(chat_router, prefix="/api", tags=["chat"])
+
+    # AXE Fusion Router (AXEllm Integration)
+    app.include_router(axe_fusion_router, prefix="/api", tags=["axe-fusion"])
 
     # 3. Auto-discover routes from backend/api/routes/*
     _include_legacy_routers(app)
