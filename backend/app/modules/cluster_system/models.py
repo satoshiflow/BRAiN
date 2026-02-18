@@ -54,8 +54,8 @@ class Cluster(Base):
     # Identity
     id = Column(String, primary_key=True)
     name = Column(String, nullable=False, index=True)
-    type = Column(Enum(ClusterType), nullable=False, index=True)
-    status = Column(Enum(ClusterStatus), default=ClusterStatus.PLANNING, index=True)
+    type = Column(Enum(ClusterType, values_callable=lambda x: [e.value for e in x]), nullable=False, index=True)
+    status = Column(Enum(ClusterStatus, values_callable=lambda x: [e.value for e in x]), default=ClusterStatus.PLANNING, index=True)
 
     # Blueprint Reference
     blueprint_id = Column(String, nullable=False, index=True)
@@ -120,7 +120,7 @@ class ClusterAgent(Base):
 
     # Agent Reference (Genesis Agent ID)
     agent_id = Column(String, nullable=False, index=True)
-    role = Column(Enum(AgentRole), nullable=False, index=True)
+    role = Column(Enum(AgentRole, values_callable=lambda x: [e.value for e in x]), nullable=False, index=True)
 
     # Hierarchy
     supervisor_id = Column(String, ForeignKey("cluster_agents.id"), nullable=True, index=True)
