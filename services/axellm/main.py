@@ -8,8 +8,8 @@ from pydantic import BaseModel, Field, validator
 import httpx
 
 # Environment Variables
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://ollama-qwen:11434")
-DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "qwen:0.5b")
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://docker-image-xkg0gc00sgcg0sc0g8wowskw:11434")
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "qwen2.5:0.5b")
 REQUEST_TIMEOUT_SECONDS = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "60"))
 MAX_TOTAL_CHARS = 20000
 

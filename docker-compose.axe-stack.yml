@@ -1,15 +1,16 @@
 version: '3.8'
 
 services:
-  ollama-qwen:
-    image: ollama/ollama:latest
-    container_name: ollama-qwen
-    networks:
-      - coolify
-    volumes:
-      - ollama-data:/root/.ollama
-    restart: unless-stopped
-    # Keine Ports exposed - nur intern über Docker Netzwerk erreichbar
+  # ollama-qwen service removed - using existing Ollama container: docker-image-xkg0gc00sgcg0sc0g8wowskw
+  # If you need to deploy Ollama separately, uncomment this:
+  # ollama-qwen:
+  #   image: ollama/ollama:latest
+  #   container_name: ollama-qwen
+  #   networks:
+  #     - coolify
+  #   volumes:
+  #     - ollama-data:/root/.ollama
+  #   restart: unless-stopped
 
   axellm:
     build:
@@ -19,11 +20,9 @@ services:
     networks:
       - coolify
     environment:
-      - OLLAMA_BASE_URL=http://ollama-qwen:11434
-      - DEFAULT_MODEL=qwen:0.5b
+      - OLLAMA_BASE_URL=http://docker-image-xkg0gc00sgcg0sc0g8wowskw:11434
+      - DEFAULT_MODEL=qwen2.5:0.5b
       - REQUEST_TIMEOUT_SECONDS=60
-    depends_on:
-      - ollama-qwen
     restart: unless-stopped
     # Keine Ports exposed - nur intern über Docker Netzwerk erreichbar
 
@@ -32,6 +31,5 @@ networks:
     external: true
     name: coolify
 
-volumes:
-  ollama-data:
-    driver: local
+# volumes:
+#   ollama-data:  # Not needed when using existing Ollama container
