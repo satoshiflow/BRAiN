@@ -80,7 +80,7 @@ from app.modules.governance.governance_router import router as governance_router
 from app.modules.paycore.router import router as paycore_router  # NEW: PayCore payment module
 
 # Cluster System routers (Phase 3)
-from app.modules.cluster_system.router import router as cluster_router
+from app.modules.cluster_system.router import router as cluster_router, blueprints_router
 
 # Chat Router (AXE UI Integration)
 from app.modules.chat.router import router as chat_router
@@ -332,6 +332,7 @@ def create_app() -> FastAPI:
 
     # Cluster System routers (Phase 3)
     app.include_router(cluster_router, tags=["clusters"])
+    app.include_router(blueprints_router, tags=["blueprints"])
 
     # Chat Router (AXE UI Integration)
     app.include_router(chat_router, prefix="/api", tags=["chat"])
