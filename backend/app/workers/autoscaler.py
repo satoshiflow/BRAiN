@@ -41,34 +41,44 @@ class AutoscalerWorker:
     async def _check_all_clusters(self):
         """Check all active clusters for scaling needs."""
         from sqlalchemy import select
+        from sqlalchemy.exc import ProgrammingError
         
-        async with get_session() as db:
-            self.service = ClusterService(db)
-            
-            # Get all active clusters
-            result = await db.execute(
-                select(Cluster).where(Cluster.status == ClusterStatus.ACTIVE)
-            )
-            clusters = result.scalars().all()
-            
-            if clusters:
-                logger.debug(f"🔍 Checking {len(clusters)} active clusters for scaling needs")
-            
-            for cluster in clusters:
-                try:
-                    new_target = await self.service.check_scaling_needed(cluster.id)
-                    
-                    if new_target and new_target != cluster.current_workers:
-                        logger.info(f"🚀 Scaling cluster {cluster.id}: {cluster.current_workers} -> {new_target}")
-                        
-                        from app.modules.cluster_system.schemas import ClusterScale
-                        await self.service.scale_cluster(
-                            cluster.id, 
-                            ClusterScale(target_workers=new_target, reason="Auto-scaling triggered")
-                        )
+        try:
+            async with get_session() as db:
+                self.service = ClusterService(db)
                 
-                except Exception as e:
-                    logger.error(f"❌ Error scaling cluster {cluster.id}: {e}", exc_info=True)
+                # Get all active clusters
+                try:
+                    result = await db.execute(
+                        select(Cluster).where(Cluster.status == ClusterStatus.ACTIVE)
+                    )
+                    clusters = result.scalars().all()
+                except ProgrammingError as e:
+                    if "relation \"clusters\" does not exist" in str(e):
+                        logger.warning("⚠️  Cluster table not found. Migration may be missing. Skipping auto-scaling check.")
+                        return
+                    raise
+                
+                if clusters:
+                    logger.debug(f"🔍 Checking {len(clusters)} active clusters for scaling needs")
+                
+                for cluster in clusters:
+                    try:
+                        new_target = await self.service.check_scaling_needed(cluster.id)
+                        
+                        if new_target and new_target != cluster.current_workers:
+                            logger.info(f"🚀 Scaling cluster {cluster.id}: {cluster.current_workers} -> {new_target}")
+                            
+                            from app.modules.cluster_system.schemas import ClusterScale
+                            await self.service.scale_cluster(
+                                cluster.id, 
+                                ClusterScale(target_workers=new_target, reason="Auto-scaling triggered")
+                            )
+                    
+                    except Exception as e:
+                        logger.error(f"❌ Error scaling cluster {cluster.id}: {e}", exc_info=True)
+        except Exception as e:
+            logger.error(f"❌ Error in autoscale loop: {e}", exc_info=True)
     
     def stop(self):
         """Stop the autoscaling loop."""
