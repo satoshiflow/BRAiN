@@ -128,6 +128,7 @@ class ClusterAgent(Base):
     # Capabilities & Skills
     capabilities = Column(JSON, default=list)  # ["image_generation", "video_editing"]
     skills = Column(JSON, default=list)  # Skill IDs from skills module
+    config = Column(JSON, default=dict)  # Agent configuration (LLM settings, Genesis metadata, etc.)
 
     # Status
     status = Column(String, default="active", index=True)  # active, idle, busy, failed, stopped

@@ -145,7 +145,7 @@ class GenesisService:
         }
 
         # Create DNA snapshot
-        dna_snapshot = self.dna.create_snapshot(
+        dna_snapshot = await self.dna.create_snapshot(
             CreateDNASnapshotRequest(
                 agent_id=agent_id,
                 dna=agent_config,
