@@ -79,6 +79,12 @@ from app.modules.course_distribution.distribution_router import router as distri
 from app.modules.governance.governance_router import router as governance_router
 from app.modules.paycore.router import router as paycore_router  # NEW: PayCore payment module
 
+# Cluster System routers (Phase 3)
+from app.modules.cluster_system.router import router as cluster_router
+
+# Chat Router (AXE UI Integration)
+from app.modules.chat.router import router as chat_router
+
 # NeuroRail routers (EGR v1.0 - Phase 1: Observe-only)
 from app.modules.neurorail.identity.router import router as neurorail_identity_router
 from app.modules.neurorail.lifecycle.router import router as neurorail_lifecycle_router
@@ -207,12 +213,15 @@ def create_app() -> FastAPI:
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
     # CORS (from settings for production, with fallback)
-    cors_origins = settings.cors_origins if hasattr(settings, 'cors_origins') else [
+    cors_origins = settings.cors_origins if hasattr(settings, 'cors_origins') and settings.cors_origins else [
         "http://localhost",
         "http://localhost:3000",
         "http://localhost:3001",
         "http://127.0.0.1:3000",
         "http://127.0.0.1:3001",
+        "https://axe.brain.falklabs.de",
+        "https://control.brain.falklabs.de",
+        "https://n8n.brain.falklabs.de",
         "*",
     ]
 
@@ -320,6 +329,12 @@ def create_app() -> FastAPI:
     app.include_router(neurorail_telemetry_router, tags=["neurorail-telemetry"])
     app.include_router(neurorail_execution_router, tags=["neurorail-execution"])
     app.include_router(governor_router, tags=["governor"])
+
+    # Cluster System routers (Phase 3)
+    app.include_router(cluster_router, tags=["clusters"])
+
+    # Chat Router (AXE UI Integration)
+    app.include_router(chat_router, prefix="/api", tags=["chat"])
 
     # 3. Auto-discover routes from backend/api/routes/*
     _include_legacy_routers(app)

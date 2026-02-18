@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-const API_BASE = "http://127.0.0.1:8001";
+const API_BASE = "https://api.brain.falklabs.de";
 
 export default function HomePage() {
   const [status, setStatus] = useState("Loading...");

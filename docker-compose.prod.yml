@@ -48,5 +48,67 @@ services:
   openwebui:
     container_name: prod-openwebui
 
+  # ===== WORKER POOL (Phase 4) =====
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    image: brain-worker:latest
+
+    command: python worker.py
+
+    environment:
+      # Database
+      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://brain:brain@postgres:5432/brain_prod}
+
+      # Redis
+      - REDIS_URL=redis://redis:6379/0
+
+      # LLM
+      - OLLAMA_HOST=http://ollama:11434
+      - OLLAMA_MODEL=qwen2.5:0.5b
+
+      # Vector DB
+      - QDRANT_URL=http://qdrant:6333
+
+      # Worker Config
+      - WORKER_CONCURRENCY=2
+      - LOG_LEVEL=INFO
+
+    depends_on:
+      - postgres
+      - redis
+      - ollama
+      - qdrant
+
+    networks:
+      - brain_network
+
+    # Horizontal Scaling - Start with 3 replicas
+    deploy:
+      mode: replicated
+      replicas: 3
+
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+    # Health Check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import redis; r=redis.from_url('redis://redis:6379'); r.ping()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
 volumes:
   brain_redis_data:  # Redis persistence for production
