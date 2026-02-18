@@ -2,6 +2,9 @@
 
 AXEllm is a lightweight FastAPI service that provides an OpenAI-compatible chat completions API, routing requests to a local Ollama instance.
 
+> **Version:** 1.0.0  
+> **Image:** `ghcr.io/satoshiflow/brain/axellm:latest`
+
 ## Features
 
 - OpenAI-compatible `/v1/chat/completions` endpoint
