@@ -53,7 +53,6 @@ router = APIRouter(prefix="/api/clusters", tags=["Cluster System"])
     status_code=status.HTTP_201_CREATED,
     summary="Create cluster from blueprint"
 )
-@limiter.limit("10/minute")
 async def create_cluster(
     data: ClusterCreate,
     db: AsyncSession = Depends(get_db),
@@ -101,7 +100,6 @@ async def create_cluster(
     response_model=ClusterListResponse,
     summary="List clusters"
 )
-@limiter.limit("30/minute")
 async def list_clusters(
     status: Optional[ClusterStatus] = Query(None),
     type: Optional[ClusterType] = Query(None),
@@ -137,7 +135,6 @@ async def list_clusters(
     response_model=ClusterResponse,
     summary="Get cluster details"
 )
-@limiter.limit("60/minute")
 async def get_cluster(
     cluster_id: str,
     db: AsyncSession = Depends(get_db),
@@ -163,7 +160,6 @@ async def get_cluster(
     response_model=ClusterResponse,
     summary="Update cluster configuration"
 )
-@limiter.limit("20/minute")
 async def update_cluster(
     cluster_id: str,
     data: ClusterUpdate,
@@ -190,7 +186,6 @@ async def update_cluster(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete cluster"
 )
-@limiter.limit("10/minute")
 async def delete_cluster(
     cluster_id: str,
     db: AsyncSession = Depends(get_db),
@@ -217,7 +212,6 @@ async def delete_cluster(
     response_model=ClusterResponse,
     summary="Manual cluster scaling"
 )
-@limiter.limit("20/minute")
 async def scale_cluster(
     cluster_id: str,
     data: ClusterScale,
@@ -248,7 +242,6 @@ async def scale_cluster(
     response_model=ClusterResponse,
     summary="Hibernate cluster"
 )
-@limiter.limit("10/minute")
 async def hibernate_cluster(
     cluster_id: str,
     db: AsyncSession = Depends(get_db),
@@ -276,7 +269,6 @@ async def hibernate_cluster(
     response_model=ClusterResponse,
     summary="Reactivate hibernated cluster"
 )
-@limiter.limit("10/minute")
 async def reactivate_cluster(
     cluster_id: str,
     db: AsyncSession = Depends(get_db),
@@ -302,7 +294,6 @@ async def reactivate_cluster(
     response_model=List[ClusterAgentResponse],
     summary="List cluster agents"
 )
-@limiter.limit("60/minute")
 async def list_cluster_agents(
     cluster_id: str,
     db: AsyncSession = Depends(get_db),
@@ -320,7 +311,6 @@ async def list_cluster_agents(
     response_model=ClusterHierarchyResponse,
     summary="Get cluster agent hierarchy"
 )
-@limiter.limit("30/minute")
 async def get_cluster_hierarchy(
     cluster_id: str,
     db: AsyncSession = Depends(get_db),
@@ -344,7 +334,6 @@ blueprints_router = APIRouter(prefix="/api/blueprints", tags=["Blueprints"])
     status_code=status.HTTP_201_CREATED,
     summary="Upload new blueprint"
 )
-@limiter.limit("5/minute")
 async def create_blueprint(
     data: BlueprintCreate,
     db: AsyncSession = Depends(get_db),
@@ -384,7 +373,6 @@ async def create_blueprint(
     response_model=List[BlueprintResponse],
     summary="List blueprints"
 )
-@limiter.limit("30/minute")
 async def list_blueprints(
     active_only: bool = Query(True),
     db: AsyncSession = Depends(get_db),
@@ -402,7 +390,6 @@ async def list_blueprints(
     response_model=BlueprintResponse,
     summary="Get blueprint details"
 )
-@limiter.limit("60/minute")
 async def get_blueprint(
     blueprint_id: str,
     include_yaml: bool = Query(False),
