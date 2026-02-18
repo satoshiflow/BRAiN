@@ -40,6 +40,9 @@ from app.core.redis_client import get_redis
 # Mission worker (from old backend/main.py)
 from modules.missions.worker import start_mission_worker, stop_mission_worker
 
+# Autoscaler worker (Cluster System auto-scaling)
+from app.workers.autoscaler import start_autoscaler, stop_autoscaler
+
 # Event Stream (ADR-001: REQUIRED core infrastructure)
 try:
     from mission_control_core.core.event_stream import EventStream
@@ -167,6 +170,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         mission_worker_task = await start_mission_worker(event_stream=event_stream)
         logger.info("✅ Mission worker started (EventStream: %s)", "enabled" if event_stream else "disabled")
 
+    # Start autoscaler worker (Cluster System auto-scaling)
+    autoscaler_task = None
+    if os.getenv("ENABLE_AUTOSCALER", "true").lower() == "true":
+        autoscaler_task = asyncio.create_task(start_autoscaler(check_interval=60))
+        logger.info("✅ Autoscaler worker started (interval: 60s)")
+
     logger.info("✅ All systems operational")
 
     yield
@@ -179,6 +188,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if mission_worker_task:
         await stop_mission_worker()
         logger.info("🛑 Mission worker stopped")
+
+    if autoscaler_task:
+        stop_autoscaler()
+        logger.info("🛑 Autoscaler worker stopped")
 
     if redis:
         await redis.close()
