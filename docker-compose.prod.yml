@@ -110,5 +110,45 @@ services:
       retries: 3
       start_period: 20s
 
+  # ===== AXE STACK (Ollama + AXEllm) =====
+  ollama-qwen:
+    image: ollama/ollama:latest
+    container_name: brain-ollama-qwen
+    networks:
+      - brain_network
+    volumes:
+      - ollama_qwen_data:/root/.ollama
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  axellm:
+    build:
+      context: ./services/axellm
+      dockerfile: Dockerfile
+    container_name: brain-axellm
+    networks:
+      - brain_network
+    environment:
+      - OLLAMA_BASE_URL=http://ollama-qwen:11434
+      - DEFAULT_MODEL=qwen:0.5b
+      - REQUEST_TIMEOUT_SECONDS=60
+      - LOG_LEVEL=INFO
+    depends_on:
+      ollama-qwen:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
 volumes:
   brain_redis_data:  # Redis persistence for production
+  ollama_qwen_data:  # Ollama models for AXE
