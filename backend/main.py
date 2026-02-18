@@ -82,8 +82,8 @@ from app.modules.paycore.router import router as paycore_router  # NEW: PayCore 
 # Cluster System routers (Phase 3)
 from app.modules.cluster_system.router import router as cluster_router
 
-# Chat Router (AXE UI Integration) - DISABLED: Module not implemented yet
-# from app.modules.chat.router import router as chat_router
+# Chat Router (AXE UI Integration)
+from api.routes.chat import router as chat_router
 
 # NeuroRail routers (EGR v1.0 - Phase 1: Observe-only)
 from app.modules.neurorail.identity.router import router as neurorail_identity_router
@@ -333,8 +333,8 @@ def create_app() -> FastAPI:
     # Cluster System routers (Phase 3)
     app.include_router(cluster_router, tags=["clusters"])
 
-    # Chat Router (AXE UI Integration) - DISABLED: Module not implemented yet
-    # app.include_router(chat_router, prefix="/api", tags=["chat"])
+    # Chat Router (AXE UI Integration)
+    app.include_router(chat_router, prefix="/api", tags=["chat"])
 
     # 3. Auto-discover routes from backend/api/routes/*
     _include_legacy_routers(app)
