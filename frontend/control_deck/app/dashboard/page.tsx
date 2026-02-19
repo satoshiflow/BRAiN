@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Activity, FileText, User } from "lucide-react";
 
 export default function Dashboard() {
   const [session, setSession] = useState<any>(null);
@@ -13,11 +16,10 @@ export default function Dashboard() {
       try {
         const res = await fetch("/api/auth/session");
         const data = await res.json();
-        
+
         if (data?.user) {
           setSession(data);
         } else {
-          // Nicht eingeloggt
           router.push("/auth/signin");
         }
       } catch {
@@ -26,27 +28,14 @@ export default function Dashboard() {
         setLoading(false);
       }
     };
-    
+
     checkAuth();
   }, [router]);
 
-  const handleSignOut = async () => {
-    await fetch("/api/auth/signout", { method: "POST" });
-    window.location.href = "/auth/signin";
-  };
-
   if (loading) {
     return (
-      <div style={{ 
-        minHeight: "100vh", 
-        display: "flex", 
-        alignItems: "center", 
-        justifyContent: "center",
-        background: "#0a0a0f",
-        color: "#fff",
-        fontFamily: "Arial, sans-serif"
-      }}>
-        <div>Loading BRAiN...</div>
+      <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
+        <div className="text-muted-foreground">Loading BRAiN...</div>
       </div>
     );
   }
@@ -56,71 +45,84 @@ export default function Dashboard() {
   }
 
   return (
-    <div style={{ 
-      minHeight: "100vh", 
-      background: "#0a0a0f", 
-      color: "#fff", 
-      fontFamily: "Arial, sans-serif" 
-    }}>
-      <nav style={{ 
-        background: "#1a1a2e", 
-        padding: "15px 30px", 
-        display: "flex", 
-        justifyContent: "space-between",
-        alignItems: "center",
-        borderBottom: "1px solid #333"
-      }}>
-        <h1 style={{ color: "#00d4ff", margin: 0 }}>🧠 BRAiN Control Deck</h1>
-        <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
-          <span style={{ color: "#aaa" }}>{session.user?.email}</span>
-          <button
-            onClick={handleSignOut}
-            style={{
-              padding: "8px 16px",
-              background: "#ff4444",
-              color: "#fff",
-              border: "none",
-              borderRadius: "4px",
-              cursor: "pointer"
-            }}
-          >
-            Sign Out
-          </button>
-        </div>
-      </nav>
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="space-y-2">
+        <h1>Dashboard</h1>
+        <p className="text-muted-foreground">Welcome to BRAiN v0.3.0</p>
+      </div>
 
-      <main style={{ padding: "30px" }}>
-        <h2 style={{ color: "#00d4ff" }}>Dashboard</h2>
-        <p style={{ color: "#888" }}>Welcome to BRAiN v0.3.0</p>
-        
-        <div style={{ 
-          display: "grid", 
-          gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
-          gap: "20px",
-          marginTop: "30px"
-        }}>
-          <div style={{ background: "#1a1a2e", padding: "20px", borderRadius: "8px" }}>
-            <h3 style={{ color: "#00d4ff", marginTop: 0 }}>🔗 Backend Status</h3>
-            <p><a href="http://127.0.0.1:8001/api/health" target="_blank" style={{ color: "#4caf50" }}>✅ Running</a></p>
-            <p style={{ fontSize: "14px", color: "#666" }}>Health endpoint active</p>
-          </div>
+      {/* Stats Grid */}
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3">
+        {/* Backend Status Card */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Backend Status</CardTitle>
+            <Activity className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-1">
+              <a
+                href="http://127.0.0.1:8001/api/health"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-emerald-500 hover:text-emerald-400 transition-colors"
+              >
+                ✅ Running
+              </a>
+              <CardDescription>Health endpoint active</CardDescription>
+            </div>
+          </CardContent>
+        </Card>
 
-          <div style={{ background: "#1a1a2e", padding: "20px", borderRadius: "8px" }}>
-            <h3 style={{ color: "#00d4ff", marginTop: 0 }}>📚 API Documentation</h3>
-            <p><a href="http://127.0.0.1:8001/docs" target="_blank" style={{ color: "#00d4ff" }}>Open Swagger UI</a></p>
-            <p style={{ fontSize: "14px", color: "#666" }}>Interactive API docs</p>
-          </div>
+        {/* API Documentation Card */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">API Documentation</CardTitle>
+            <FileText className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-1">
+              <a
+                href="http://127.0.0.1:8001/docs"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                Open Swagger UI
+              </a>
+              <CardDescription>Interactive API docs</CardDescription>
+            </div>
+          </CardContent>
+        </Card>
 
-          <div style={{ background: "#1a1a2e", padding: "20px", borderRadius: "8px" }}>
-            <h3 style={{ color: "#00d4ff", marginTop: 0 }}>👤 Session Info</h3>
-            <p style={{ fontSize: "14px", color: "#aaa" }}>
-              User: {session.user?.name}<br/>
-              Email: {session.user?.email}<br/>
-              Groups: {session.user?.groups?.join(", ") || "operator"}
-            </p>
-          </div>
-        </div>
-      </main>
+        {/* Session Info Card */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Session Info</CardTitle>
+            <User className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <div className="text-sm">
+                <span className="text-muted-foreground">User:</span>{" "}
+                <span className="font-medium">{session.user?.name}</span>
+              </div>
+              <div className="text-sm">
+                <span className="text-muted-foreground">Email:</span>{" "}
+                <span className="font-medium">{session.user?.email}</span>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {session.user?.groups?.map((group: string) => (
+                  <Badge key={group} variant="secondary">
+                    {group}
+                  </Badge>
+                )) || <Badge variant="secondary">operator</Badge>}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

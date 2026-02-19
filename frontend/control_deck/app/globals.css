@@ -2,6 +2,32 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  /* Responsive Typography */
+  h1 {
+    @apply text-2xl sm:text-3xl md:text-4xl font-bold;
+  }
+
+  h2 {
+    @apply text-xl sm:text-2xl md:text-3xl font-semibold;
+  }
+
+  h3 {
+    @apply text-lg sm:text-xl md:text-2xl font-semibold;
+  }
+
+  p {
+    @apply text-sm sm:text-base;
+  }
+
+  /* Touch-optimized minimum font-size on mobile (prevents iOS zoom) */
+  @media (max-width: 640px) {
+    html {
+      font-size: 16px;
+    }
+  }
+}
+
 :root {
   /* FalkLabs Dark Theme */
   --background: 220 30% 4%;

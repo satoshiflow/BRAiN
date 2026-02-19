@@ -34,8 +34,17 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        // Demo-Authentifizierung
-        if (credentials?.password === "brain") {
+        // Demo-Mode: Only enabled explicitly in development
+        const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+        const DEMO_PASSWORD = process.env.DEMO_PASSWORD;
+
+        if (DEMO_MODE && credentials?.password === DEMO_PASSWORD) {
+          // Security: Block demo mode in production
+          if (process.env.NODE_ENV === "production") {
+            console.error("SECURITY: Demo mode attempted in production!");
+            return null;
+          }
+
           return {
             id: "demo-user-1",
             email: String(credentials.email || "admin@brain.local"),
@@ -44,6 +53,25 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             groups: ["admin", "operator"],
           };
         }
+
+        // TODO: Implement real backend authentication
+        // const response = await fetch(`${process.env.NEXT_PUBLIC_BRAIN_API_BASE}/api/auth/login`, {
+        //   method: "POST",
+        //   headers: { "Content-Type": "application/json" },
+        //   body: JSON.stringify({
+        //     email: credentials.email,
+        //     password: credentials.password,
+        //   }),
+        // });
+        //
+        // if (!response.ok) {
+        //   return null;
+        // }
+        //
+        // const user = await response.json();
+        // return user;
+
+        // Fail-closed: Reject all other login attempts
         return null;
       },
     }),

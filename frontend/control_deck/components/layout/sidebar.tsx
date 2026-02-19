@@ -40,6 +40,10 @@ interface NavGroup {
   defaultOpen?: boolean;
 }
 
+interface SidebarProps {
+  onNavigate?: () => void;
+}
+
 const navGroups: NavGroup[] = [
   {
     label: "Home",
@@ -94,25 +98,31 @@ const navGroups: NavGroup[] = [
   },
 ];
 
-export function Sidebar() {
+export function Sidebar({ onNavigate }: SidebarProps) {
   const pathname = usePathname();
   const [openGroups, setOpenGroups] = useState<string[]>(
     navGroups.filter(g => g.defaultOpen).map(g => g.label)
   );
 
   const toggleGroup = (label: string) => {
-    setOpenGroups(prev => 
-      prev.includes(label) 
+    setOpenGroups(prev =>
+      prev.includes(label)
         ? prev.filter(l => l !== label)
         : [...prev, label]
     );
+  };
+
+  const handleNavClick = () => {
+    if (onNavigate) {
+      onNavigate();
+    }
   };
 
   return (
     <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r border-border/50 bg-card/95 backdrop-blur-xl flex flex-col">
       {/* Logo */}
       <div className="flex h-16 items-center border-b border-border/50 px-6">
-        <Link href="/dashboard" className="flex items-center gap-3">
+        <Link href="/dashboard" className="flex items-center gap-3" onClick={handleNavClick}>
           <div className="flex h-10 w-10 items-center justify-center rounded-xl falk-gradient shadow-lg shadow-falk-500/20">
             <Bird className="h-6 w-6 text-white" />
           </div>
@@ -170,6 +180,7 @@ export function Sidebar() {
                         <Link
                           key={item.href}
                           href={item.href}
+                          onClick={handleNavClick}
                           className={cn(
                             "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-200",
                             itemActive
