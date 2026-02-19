@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { getApiBase, getDefaultModel } from "@/lib/config";
 
 interface Message {
   id: number;
@@ -20,7 +21,9 @@ interface ChatResponse {
   raw?: string;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_BRAIN_API_BASE || "https://api.brain.falklabs.de";
+// API base and model are now imported from config
+const API_BASE = getApiBase();
+const DEFAULT_MODEL = getDefaultModel();
 
 // Format time safely (avoids hydration mismatch)
 function formatTime(date: Date): string {
@@ -75,7 +78,7 @@ export default function ChatPage() {
 
       const requestBody: ChatRequest = {
         messages: apiMessages,
-        model: "gpt-4o-mini",
+        model: DEFAULT_MODEL,
         temperature: 0.7
       };
 

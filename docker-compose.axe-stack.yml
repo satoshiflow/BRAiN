@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # ollama-qwen service removed - using existing Ollama container: docker-image-xkg0gc00sgcg0sc0g8wowskw
+  # ollama-qwen service - using existing Ollama container via service name 'ollama'
   # If you need to deploy Ollama separately, uncomment this:
   # ollama-qwen:
   #   image: ollama/ollama:latest
@@ -20,7 +20,7 @@ services:
     networks:
       - coolify
     environment:
-      - OLLAMA_BASE_URL=http://docker-image-xkg0gc00sgcg0sc0g8wowskw:11434
+      - OLLAMA_BASE_URL=http://ollama:11434
       - DEFAULT_MODEL=qwen2.5:0.5b
       - REQUEST_TIMEOUT_SECONDS=60
     restart: unless-stopped

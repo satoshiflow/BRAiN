@@ -368,9 +368,6 @@ def create_app() -> FastAPI:
     # Chat Router (AXE UI Integration)
     app.include_router(chat_router, prefix="/api", tags=["chat"])
 
-    # AXE Fusion Router (AXEllm Integration)
-    app.include_router(axe_fusion_router, prefix="/api", tags=["axe-fusion"])
-
     # 3. Auto-discover routes from backend/api/routes/*
     _include_legacy_routers(app)
 
