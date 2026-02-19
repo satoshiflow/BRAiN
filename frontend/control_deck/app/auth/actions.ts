@@ -69,18 +69,16 @@ export async function loginAction(formData: FormData): Promise<LoginResult> {
   }
 
   try {
-    // Attempt to sign in with credentials
-    const result = await signIn("credentials", {
+    // ✅ redirect: true ermöglicht Session-Erstellung
+    await signIn("credentials", {
       email,
       password,
-      redirect: false, // Handle redirect manually
+      redirectTo: callbackUrl,
     });
 
-    // Success - return success result (redirect handled by client)
-    return {
-      success: true,
-      callbackUrl,
-    };
+    // Diese Zeile wird nie erreicht (signIn redirected bei Erfolg)
+    return { success: true };
+
   } catch (error) {
     // Handle AuthError from NextAuth
     if (error instanceof AuthError) {
@@ -103,9 +101,14 @@ export async function loginAction(formData: FormData): Promise<LoginResult> {
       }
     }
 
+    // Handle Next.js redirect (expected behavior)
+    if ((error as Error)?.message?.includes("NEXT_REDIRECT")) {
+      throw error; // Let Next.js handle the redirect
+    }
+
     // Log unexpected errors (don't expose details to client)
     console.error("[Auth] Unexpected error during login:", error);
-    
+
     return {
       success: false,
       error: "An unexpected error occurred. Please try again.",

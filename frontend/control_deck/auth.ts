@@ -1,6 +1,15 @@
 import NextAuth from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 
+// User type für internen Gebrauch
+export interface AuthUser {
+  id: string;
+  email: string;
+  name: string;
+  role?: string;
+  groups?: string[];
+}
+
 // Extend the User type to include custom fields
 declare module "next-auth" {
   interface User {
@@ -33,18 +42,35 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(
+        credentials: Record<string, unknown> | undefined
+      ): Promise<AuthUser | null> {
+        // Type-safe credential extraction
+        if (!credentials || typeof credentials !== "object") {
+          console.warn("[Auth] No credentials provided");
+          return null;
+        }
+
+        const email = credentials.email;
+        const password = credentials.password;
+
+        // Validate types
+        if (typeof password !== "string" || typeof email !== "string") {
+          console.warn("[Auth] Invalid credential types");
+          return null;
+        }
+
         // Demo-Mode für falklabs.de Production Server
         // Passwort kann via DEMO_PASSWORD env var oder Fallback gesetzt werden
         const DEMO_PASSWORD = process.env.DEMO_PASSWORD || "brain";
 
         // Demo-Login: Einfacher Passwort-Check
-        if (credentials?.password === DEMO_PASSWORD) {
-          console.log(`[Auth] Demo login successful: ${credentials.email}`);
+        if (password === DEMO_PASSWORD) {
+          console.log(`[Auth] Demo login successful: ${email}`);
 
           return {
             id: "demo-user-1",
-            email: String(credentials.email || "admin@brain.local"),
+            email: email,
             name: "Demo Admin",
             role: "admin",
             groups: ["admin", "operator"],
@@ -79,7 +105,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         // }
 
         // Fail-closed: Reject invalid credentials
-        console.warn(`[Auth] Login failed for: ${credentials?.email}`);
+        console.warn(`[Auth] Login failed for: ${email}`);
         return null;
       },
     }),
