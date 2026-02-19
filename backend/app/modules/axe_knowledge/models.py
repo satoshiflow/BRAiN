@@ -4,11 +4,10 @@ SQLAlchemy ORM models for the knowledge base system.
 """
 
 from datetime import datetime
-from typing import List, Optional, TYPE_CHECKING
+from typing import List, Optional
 from uuid import uuid4
 
 from sqlalchemy import (
-    Column,
     String,
     Text,
     Integer,
@@ -19,13 +18,10 @@ from sqlalchemy import (
     JSON,
     Index,
 )
-from sqlalchemy.orm import relationship, Mapped, mapped_column, declarative_base
+from sqlalchemy.orm import relationship, Mapped, mapped_column
 from sqlalchemy.sql import func
 
-Base = declarative_base()
-
-if TYPE_CHECKING:
-    from app.modules.user.models import User
+from app.core.database import Base
 
 
 class AXEKnowledgeDocumentORM(Base):
@@ -44,6 +40,12 @@ class AXEKnowledgeDocumentORM(Base):
         primary_key=True,
         index=True,
         default=lambda: str(uuid4())
+    )
+
+    __table_args__ = (
+        Index("idx_axe_knowledge_category_enabled", "category", "is_enabled"),
+        Index("idx_axe_knowledge_importance", "importance_score"),
+        Index("idx_axe_knowledge_created_at", "created_at"),
     )
     
     # Basic Information
@@ -133,14 +135,13 @@ class AXEKnowledgeDocumentORM(Base):
         nullable=False
     )
     
-    # Creator Reference
+    # Creator Reference (simple string, no User relationship)
     created_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
-        ForeignKey("users.id"),
+        String(255),
         nullable=True
     )
     
-    # Relationships
+    # Relationships (self-referential only)
     parent: Mapped[Optional["AXEKnowledgeDocumentORM"]] = relationship(
         "AXEKnowledgeDocumentORM",
         remote_side=[id],
@@ -150,18 +151,6 @@ class AXEKnowledgeDocumentORM(Base):
         "AXEKnowledgeDocumentORM",
         back_populates="parent",
         cascade="all, delete-orphan"
-    )
-    
-    creator: Mapped[Optional["User"]] = relationship(
-        "User",
-        back_populates="knowledge_documents"
-    )
-    
-    # Indexes for common queries
-    __table_args__ = (
-        Index("idx_axe_knowledge_category_enabled", "category", "is_enabled"),
-        Index("idx_axe_knowledge_importance", "importance_score"),
-        Index("idx_axe_knowledge_created_at", "created_at"),
     )
     
     def __repr__(self) -> str:
