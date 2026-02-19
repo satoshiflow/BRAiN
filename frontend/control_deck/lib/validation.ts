@@ -26,7 +26,7 @@ export const MissionCreateSchema = z.object({
     .min(0, "Priority must be at least 0")
     .max(10, "Priority must be at most 10"),
 
-  config: z.record(z.unknown()).optional(),
+  config: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type MissionCreate = z.infer<typeof MissionCreateSchema>;
@@ -35,7 +35,7 @@ export type MissionCreate = z.infer<typeof MissionCreateSchema>;
 export const SkillExecuteSchema = z.object({
   parameters: z.record(
     z.string(),
-    z.union([z.string(), z.number(), z.boolean(), z.record(z.unknown())])
+    z.union([z.string(), z.number(), z.boolean(), z.record(z.string(), z.unknown())])
   ).optional(),
 
   timeout: z.number()
@@ -110,7 +110,7 @@ export const TemplateVariablesSchema = z.record(
     z.number(),
     z.boolean(),
     z.array(z.string()).max(100),
-    z.record(z.unknown()),
+    z.record(z.string(), z.unknown()),
   ])
 );
 
@@ -157,9 +157,9 @@ export function safeValidate<T extends z.ZodType>(
 export function formatZodErrors(error: z.ZodError): Record<string, string> {
   const formatted: Record<string, string> = {};
 
-  error.errors.forEach((err) => {
-    const path = err.path.join(".");
-    formatted[path] = err.message;
+  error.issues.forEach((issue) => {
+    const path = issue.path.join(".");
+    formatted[path] = issue.message;
   });
 
   return formatted;
