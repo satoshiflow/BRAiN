@@ -65,10 +65,10 @@ class KnowledgeDocumentBase(BaseModel):
         description="Whether the document is active"
     )
     importance_score: float = Field(
-        default=0.0,
+        default=1.0,
         ge=0.0,
-        le=1.0,
-        description="Importance score from 0.0 to 1.0"
+        le=10.0,
+        description="Importance score from 0.0 to 10.0"
     )
 
 

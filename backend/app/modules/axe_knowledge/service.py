@@ -46,12 +46,12 @@ class AXEKnowledgeService:
     def _orm_to_list_response(self, orm: AXEKnowledgeDocumentORM) -> KnowledgeDocumentListResponse:
         """Convert ORM object to list response schema."""
         return KnowledgeDocumentListResponse(
-            id=orm.id,
+            id=str(orm.id),  # FIX: Convert UUID to string
             name=orm.name,
             description=orm.description,
             category=orm.category,
             content_type=orm.content_type,
-            tags=orm.tags,
+            tags=orm.tags if orm.tags else [],
             is_enabled=orm.is_enabled,
             access_count=orm.access_count,
             importance_score=orm.importance_score,
@@ -61,23 +61,25 @@ class AXEKnowledgeService:
 
     def _orm_to_response(self, orm: AXEKnowledgeDocumentORM) -> KnowledgeDocumentResponse:
         """Convert ORM object to full response schema."""
-        # Safe attribute access - try doc_metadata first, fallback to metadata, then {}
-        metadata_value = getattr(orm, 'doc_metadata', None) or getattr(orm, 'metadata', None) or {}
+        # CRITICAL FIX: Access doc_metadata directly (not metadata - that's SQLAlchemy reserved!)
+        # The model defines: doc_metadata: Mapped[dict] = mapped_column("metadata", JSON, ...)
+        # So the Python attribute is doc_metadata, database column is metadata
+        metadata_value = orm.doc_metadata if hasattr(orm, 'doc_metadata') and orm.doc_metadata else {}
 
         return KnowledgeDocumentResponse(
-            id=orm.id,
+            id=str(orm.id),  # FIX: Convert UUID to string
             name=orm.name,
             description=orm.description,
             category=orm.category,
             content=orm.content,
             content_type=orm.content_type,
-            metadata=metadata_value,  # Safe metadata access
+            metadata=metadata_value,  # Use doc_metadata attribute
             tags=orm.tags if orm.tags else [],
             is_enabled=orm.is_enabled,
             access_count=orm.access_count,
             importance_score=orm.importance_score,
             version=orm.version,
-            parent_id=orm.parent_id,
+            parent_id=str(orm.parent_id) if orm.parent_id else None,  # FIX: Convert UUID to string
             created_at=orm.created_at,
             updated_at=orm.updated_at,
             created_by=orm.created_by
