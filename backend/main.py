@@ -367,7 +367,7 @@ def create_app() -> FastAPI:
     app.include_router(axe_fusion_router, prefix="/api", tags=["axe-fusion"])
 
     # AXE Identity Router (Identity Management)
-    app.include_router(axe_identity_router, prefix="/api", tags=["axe-identity"])
+    app.include_router(axe_identity_router, tags=["axe-identity"])
 
     # Chat Router (AXE UI Integration)
     app.include_router(chat_router, prefix="/api", tags=["chat"])
