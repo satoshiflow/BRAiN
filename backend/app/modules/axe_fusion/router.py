@@ -6,8 +6,10 @@ Endpoint: POST /api/axe/chat
 
 import logging
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
 from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.database import get_db
 
 from .service import (
     get_axe_fusion_service,
@@ -88,7 +90,10 @@ class HealthResponse(BaseModel):
     summary="Chat mit AXEllm",
     description="Sendet einen Chat-Request an AXEllm und gibt die Antwort zurück."
 )
-async def axe_chat(request: ChatRequest) -> ChatResponse:
+async def axe_chat(
+    request: ChatRequest,
+    db: AsyncSession = Depends(get_db)
+) -> ChatResponse:
     """
     Chat Endpoint für AXEllm Integration.
     
@@ -99,12 +104,15 @@ async def axe_chat(request: ChatRequest) -> ChatResponse:
     - Nur Rollen: system, user, assistant
     - Tool/Function Felder werden entfernt
     
+    **Features:**
+    - Automatische AXE Identity System Prompt Injection
+    
     **Fehlercodes:**
     - 503: AXEllm nicht erreichbar
     - 400: Validierungsfehler (z.B. Zeichenlimit überschritten)
     - 500: Interner Fehler
     """
-    service = get_axe_fusion_service()
+    service = get_axe_fusion_service(db=db)
     
     try:
         # Konvertiere Pydantic Model zu Dict für Service

@@ -178,21 +178,35 @@ class AXEllmClient:
 class AXEFusionService:
     """High-Level Service für AXE Fusion"""
     
-    def __init__(self):
+    def __init__(self, db=None):
         self.client = AXEllmClient()
+        self.db = db
     
     async def chat(
         self,
         model: str,
         messages: List[Dict[str, Any]],
-        temperature: float = 0.7
+        temperature: float = 0.7,
+        inject_identity: bool = True
     ) -> Dict[str, Any]:
         """
         Haupt-Chat Methode
         
+        Args:
+            model: Modell-Name
+            messages: Liste von Nachrichten
+            temperature: Sampling Temperatur
+            inject_identity: Ob System Prompt aus AXE Identity injiziert werden soll
+            
         Returns:
             {text: str, raw: object}
         """
+        # Inject AXE Identity system prompt
+        if inject_identity and self.db:
+            from .middleware import SystemPromptMiddleware
+            middleware = SystemPromptMiddleware(self.db)
+            messages = await middleware.inject_system_prompt(messages)
+        
         return await self.client.chat(model, messages, temperature)
     
     async def health_check(self) -> Dict[str, Any]:
@@ -220,9 +234,9 @@ class AXEFusionService:
 _axe_fusion_service: Optional[AXEFusionService] = None
 
 
-def get_axe_fusion_service() -> AXEFusionService:
+def get_axe_fusion_service(db=None) -> AXEFusionService:
     """Gibt die Singleton Service Instance zurück"""
     global _axe_fusion_service
-    if _axe_fusion_service is None:
-        _axe_fusion_service = AXEFusionService()
+    if _axe_fusion_service is None or (_axe_fusion_service.db is None and db is not None):
+        _axe_fusion_service = AXEFusionService(db=db)
     return _axe_fusion_service
