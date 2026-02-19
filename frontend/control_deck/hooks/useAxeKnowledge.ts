@@ -25,7 +25,7 @@ const knowledgeKeys = {
 };
 
 type KnowledgeFilters = {
-  category?: string;
+  category?: DocumentCategory;
   enabled_only?: boolean;
   tags?: string[];
   search_query?: string;
