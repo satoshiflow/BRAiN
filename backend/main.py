@@ -101,6 +101,7 @@ from app.modules.neurorail.execution.router import router as neurorail_execution
 from app.modules.governor.router import router as governor_router
 from app.modules.axe_fusion.router import router as axe_fusion_router
 from app.modules.axe_identity.router import router as axe_identity_router
+from app.modules.axe_knowledge.router import router as axe_knowledge_router
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -368,6 +369,9 @@ def create_app() -> FastAPI:
 
     # AXE Identity Router (Identity Management)
     app.include_router(axe_identity_router, tags=["axe-identity"])
+
+    # AXE Knowledge Router (Knowledge Base - TASK-003)
+    app.include_router(axe_knowledge_router, tags=["axe-knowledge"])
 
     # Chat Router (AXE UI Integration)
     app.include_router(chat_router, prefix="/api", tags=["chat"])
