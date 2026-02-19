@@ -34,16 +34,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        // Demo-Mode: Only enabled explicitly in development
-        const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
-        const DEMO_PASSWORD = process.env.DEMO_PASSWORD;
+        // Demo-Mode für falklabs.de Production Server
+        // Passwort kann via DEMO_PASSWORD env var oder Fallback gesetzt werden
+        const DEMO_PASSWORD = process.env.DEMO_PASSWORD || "brain";
 
-        if (DEMO_MODE && credentials?.password === DEMO_PASSWORD) {
-          // Security: Block demo mode in production
-          if (process.env.NODE_ENV === "production") {
-            console.error("SECURITY: Demo mode attempted in production!");
-            return null;
-          }
+        // Demo-Login: Einfacher Passwort-Check
+        if (credentials?.password === DEMO_PASSWORD) {
+          console.log(`[Auth] Demo login successful: ${credentials.email}`);
 
           return {
             id: "demo-user-1",
@@ -55,23 +52,34 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         }
 
         // TODO: Implement real backend authentication
-        // const response = await fetch(`${process.env.NEXT_PUBLIC_BRAIN_API_BASE}/api/auth/login`, {
-        //   method: "POST",
-        //   headers: { "Content-Type": "application/json" },
-        //   body: JSON.stringify({
-        //     email: credentials.email,
-        //     password: credentials.password,
-        //   }),
-        // });
+        // Uncomment when backend auth endpoint is ready:
         //
-        // if (!response.ok) {
+        // try {
+        //   const response = await fetch(
+        //     `${process.env.NEXT_PUBLIC_BRAIN_API_BASE}/api/auth/login`,
+        //     {
+        //       method: "POST",
+        //       headers: { "Content-Type": "application/json" },
+        //       body: JSON.stringify({
+        //         email: credentials.email,
+        //         password: credentials.password,
+        //       }),
+        //     }
+        //   );
+        //
+        //   if (!response.ok) {
+        //     return null;
+        //   }
+        //
+        //   const user = await response.json();
+        //   return user;
+        // } catch (error) {
+        //   console.error("[Auth] Backend authentication failed:", error);
         //   return null;
         // }
-        //
-        // const user = await response.json();
-        // return user;
 
-        // Fail-closed: Reject all other login attempts
+        // Fail-closed: Reject invalid credentials
+        console.warn(`[Auth] Login failed for: ${credentials?.email}`);
         return null;
       },
     }),

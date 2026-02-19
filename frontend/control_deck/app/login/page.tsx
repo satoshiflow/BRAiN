@@ -120,8 +120,8 @@ function LoginForm() {
           {/* Footer */}
           <div className="mt-6 text-center">
             <p className="text-sm text-muted-foreground">
-              Default credentials:{" "}
-              <span className="font-mono text-foreground">admin / admin</span>
+              Demo credentials:{" "}
+              <span className="font-mono text-foreground">beliebige Email / brain</span>
             </p>
           </div>
         </CardContent>
