@@ -23,7 +23,9 @@ RUN apk add --no-cache libc6-compat
 
 # Build-time arguments for Next.js
 ARG NEXT_PUBLIC_BRAIN_API_BASE=http://backend:8000
+ARG AUTH_SECRET
 ENV NEXT_PUBLIC_BRAIN_API_BASE=$NEXT_PUBLIC_BRAIN_API_BASE
+ENV AUTH_SECRET=$AUTH_SECRET
 
 # Disable telemetry and enable CI mode
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -48,8 +50,13 @@ FROM node:22-alpine AS runner
 
 WORKDIR /app
 
+# Runtime environment variables
+ARG AUTH_SECRET
+ARG NEXT_PUBLIC_BRAIN_API_BASE
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV AUTH_SECRET=$AUTH_SECRET
+ENV NEXT_PUBLIC_BRAIN_API_BASE=$NEXT_PUBLIC_BRAIN_API_BASE
 
 # Create non-root user for security
 RUN addgroup --system --gid 1001 nodejs && \
