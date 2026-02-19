@@ -43,6 +43,43 @@ class AXEKnowledgeService:
         """
         self.db = db
 
+    def _orm_to_list_response(self, orm: AXEKnowledgeDocumentORM) -> KnowledgeDocumentListResponse:
+        """Convert ORM object to list response schema."""
+        return KnowledgeDocumentListResponse(
+            id=orm.id,
+            name=orm.name,
+            description=orm.description,
+            category=orm.category,
+            content_type=orm.content_type,
+            tags=orm.tags,
+            is_enabled=orm.is_enabled,
+            access_count=orm.access_count,
+            importance_score=orm.importance_score,
+            created_at=orm.created_at,
+            updated_at=orm.updated_at
+        )
+
+    def _orm_to_response(self, orm: AXEKnowledgeDocumentORM) -> KnowledgeDocumentResponse:
+        """Convert ORM object to full response schema."""
+        return KnowledgeDocumentResponse(
+            id=orm.id,
+            name=orm.name,
+            description=orm.description,
+            category=orm.category,
+            content=orm.content,
+            content_type=orm.content_type,
+            metadata=orm.doc_metadata,  # Map doc_metadata to metadata
+            tags=orm.tags,
+            is_enabled=orm.is_enabled,
+            access_count=orm.access_count,
+            importance_score=orm.importance_score,
+            version=orm.version,
+            parent_id=orm.parent_id,
+            created_at=orm.created_at,
+            updated_at=orm.updated_at,
+            created_by=orm.created_by
+        )
+
     async def get_all(
         self,
         category: Optional[str] = None,
@@ -51,7 +88,7 @@ class AXEKnowledgeService:
         offset: Optional[int] = None,
         tags: Optional[List[str]] = None,
         search_query: Optional[str] = None,
-    ) -> List[AXEKnowledgeDocumentORM]:
+    ) -> List[KnowledgeDocumentListResponse]:
         """Get all knowledge documents with optional filtering.
         
         Args:
@@ -63,10 +100,10 @@ class AXEKnowledgeService:
             search_query: Search in name and content
             
         Returns:
-            List of AXEKnowledgeDocumentORM instances
+            List of KnowledgeDocumentListResponse schemas
         """
         query = select(AXEKnowledgeDocumentORM)
-        
+
         conditions = []
         if enabled_only:
             conditions.append(AXEKnowledgeDocumentORM.is_enabled == True)
@@ -84,57 +121,72 @@ class AXEKnowledgeService:
                     AXEKnowledgeDocumentORM.content.ilike(search_term),
                 )
             )
-            
+
         if conditions:
             query = query.where(and_(*conditions))
-            
+
         query = query.order_by(desc(AXEKnowledgeDocumentORM.importance_score))
-        
+
         if limit:
             query = query.limit(limit)
         if offset:
             query = query.offset(offset)
-            
+
         result = await self.db.execute(query)
-        return result.scalars().all()
+        orm_objects = result.scalars().all()
+        return [self._orm_to_list_response(orm) for orm in orm_objects]
 
     async def get_top_documents(
         self,
         limit: int = 5,
         enabled_only: bool = True,
         category: Optional[str] = None,
-    ) -> List[AXEKnowledgeDocumentORM]:
+    ) -> List[KnowledgeDocumentResponse]:
         """Get top documents for middleware/context injection.
-        
+
         Returns documents ordered by importance score (highest first).
-        
+        Full content included for middleware.
+
         Args:
             limit: Maximum number of documents to return
             enabled_only: If True, only return enabled documents
             category: Optional category filter
-            
-        Returns:
-            List of AXEKnowledgeDocumentORM instances
-        """
-        return await self.get_all(
-            category=category,
-            enabled_only=enabled_only,
-            limit=limit,
-        )
 
-    async def get_by_id(self, document_id: str) -> Optional[AXEKnowledgeDocumentORM]:
+        Returns:
+            List of KnowledgeDocumentResponse schemas
+        """
+        # Get ORM objects directly for full content
+        query = select(AXEKnowledgeDocumentORM)
+        conditions = []
+
+        if enabled_only:
+            conditions.append(AXEKnowledgeDocumentORM.is_enabled == True)
+        if category:
+            conditions.append(AXEKnowledgeDocumentORM.category == category)
+
+        if conditions:
+            query = query.where(and_(*conditions))
+
+        query = query.order_by(desc(AXEKnowledgeDocumentORM.importance_score)).limit(limit)
+
+        result = await self.db.execute(query)
+        orm_objects = result.scalars().all()
+        return [self._orm_to_response(orm) for orm in orm_objects]
+
+    async def get_by_id(self, document_id: str) -> Optional[KnowledgeDocumentResponse]:
         """Get a knowledge document by its ID.
-        
+
         Args:
             document_id: ID of the document (UUID string)
-            
+
         Returns:
-            AXEKnowledgeDocumentORM instance or None if not found
+            KnowledgeDocumentResponse schema or None if not found
         """
         result = await self.db.execute(
             select(AXEKnowledgeDocumentORM).where(AXEKnowledgeDocumentORM.id == document_id)
         )
-        return result.scalar_one_or_none()
+        orm = result.scalar_one_or_none()
+        return self._orm_to_response(orm) if orm else None
 
     async def search(
         self,
@@ -173,14 +225,15 @@ class AXEKnowledgeService:
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
-    async def create(self, data: KnowledgeDocumentCreate) -> AXEKnowledgeDocumentORM:
+    async def create(self, data: KnowledgeDocumentCreate, created_by: str) -> KnowledgeDocumentResponse:
         """Create a new knowledge document.
-        
+
         Args:
             data: Document creation data
-            
+            created_by: ID of the user creating the document
+
         Returns:
-            Created AXEKnowledgeDocumentORM instance
+            Created KnowledgeDocumentResponse schema
         """
         document = AXEKnowledgeDocumentORM(
             name=data.name,
@@ -188,109 +241,120 @@ class AXEKnowledgeService:
             description=data.description,
             category=data.category.value if isinstance(data.category, DocumentCategory) else data.category,
             content_type=data.content_type,
-            metadata=data.metadata or {},
+            doc_metadata=data.metadata or {},  # Fixed: use doc_metadata
             tags=data.tags or [],
             version=1,
             access_count=0,
             is_enabled=True,
             importance_score=data.importance_score,
             parent_id=data.parent_id,
+            created_by=created_by,
         )
-        
+
         self.db.add(document)
         await self.db.commit()
         await self.db.refresh(document)
-        
+
         logger.info(f"[AXEKnowledge] Created document: {document.id} - {document.name}")
-        return document
+        return self._orm_to_response(document)
 
     async def update(
         self,
         document_id: str,
         data: KnowledgeDocumentUpdate,
-    ) -> Optional[AXEKnowledgeDocumentORM]:
+    ) -> Optional[KnowledgeDocumentResponse]:
         """Update a knowledge document.
-        
+
         Automatically increments the version number.
-        
+
         Args:
             document_id: ID of the document to update
             data: Document update data
-            
+
         Returns:
-            Updated AXEKnowledgeDocumentORM instance or None if not found
+            Updated KnowledgeDocumentResponse schema or None if not found
         """
-        document = await self.get_by_id(document_id)
+        # Get ORM object directly for update
+        result = await self.db.execute(
+            select(AXEKnowledgeDocumentORM).where(AXEKnowledgeDocumentORM.id == document_id)
+        )
+        document = result.scalar_one_or_none()
         if not document:
             return None
-            
+
         # Update fields if provided
         update_data = data.model_dump(exclude_unset=True)
-        
+
         for field, value in update_data.items():
             # Handle category enum
             if field == 'category' and isinstance(value, DocumentCategory):
                 value = value.value
+            # Map metadata to doc_metadata
+            if field == 'metadata':
+                field = 'doc_metadata'
             # Skip None values (not set)
             if value is not None and hasattr(document, field):
                 setattr(document, field, value)
-        
+
         # Increment version
         document.version += 1
-        
+
         await self.db.commit()
         await self.db.refresh(document)
-        
-        logger.info(f"[AXEKnowledge] Updated document: {document.id} - v{document.version}")
-        return document
 
-    async def delete(self, document_id: str) -> Optional[AXEKnowledgeDocumentORM]:
-        """Soft delete a knowledge document (sets is_enabled=False).
-        
+        logger.info(f"[AXEKnowledge] Updated document: {document.id} - v{document.version}")
+        return self._orm_to_response(document)
+
+    async def delete(self, document_id: str) -> bool:
+        """Hard delete a knowledge document.
+
         Args:
             document_id: ID of the document to delete
-            
+
         Returns:
-            Updated AXEKnowledgeDocumentORM instance or None if not found
+            True if deleted, False if not found
         """
-        document = await self.get_by_id(document_id)
+        result = await self.db.execute(
+            select(AXEKnowledgeDocumentORM).where(AXEKnowledgeDocumentORM.id == document_id)
+        )
+        document = result.scalar_one_or_none()
         if not document:
-            return None
-            
-        document.is_enabled = False
-        
+            return False
+
+        await self.db.delete(document)
         await self.db.commit()
-        await self.db.refresh(document)
-        
-        logger.info(f"[AXEKnowledge] Soft-deleted document: {document.id}")
-        return document
+
+        logger.info(f"[AXEKnowledge] Deleted document: {document_id}")
+        return True
 
     async def increment_access(self, document_id: str) -> bool:
         """Increment the access count for a document.
-        
+
         Args:
             document_id: ID of the document
-            
+
         Returns:
             True if successfully incremented, False if document not found
         """
-        document = await self.get_by_id(document_id)
+        result = await self.db.execute(
+            select(AXEKnowledgeDocumentORM).where(AXEKnowledgeDocumentORM.id == document_id)
+        )
+        document = result.scalar_one_or_none()
         if not document:
             return False
-            
+
         document.access_count += 1
-        
+
         await self.db.commit()
-        await self.db.refresh(document)
-        
+
         logger.debug(f"[AXEKnowledge] Incremented access: {document.id} (count: {document.access_count})")
         return True
 
-    async def get_categories_stats(self) -> List[CategoryStats]:
+    async def get_categories_stats(self) -> Dict[str, int]:
         """Get document count per category.
-        
+
         Returns:
-            List of CategoryStats with category name and document count
+            Dict mapping category name to document count
         """
         stmt = (
             select(
@@ -301,11 +365,8 @@ class AXEKnowledgeService:
             .group_by(AXEKnowledgeDocumentORM.category)
             .order_by(desc("count"))
         )
-        
+
         result = await self.db.execute(stmt)
         rows = result.all()
-        
-        return [
-            CategoryStats(category=row.category, count=row.count)
-            for row in rows
-        ]
+
+        return {row.category: row.count for row in rows}
