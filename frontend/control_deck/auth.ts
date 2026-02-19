@@ -60,14 +60,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           return null;
         }
 
-        // Demo-Mode für falklabs.de Production Server
-        // Passwort kann via DEMO_PASSWORD env var oder Fallback gesetzt werden
+        // Check if in demo mode
+        const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
         const DEMO_PASSWORD = process.env.DEMO_PASSWORD || "brain";
 
-        // Demo-Login: Einfacher Passwort-Check
-        if (password === DEMO_PASSWORD) {
-          console.log(`[Auth] Demo login successful: ${email}`);
-
+        if (DEMO_MODE && password === DEMO_PASSWORD) {
+          console.log(`[Auth] Demo login: ${email}`);
           return {
             id: "demo-user-1",
             email: email,
@@ -77,36 +75,35 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           };
         }
 
-        // TODO: Implement real backend authentication
-        // Uncomment when backend auth endpoint is ready:
-        //
-        // try {
-        //   const response = await fetch(
-        //     `${process.env.NEXT_PUBLIC_BRAIN_API_BASE}/api/auth/login`,
-        //     {
-        //       method: "POST",
-        //       headers: { "Content-Type": "application/json" },
-        //       body: JSON.stringify({
-        //         email: credentials.email,
-        //         password: credentials.password,
-        //       }),
-        //     }
-        //   );
-        //
-        //   if (!response.ok) {
-        //     return null;
-        //   }
-        //
-        //   const user = await response.json();
-        //   return user;
-        // } catch (error) {
-        //   console.error("[Auth] Backend authentication failed:", error);
-        //   return null;
-        // }
+        // PRODUCTION: Backend authentication
+        try {
+          const API_BASE = process.env.NEXT_PUBLIC_BRAIN_API_BASE || "http://localhost:8000";
 
-        // Fail-closed: Reject invalid credentials
-        console.warn(`[Auth] Login failed for: ${email}`);
-        return null;
+          const response = await fetch(`${API_BASE}/api/auth/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password }),
+          });
+
+          if (!response.ok) {
+            console.warn(`[Auth] Backend login failed: ${response.status}`);
+            return null;
+          }
+
+          const data = await response.json();
+
+          return {
+            id: data.user.id,
+            email: data.user.email,
+            name: data.user.full_name || data.user.username,
+            role: data.user.role,
+            groups: [data.user.role],
+            accessToken: data.access_token,
+          };
+        } catch (error) {
+          console.error("[Auth] Backend authentication error:", error);
+          return null;
+        }
       },
     }),
   ],
