@@ -22,6 +22,8 @@ import {
   ChevronRight,
   ChevronDown,
   Bird,
+  User,
+  FileText,
 } from "lucide-react";
 
 interface NavItem {
@@ -63,6 +65,14 @@ const navGroups: NavGroup[] = [
       { label: "Agent Registry", href: "/agents", icon: Users },
       { label: "Skills Library", href: "/agents/skills", icon: Puzzle },
       { label: "Supervisor", href: "/agents/supervisor", icon: Eye },
+    ],
+  },
+  {
+    label: "AXE Management",
+    icon: Shield,
+    items: [
+      { label: "Identity", href: "/axe/identity", icon: User },
+      { label: "Knowledge Docs", href: "/axe/knowledge", icon: FileText },
     ],
   },
   {
