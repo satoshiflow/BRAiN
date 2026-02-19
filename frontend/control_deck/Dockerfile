@@ -3,6 +3,10 @@ FROM node:22-alpine AS deps
 
 WORKDIR /app
 
+# CRITICAL: Set NODE_ENV=development to install devDependencies
+# (autoprefixer, tailwindcss, typescript, etc. are required for build)
+ENV NODE_ENV=development
+
 # Install build dependencies
 RUN apk add --no-cache libc6-compat
 
@@ -30,7 +34,9 @@ ENV AUTH_SECRET=$AUTH_SECRET
 # Disable telemetry and enable CI mode
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV CI=true
-# NOTE: Do NOT set NODE_ENV=production here - it skips devDependencies needed for build!
+# CRITICAL: Force NODE_ENV=development during build to ensure devDependencies are available
+# (Coolify may inject NODE_ENV=production from env vars, which breaks the build)
+ENV NODE_ENV=development
 
 # Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
