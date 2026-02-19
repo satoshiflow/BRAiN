@@ -30,7 +30,7 @@ ENV AUTH_SECRET=$AUTH_SECRET
 # Disable telemetry and enable CI mode
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV CI=true
-ENV NODE_ENV=production
+# NOTE: Do NOT set NODE_ENV=production here - it skips devDependencies needed for build!
 
 # Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
