@@ -27,3 +27,58 @@ body {
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
 }
+
+/* Mobile-First Optimizations */
+
+/* Touch-friendly links and buttons */
+@layer base {
+  button,
+  a {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* Responsive text for prose/markdown */
+.prose {
+  font-size: 0.875rem; /* 14px on mobile */
+}
+
+@media (min-width: 640px) {
+  .prose {
+    font-size: 1rem; /* 16px on tablet+ */
+  }
+}
+
+/* Ensure code blocks don't overflow on mobile */
+.prose pre {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.prose code {
+  word-break: break-word;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar for webkit browsers */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--background));
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(51, 65, 85); /* slate-700 */
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(71, 85, 105); /* slate-600 */
+}

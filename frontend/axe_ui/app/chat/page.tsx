@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { Send, Loader2 } from "lucide-react";
 import { getApiBase, getDefaultModel } from "@/lib/config";
 
 interface Message {
@@ -21,7 +22,6 @@ interface ChatResponse {
   raw?: string;
 }
 
-// API base and model are now imported from config
 const API_BASE = getApiBase();
 const DEFAULT_MODEL = getDefaultModel();
 
@@ -31,9 +31,22 @@ function formatTime(date: Date): string {
   return date.toLocaleTimeString();
 }
 
+// Detect mobile device
+function isMobileDevice() {
+  if (typeof window === 'undefined') return false;
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+    navigator.userAgent
+  );
+}
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isClient, setIsClient] = useState(false);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     setIsClient(true);
@@ -47,9 +60,19 @@ export default function ChatPage() {
       },
     ]);
   }, []);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  // Auto-scroll to bottom on new messages
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  // Auto-resize textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+    }
+  }, [input]);
 
   const handleSend = async () => {
     if (!input.trim() || loading) return;
@@ -61,7 +84,6 @@ export default function ChatPage() {
       timestamp: new Date(),
     };
 
-    // Update UI immediately with user message
     const updatedMessages = [...messages, userMessage];
     setMessages(updatedMessages);
     setInput("");
@@ -69,7 +91,6 @@ export default function ChatPage() {
     setError(null);
 
     try {
-      // Build messages array for API (excluding the welcome message if it's the first)
       const apiMessages = updatedMessages
         .map(m => ({
           role: m.role as "user" | "assistant",
@@ -84,7 +105,7 @@ export default function ChatPage() {
 
       const response = await fetch(`${API_BASE}/api/axe/chat`, {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
           "Accept": "application/json"
         },
@@ -113,7 +134,7 @@ export default function ChatPage() {
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Unknown error occurred";
       setError(errorMsg);
-      
+
       const errorMessage: Message = {
         id: messages.length + 2,
         role: "assistant",
@@ -127,16 +148,25 @@ export default function ChatPage() {
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    // Desktop: Enter to send, Shift+Enter for new line
+    // Mobile: Always allow new lines (no keyboard shortcuts)
+    if (e.key === "Enter" && !e.shiftKey && !isMobileDevice()) {
       e.preventDefault();
       handleSend();
     }
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)]">
-      {/* Header */}
-      <div className="mb-6">
+    <div className="flex flex-col h-screen">
+      {/* Mobile Header (visible when sidebar hidden) */}
+      <header className="lg:hidden flex items-center justify-center p-4 border-b border-slate-800 bg-slate-900">
+        <div className="ml-14"> {/* Offset for hamburger button */}
+          <h1 className="text-lg font-bold text-white">AXE Chat</h1>
+        </div>
+      </header>
+
+      {/* Desktop Header */}
+      <div className="hidden lg:block mb-6">
         <h1 className="text-3xl font-bold text-white">AXE Chat</h1>
         <p className="text-slate-400 mt-2">
           Conversational interface with the Auxiliary Execution Engine
@@ -153,31 +183,43 @@ export default function ChatPage() {
       {/* Chat Container */}
       <div className="flex-1 bg-slate-900 border border-slate-800 rounded-lg flex flex-col overflow-hidden">
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-3 sm:space-y-4">
           {messages.map((message) => (
             <div
               key={message.id}
-              className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+              className={`flex gap-2 sm:gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}
             >
+              {/* Avatar - Hidden on very small screens */}
+              {message.role === "assistant" && (
+                <div className="hidden sm:block shrink-0">
+                  <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center">
+                    <span className="text-sm">🤖</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Message Bubble - Mobile optimized width */}
               <div
-                className={`max-w-[80%] rounded-lg p-4 ${
+                className={`rounded-lg p-3 sm:p-4 max-w-[85%] sm:max-w-[70%] break-words ${
                   message.role === "user"
                     ? "bg-blue-600 text-white"
                     : "bg-slate-800 text-slate-100 border border-slate-700"
                 }`}
               >
-                <div className="flex items-start gap-3">
-                  {message.role === "assistant" && (
-                    <span className="text-2xl">🤖</span>
-                  )}
-                  <div className="flex-1">
-                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                    <p className="text-xs opacity-70 mt-2" suppressHydrationWarning>
-                      {isClient ? formatTime(message.timestamp) : ''}
-                    </p>
+                <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                <p className="text-xs opacity-70 mt-2" suppressHydrationWarning>
+                  {isClient ? formatTime(message.timestamp) : ''}
+                </p>
+              </div>
+
+              {/* User Avatar - Hidden on very small screens */}
+              {message.role === "user" && (
+                <div className="hidden sm:block shrink-0">
+                  <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center">
+                    <span className="text-sm">👤</span>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           ))}
 
@@ -201,33 +243,41 @@ export default function ChatPage() {
               </div>
             </div>
           )}
+
+          <div ref={messagesEndRef} />
         </div>
 
-        {/* Input */}
-        <div className="border-t border-slate-800 p-4">
-          <div className="flex gap-4">
-            <input
-              type="text"
+        {/* Input - Mobile optimized */}
+        <div className="border-t border-slate-800 p-3 sm:p-4 bg-slate-900">
+          <div className="flex gap-2 items-end">
+            <textarea
+              ref={textareaRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyPress={handleKeyPress}
+              onKeyDown={handleKeyPress}
               placeholder="Type your message..."
               disabled={loading}
-              className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              rows={1}
+              className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 sm:px-4 py-2 sm:py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 resize-none min-h-[44px] max-h-[200px] text-sm sm:text-base"
             />
             <button
               onClick={handleSend}
               disabled={!input.trim() || loading}
-              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
+              className="shrink-0 h-11 w-11 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors flex items-center justify-center"
+              aria-label="Send message"
             >
-              {loading ? "Sending..." : "Send"}
+              {loading ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Send className="h-5 w-5" />
+              )}
             </button>
           </div>
         </div>
       </div>
 
-      {/* Quick Commands */}
-      <div className="mt-4 p-4 bg-slate-900 border border-slate-800 rounded-lg">
+      {/* Quick Commands - Hidden on very small screens */}
+      <div className="hidden sm:block mt-4 p-4 bg-slate-900 border border-slate-800 rounded-lg">
         <p className="text-sm text-slate-400 mb-2">Quick commands:</p>
         <div className="flex flex-wrap gap-2">
           {["Check system status", "List active agents", "Show recent logs", "Get mission queue"].map(
