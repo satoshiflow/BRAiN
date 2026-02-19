@@ -61,6 +61,9 @@ class AXEKnowledgeService:
 
     def _orm_to_response(self, orm: AXEKnowledgeDocumentORM) -> KnowledgeDocumentResponse:
         """Convert ORM object to full response schema."""
+        # Safe attribute access - try doc_metadata first, fallback to metadata, then {}
+        metadata_value = getattr(orm, 'doc_metadata', None) or getattr(orm, 'metadata', None) or {}
+
         return KnowledgeDocumentResponse(
             id=orm.id,
             name=orm.name,
@@ -68,8 +71,8 @@ class AXEKnowledgeService:
             category=orm.category,
             content=orm.content,
             content_type=orm.content_type,
-            metadata=orm.doc_metadata,  # Map doc_metadata to metadata
-            tags=orm.tags,
+            metadata=metadata_value,  # Safe metadata access
+            tags=orm.tags if orm.tags else [],
             is_enabled=orm.is_enabled,
             access_count=orm.access_count,
             importance_score=orm.importance_score,
