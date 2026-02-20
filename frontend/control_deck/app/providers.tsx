@@ -2,7 +2,13 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState, ReactNode } from "react";
-import { SessionProvider } from "next-auth/react";
+import dynamic from "next/dynamic";
+
+// Dynamically import SessionProvider to avoid SSR issues
+const SessionProvider = dynamic(
+  () => import("next-auth/react").then((mod) => mod.SessionProvider),
+  { ssr: false }
+);
 
 interface ProvidersProps {
   children: ReactNode;
