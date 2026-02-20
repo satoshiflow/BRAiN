@@ -8,6 +8,7 @@ export interface AuthUser {
   name: string;
   role?: string;
   groups?: string[];
+  accessToken?: string;
 }
 
 // Extend the User type to include custom fields
@@ -15,12 +16,14 @@ declare module "next-auth" {
   interface User {
     groups?: string[];
     role?: string;
+    accessToken?: string;
   }
   interface Session {
     user: User & {
       id?: string;
       groups?: string[];
       role?: string;
+      accessToken?: string;
     };
   }
 }
@@ -29,6 +32,7 @@ declare module "next-auth/jwt" {
   interface JWT {
     role?: string;
     groups?: string[];
+    accessToken?: string;
   }
 }
 
