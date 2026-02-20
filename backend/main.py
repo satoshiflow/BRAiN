@@ -92,6 +92,9 @@ from app.modules.cluster_system.router import router as cluster_router, blueprin
 # Chat Router (AXE UI Integration)
 from api.routes.chat import router as chat_router
 
+# Auth & Admin Routers (User Management)
+from app.api.routes.auth import router as auth_router, admin_router as admin_auth_router
+
 # NeuroRail routers (EGR v1.0 - Phase 1: Observe-only)
 from app.modules.neurorail.identity.router import router as neurorail_identity_router
 from app.modules.neurorail.lifecycle.router import router as neurorail_lifecycle_router
@@ -375,6 +378,10 @@ def create_app() -> FastAPI:
 
     # Chat Router (AXE UI Integration)
     app.include_router(chat_router, prefix="/api", tags=["chat"])
+
+    # Auth & Admin Routers (User Management)
+    app.include_router(auth_router)
+    app.include_router(admin_auth_router)
 
     # 3. Auto-discover routes from backend/api/routes/*
     _include_legacy_routers(app)
