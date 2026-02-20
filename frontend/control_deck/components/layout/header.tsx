@@ -12,8 +12,14 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
-import { AuthStatus } from "@/components/auth";
+import dynamic from "next/dynamic";
 import { Sidebar } from "./sidebar";
+
+// Dynamically import AuthStatus to avoid SSR issues with useSession
+const AuthStatus = dynamic(
+  () => import("@/components/auth").then((mod) => mod.AuthStatus),
+  { ssr: false }
+);
 
 export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
