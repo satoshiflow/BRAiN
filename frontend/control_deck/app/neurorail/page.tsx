@@ -1,3 +1,5 @@
+"use client";
+
 // Force dynamic rendering to prevent SSG useContext errors
 export const dynamic = 'force-dynamic';
 
@@ -7,7 +9,6 @@ export const dynamic = 'force-dynamic';
  * Main dashboard for NeuroRail system with links to all monitors.
  */
 
-"use client";
 
 import React from 'react';
 import Link from 'next/link';

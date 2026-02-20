@@ -1,3 +1,5 @@
+"use client";
+
 // Force dynamic rendering to prevent SSG useContext errors
 export const dynamic = 'force-dynamic';
 
@@ -7,7 +9,6 @@ export const dynamic = 'force-dynamic';
  * Multi-robot fleet coordination and management system
  */
 
-"use client";
 
 import React, { useState } from 'react';
 import {

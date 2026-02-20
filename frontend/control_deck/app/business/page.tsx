@@ -1,3 +1,5 @@
+"use client";
+
 // Force dynamic rendering to prevent SSG useContext errors
 export const dynamic = 'force-dynamic';
 
@@ -7,7 +9,6 @@ export const dynamic = 'force-dynamic';
  * Template system for business processes, workflows, and automation
  */
 
-"use client";
 
 import React, { useState } from 'react';
 import { PageSkeleton } from "@/components/skeletons/PageSkeleton";

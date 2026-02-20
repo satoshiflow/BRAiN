@@ -1,3 +1,5 @@
+"use client";
+
 // Force dynamic rendering to prevent SSG useContext errors
 export const dynamic = 'force-dynamic';
 
@@ -7,7 +9,6 @@ export const dynamic = 'force-dynamic';
  * Why-View: Complete trace chain visualization
  */
 
-"use client";
 
 import React, { useState } from 'react';
 import { TraceExplorer } from '@/components/neurorail/trace-explorer';

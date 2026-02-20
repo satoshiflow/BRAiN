@@ -1,3 +1,5 @@
+"use client";
+
 // Force dynamic rendering to prevent SSG useContext errors
 export const dynamic = 'force-dynamic';
 
@@ -8,7 +10,6 @@ export const dynamic = 'force-dynamic';
  * and human-in-the-loop workflows.
  */
 
-"use client";
 
 import React, { useState } from 'react';
 import {
