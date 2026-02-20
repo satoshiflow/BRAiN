@@ -8,6 +8,10 @@ const inter = Inter({
   variable: "--font-inter",
 });
 
+// Force dynamic rendering - disable static generation to prevent useContext errors
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export const metadata = {
   title: "BRAiN Control Deck",
   description: "BRAiN Core v2.0 - Control Center",
