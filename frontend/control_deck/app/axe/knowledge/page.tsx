@@ -1,7 +1,8 @@
 "use client";
 
-// Force dynamic rendering to prevent SSG useContext errors
+// Force dynamic rendering
 export const dynamic = 'force-dynamic';
+
 
 import { useState } from 'react';
 import Link from 'next/link';

@@ -1,7 +1,8 @@
 "use client";
 
-// Force dynamic rendering to prevent SSG useContext errors
+// Force dynamic rendering
 export const dynamic = 'force-dynamic';
+
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Construction, Lock } from "lucide-react";

@@ -1,7 +1,8 @@
 "use client";
 
-// Force dynamic rendering to prevent SSG useContext errors
+// Force dynamic rendering
 export const dynamic = 'force-dynamic';
+
 
 import React, { useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
