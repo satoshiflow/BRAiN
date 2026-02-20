@@ -14,7 +14,6 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
-  },
 
   // Disable image optimization for static export compatibility
   images: {
