@@ -35,7 +35,6 @@ ENV AUTH_SECRET=$AUTH_SECRET
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV CI=true
 # CRITICAL: Force NODE_ENV=development during build to ensure devDependencies are available
-# (Coolify may inject NODE_ENV=production from env vars, which breaks the build)
 ENV NODE_ENV=development
 
 # Copy dependencies from deps stage
@@ -44,9 +43,15 @@ COPY --from=deps /app/node_modules ./node_modules
 # Copy source code
 COPY . .
 
-# Build Next.js application with error output
-# Continue on error for now (remove '|| true' once build is stable)
-RUN npm run build 2>&1 || (echo "=== BUILD FAILED ===" && exit 1)
+# Build Next.js application with debug output
+# Logs werden in /tmp/build-logs gespeichert
+RUN mkdir -p /tmp/build-logs && \
+    (npm run build 2>&1 || echo "BUILD_FAILED=true" > /tmp/build-logs/status.log) | tee /tmp/build-logs/build.log && \
+    if [ -f /tmp/build-logs/status.log ]; then \
+        echo "=== BUILD FAILED - LAST 100 LINES ===" && \
+        tail -100 /tmp/build-logs/build.log && \
+        exit 1; \
+    fi
 
 # Ensure public directory exists
 RUN mkdir -p public
@@ -72,6 +77,9 @@ RUN addgroup --system --gid 1001 nodejs && \
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+
+# Copy build logs for debugging (optional)
+COPY --from=builder /tmp/build-logs /app/build-logs || true
 
 USER nextjs
 
