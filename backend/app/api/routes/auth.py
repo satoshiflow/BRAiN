@@ -85,10 +85,10 @@ async def get_current_user_db(
 def require_role_db(required_role: UserRole):
     """Dependency factory for requiring specific role (DB-based)"""
     async def check_role(user: User = Depends(get_current_user_db)) -> User:
-        if user.role != required_role:
+        if user.role != required_role.value:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Role '{required_role}' required",
+                detail=f"Role '{required_role.value}' required",
             )
         return user
     return check_role
@@ -97,8 +97,9 @@ def require_role_db(required_role: UserRole):
 def require_any_role_db(required_roles: List[UserRole]):
     """Dependency factory for requiring any of the specified roles (DB-based)"""
     async def check_roles(user: User = Depends(get_current_user_db)) -> User:
-        if user.role not in required_roles:
-            roles_str = ", ".join([r.value for r in required_roles])
+        allowed_roles = [r.value for r in required_roles]
+        if user.role not in allowed_roles:
+            roles_str = ", ".join(allowed_roles)
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"One of these roles required: {roles_str}",
@@ -159,16 +160,16 @@ async def login(
 
     # Generate JWT token
     scopes = ["read"]
-    if user.role == UserRole.ADMIN:
+    if user.role == UserRole.ADMIN.value:
         scopes = ["read", "write", "admin"]
-    elif user.role == UserRole.OPERATOR:
+    elif user.role == UserRole.OPERATOR.value:
         scopes = ["read", "write"]
 
     token = create_access_token(
         data={
             "sub": str(user.id),
             "email": user.email,
-            "role": user.role.value,
+            "role": user.role,
             "scope": scopes
         }
     )
@@ -191,16 +192,16 @@ async def register(
 
         # Generate JWT token
         scopes = ["read"]
-        if user.role == UserRole.ADMIN:
+        if user.role == UserRole.ADMIN.value:
             scopes = ["read", "write", "admin"]
-        elif user.role == UserRole.OPERATOR:
+        elif user.role == UserRole.OPERATOR.value:
             scopes = ["read", "write"]
 
         token = create_access_token(
             data={
                 "sub": str(user.id),
                 "email": user.email,
-                "role": user.role.value,
+                "role": user.role,
                 "scope": scopes
             }
         )
@@ -387,13 +388,13 @@ async def change_user_role(
         )
     
     # Prevent removing your own admin rights
-    if user.id == current_user.id and new_role != UserRole.ADMIN:
+    if user.id == current_user.id and new_role != UserRole.ADMIN.value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot remove your own admin rights"
         )
     
-    user.role = new_role
+    user.role = new_role.value
     await db.commit()
     await db.refresh(user)
     
