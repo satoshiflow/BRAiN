@@ -1,5 +1,8 @@
 "use client";
 
+// Force dynamic rendering to prevent SSG useContext errors
+export const dynamic = 'force-dynamic';
+
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Globe } from "lucide-react";

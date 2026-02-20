@@ -1,5 +1,8 @@
 "use client";
 
+// Force dynamic rendering to prevent SSG useContext errors
+export const dynamic = 'force-dynamic';
+
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCreateTemplate } from "@/hooks/useMissionTemplates";

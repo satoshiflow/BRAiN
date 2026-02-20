@@ -1,5 +1,8 @@
 "use client";
 
+// Force dynamic rendering to prevent SSG useContext errors
+export const dynamic = 'force-dynamic';
+
 import { useState } from "react";
 import { PageSkeleton } from "@/components/skeletons/PageSkeleton";
 import { useTelemetryInfo, useRobotMetrics, useIsRobotHealthy } from "@/hooks/useTelemetry";

@@ -1,3 +1,6 @@
+// Force dynamic rendering to prevent SSG useContext errors
+export const dynamic = 'force-dynamic';
+
 /**
  * Reflex Monitor Page (Phase 3 Frontend)
  *
