@@ -2,6 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Shield, CheckCircle, AlertCircle, Loader2, User, Mail, Lock, UserCircle } from "lucide-react";
 
 interface FormData {
   email: string;
@@ -16,6 +22,7 @@ export default function FirstTimeSetupPage() {
   const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
   const [formData, setFormData] = useState<FormData>({
     email: "",
@@ -25,44 +32,74 @@ export default function FirstTimeSetupPage() {
     fullName: "",
   });
 
+  // Check if first-time setup is needed
   useEffect(() => {
     const checkSetup = async () => {
       try {
-        const API_BASE = process.env.NEXT_PUBLIC_BRAIN_API_BASE || "https://api.brain.falklabs.de";
+        const API_BASE = process.env.NEXT_PUBLIC_BRAIN_API_BASE || "http://localhost:8000";
         const response = await fetch(`${API_BASE}/api/auth/first-time-setup`);
         const data = await response.json();
 
         if (!data.needs_setup) {
+          // Admin already exists, redirect to login
           router.push("/auth/signin");
         } else {
           setNeedsSetup(true);
         }
       } catch (err) {
-        setError("Failed to check setup status");
+        setError("Failed to check setup status. Please try again.");
       }
     };
 
     checkSetup();
   }, [router]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const validateForm = (): boolean => {
     setError(null);
+
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      setError("Please enter a valid email address");
+      return false;
+    }
+
+    // Username validation
+    if (formData.username.length < 3) {
+      setError("Username must be at least 3 characters");
+      return false;
+    }
+
+    if (!/^[a-zA-Z0-9_]+$/.test(formData.username)) {
+      setError("Username can only contain letters, numbers, and underscores");
+      return false;
+    }
+
+    // Password validation
+    if (formData.password.length < 8) {
+      setError("Password must be at least 8 characters");
+      return false;
+    }
 
     if (formData.password !== formData.confirmPassword) {
       setError("Passwords do not match");
-      return;
+      return false;
     }
 
-    if (formData.password.length < 8) {
-      setError("Password must be at least 8 characters");
+    return true;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!validateForm()) {
       return;
     }
 
     setLoading(true);
 
     try {
-      const API_BASE = process.env.NEXT_PUBLIC_BRAIN_API_BASE || "https://api.brain.falklabs.de";
+      const API_BASE = process.env.NEXT_PUBLIC_BRAIN_API_BASE || "http://localhost:8000";
 
       const response = await fetch(`${API_BASE}/api/auth/first-time-setup`, {
         method: "POST",
@@ -80,124 +117,209 @@ export default function FirstTimeSetupPage() {
         throw new Error(errorData.detail || "Setup failed");
       }
 
-      router.push("/auth/signin?message=setup_complete");
+      const data = await response.json();
+      setSuccess(true);
+
+      // Store token for auto-login
+      if (data.access_token) {
+        localStorage.setItem("brain_token", data.access_token);
+      }
+
+      // Redirect after 2 seconds
+      setTimeout(() => {
+        router.push("/dashboard");
+      }, 2000);
 
     } catch (err: any) {
-      setError(err.message || "An error occurred");
+      setError(err.message || "An error occurred during setup");
     } finally {
       setLoading(false);
     }
   };
 
+  // Loading state
   if (needsSetup === null) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900">
-        <div className="text-gray-400">Checking setup status...</div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted/20">
+        <div className="flex items-center gap-3 text-muted-foreground">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          Checking setup status...
+        </div>
+      </div>
+    );
+  }
+
+  // Success state
+  if (success) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-background to-muted/20">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <div className="flex justify-center mb-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-green-500/10">
+                <CheckCircle className="h-6 w-6 text-green-500" />
+              </div>
+            </div>
+            <CardTitle className="text-center">Setup Complete!</CardTitle>
+            <CardDescription className="text-center">
+              Your admin account has been created successfully.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="text-center space-y-4">
+            <p className="text-muted-foreground">
+              Redirecting to dashboard...
+            </p>
+            <div className="flex justify-center">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-900 p-4">
-      <div className="w-full max-w-md bg-gray-800 rounded-xl shadow-2xl p-8">
-        <div className="text-center mb-8">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-background to-muted/20">
+      <Card className="w-full max-w-md">
+        <CardHeader>
           <div className="flex justify-center mb-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-600">
-              <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-              </svg>
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
+              <Shield className="h-6 w-6 text-primary" />
             </div>
           </div>
-          <h1 className="text-2xl font-bold text-white">First-Time Setup</h1>
-          <p className="text-gray-400 mt-2">Create your admin account to get started</p>
-        </div>
+          <CardTitle className="text-center">First-Time Setup</CardTitle>
+          <CardDescription className="text-center">
+            Create your admin account to get started with BRAiN
+          </CardDescription>
+        </CardHeader>
 
-        {error && (
-          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
-            <p className="text-red-400 text-sm text-center">{error}</p>
+        <CardContent>
+          {error && (
+            <Alert variant="destructive" className="mb-6">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Email */}
+            <div className="space-y-2">
+              <Label htmlFor="email" className="flex items-center gap-2">
+                <Mail className="h-4 w-4 text-muted-foreground" />
+                Email *
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="admin@example.com"
+                className="h-11"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                required
+              />
+            </div>
+
+            {/* Username */}
+            <div className="space-y-2">
+              <Label htmlFor="username" className="flex items-center gap-2">
+                <User className="h-4 w-4 text-muted-foreground" />
+                Username *
+              </Label>
+              <Input
+                id="username"
+                type="text"
+                placeholder="admin"
+                className="h-11"
+                value={formData.username}
+                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                required
+                minLength={3}
+              />
+              <p className="text-xs text-muted-foreground">
+                Letters, numbers, and underscores only. Min 3 characters.
+              </p>
+            </div>
+
+            {/* Full Name */}
+            <div className="space-y-2">
+              <Label htmlFor="fullName" className="flex items-center gap-2">
+                <UserCircle className="h-4 w-4 text-muted-foreground" />
+                Full Name
+              </Label>
+              <Input
+                id="fullName"
+                type="text"
+                placeholder="John Doe"
+                className="h-11"
+                value={formData.fullName}
+                onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+              />
+            </div>
+
+            {/* Password */}
+            <div className="space-y-2">
+              <Label htmlFor="password" className="flex items-center gap-2">
+                <Lock className="h-4 w-4 text-muted-foreground" />
+                Password *
+              </Label>
+              <Input
+                id="password"
+                type="password"
+                className="h-11"
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                required
+                minLength={8}
+              />
+              <p className="text-xs text-muted-foreground">
+                Minimum 8 characters
+              </p>
+            </div>
+
+            {/* Confirm Password */}
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword" className="flex items-center gap-2">
+                <Lock className="h-4 w-4 text-muted-foreground" />
+                Confirm Password *
+              </Label>
+              <Input
+                id="confirmPassword"
+                type="password"
+                className="h-11"
+                value={formData.confirmPassword}
+                onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                required
+              />
+            </div>
+
+            {/* Submit Button */}
+            <Button 
+              type="submit" 
+              className="w-full h-11" 
+              disabled={loading}
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creating Account...
+                </>
+              ) : (
+                "Create Admin Account"
+              )}
+            </Button>
+          </form>
+
+          {/* Info Box */}
+          <div className="mt-6 p-4 rounded-lg bg-muted/50 text-sm text-muted-foreground">
+            <p className="font-medium text-foreground mb-1">⚠️ Important</p>
+            <p>
+              This is the first-time setup page. Once you create an admin account,
+              this page will no longer be accessible. Make sure to remember your
+              credentials.
+            </p>
           </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-2">
-              Email *
-            </label>
-            <input
-              id="email"
-              type="email"
-              className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              required
-            />
-          </div>
-
-          <div>
-            <label htmlFor="username" className="block text-sm font-medium text-gray-300 mb-2">
-              Username *
-            </label>
-            <input
-              id="username"
-              type="text"
-              className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={formData.username}
-              onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-              required
-            />
-          </div>
-
-          <div>
-            <label htmlFor="fullName" className="block text-sm font-medium text-gray-300 mb-2">
-              Full Name
-            </label>
-            <input
-              id="fullName"
-              type="text"
-              className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={formData.fullName}
-              onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-            />
-          </div>
-
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-2">
-              Password *
-            </label>
-            <input
-              id="password"
-              type="password"
-              className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              required
-            />
-            <p className="text-xs text-gray-500 mt-1">Minimum 8 characters</p>
-          </div>
-
-          <div>
-            <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-300 mb-2">
-              Confirm Password *
-            </label>
-            <input
-              id="confirmPassword"
-              type="password"
-              className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={formData.confirmPassword}
-              onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-              required
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/50 text-white font-medium rounded-lg transition-all duration-200"
-          >
-            {loading ? "Creating Account..." : "Create Admin Account"}
-          </button>
-        </form>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
