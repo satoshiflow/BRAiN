@@ -38,7 +38,7 @@ class AuthService:
     async def check_first_time_setup(db: AsyncSession) -> bool:
         """Check if any admin user exists"""
         result = await db.execute(
-            select(User).where(User.role == UserRole.ADMIN, User.is_active == True)
+            select(User).where(User.role == UserRole.ADMIN.value, User.is_active == True)
         )
         admin = result.scalar_one_or_none()
         return admin is None  # True if no admin exists
