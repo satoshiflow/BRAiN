@@ -1,4 +1,5 @@
 import { betterAuth } from "better-auth";
+import Database from "better-sqlite3";
 
 const trustedOrigins = process.env.TRUSTED_ORIGINS?.split(",") || [
   "https://control.brain.falklabs.de",
@@ -7,13 +8,16 @@ const trustedOrigins = process.env.TRUSTED_ORIGINS?.split(",") || [
   "http://localhost:3000"
 ];
 
+// Initialize SQLite database
+const db = new Database("./data/better-auth.db");
+
 export const auth = betterAuth({
   database: {
-    provider: "sqlite",
-    url: "./better-auth.db",
+    db: db,
+    type: "sqlite",
   },
   
-  // Social Providers (optional, können später aktiviert werden)
+  // Social Providers (optional)
   socialProviders: {
     github: {
       clientId: process.env.GITHUB_CLIENT_ID || "",
@@ -35,7 +39,7 @@ export const auth = betterAuth({
     sameSite: "lax",
   },
   
-  // Email Verification (optional)
+  // Email Verification
   emailVerification: {
     sendOnSignUp: false,
     autoSignInAfterVerification: true,
