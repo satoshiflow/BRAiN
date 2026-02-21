@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* BRAiN OS Dark Theme (Default) */
+    --background: #0F172A;
+    --foreground: #E5E7EB;
+    --card: #1E293B;
+    --card-foreground: #E5E7EB;
+    --popover: #1E293B;
+    --popover-foreground: #E5E7EB;
+    --primary: #C9A227;
+    --primary-foreground: #0F172A;
+    --secondary: #111827;
+    --secondary-foreground: #E5E7EB;
+    --muted: #334155;
+    --muted-foreground: #9CA3AF;
+    --accent: #C9A227;
+    --accent-foreground: #0F172A;
+    --destructive: #EF4444;
+    --destructive-foreground: #FFFFFF;
+    --border: #334155;
+    --input: #334155;
+    --ring: #C9A227;
+    --radius: 0.5rem;
+    
+    /* Font Families */
+    --font-sans: "Inter", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", monospace;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* Custom Utilities */
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  
+  /* Focus Visible - Never Remove */
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+  }
+  
+  /* Card Standard */
+  .card-standard {
+    @apply bg-card border border-border rounded-lg;
+  }
+}

@@ -1,0 +1,17 @@
+POST http://46.224.37.114:8000/api/v1/applications
+Authorization: Bearer PjRwoJmo0G5p444YtShps370lnxT291mCbbzylmP73e5dcb3
+Content-Type: application/json
+
+{
+  "project_uuid": "aossgwggsggsg0w8ccws8c0o",
+  "server_uuid": "eko8c8ow4w84gocsc84gw0cg",
+  "environment_name": "production",
+  "git_repository": "local",
+  "git_branch": "main",
+  "build_pack": "dockercompose",
+  "name": "better-auth-node",
+  "description": "Better Auth Node.js Service",
+  "fqdn": "https://auth.falklabs.de",
+  "ports_exposes": "3000",
+  "docker_compose_raw": "version: '3.8'\nservices:\n  better-auth:\n    build:\n      context: .\n      dockerfile: Dockerfile\n    container_name: better-auth-node\n    ports:\n      - '3000:3000'\n    environment:\n      - PORT=3000\n      - NODE_ENV=production\n      - DATABASE_URL=${DATABASE_URL}\n      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}\n      - BETTER_AUTH_URL=${BETTER_AUTH_URL}\n      - TRUSTED_ORIGINS=${TRUSTED_ORIGINS}\n    networks:\n      - coolify\n      - qcks8kwws80cw0s4sscw00wg\n    restart: unless-stopped\n    healthcheck:\n      test: [\"CMD\", \"wget\", \"--quiet\", \"--tries=1\", \"--spider\", \"http://localhost:3000/health\"]\n      interval: 30s\n      timeout: 10s\n      retries: 3\n      start_period: 40s\nnetworks:\n  coolify:\n    external: true\n  qcks8kwws80cw0s4sscw00wg:\n    external: true"
+}

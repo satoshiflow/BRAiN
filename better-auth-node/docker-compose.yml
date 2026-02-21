@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  better-auth:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: better-auth-node
+    ports:
+      - '3030:3000'
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL}
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
+      - BETTER_AUTH_URL=${BETTER_AUTH_URL}
+      - TRUSTED_ORIGINS=${TRUSTED_ORIGINS}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+    networks:
+      - coolify
+      - qcks8kwws80cw0s4sscw00wg
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  coolify:
+    external: true
+  qcks8kwws80cw0s4sscw00wg:
+    external: true
