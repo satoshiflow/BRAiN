@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BRAiN ControlDeck v2 - Preview</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        background: '#0F172A',
+                        foreground: '#E5E7EB',
+                        card: '#1E293B',
+                        primary: '#C9A227',
+                        border: '#334155',
+                        muted: '#9CA3AF',
+                        success: '#10B981',
+                        warning: '#F59E0B',
+                        danger: '#EF4444',
+                        info: '#3B82F6',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .pulse-dot {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .5; }
+        }
+    </style>
+</head>
+<body class="bg-background text-foreground min-h-screen">
+    <div class="flex min-h-screen">
+        <!-- Sidebar -->
+        <aside class="w-64 bg-background border-r border-border hidden lg:flex flex-col">
+            <div class="flex items-center h-16 px-4 border-b border-border">
+                <span class="text-lg font-bold text-primary">BRAiN</span>
+            </div>
+            <nav class="flex-1 px-3 py-4 space-y-6">
+                <div>
+                    <h3 class="px-3 text-xs font-semibold text-muted uppercase tracking-wider mb-2">Overview</h3>
+                    <ul class="space-y-1">
+                        <li><a href="#" class="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium border-l-2 border-primary bg-secondary/50">Dashboard</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h3 class="px-3 text-xs font-semibold text-muted uppercase tracking-wider mb-2">Operations</h3>
+                    <ul class="space-y-1">
+                        <li><a href="#missions" class="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-muted hover:bg-secondary/50">Missions</a></li>
+                        <li><a href="#agents" class="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-muted hover:bg-secondary/50">Agents</a></li>
+                        <li><a href="#events" class="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-muted hover:bg-secondary/50">Events</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h3 class="px-3 text-xs font-semibold text-muted uppercase tracking-wider mb-2">System</h3>
+                    <ul class="space-y-1">
+                        <li><a href="#health" class="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-muted hover:bg-secondary/50">Health</a></li>
+                        <li><a href="#settings" class="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-muted hover:bg-secondary/50">Settings</a></li>
+                    </ul>
+                </div>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <div class="flex-1 flex flex-col">
+            <!-- Topbar -->
+            <header class="sticky top-0 z-30 flex items-center justify-between h-16 px-4 bg-background/80 backdrop-blur-sm border-b border-border">
+                <div class="flex items-center gap-4">
+                    <button class="lg:hidden p-2 hover:bg-secondary rounded-md">☰</button>
+                    <div>
+                        <h1 class="text-lg font-semibold">Dashboard</h1>
+                        <p class="text-sm text-muted hidden sm:block">Systemübersicht & Echtzeit-Status</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button class="p-2 hover:bg-secondary rounded-md">🔍</button>
+                    <button class="p-2 hover:bg-secondary rounded-md relative">🔔<span class="absolute top-1 right-1 h-2 w-2 bg-primary rounded-full"></span></button>
+                    <button class="p-2 hover:bg-secondary rounded-md">👤</button>
+                </div>
+            </header>
+
+            <!-- Page Content -->
+            <main class="flex-1 p-4 lg:p-6 overflow-auto">
+                <!-- KPI Cards -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                    <div class="rounded-lg border border-border bg-card p-6">
+                        <div class="flex justify-between items-start">
+                            <p class="text-sm font-medium text-muted">Aktive Missions</p>
+                            <span class="text-muted">🎯</span>
+                        </div>
+                        <div class="text-2xl font-bold mt-2">12</div>
+                        <div class="flex items-center gap-1 text-xs mt-1 text-success">
+                            <span>↗</span>
+                            <span>8%</span>
+                            <span class="text-muted ml-1">vs gestern</span>
+                        </div>
+                    </div>
+                    <div class="rounded-lg border border-border bg-card p-6">
+                        <div class="flex justify-between items-start">
+                            <p class="text-sm font-medium text-muted">System Events</p>
+                            <span class="text-muted">📡</span>
+                        </div>
+                        <div class="text-2xl font-bold mt-2">1</div>
+                        <div class="flex items-center gap-1 text-xs mt-1 text-danger">
+                            <span>↘</span>
+                            <span>2%</span>
+                            <span class="text-muted ml-1">vs gestern</span>
+                        </div>
+                    </div>
+                    <div class="rounded-lg border border-border bg-card p-6">
+                        <div class="flex justify-between items-start">
+                            <p class="text-sm font-medium text-muted">Agent Status</p>
+                            <span class="text-muted">🤖</span>
+                        </div>
+                        <div class="text-2xl font-bold mt-2">4/5</div>
+                        <div class="flex items-center gap-1 text-xs mt-1 text-muted">
+                            <span>0%</span>
+                            <span class="ml-1">online</span>
+                        </div>
+                    </div>
+                    <div class="rounded-lg border border-border bg-card p-6">
+                        <div class="flex justify-between items-start">
+                            <p class="text-sm font-medium text-muted">System Health</p>
+                            <span class="text-muted">📊</span>
+                        </div>
+                        <div class="text-2xl font-bold mt-2">98%</div>
+                        <div class="flex items-center gap-1 text-xs mt-1 text-success">
+                            <span>↗</span>
+                            <span>2%</span>
+                            <span class="text-muted ml-1">vs gestern</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Main Grid -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Event Feed -->
+                    <div class="rounded-lg border border-border bg-card">
+                        <div class="flex items-center justify-between p-6 border-b border-border">
+                            <h2 class="text-lg font-semibold">Event Feed</h2>
+                            <div class="flex items-center gap-2 px-3 py-1 rounded-full bg-success/20 text-success text-sm">
+                                <span class="relative flex h-2 w-2">
+                                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
+                                    <span class="relative inline-flex rounded-full h-2 w-2 bg-success"></span>
+                                </span>
+                                LIVE
+                            </div>
+                        </div>
+                        <div class="p-6 space-y-4">
+                            <div class="flex items-start gap-3 p-3 rounded-lg bg-secondary/50">
+                                <span class="text-success mt-0.5">✓</span>
+                                <div class="flex-1">
+                                    <p class="text-sm font-medium">Mission 'Deploy v2.1' erfolgreich abgeschlossen</p>
+                                    <div class="flex items-center gap-2 mt-1">
+                                        <span class="px-2 py-0.5 rounded-full text-xs bg-success/20 text-success">Success</span>
+                                        <span class="text-xs text-muted">mission-control</span>
+                                        <span class="text-xs text-muted">• 14:25</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-3 p-3 rounded-lg bg-secondary/50">
+                                <span class="text-info mt-0.5">ℹ</span>
+                                <div class="flex-1">
+                                    <p class="text-sm font-medium">Agent 'picofred' verbunden</p>
+                                    <div class="flex items-center gap-2 mt-1">
+                                        <span class="px-2 py-0.5 rounded-full text-xs bg-info/20 text-info">Info</span>
+                                        <span class="text-xs text-muted">agent-manager</span>
+                                        <span class="text-xs text-muted">• 14:15</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-3 p-3 rounded-lg bg-secondary/50">
+                                <span class="text-warning mt-0.5">⚠</span>
+                                <div class="flex-1">
+                                    <p class="text-sm font-medium">Redis Memory > 75%</p>
+                                    <div class="flex items-center gap-2 mt-1">
+                                        <span class="px-2 py-0.5 rounded-full text-xs bg-warning/20 text-warning">Warning</span>
+                                        <span class="text-xs text-muted">health-monitor</span>
+                                        <span class="text-xs text-muted">• 14:00</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-3 p-3 rounded-lg bg-secondary/50">
+                                <span class="text-danger mt-0.5">✕</span>
+                                <div class="flex-1">
+                                    <p class="text-sm font-medium">API Gateway Timeout (3s)</p>
+                                    <div class="flex items-center gap-2 mt-1">
+                                        <span class="px-2 py-0.5 rounded-full text-xs bg-danger/20 text-danger">Error</span>
+                                        <span class="text-xs text-muted">api-gateway</span>
+                                        <span class="text-xs text-muted">• 13:45</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="p-4 border-t border-border">
+                            <button class="w-full py-2 text-sm text-muted hover:text-foreground transition-colors">
+                                Alle Events anzeigen →
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Quick Actions -->
+                    <div class="rounded-lg border border-border bg-card">
+                        <div class="p-6 border-b border-border">
+                            <h2 class="text-lg font-semibold">Quick Actions</h2>
+                        </div>
+                        <div class="p-6 space-y-3">
+                            <button class="w-full flex items-center gap-3 px-4 py-3 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-left">
+                                <span>+</span>
+                                Neue Mission erstellen
+                            </button>
+                            <button class="w-full flex items-center gap-3 px-4 py-3 rounded-md border border-border hover:bg-secondary/50 transition-colors text-left">
+                                <span>🤖</span>
+                                Agenten verwalten
+                            </button>
+                            <button class="w-full flex items-center gap-3 px-4 py-3 rounded-md border border-border hover:bg-secondary/50 transition-colors text-left">
+                                <span>📡</span>
+                                Events filtern
+                            </button>
+                            <button class="w-full flex items-center gap-3 px-4 py-3 rounded-md border border-border hover:bg-secondary/50 transition-colors text-left">
+                                <span>📊</span>
+                                Health Check ausführen
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Design System Info -->
+                <div class="mt-8 rounded-lg border border-border bg-card p-6">
+                    <h2 class="text-lg font-semibold mb-4">Design System Tokens</h2>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div>
+                            <p class="text-muted mb-2">Background</p>
+                            <div class="flex items-center gap-2">
+                                <div class="w-8 h-8 rounded" style="background: #0F172A; border: 1px solid #334155;"></div>
+                                <code class="text-xs">#0F172A</code>
+                            </div>
+                        </div>
+                        <div>
+                            <p class="text-muted mb-2">Card</p>
+                            <div class="flex items-center gap-2">
+                                <div class="w-8 h-8 rounded" style="background: #1E293B;"></div>
+                                <code class="text-xs">#1E293B</code>
+                            </div>
+                        </div>
+                        <div>
+                            <p class="text-muted mb-2">Primary (Gold)</p>
+                            <div class="flex items-center gap-2">
+                                <div class="w-8 h-8 rounded" style="background: #C9A227;"></div>
+                                <code class="text-xs">#C9A227</code>
+                            </div>
+                        </div>
+                        <div>
+                            <p class="text-muted mb-2">Border</p>
+                            <div class="flex items-center gap-2">
+                                <div class="w-8 h-8 rounded" style="background: #334155;"></div>
+                                <code class="text-xs">#334155</code>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+</body>
+</html>
