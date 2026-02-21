@@ -15,12 +15,16 @@ RUN npm install -g typescript ts-node
 # Copy source code
 COPY . .
 
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs && \
+# Create data directory for SQLite
+RUN mkdir -p /app/data && \
+    addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001 && \
     chown -R nodejs:nodejs /app
 
 USER nodejs
+
+# Volume for SQLite database
+VOLUME ["/app/data"]
 
 # Expose port
 EXPOSE 3000

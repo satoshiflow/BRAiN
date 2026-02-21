@@ -1,6 +1,5 @@
 import { betterAuth } from "better-auth";
 
-const databaseUrl = process.env.DATABASE_URL || "postgresql://user:password@localhost:5432/better_auth";
 const trustedOrigins = process.env.TRUSTED_ORIGINS?.split(",") || [
   "https://control.brain.falklabs.de",
   "https://axe.brain.falklabs.de",
@@ -10,8 +9,8 @@ const trustedOrigins = process.env.TRUSTED_ORIGINS?.split(",") || [
 
 export const auth = betterAuth({
   database: {
-    provider: "postgresql",
-    url: databaseUrl,
+    provider: "sqlite",
+    url: "./better-auth.db",
   },
   
   // Social Providers (optional, können später aktiviert werden)
