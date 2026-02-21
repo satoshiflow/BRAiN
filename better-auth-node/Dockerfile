@@ -1,5 +1,8 @@
-# Better Auth Service - Dockerfile
+# Better Auth Service - Dockerfile with SQLite support
 FROM node:20-alpine
+
+# Install build tools for native modules (better-sqlite3)
+RUN apk add --no-cache python3 make g++
 
 WORKDIR /app
 
@@ -9,22 +12,18 @@ COPY package*.json ./
 # Install dependencies
 RUN npm install
 
-# Install TypeScript and ts-node for running TypeScript directly
-RUN npm install -g typescript ts-node
-
 # Copy source code
 COPY . .
 
 # Create data directory for SQLite
-RUN mkdir -p /app/data && \
-    addgroup -g 1001 -S nodejs && \
+RUN mkdir -p /app/data
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001 && \
     chown -R nodejs:nodejs /app
 
 USER nodejs
-
-# Volume for SQLite database
-VOLUME ["/app/data"]
 
 # Expose port
 EXPOSE 3000
