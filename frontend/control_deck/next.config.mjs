@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  output: 'standalone',
+  // output: 'standalone',  // TEMP: Disabled to fix error page issues
   env: {
     AUTH_SECRET: process.env.AUTH_SECRET,
   },
