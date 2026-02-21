@@ -79,7 +79,7 @@ function Timeline({ events, groupBy = "none", className, ...props }: TimelinePro
         <div key={groupKey}>
           {groupBy !== "none" && groupKey && (
             <div className="sticky top-0 z-10 mb-4">
-              <Badge variant="secondary" className="text-xs">
+              <Badge variant="muted" className="text-xs">
                 {groupKey}
               </Badge>
             </div>
