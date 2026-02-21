@@ -1,5 +1,4 @@
 import { betterAuth } from "better-auth";
-import { pg } from "better-auth/adapters/pg";
 
 const databaseUrl = process.env.DATABASE_URL || "postgresql://user:password@localhost:5432/better_auth";
 const trustedOrigins = process.env.TRUSTED_ORIGINS?.split(",") || [
@@ -10,7 +9,10 @@ const trustedOrigins = process.env.TRUSTED_ORIGINS?.split(",") || [
 ];
 
 export const auth = betterAuth({
-  database: pg(databaseUrl),
+  database: {
+    provider: "postgresql",
+    url: databaseUrl,
+  },
   
   // Social Providers (optional, können später aktiviert werden)
   socialProviders: {
