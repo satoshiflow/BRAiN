@@ -57,7 +57,7 @@ const statusBadges = {
   healthy: "success" as const,
   warning: "warning" as const,
   critical: "danger" as const,
-  offline: "secondary" as const,
+  offline: "muted" as const,
   idle: "info" as const,
 };
 
