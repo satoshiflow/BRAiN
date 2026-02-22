@@ -147,7 +147,7 @@ export default function SecurityPage() {
   const verify2FA = async () => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/security/2fa/verify?code=${verificationCode}`, { 
+      const res = await fetch(`${API_BASE}/api/security/2fa/verify?code=${verificationCode}`, { 
         method: "POST" 
       })
       if (res.ok) {
