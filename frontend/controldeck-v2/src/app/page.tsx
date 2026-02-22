@@ -244,7 +244,7 @@ export default function DashboardPage() {
                         mission.status === 'running' ? 'success' :
                         mission.status === 'pending' ? 'warning' :
                         mission.status === 'failed' ? 'danger' :
-                        'secondary'
+                        'muted'
                       }>
                         {mission.status}
                       </Badge>
