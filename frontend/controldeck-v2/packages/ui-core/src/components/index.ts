@@ -27,3 +27,4 @@ export * from "./avatar";
 // Form Components
 export * from "./input";  // exports Input and Label
 export * from "./alert";
+export * from "./switch";
