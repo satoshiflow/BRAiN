@@ -80,7 +80,7 @@ export function Sidebar({
               return (
                 <li key={item.href}>
                   <Link
-                    href={item.href}
+                    href={item.href as any}
                     data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
                     className={cn(
                       "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
