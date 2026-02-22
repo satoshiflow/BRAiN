@@ -27,12 +27,14 @@ SKILL_CATEGORIES = ["api", "file", "communication", "analysis", "custom"]
 
 
 # Pydantic Models
+from typing import Any
+
 class SkillParameter(BaseModel):
     name: str
     type: str  # string, number, boolean, object, array
     description: Optional[str] = None
     required: bool = False
-    default: Optional[any] = None
+    default: Optional[Any] = None
 
 
 class SkillManifest(BaseModel):
@@ -80,7 +82,7 @@ class SkillExecutionRequest(BaseModel):
 
 class SkillExecutionResult(BaseModel):
     success: bool
-    output: Optional[any] = None
+    output: Optional[Any] = None
     error: Optional[str] = None
     execution_time_ms: int
 
