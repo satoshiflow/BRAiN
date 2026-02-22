@@ -20,3 +20,5 @@ export * from "./dialog";
 
 // Form Components
 export * from "./input";
+export * from "./label";
+export * from "./alert";
