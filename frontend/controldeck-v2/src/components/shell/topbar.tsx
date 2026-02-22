@@ -99,14 +99,11 @@ export function Topbar({
                   </AvatarFallback>
                 </Avatar>
                 <div className="hidden md:flex flex-col items-start">
-                  <span className="text-sm font-medium leading-none">
+                  <span className="text-sm font-medium leading-none capitalize">
                     {user.email.split("@")[0]}
                   </span>
-                  <span className={cn(
-                    "text-[10px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded mt-0.5",
-                    getRoleColor(user.role)
-                  )}>
-                    {user.role}
+                  <span className="text-xs text-muted-foreground">
+                    {user.email}
                   </span>
                 </div>
               </Button>
