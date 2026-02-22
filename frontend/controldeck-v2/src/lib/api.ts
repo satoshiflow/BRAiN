@@ -3,7 +3,11 @@
 
 import { QueryClient } from '@tanstack/react-query';
 
-const API_BASE = process.env.NEXT_PUBLIC_BRAIN_API_BASE || 'http://localhost:8001';
+// API Base URL - muss HTTPS sein für Production
+// Im Browser: relative URL (gleicher Origin) oder explizite HTTPS-URL
+const API_BASE = typeof window !== 'undefined' 
+  ? (process.env.NEXT_PUBLIC_BRAIN_API_BASE || 'https://api.brain.falklabs.de')
+  : 'http://backend:8000'; // Server-side rendering (Docker intern)
 
 // Types
 export interface Mission {
