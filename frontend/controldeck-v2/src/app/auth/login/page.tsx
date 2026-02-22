@@ -2,7 +2,6 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { signIn } from "@/lib/auth-client"
 import { Button } from "@ui-core/components/button"
 import { Input, Label } from "@ui-core/components/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@ui-core/components/card"
@@ -11,10 +10,10 @@ import { Brain, Shield, User, Lock, AlertCircle } from "lucide-react"
 
 // Predefined dummy accounts for quick login
 const DUMMY_ACCOUNTS = [
-  { email: "admin@brain.local", role: "admin", label: "Admin" },
-  { email: "operator@brain.local", role: "operator", label: "Operator" },
-  { email: "agent@brain.local", role: "agent", label: "Agent" },
-  { email: "tester@brain.local", role: "operator", label: "Tester" },
+  { email: "admin@brain.local", password: "admin", label: "Admin" },
+  { email: "operator@brain.local", password: "operator", label: "Operator" },
+  { email: "agent@brain.local", password: "agent", label: "Agent" },
+  { email: "tester@brain.local", password: "tester", label: "Tester" },
 ]
 
 export default function LoginPage() {
@@ -30,14 +29,16 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
-      const result = await signIn.email({
-        email,
-        password,
-        callbackURL: "/",
+      const response = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "signIn", email, password }),
       })
 
-      if (result.error) {
-        setError(result.error.message || "Invalid credentials")
+      const data = await response.json()
+
+      if (!response.ok) {
+        setError(data.error || "Invalid credentials")
       } else {
         router.push("/")
         router.refresh()
@@ -49,11 +50,9 @@ export default function LoginPage() {
     }
   }
 
-  const quickLogin = (accountEmail: string) => {
-    setEmail(accountEmail)
-    // Password is same as role for dummy accounts
-    const role = accountEmail.split("@")[0]
-    setPassword(role === "tester" ? "tester" : role)
+  const quickLogin = (account: typeof DUMMY_ACCOUNTS[0]) => {
+    setEmail(account.email)
+    setPassword(account.password)
   }
 
   return (
@@ -156,7 +155,7 @@ export default function LoginPage() {
                   key={account.email}
                   variant="outline"
                   size="sm"
-                  onClick={() => quickLogin(account.email)}
+                  onClick={() => quickLogin(account)}
                   className="text-xs"
                 >
                   {account.label}

@@ -12,10 +12,10 @@ export function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Check for auth cookie
-  const authCookie = request.cookies.get("better-auth.session")
+  // Check for session cookie
+  const sessionCookie = request.cookies.get("session")?.value
   
-  if (!authCookie) {
+  if (!sessionCookie) {
     // Redirect to login if not authenticated
     const loginUrl = new URL("/auth/login", request.url)
     return NextResponse.redirect(loginUrl)

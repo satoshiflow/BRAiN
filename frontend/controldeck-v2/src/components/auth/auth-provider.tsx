@@ -1,12 +1,10 @@
 "use client"
 
-import { createContext, useContext, ReactNode } from "react"
-import { useSession } from "@/lib/auth-client"
+import { createContext, useContext, ReactNode, useState, useEffect } from "react"
 
-type User = {
+interface User {
   id: string
   email: string
-  name: string
   role: string
 }
 
@@ -23,22 +21,31 @@ const AuthContext = createContext<AuthContextType>({
 })
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const { data: session, isPending } = useSession()
+  const [user, setUser] = useState<User | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
-  const user = session?.user
-    ? {
-        id: session.user.id,
-        email: session.user.email,
-        name: session.user.name || session.user.email,
-        role: (session.user as any).role || "agent",
-      }
-    : null
+  useEffect(() => {
+    // Check session on mount
+    fetch("/api/auth")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.user) {
+          setUser(data.user)
+        }
+      })
+      .catch(() => {
+        // Not authenticated
+      })
+      .finally(() => {
+        setIsLoading(false)
+      })
+  }, [])
 
   return (
     <AuthContext.Provider
       value={{
         user,
-        isLoading: isPending,
+        isLoading,
         isAuthenticated: !!user,
       }}
     >

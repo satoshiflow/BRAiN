@@ -21,7 +21,6 @@ import {
   LogOut,
 } from "lucide-react";
 import { useAuth } from "@/components/auth/auth-provider";
-import { signOut } from "@/lib/auth-client";
 import { useRouter } from "next/navigation";
 
 interface NavItem {
@@ -72,8 +71,13 @@ export function Sidebar({
     const router = useRouter();
     
     const handleLogout = async () => {
-      await signOut();
-      router.push("/auth/login");
+      await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "signOut" }),
+      })
+      router.push("/auth/login")
+      router.refresh()
     };
     
     return (
