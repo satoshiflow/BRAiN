@@ -26,7 +26,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Remove test files to avoid TypeScript errors
-RUN find . -name "*.test.tsx" -o -name "*.test.ts" | xargs rm -f
+RUN find . -path ./node_modules -prune -o \( -name "*.test.tsx" -o -name "*.test.ts" \) -print | xargs rm -f && rm -f src/test/setup.ts
 
 # Build Next.js application
 RUN npm run build
