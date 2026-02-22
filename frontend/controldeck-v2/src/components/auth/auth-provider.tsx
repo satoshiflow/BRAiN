@@ -2,10 +2,23 @@
 
 import { createContext, useContext, ReactNode, useState, useEffect } from "react"
 
+/**
+ * AUTH CONTEXT
+ * 
+ * Provides auth state to React components.
+ * Uses /api/auth endpoint which stores sessions in SQLite.
+ * 
+ * KI Note: To add fields to user, update:
+ * 1. This User interface
+ * 2. lib/auth.ts Session type
+ * 3. api/auth/route.ts GET response
+ */
+
 interface User {
   id: string
   email: string
   role: string
+  name?: string
 }
 
 type AuthContextType = {

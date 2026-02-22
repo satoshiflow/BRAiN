@@ -41,9 +41,16 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
+# Install SQLite dependencies for better-sqlite3
+RUN apk add --no-cache libc6-compat
+
+# Create data directory for SQLite (persisted via volume)
+RUN mkdir -p /app/data && chmod 777 /app/data
+
 # Create non-root user for security
 RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nextjs
+    adduser --system --uid 1001 nextjs && \
+    chown -R nextjs:nodejs /app/data
 
 # Copy standalone output (much smaller than full node_modules)
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
@@ -56,5 +63,6 @@ EXPOSE 3000
 
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
+ENV AUTH_DATA_DIR=/app/data
 
 CMD ["node", "server.js"]
