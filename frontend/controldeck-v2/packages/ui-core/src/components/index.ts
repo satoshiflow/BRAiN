@@ -19,6 +19,5 @@ export * from "./line-chart";
 export * from "./dialog";
 
 // Form Components
-export * from "./input";
-export * from "./label";
+export * from "./input";  // exports Input and Label
 export * from "./alert";
