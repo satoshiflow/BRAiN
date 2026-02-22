@@ -1,15 +1,5 @@
 import { betterAuth } from "better-auth"
 import { nextCookies } from "better-auth/next-js"
-import Database from "better-sqlite3"
-
-// Dummy users for invitation-only system
-// Roles: admin | operator | agent
-const DUMMY_USERS = [
-  { email: "admin@brain.local", password: "admin", role: "admin", name: "Admin" },
-  { email: "operator@brain.local", password: "operator", role: "operator", name: "Operator" },
-  { email: "agent@brain.local", password: "agent", role: "agent", name: "Agent" },
-  { email: "tester@brain.local", password: "tester", role: "operator", name: "Tester" },
-]
 
 export const auth = betterAuth({
   database: {
