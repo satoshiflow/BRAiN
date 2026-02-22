@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@ui-core/components/dialog"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@ui-core/components/card"
 import { Button } from "@ui-core/components/button"
 import { Switch } from "@ui-core/components/switch"
@@ -66,6 +67,11 @@ export default function SecurityPage() {
   
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState("")
+  
+  // 2FA Setup State
+  const [show2FADialog, setShow2FADialog] = useState(false)
+  const [twoFactorSetup, setTwoFactorSetup] = useState<{secret: string; qrCode: string} | null>(null)
+  const [verificationCode, setVerificationCode] = useState("")
 
   // Fetch security status
   useEffect(() => {
@@ -119,8 +125,42 @@ export default function SecurityPage() {
   }
 
   const setup2FA = async () => {
-    // TODO: Implement 2FA setup flow
-    alert("2FA Setup: Scan QR code with authenticator app")
+    setLoading(true)
+    try {
+      const res = await fetch("/api/security/2fa/setup", { method: "POST" })
+      if (res.ok) {
+        const data = await res.json()
+        setTwoFactorSetup(data)
+        setShow2FADialog(true)
+      } else {
+        setMessage("Failed to setup 2FA")
+      }
+    } catch (e) {
+      setMessage("Error setting up 2FA")
+    } finally {
+      setLoading(false)
+    }
+  }
+  
+  const verify2FA = async () => {
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/security/2fa/verify?code=${verificationCode}`, { 
+        method: "POST" 
+      })
+      if (res.ok) {
+        setSettings(prev => ({ ...prev, twoFactorEnabled: true }))
+        setShow2FADialog(false)
+        setMessage("2FA enabled successfully!")
+        setVerificationCode("")
+      } else {
+        setMessage("Invalid verification code")
+      }
+    } catch (e) {
+      setMessage("Error verifying 2FA")
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -388,6 +428,70 @@ export default function SecurityPage() {
           </Card>
         )}
       </div>
+      
+      {/* 2FA Setup Dialog */}
+      {show2FADialog && twoFactorSetup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <Card className="w-full max-w-md mx-4">
+            <CardHeader>
+              <CardTitle>Setup Two-Factor Authentication</CardTitle>
+              <CardDescription>
+                Scan the QR code with your authenticator app
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* QR Code */}
+              <div className="flex justify-center">
+                <img 
+                  src={twoFactorSetup.qrCode} 
+                  alt="2FA QR Code" 
+                  className="w-48 h-48 border rounded-lg"
+                />
+              </div>
+              
+              {/* Manual Secret */}
+              <div className="bg-muted p-3 rounded-lg">
+                <p className="text-xs text-muted-foreground mb-1">Manual entry code:</p>
+                <code className="text-sm font-mono break-all">{twoFactorSetup.secret}</code>
+              </div>
+              
+              {/* Verification Code Input */}
+              <div className="space-y-2">
+                <Label>Enter verification code from app</Label>
+                <Input
+                  type="text"
+                  placeholder="123456"
+                  maxLength={6}
+                  value={verificationCode}
+                  onChange={(e) => setVerificationCode(e.target.value)}
+                  className="text-center text-2xl tracking-widest"
+                />
+              </div>
+              
+              {/* Actions */}
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  className="flex-1"
+                  onClick={() => {
+                    setShow2FADialog(false)
+                    setVerificationCode("")
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  className="flex-1"
+                  disabled={verificationCode.length !== 6 || loading}
+                  onClick={verify2FA}
+                >
+                  {loading ? "Verifying..." : "Verify & Enable"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   )
 }
