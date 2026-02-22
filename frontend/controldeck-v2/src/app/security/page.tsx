@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@ui-core/components/dialog"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@ui-core/components/card"
 import { Button } from "@ui-core/components/button"
 import { Switch } from "@ui-core/components/switch"
