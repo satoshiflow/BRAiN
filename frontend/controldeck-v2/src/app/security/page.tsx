@@ -22,6 +22,7 @@ import {
   Activity,
   Eye
 } from "lucide-react"
+import { DashboardLayout } from "@/components/shell/dashboard-layout"
 
 interface SecuritySettings {
   twoFactorEnabled: boolean
@@ -166,7 +167,11 @@ export default function SecurityPage() {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <DashboardLayout
+      title="Security"
+      subtitle="Manage your account security and privacy settings"
+    >
+      <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -494,6 +499,6 @@ export default function SecurityPage() {
           </Card>
         </div>
       )}
-    </div>
+    </DashboardLayout>
   )
 }
