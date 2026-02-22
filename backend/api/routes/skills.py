@@ -17,6 +17,39 @@ async def get_db():
     if _db_pool is None:
         database_url = os.getenv("DATABASE_URL").replace("postgresql+asyncpg://", "postgresql://")
         _db_pool = await asyncpg.create_pool(database_url, min_size=1, max_size=10)
+        
+        # Create table if not exists
+        async with _db_pool.acquire() as conn:
+            try:
+                await conn.execute("""
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'skillcategory') THEN
+                            CREATE TYPE skillcategory AS ENUM ('api', 'file', 'communication', 'analysis', 'custom');
+                        END IF;
+                    END
+                    $$;
+                """)
+            except:
+                pass
+            
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS skills (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    name VARCHAR(100) NOT NULL UNIQUE,
+                    description TEXT,
+                    category VARCHAR(20) NOT NULL DEFAULT 'custom',
+                    manifest JSONB NOT NULL DEFAULT '{}',
+                    handler_path VARCHAR(255) NOT NULL DEFAULT '',
+                    enabled BOOLEAN NOT NULL DEFAULT true,
+                    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+                );
+            """)
+            
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_skills_name ON skills (name);")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_skills_category ON skills (category);")
+    
     return _db_pool
 
 
