@@ -81,7 +81,6 @@ export function Sidebar({
                 <li key={item.href}>
                   <Link
                     href={item.href}
-                    onClick={onMobileClose}
                     data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
                     className={cn(
                       "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -91,8 +90,10 @@ export function Sidebar({
                       collapsed && "justify-center px-2"
                     )}
                   >
-                    <Icon className={cn("h-5 w-5 flex-shrink-0", isActive && "text-primary")} />
-                    {!collapsed && <span>{item.label}</span>}
+                    <span onClick={onMobileClose} className="flex items-center gap-3 w-full">
+                      <Icon className={cn("h-5 w-5 flex-shrink-0", isActive && "text-primary")} />
+                      {!collapsed && <span>{item.label}</span>}
+                    </span>
                   </Link>
                 </li>
               );
