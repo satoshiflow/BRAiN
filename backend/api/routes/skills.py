@@ -130,16 +130,17 @@ async def create_skill(skill: dict):
             if existing:
                 raise HTTPException(status_code=409, detail="Skill name already exists")
             
+            import json
             row = await conn.fetchrow(
                 """
                 INSERT INTO skills (name, description, category, manifest, handler_path, enabled)
-                VALUES ($1, $2, $3, $4, $5, $6)
+                VALUES ($1, $2, $3, $4::jsonb, $5, $6)
                 RETURNING *
                 """,
                 skill.get('name'),
                 skill.get('description'),
                 skill.get('category', 'custom'),
-                skill.get('manifest', {}),
+                json.dumps(skill.get('manifest', {})),
                 skill.get('handler_path', ''),
                 skill.get('enabled', True)
             )
