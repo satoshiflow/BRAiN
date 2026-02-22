@@ -18,6 +18,12 @@ export * from "./line-chart";
 // Phase 3: Modal System
 export * from "./dialog";
 
+// Menu System
+export * from "./dropdown-menu";
+
+// User Interface
+export * from "./avatar";
+
 // Form Components
 export * from "./input";  // exports Input and Label
 export * from "./alert";
