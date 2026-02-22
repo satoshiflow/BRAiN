@@ -8,7 +8,7 @@ COPY package.json package-lock.json* ./
 
 # Install dependencies with BuildKit cache mount
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --prefer-offline --no-audit --loglevel=error
+    npm install --legacy-peer-deps --no-audit --loglevel=error
 
 # Stage 2: Build application
 FROM node:22-alpine AS builder
