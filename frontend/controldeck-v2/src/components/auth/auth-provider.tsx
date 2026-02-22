@@ -12,33 +12,47 @@ type AuthContextType = {
   user: User | null
   isLoading: boolean
   isAuthenticated: boolean
+  refreshSession: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   isLoading: true,
   isAuthenticated: false,
+  refreshSession: async () => {},
 })
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  useEffect(() => {
-    // Check session on mount
-    fetch("/api/auth")
-      .then((res) => res.json())
-      .then((data) => {
+  const refreshSession = async () => {
+    try {
+      const res = await fetch("/api/auth", {
+        credentials: "include",
+        cache: "no-store",
+      })
+      
+      if (res.ok) {
+        const data = await res.json()
         if (data.user) {
           setUser(data.user)
+        } else {
+          setUser(null)
         }
-      })
-      .catch(() => {
-        // Not authenticated
-      })
-      .finally(() => {
-        setIsLoading(false)
-      })
+      } else {
+        setUser(null)
+      }
+    } catch (error) {
+      console.error("Auth check failed:", error)
+      setUser(null)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    refreshSession()
   }, [])
 
   return (
@@ -47,6 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         isLoading,
         isAuthenticated: !!user,
+        refreshSession,
       }}
     >
       {children}

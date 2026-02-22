@@ -33,6 +33,7 @@ export default function LoginPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "signIn", email, password }),
+        credentials: "include",
       })
 
       const data = await response.json()
@@ -40,8 +41,8 @@ export default function LoginPage() {
       if (!response.ok) {
         setError(data.error || "Invalid credentials")
       } else {
-        router.push("/")
-        router.refresh()
+        // Hard redirect to ensure session is loaded
+        window.location.href = "/"
       }
     } catch (err) {
       setError("An error occurred. Please try again.")
