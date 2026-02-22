@@ -1,5 +1,6 @@
 import { betterAuth } from "better-auth"
 import { nextCookies } from "better-auth/next-js"
+import Database from "better-sqlite3"
 
 // Dummy users for invitation-only system
 // Roles: admin | operator | agent
@@ -12,22 +13,14 @@ const DUMMY_USERS = [
 
 export const auth = betterAuth({
   database: {
-    // Use memory adapter for simple dummy auth
-    // In production, replace with PostgreSQL/SQLite adapter
+    // Use file-based SQLite for persistence
     provider: "sqlite",
-    url: ":memory:",
+    url: process.env.BETTER_AUTH_DB_PATH || "./data/auth.db",
   },
   plugins: [nextCookies()],
   emailAndPassword: {
     enabled: true,
     autoSignIn: true,
-    // Simple validation - in production use proper password hashing
-    async verifyPassword(password: string, hash: string) {
-      return password === hash
-    },
-    async hashPassword(password: string) {
-      return password // Plain text for dummy auth
-    },
   },
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 days
@@ -45,22 +38,3 @@ export const auth = betterAuth({
   // Custom signup disabled - invitation only
   allowSignUp: false,
 })
-
-// Helper to seed dummy users
-export async function seedDummyUsers() {
-  for (const user of DUMMY_USERS) {
-    try {
-      await auth.api.signUpEmail({
-        body: {
-          email: user.email,
-          password: user.password,
-          name: user.name,
-        },
-      })
-      console.log(`Created user: ${user.email}`)
-    } catch (e) {
-      // User might already exist
-      console.log(`User ${user.email} already exists or error:`, e)
-    }
-  }
-}
