@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  better-auth-node:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: better-auth-node
+    restart: unless-stopped
+    ports:
+      - '3030:3000'
+    environment:
+      # Server
+      - PORT=3000
+      - NODE_ENV=production
+      
+      # Database (PostgreSQL aus Identity Service)
+      - DATABASE_URL=postgresql://user:password@postgres-qcks8kwws80cw0s4sscw00wg:5432/better_auth
+      
+      # Better Auth
+      - BETTER_AUTH_SECRET=your-32-char-secret-here-change-me
+      - BETTER_AUTH_URL=https://auth.falklabs.de
+      - TRUSTED_ORIGINS=https://control.brain.falklabs.de,https://axe.brain.falklabs.de,https://api.brain.falklabs.de
+      
+      # OAuth (optional - später konfigurieren)
+      # - GITHUB_CLIENT_ID=
+      # - GITHUB_CLIENT_SECRET=
+      # - GOOGLE_CLIENT_ID=
+      # - GOOGLE_CLIENT_SECRET=
+    networks:
+      - coolify
+      - qcks8kwws80cw0s4sscw00wg
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  coolify:
+    external: true
+  qcks8kwws80cw0s4sscw00wg:
+    external: true

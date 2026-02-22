@@ -277,7 +277,7 @@ export default function ModalsPage() {
                 <Label>Capabilities</Label>
                 <div className="flex flex-wrap gap-2">
                   {["deploy", "backup", "health", "logs"].map((cap) => (
-                    <Badge key={cap} variant="secondary" className="cursor-pointer">
+                    <Badge key={cap} variant="muted" className="cursor-pointer">
                       {cap}
                     </Badge>
                   ))}

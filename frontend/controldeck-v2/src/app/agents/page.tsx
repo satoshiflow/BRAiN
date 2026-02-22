@@ -116,7 +116,7 @@ export default function AgentsPage() {
                     <span className="text-xs text-muted-foreground">Capabilities</span>
                     <div className="flex flex-wrap gap-1 mt-1">
                       {agent.capabilities.map((cap) => (
-                        <Badge key={cap} variant="secondary" className="text-xs">
+                        <Badge key={cap} variant="muted" className="text-xs">
                           {cap}
                         </Badge>
                       ))}

@@ -131,7 +131,7 @@ export default function SettingsPage() {
                   <p className="font-medium">Session Timeout</p>
                   <p className="text-sm text-muted-foreground">Automatische Abmeldung nach Inaktivität</p>
                 </div>
-                <Badge variant="secondary">30 Minuten</Badge>
+                <Badge variant="muted">30 Minuten</Badge>
               </div>
             </CardContent>
           </Card>
