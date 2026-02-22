@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@ui-core/components/card"
 import { Button } from "@ui-core/components/button"
 import { Switch } from "@ui-core/components/switch"
-import { Label } from "@ui-core/components/label"
+import { Input, Label } from "@ui-core/components/input"
 import { Badge } from "@ui-core/components/badge"
 import { Alert, AlertDescription } from "@ui-core/components/alert"
 import { 
