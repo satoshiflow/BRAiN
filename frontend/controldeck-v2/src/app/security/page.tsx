@@ -305,7 +305,7 @@ export default function SecurityPage() {
               ) : (
                 <div className="flex flex-wrap gap-2">
                   {settings.ipWhitelist.map((ip) => (
-                    <Badge key={ip} variant="secondary">{ip}</Badge>
+                    <Badge key={ip} variant="muted">{ip}</Badge>
                   ))}
                 </div>
               )}
