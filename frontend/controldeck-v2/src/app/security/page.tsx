@@ -1,6 +1,9 @@
 "use client"
 
 import { useState, useEffect } from "react"
+
+// API Configuration
+const API_BASE = process.env.NEXT_PUBLIC_BRAIN_API_BASE || "https://api.brain.falklabs.de"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@ui-core/components/card"
 import { Button } from "@ui-core/components/button"
 import { Switch } from "@ui-core/components/switch"
@@ -80,7 +83,7 @@ export default function SecurityPage() {
 
   const fetchSecurityStatus = async () => {
     try {
-      const res = await fetch("/api/security/status")
+      const res = await fetch(`${API_BASE}/api/security/status`)
       if (res.ok) {
         const data = await res.json()
         setStatus(data)
@@ -92,7 +95,7 @@ export default function SecurityPage() {
 
   const fetchLoginHistory = async () => {
     try {
-      const res = await fetch("/api/security/login-history")
+      const res = await fetch(`${API_BASE}/api/security/login-history`)
       if (res.ok) {
         const data = await res.json()
         setSettings(prev => ({ ...prev, loginHistory: data.entries || [] }))
@@ -105,7 +108,7 @@ export default function SecurityPage() {
   const toggleSetting = async (key: keyof SecuritySettings, value: boolean | number) => {
     setLoading(true)
     try {
-      const res = await fetch("/api/security/settings", {
+      const res = await fetch(`${API_BASE}/api/security/settings`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ [key]: value })
@@ -126,7 +129,7 @@ export default function SecurityPage() {
   const setup2FA = async () => {
     setLoading(true)
     try {
-      const res = await fetch("/api/security/2fa/setup", { method: "POST" })
+      const res = await fetch(`${API_BASE}/api/security/2fa/setup`, { method: "POST" })
       if (res.ok) {
         const data = await res.json()
         setTwoFactorSetup(data)
