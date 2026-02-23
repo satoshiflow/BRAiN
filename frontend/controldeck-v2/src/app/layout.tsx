@@ -4,7 +4,7 @@ import { Providers } from "@/components/providers";
 
 export const metadata: Metadata = {
   title: "BRAiN ControlDeck v2",
-  description: "Enterprise Futuristic Control System",
+  description: "Enterprise Futuristic Control System - Build 2026-02-23-1250",
 };
 
 export default function RootLayout({
