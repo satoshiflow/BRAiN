@@ -267,7 +267,7 @@ export default function ConfigPage() {
                               Secret
                             </Badge>
                           )}
-                          <Badge variant="secondary" className="text-xs">
+                          <Badge variant="muted" className="text-xs">
                             v{config.version}
                           </Badge>
                         </div>

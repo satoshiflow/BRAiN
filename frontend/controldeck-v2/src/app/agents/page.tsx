@@ -323,12 +323,12 @@ export default function AgentsPage() {
                         {agent.capabilities.length > 0 && (
                           <div className="flex flex-wrap gap-1">
                             {agent.capabilities.slice(0, 3).map((cap) => (
-                              <Badge key={cap} variant="secondary" className="text-xs">
+                              <Badge key={cap} variant="muted" className="text-xs">
                                 {cap}
                               </Badge>
                             ))}
                             {agent.capabilities.length > 3 && (
-                              <Badge variant="secondary" className="text-xs">
+                              <Badge variant="muted" className="text-xs">
                                 +{agent.capabilities.length - 3}
                               </Badge>
                             )}
