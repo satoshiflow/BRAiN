@@ -58,6 +58,12 @@ class RateLimits:
     
     # Foundation validation: 50 per minute per user
     FOUNDATION_VALIDATE = "50/minute"
+    
+    # Task Queue: Workers can claim up to 60 tasks per minute
+    TASKS_CLAIM = "60/minute"
+    
+    # Agent Management: Heartbeats up to 60 per minute per agent
+    AGENTS_HEARTBEAT = "60/minute"
 
 
 # Custom rate limit exceeded handler

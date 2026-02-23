@@ -109,6 +109,9 @@ from app.modules.axe_knowledge.router import router as axe_knowledge_router
 # Agent Management Router (Core Module - Phase 1)
 from app.modules.agent_management.router import router as agent_management_router
 
+# Task Queue Router (Core Module - Phase 2)
+from app.modules.task_queue.router import router as task_queue_router
+
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
@@ -352,6 +355,7 @@ def create_app() -> FastAPI:
 
     # 2. App module routers (from app/modules) - Main API
     app.include_router(agent_management_router, tags=["agents"])  # NEW: Agent Management (Core)
+    app.include_router(task_queue_router, tags=["tasks"])  # NEW: Task Queue (Core)
     app.include_router(foundation_router, tags=["foundation"])  # NEW: Foundation module
     app.include_router(sovereign_mode_router, tags=["sovereign-mode"])  # NEW: Sovereign Mode
     app.include_router(dmz_control_router, tags=["dmz-control"])  # NEW: DMZ Control
