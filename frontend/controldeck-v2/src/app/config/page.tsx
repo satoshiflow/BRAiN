@@ -338,9 +338,6 @@ export default function ConfigPage() {
           
             <DialogHeader>
               <DialogTitle>{editingConfig ? "Edit Config" : "Add Config"}</DialogTitle>
-              <DialogDescription>
-                {editingConfig ? "Update configuration value" : "Create new configuration entry"}
-              </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
