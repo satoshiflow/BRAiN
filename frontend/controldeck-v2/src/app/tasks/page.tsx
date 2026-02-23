@@ -10,12 +10,9 @@ import { Input, Label } from "@ui-core/components/input";
 import { Alert, AlertDescription } from "@ui-core/components/alert";
 import {
   Dialog,
-  DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@ui-core/components/dialog";
 import { 
   ListTodo,
@@ -238,13 +235,13 @@ export default function TasksPage() {
             )}
           </div>
           <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-            <DialogTrigger asChild>
+            
               <Button>
                 <Plus className="h-4 w-4 mr-2" />
                 Create Task
               </Button>
-            </DialogTrigger>
-            <DialogContent>
+            
+            
               <DialogHeader>
                 <DialogTitle>Create New Task</DialogTitle>
               </DialogHeader>
@@ -288,7 +285,7 @@ export default function TasksPage() {
                 <Button variant="outline" onClick={() => setShowCreateDialog(false)}>Cancel</Button>
                 <Button onClick={createTask}>Create</Button>
               </DialogFooter>
-            </DialogContent>
+            
           </Dialog>
         </div>
 

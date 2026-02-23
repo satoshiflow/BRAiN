@@ -10,12 +10,9 @@ import { Input, Label } from "@ui-core/components/input";
 import { Alert, AlertDescription } from "@ui-core/components/alert";
 import {
   Dialog,
-  DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@ui-core/components/dialog";
 import { 
   Bot, 
@@ -223,63 +220,57 @@ export default function AgentsPage() {
               </Alert>
             )}
           </div>
+          <Button onClick={() => setShowRegisterDialog(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Register Agent
+          </Button>
+          
           <Dialog open={showRegisterDialog} onOpenChange={setShowRegisterDialog}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                Register Agent
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Register New Agent</DialogTitle>
-                <DialogDescription>
-                  Add a new agent to the network
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label>Agent ID</Label>
-                  <Input
-                    value={newAgent.agent_id}
-                    onChange={(e) => setNewAgent({...newAgent, agent_id: e.target.value})}
-                    placeholder="e.g., agent-001"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Name</Label>
-                  <Input
-                    value={newAgent.name}
-                    onChange={(e) => setNewAgent({...newAgent, name: e.target.value})}
-                    placeholder="Agent display name"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Type</Label>
-                  <select
-                    value={newAgent.agent_type}
-                    onChange={(e) => setNewAgent({...newAgent, agent_type: e.target.value})}
-                    className="w-full h-10 px-3 rounded-md border border-input bg-background"
-                  >
-                    <option value="worker">Worker</option>
-                    <option value="supervisor">Supervisor</option>
-                    <option value="specialist">Specialist</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Capabilities (comma-separated)</Label>
-                  <Input
-                    value={newAgent.capabilities}
-                    onChange={(e) => setNewAgent({...newAgent, capabilities: e.target.value})}
-                    placeholder="e.g., http, file, analysis"
-                  />
-                </div>
+            <DialogHeader>
+              <DialogTitle>Register New Agent</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Agent ID</Label>
+                <Input
+                  value={newAgent.agent_id}
+                  onChange={(e) => setNewAgent({...newAgent, agent_id: e.target.value})}
+                  placeholder="e.g., agent-001"
+                />
               </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setShowRegisterDialog(false)}>Cancel</Button>
-                <Button onClick={registerAgent}>Register</Button>
-              </DialogFooter>
-            </DialogContent>
+              <div className="space-y-2">
+                <Label>Name</Label>
+                <Input
+                  value={newAgent.name}
+                  onChange={(e) => setNewAgent({...newAgent, name: e.target.value})}
+                  placeholder="Agent display name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Type</Label>
+                <select
+                  value={newAgent.agent_type}
+                  onChange={(e) => setNewAgent({...newAgent, agent_type: e.target.value})}
+                  className="w-full h-10 px-3 rounded-md border border-input bg-background"
+                >
+                  <option value="worker">Worker</option>
+                  <option value="supervisor">Supervisor</option>
+                  <option value="specialist">Specialist</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label>Capabilities (comma-separated)</Label>
+                <Input
+                  value={newAgent.capabilities}
+                  onChange={(e) => setNewAgent({...newAgent, capabilities: e.target.value})}
+                  placeholder="e.g., http, file, analysis"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowRegisterDialog(false)}>Cancel</Button>
+              <Button onClick={registerAgent}>Register</Button>
+            </DialogFooter>
           </Dialog>
         </div>
 

@@ -10,8 +10,8 @@ import { Switch } from "@ui-core/components/switch";
 import { Alert, AlertDescription } from "@ui-core/components/alert";
 import {
   Dialog,
-  DialogContent,
-  DialogDescription,
+  
+  
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -335,7 +335,7 @@ export default function ConfigPage() {
 
         {/* Add/Edit Dialog */}
         <Dialog open={showDialog} onOpenChange={setShowDialog}>
-          <DialogContent className="max-w-lg">
+          
             <DialogHeader>
               <DialogTitle>{editingConfig ? "Edit Config" : "Add Config"}</DialogTitle>
               <DialogDescription>
@@ -408,7 +408,7 @@ export default function ConfigPage() {
                 Save
               </Button>
             </DialogFooter>
-          </DialogContent>
+          
         </Dialog>
       </div>
     </DashboardLayout>
