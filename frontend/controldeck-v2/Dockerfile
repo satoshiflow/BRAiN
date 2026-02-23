@@ -1,4 +1,4 @@
-# Stage 1: Install dependencies with caching (cache-bust: 2026-02-23-1233-v2)
+# Stage 1: Install dependencies with caching (cache-bust: 2026-02-23-1249-v3)
 FROM node:22-alpine AS deps
 
 WORKDIR /app
