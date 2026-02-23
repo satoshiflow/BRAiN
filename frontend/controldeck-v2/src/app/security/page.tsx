@@ -492,7 +492,7 @@ export default function SecurityPage() {
                   disabled={verificationCode.length !== 6 || loading}
                   onClick={verify2FA}
                 >
-                  {loading ? "Verifying..." : "Verify & Enable"}
+                  {loading ? "Verifying..." : "Verify &amp; Enable"}
                 </Button>
               </div>
             </CardContent>
