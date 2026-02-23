@@ -1,133 +1,376 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/shell/dashboard-layout";
-import { PageContainer, PageHeader } from "@/components/shell/page-layout";
-import { Card, CardHeader, CardTitle, CardContent, CardDescription, Button, Badge } from "@ui-core/components";
-import { StatusPill } from "@ui-core/components";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@ui-core/components/card";
+import { Button } from "@ui-core/components/button";
+import { Badge } from "@ui-core/components/badge";
+import { Switch } from "@ui-core/components/switch";
+import { Input, Label } from "@ui-core/components/input";
+import { Alert, AlertDescription } from "@ui-core/components/alert";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@ui-core/components/dialog";
 import { 
-  Plus,
-  Settings,
-  Bot,
+  Bot, 
+  Plus, 
   Activity,
   CheckCircle,
+  AlertCircle,
   XCircle,
-  Clock
+  Clock,
+  Trash2,
+  RefreshCw,
+  Cpu,
+  Wifi,
+  WifiOff,
+  Terminal
 } from "lucide-react";
 
-const agents = [
-  {
-    id: "picofred",
-    name: "PicoFred",
-    status: "online",
-    version: "1.2.0",
-    lastSeen: new Date(Date.now() - 1000 * 60 * 2).toISOString(),
-    tasksCompleted: 142,
-    capabilities: ["mission", "backup", "health"],
-  },
-  {
-    id: "worker-01",
-    name: "Worker 01",
-    status: "online",
-    version: "1.1.5",
-    lastSeen: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
-    tasksCompleted: 89,
-    capabilities: ["mission", "deploy"],
-  },
-  {
-    id: "worker-02",
-    name: "Worker 02",
-    status: "offline",
-    version: "1.1.5",
-    lastSeen: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
-    tasksCompleted: 56,
-    capabilities: ["mission"],
-  },
-  {
-    id: "system",
-    name: "System Agent",
-    status: "online",
-    version: "2.0.0",
-    lastSeen: new Date().toISOString(),
-    tasksCompleted: 999,
-    capabilities: ["backup", "maintenance", "health"],
-  },
-];
+const API_BASE = process.env.NEXT_PUBLIC_BRAIN_API_BASE || "https://api.brain.falklabs.de";
 
-const getStatusIcon = (status: string) => {
-  switch (status) {
-    case "online":
-      return <CheckCircle className="h-5 w-5 text-success" />;
-    case "offline":
-      return <XCircle className="h-5 w-5 text-danger" />;
-    default:
-      return <Clock className="h-5 w-5 text-muted-foreground" />;
-  }
-};
+interface Agent {
+  id: string;
+  agent_id: string;
+  name: string;
+  description?: string;
+  status: "registered" | "active" | "degraded" | "offline" | "maintenance" | "terminated";
+  agent_type: string;
+  version?: string;
+  capabilities: string[];
+  last_heartbeat?: string;
+  tasks_completed: number;
+  tasks_failed: number;
+  host?: string;
+  registered_at: string;
+}
 
 export default function AgentsPage() {
-  return (
-    <DashboardLayout title="Agents" subtitle="Agent Fleet Management">
-      <PageContainer>
-        <PageHeader
-          title="Agents"
-          description="Verwalte deine Agenten-Fleet"
-          actions={
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Agent hinzufügen
-            </Button>
-          }
-        />
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showRegisterDialog, setShowRegisterDialog] = useState(false);
+  const [message, setMessage] = useState("");
+  const [newAgent, setNewAgent] = useState({
+    agent_id: "",
+    name: "",
+    description: "",
+    agent_type: "worker",
+    capabilities: "",
+  });
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {agents.map((agent) => (
-            <Card key={agent.id}>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                    <Bot className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-base">{agent.name}</CardTitle>
-                    <CardDescription>{agent.id}</CardDescription>
-                  </div>
+  useEffect(() => {
+    fetchAgents();
+    const interval = setInterval(fetchAgents, 10000); // Refresh every 10s
+    return () => clearInterval(interval);
+  }, []);
+
+  const fetchAgents = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/agents`);
+      if (res.ok) {
+        const data = await res.json();
+        setAgents(data.items || []);
+      }
+    } catch (e) {
+      console.error("Failed to fetch agents");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const registerAgent = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/agents/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...newAgent,
+          capabilities: newAgent.capabilities.split(",").map(c => c.trim()).filter(Boolean),
+        }),
+      });
+      
+      if (res.ok) {
+        setShowRegisterDialog(false);
+        setNewAgent({ agent_id: "", name: "", description: "", agent_type: "worker", capabilities: "" });
+        fetchAgents();
+        setMessage("Agent registered successfully!");
+        setTimeout(() => setMessage(""), 3000);
+      }
+    } catch (e) {
+      setMessage("Failed to register agent");
+    }
+  };
+
+  const terminateAgent = async (agentId: string) => {
+    if (!confirm("Terminate this agent?")) return;
+    
+    try {
+      const res = await fetch(`${API_BASE}/api/agents/${agentId}/terminate`, {
+        method: "POST",
+      });
+      
+      if (res.ok) {
+        fetchAgents();
+        setMessage("Agent terminated");
+        setTimeout(() => setMessage(""), 3000);
+      }
+    } catch (e) {
+      setMessage("Failed to terminate agent");
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case "active":
+        return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case "degraded":
+        return <AlertCircle className="h-4 w-4 text-yellow-500" />;
+      case "offline":
+        return <WifiOff className="h-4 w-4 text-red-500" />;
+      case "terminated":
+        return <XCircle className="h-4 w-4 text-gray-400" />;
+      default:
+        return <Activity className="h-4 w-4 text-blue-500" />;
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "active":
+        return "bg-green-500/10 text-green-500";
+      case "degraded":
+        return "bg-yellow-500/10 text-yellow-500";
+      case "offline":
+        return "bg-red-500/10 text-red-500";
+      case "terminated":
+        return "bg-gray-500/10 text-gray-400";
+      default:
+        return "bg-blue-500/10 text-blue-500";
+    }
+  };
+
+  const activeAgents = agents.filter(a => a.status === "active").length;
+  const offlineAgents = agents.filter(a => a.status === "offline").length;
+  const totalTasks = agents.reduce((sum, a) => sum + a.tasks_completed, 0);
+
+  return (
+    <DashboardLayout title="Agent Network" subtitle="Manage and monitor agents">
+      <div className="space-y-6">
+        {/* Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Total Agents</p>
+                  <p className="text-2xl font-bold">{agents.length}</p>
                 </div>
-                {agent.status === "online" ? (
-                  <StatusPill status="live" pulse>Online</StatusPill>
-                ) : (
-                  <StatusPill status="down">Offline</StatusPill>
-                )}
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Version</span>
-                    <span className="font-mono">{agent.version}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Tasks</span>
-                    <span>{agent.tasksCompleted}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Last Seen</span>
-                    <span>{new Date(agent.lastSeen).toLocaleTimeString("de-DE")}</span>
-                  </div>
-                  <div className="pt-2">
-                    <span className="text-xs text-muted-foreground">Capabilities</span>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {agent.capabilities.map((cap) => (
-                        <Badge key={cap} variant="muted" className="text-xs">
-                          {cap}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
+                <Bot className="h-8 w-8 text-primary" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Active</p>
+                  <p className="text-2xl font-bold text-green-500">{activeAgents}</p>
                 </div>
-              </CardContent>
-            </Card>
-          ))}
+                <Wifi className="h-8 w-8 text-green-500" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Offline</p>
+                  <p className="text-2xl font-bold text-red-500">{offlineAgents}</p>
+                </div>
+                <WifiOff className="h-8 w-8 text-red-500" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Tasks Completed</p>
+                  <p className="text-2xl font-bold">{totalTasks}</p>
+                </div>
+                <Terminal className="h-8 w-8 text-blue-500" />
+              </div>
+            </CardContent>
+          </Card>
         </div>
-      </PageContainer>
+
+        {/* Actions */}
+        <div className="flex justify-between items-center">
+          <div>
+            {message && (
+              <Alert className="bg-green-500/10 border-green-500/20 w-fit">
+                <CheckCircle className="h-4 w-4 text-green-500" />
+                <AlertDescription className="text-green-700">{message}</AlertDescription>
+              </Alert>
+            )}
+          </div>
+          <Dialog open={showRegisterDialog} onOpenChange={setShowRegisterDialog}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="h-4 w-4 mr-2" />
+                Register Agent
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Register New Agent</DialogTitle>
+                <DialogDescription>
+                  Add a new agent to the network
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label>Agent ID</Label>
+                  <Input
+                    value={newAgent.agent_id}
+                    onChange={(e) => setNewAgent({...newAgent, agent_id: e.target.value})}
+                    placeholder="e.g., agent-001"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Name</Label>
+                  <Input
+                    value={newAgent.name}
+                    onChange={(e) => setNewAgent({...newAgent, name: e.target.value})}
+                    placeholder="Agent display name"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Type</Label>
+                  <select
+                    value={newAgent.agent_type}
+                    onChange={(e) => setNewAgent({...newAgent, agent_type: e.target.value})}
+                    className="w-full h-10 px-3 rounded-md border border-input bg-background"
+                  >
+                    <option value="worker">Worker</option>
+                    <option value="supervisor">Supervisor</option>
+                    <option value="specialist">Specialist</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Capabilities (comma-separated)</Label>
+                  <Input
+                    value={newAgent.capabilities}
+                    onChange={(e) => setNewAgent({...newAgent, capabilities: e.target.value})}
+                    placeholder="e.g., http, file, analysis"
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowRegisterDialog(false)}>Cancel</Button>
+                <Button onClick={registerAgent}>Register</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
+
+        {/* Agents Grid */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Bot className="h-5 w-5" />
+              Active Agents
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="flex justify-center py-12">
+                <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : agents.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <Bot className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>No agents registered yet</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {agents.map((agent) => (
+                  <Card key={agent.id} className="border-l-4 border-l-primary">
+                    <CardContent className="pt-4">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-2">
+                          <Bot className="h-5 w-5 text-primary" />
+                          <div>
+                            <p className="font-medium">{agent.name}</p>
+                            <p className="text-xs text-muted-foreground">{agent.agent_id}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {getStatusIcon(agent.status)}
+                          <Badge variant="outline" className={getStatusColor(agent.status)}>
+                            {agent.status}
+                          </Badge>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 space-y-2 text-sm">
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Cpu className="h-3 w-3" />
+                          <span className="capitalize">{agent.agent_type}</span>
+                          {agent.version && <span>v{agent.version}</span>}
+                        </div>
+                        
+                        {agent.capabilities.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {agent.capabilities.slice(0, 3).map((cap) => (
+                              <Badge key={cap} variant="secondary" className="text-xs">
+                                {cap}
+                              </Badge>
+                            ))}
+                            {agent.capabilities.length > 3 && (
+                              <Badge variant="secondary" className="text-xs">
+                                +{agent.capabilities.length - 3}
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-between pt-2 border-t">
+                          <div className="text-xs text-muted-foreground">
+                            <span className="text-green-500">{agent.tasks_completed}</span> done
+                            {agent.tasks_failed > 0 && (
+                              <span className="text-red-500 ml-2">{agent.tasks_failed} failed</span>
+                            )}
+                          </div>
+                          {agent.status !== "terminated" && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-destructive"
+                              onClick={() => terminateAgent(agent.agent_id)}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </DashboardLayout>
   );
 }

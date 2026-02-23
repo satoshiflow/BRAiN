@@ -18,7 +18,13 @@ import {
   Bot,
   Layers,
   PanelRight,
-  Code,
+  Brain,
+  Cpu,
+  ListTodo,
+  FileText,
+  Shield,
+  ChevronDown,
+  Workflow,
 } from "lucide-react";
 
 interface NavItem {
@@ -26,17 +32,34 @@ interface NavItem {
   href: string;
   icon: React.ElementType;
   group?: string;
+  children?: { label: string; href: string }[];
 }
 
 const navItems: NavItem[] = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard, group: "Overview" },
-  { label: "Components", href: "/components", icon: Layers, group: "Overview" },
-  { label: "Modals", href: "/modals", icon: PanelRight, group: "Overview" },
+  
+  // Intelligence Group
+  { 
+    label: "Intelligence", 
+    href: "/intelligence", 
+    icon: Brain, 
+    group: "Intelligence",
+    children: [
+      { label: "Skills", href: "/intelligence/skills" },
+      { label: "Skill Creator", href: "/intelligence/skills/creator" },
+    ]
+  },
+  
+  // Operations Group  
   { label: "Missions", href: "/missions", icon: Target, group: "Operations" },
+  { label: "Tasks", href: "/tasks", icon: ListTodo, group: "Operations" },
   { label: "Agents", href: "/agents", icon: Bot, group: "Operations" },
-  { label: "Skills", href: "/skills", icon: Code, group: "Operations" },
   { label: "Events", href: "/events", icon: Radio, group: "Operations" },
+  
+  // System Group
   { label: "Health", href: "/health", icon: Activity, group: "System" },
+  { label: "Config", href: "/config", icon: Cpu, group: "System" },
+  { label: "Audit", href: "/audit", icon: Shield, group: "System" },
   { label: "Settings", href: "/settings", icon: Settings, group: "System" },
 ];
 
@@ -46,6 +69,100 @@ interface SidebarProps {
   onCollapse?: (collapsed: boolean) => void;
   mobileOpen?: boolean;
   onMobileClose?: () => void;
+}
+
+function NavItemComponent({ 
+  item, 
+  pathname, 
+  collapsed, 
+  onMobileClose 
+}: { 
+  item: NavItem; 
+  pathname: string; 
+  collapsed: boolean;
+  onMobileClose?: () => void;
+}) {
+  const [expanded, setExpanded] = React.useState(false);
+  const isActive = pathname === item.href || pathname?.startsWith(`${item.href}/`);
+  const hasChildren = item.children && item.children.length > 0;
+  const Icon = item.icon;
+  
+  // Check if any child is active
+  const isChildActive = hasChildren && item.children?.some(
+    child => pathname === child.href || pathname?.startsWith(`${child.href}/`)
+  );
+  
+  React.useEffect(() => {
+    if (isChildActive) setExpanded(true);
+  }, [isChildActive]);
+  
+  return (
+    <li>
+      <div className="space-y-1">
+        {hasChildren ? (
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className={cn(
+              "w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
+              (isActive || isChildActive)
+                ? "bg-secondary text-foreground border-l-2 border-primary"
+                : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground",
+              collapsed && "justify-center px-2"
+            )}
+          >
+            <Icon className={cn("h-5 w-5 flex-shrink-0", (isActive || isChildActive) && "text-primary")} />
+            {!collapsed && (
+              <>
+                <span className="flex-1 text-left">{item.label}</span>
+                <ChevronDown className={cn("h-4 w-4 transition-transform", expanded && "rotate-180")} />
+              </>
+            )}
+          </button>
+        ) : (
+          <Link
+            href={item.href as any}
+            onClick={onMobileClose}
+            className={cn(
+              "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
+              isActive
+                ? "bg-secondary text-foreground border-l-2 border-primary"
+                : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground",
+              collapsed && "justify-center px-2"
+            )}
+          >
+            <Icon className={cn("h-5 w-5 flex-shrink-0", isActive && "text-primary")} />
+            {!collapsed && <span>{item.label}</span>}
+          </Link>
+        )}
+        
+        {/* Sub-menu */}
+        {hasChildren && expanded && !collapsed && (
+          <ul className="ml-4 pl-3 border-l border-border space-y-1">
+            {item.children?.map((child) => {
+              const isChildActive = pathname === child.href || pathname?.startsWith(`${child.href}/`);
+              return (
+                <li key={child.href}>
+                  <Link
+                    href={child.href as any}
+                    onClick={onMobileClose}
+                    className={cn(
+                      "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm transition-colors",
+                      isChildActive
+                        ? "text-foreground bg-secondary/50"
+                        : "text-muted-foreground hover:text-foreground hover:bg-secondary/30"
+                    )}
+                  >
+                    <span className={cn("w-1.5 h-1.5 rounded-full", isChildActive ? "bg-primary" : "bg-muted-foreground/50")} />
+                    {child.label}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </li>
+  );
 }
 
 export function Sidebar({
@@ -75,31 +192,15 @@ export function Sidebar({
             </h3>
           )}
           <ul className="space-y-1">
-            {items.map((item) => {
-              const isActive = pathname === item.href || pathname?.startsWith(`${item.href}/`);
-              const Icon = item.icon;
-              
-              return (
-                <li key={item.href}>
-                  <Link
-                    href={item.href as any}
-                    data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
-                    className={cn(
-                      "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      isActive
-                        ? "bg-secondary text-foreground border-l-2 border-primary"
-                        : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground",
-                      collapsed && "justify-center px-2"
-                    )}
-                  >
-                    <span onClick={onMobileClose} className="flex items-center gap-3 w-full">
-                      <Icon className={cn("h-5 w-5 flex-shrink-0", isActive && "text-primary")} />
-                      {!collapsed && <span>{item.label}</span>}
-                    </span>
-                  </Link>
-                </li>
-              );
-            })}
+            {items.map((item) => (
+              <NavItemComponent
+                key={item.href}
+                item={item}
+                pathname={pathname || ""}
+                collapsed={collapsed}
+                onMobileClose={onMobileClose}
+              />
+            ))}
           </ul>
         </div>
       ))}
