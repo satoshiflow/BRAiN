@@ -4,6 +4,7 @@ WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+# Cache-bust: 2026-02-23-1029
 # Fix: Set PYTHONPATH to support both import styles
 ENV PYTHONPATH=/app:/app/backend
 
