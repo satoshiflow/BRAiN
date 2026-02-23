@@ -6,6 +6,8 @@ CRUD endpoints for system events.
 from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import List, Optional
 
+from services.system_events import SystemEventsService
+
 from models.system_event import (
     SystemEventCreate,
     SystemEventUpdate,
@@ -13,7 +15,6 @@ from models.system_event import (
     EventStats,
     EventSeverity
 )
-from services.system_events import SystemEventsService
 
 # This will be injected from main app
 # For now, this is a placeholder - actual dependency injection happens in main_minimal_v3.py
@@ -21,10 +22,14 @@ router = APIRouter(prefix="/api/events", tags=["events"])
 
 
 # Dependency (will be properly implemented in main app)
+_events_service: Optional[SystemEventsService] = None
+
 async def get_events_service() -> SystemEventsService:
-    """Get events service instance - placeholder"""
-    # This will be replaced with proper dependency injection
-    raise NotImplementedError("Service dependency not configured")
+    """Get events service instance"""
+    global _events_service
+    if _events_service is None:
+        _events_service = SystemEventsService()
+    return _events_service
 
 
 @router.post("", response_model=SystemEventResponse, status_code=201)
