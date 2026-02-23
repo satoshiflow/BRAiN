@@ -130,6 +130,7 @@ class SkillResponse(BaseModel):
     manifest: SkillManifest = Field(...)
     handler_path: str = Field(...)
     enabled: bool = Field(...)
+    is_builtin: bool = Field(default=False, description="Whether this is a built-in skill")
     created_at: datetime = Field(...)
     updated_at: datetime = Field(...)
     

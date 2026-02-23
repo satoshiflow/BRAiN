@@ -43,6 +43,7 @@ class SkillModel(Base):
     manifest = Column(JSONB, nullable=False, default=dict)
     handler_path = Column(String(255), nullable=False)
     enabled = Column(Boolean, nullable=False, default=True)
+    is_builtin = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     

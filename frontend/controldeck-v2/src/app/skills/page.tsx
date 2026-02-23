@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@ui-c
 import { Button } from "@ui-core/components/button"
 import { Badge } from "@ui-core/components/badge"
 import { Input, Label } from "@ui-core/components/input"
+import { Switch } from "@ui-core/components/switch"
 import { Alert, AlertDescription } from "@ui-core/components/alert"
 import { 
   Plus, 
@@ -47,6 +48,7 @@ interface Skill {
   manifest: any
   handler_path: string
   enabled: boolean
+  is_builtin?: boolean
   created_at: string
 }
 
@@ -131,16 +133,41 @@ export default function SkillsPage() {
     }
   }
 
-  const deleteSkill = async (id: string) => {
+  const toggleSkill = async (skill: Skill, enabled: boolean) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/skills/${skill.id}/toggle?enabled=${enabled}`, {
+        method: "POST"
+      })
+      
+      if (res.ok) {
+        setSkills(skills.map(s => s.id === skill.id ? { ...s, enabled } : s))
+        setMessage(`Skill ${enabled ? 'enabled' : 'disabled'}`)
+        setTimeout(() => setMessage(""), 3000)
+      } else {
+        const err = await res.text()
+        setMessage(`Error: ${err}`)
+      }
+    } catch (e) {
+      setMessage("Error toggling skill")
+    }
+  }
+
+  const deleteSkill = async (skill: Skill) => {
+    if (skill.is_builtin) {
+      setMessage("Built-in skills cannot be deleted. Use the toggle to disable them.")
+      setTimeout(() => setMessage(""), 5000)
+      return
+    }
+    
     if (!confirm("Delete this skill?")) return
     
     try {
-      const res = await fetch(`${API_BASE}/api/skills/${id}`, {
+      const res = await fetch(`${API_BASE}/api/skills/${skill.id}`, {
         method: "DELETE"
       })
       
       if (res.ok) {
-        setSkills(skills.filter(s => s.id !== id))
+        setSkills(skills.filter(s => s.id !== skill.id))
         setMessage("Skill deleted")
         setTimeout(() => setMessage(""), 3000)
       }
@@ -232,29 +259,47 @@ export default function SkillsPage() {
                         </div>
                         <div>
                           <CardTitle className="text-lg">{skill.name}</CardTitle>
-                          <Badge variant="muted" className="text-xs mt-1">
-                            {skill.category}
-                          </Badge>
+                          <div className="flex gap-1 mt-1">
+                            <Badge variant="muted" className="text-xs">
+                              {skill.category}
+                            </Badge>
+                            {skill.is_builtin && (
+                              <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-600">
+                                Built-in
+                              </Badge>
+                            )}
+                          </div>
                         </div>
                       </div>
-                      <div className="flex gap-1">
+                      <div className="flex gap-1 items-center">
                         <Button
                           variant="ghost"
                           size="icon"
                           onClick={() => executeSkill(skill)}
                           title="Execute"
+                          disabled={!skill.enabled}
                         >
                           <Play className="h-4 w-4" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => deleteSkill(skill.id)}
-                          className="text-destructive hover:text-destructive"
-                          title="Delete"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {skill.is_builtin ? (
+                          <div className="flex items-center gap-2 ml-2">
+                            <span className="text-xs text-muted-foreground">{skill.enabled ? 'On' : 'Off'}</span>
+                            <Switch
+                              checked={skill.enabled}
+                              onCheckedChange={(checked) => toggleSkill(skill, checked)}
+                            />
+                          </div>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => deleteSkill(skill)}
+                            className="text-destructive hover:text-destructive"
+                            title="Delete"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </CardHeader>

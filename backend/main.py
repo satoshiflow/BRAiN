@@ -192,6 +192,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         autoscaler_task = asyncio.create_task(start_autoscaler(check_interval=60))
         logger.info("✅ Autoscaler worker started (interval: 60s)")
 
+    # Seed built-in skills
+    try:
+        from app.modules.skills.builtins_seeder import seed_builtin_skills
+        from app.core.database import async_session_maker
+        async with async_session_maker() as db:
+            await seed_builtin_skills(db)
+    except Exception as e:
+        logger.warning(f"⚠️ Could not seed built-in skills: {e}")
+
     logger.info("✅ All systems operational")
 
     yield

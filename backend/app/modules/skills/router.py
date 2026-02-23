@@ -51,6 +51,7 @@ def skill_to_response(skill: SkillModel) -> SkillResponse:
         manifest=SkillManifest(**skill.manifest),
         handler_path=skill.handler_path,
         enabled=skill.enabled,
+        is_builtin=getattr(skill, 'is_builtin', False),
         created_at=skill.created_at,
         updated_at=skill.updated_at,
     )
@@ -219,11 +220,20 @@ async def delete_skill(
 ):
     """
     Delete a skill.
+    Built-in skills cannot be deleted, only disabled.
 
     Args:
         skill_id: UUID of the skill to delete
     """
     service = get_skill_service()
+    
+    # Check if skill is a builtin
+    skill = await service.get_skill(db, skill_id)
+    if skill and skill.is_builtin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Built-in skills cannot be deleted. Use the toggle endpoint to disable them."
+        )
 
     deleted = await service.delete_skill(db, skill_id)
 
@@ -234,6 +244,66 @@ async def delete_skill(
         )
 
     logger.info(f"Skill ID {skill_id} deleted by {principal.principal_id}")
+
+
+# ============================================================================
+# Built-in Skills Endpoints
+# ============================================================================
+
+@router.get("/builtins/status", dependencies=[Depends(require_auth)])
+async def get_builtin_skills_status(
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+):
+    """
+    Get status of all built-in skills.
+    
+    Returns:
+        List of built-in skills with their enabled status
+    """
+    from .builtins_seeder import get_builtin_status
+    builtins = await get_builtin_status(db)
+    return {"builtins": builtins}
+
+
+@router.post("/{skill_id}/toggle", dependencies=[Depends(require_role(UserRole.ADMIN))])
+async def toggle_builtin_skill(
+    skill_id: UUID,
+    enabled: bool = True,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+):
+    """
+    Enable or disable a skill (especially for built-ins).
+    
+    Args:
+        skill_id: UUID of the skill to toggle
+        enabled: True to enable, False to disable
+        
+    Returns:
+        Success status
+    """
+    from .builtins_seeder import toggle_builtin
+    
+    success = await toggle_builtin(db, str(skill_id), enabled)
+    
+    if not success:
+        # Try regular skill toggle via service
+        service = get_skill_service()
+        skill = await service.get_skill(db, skill_id)
+        if not skill:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Skill with ID {skill_id} not found"
+            )
+        # Update enabled status
+        from .schemas import SkillUpdate
+        await service.update_skill(db, skill_id, SkillUpdate(enabled=enabled))
+    
+    action = "enabled" if enabled else "disabled"
+    logger.info(f"Skill {skill_id} {action} by {principal.principal_id}")
+    
+    return {"success": True, "skill_id": str(skill_id), "enabled": enabled}
 
 
 # ============================================================================
