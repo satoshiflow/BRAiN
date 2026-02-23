@@ -21,7 +21,16 @@ import {
   Trash2,
   Plus
 } from "lucide-react";
-import { format } from "date-fns";
+// Date formatting helper
+function formatDate(dateStr: string) {
+  return new Intl.DateTimeFormat('en-US', { 
+    month: 'short', 
+    day: 'numeric', 
+    hour: '2-digit', 
+    minute: '2-digit',
+    second: '2-digit'
+  }).format(new Date(dateStr));
+}
 
 const API_BASE = process.env.NEXT_PUBLIC_BRAIN_API_BASE || "https://api.brain.falklabs.de";
 
@@ -371,7 +380,7 @@ export default function AuditPage() {
                         </span>
                         <span className="flex items-center gap-1">
                           <Calendar className="h-3 w-3" />
-                          {format(new Date(event.created_at), "MMM d, HH:mm:ss")}
+                          {formatDate(event.created_at)}
                         </span>
                         {event.ip_address && (
                           <span>from {event.ip_address}</span>
