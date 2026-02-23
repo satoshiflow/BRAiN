@@ -260,7 +260,7 @@ export default function SecurityPage() {
               </div>
               <div className="flex items-center gap-4">
                 {settings.twoFactorEnabled && (
-                  <Badge variant="success" className="bg-green-500/10 text-green-600">Active</Badge>
+                  <Badge variant="muted" className="bg-green-500/10 text-green-600">Active</Badge>
                 )}
                 <Switch
                   checked={settings.twoFactorEnabled}
