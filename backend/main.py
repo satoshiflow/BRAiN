@@ -112,6 +112,15 @@ from app.modules.agent_management.router import router as agent_management_route
 # Task Queue Router (Core Module - Phase 2)
 from app.modules.task_queue.router import router as task_queue_router
 
+# Health Monitor Router (Core Module - Phase 3)
+from app.modules.health_monitor.router import router as health_monitor_router
+
+# Config Management Router (Core Module - Phase 4)
+from app.modules.config_management.router import router as config_management_router
+
+# Audit Logging Router (Core Module - Phase 5)
+from app.modules.audit_logging.router import router as audit_logging_router
+
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
@@ -356,6 +365,9 @@ def create_app() -> FastAPI:
     # 2. App module routers (from app/modules) - Main API
     app.include_router(agent_management_router, tags=["agents"])  # NEW: Agent Management (Core)
     app.include_router(task_queue_router, tags=["tasks"])  # NEW: Task Queue (Core)
+    app.include_router(health_monitor_router, tags=["health"])  # NEW: Health Monitor (Core)
+    app.include_router(config_management_router, tags=["config"])  # NEW: Config Management (Core)
+    app.include_router(audit_logging_router, tags=["audit"])  # NEW: Audit Logging (Core)
     app.include_router(foundation_router, tags=["foundation"])  # NEW: Foundation module
     app.include_router(sovereign_mode_router, tags=["sovereign-mode"])  # NEW: Sovereign Mode
     app.include_router(dmz_control_router, tags=["dmz-control"])  # NEW: DMZ Control
