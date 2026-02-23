@@ -18,6 +18,7 @@ import {
   Bot,
   Layers,
   PanelRight,
+  Code,
 } from "lucide-react";
 
 interface NavItem {
@@ -33,6 +34,7 @@ const navItems: NavItem[] = [
   { label: "Modals", href: "/modals", icon: PanelRight, group: "Overview" },
   { label: "Missions", href: "/missions", icon: Target, group: "Operations" },
   { label: "Agents", href: "/agents", icon: Bot, group: "Operations" },
+  { label: "Skills", href: "/skills", icon: Code, group: "Operations" },
   { label: "Events", href: "/events", icon: Radio, group: "Operations" },
   { label: "Health", href: "/health", icon: Activity, group: "System" },
   { label: "Settings", href: "/settings", icon: Settings, group: "System" },
