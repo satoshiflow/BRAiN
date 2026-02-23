@@ -499,6 +499,7 @@ export default function SecurityPage() {
           </Card>
         </div>
       )}
+    </div>
     </DashboardLayout>
   )
 }
