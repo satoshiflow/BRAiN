@@ -25,7 +25,7 @@ class HealthCheckCreate(BaseModel):
     service_name: str = Field(..., min_length=1, max_length=100)
     service_type: str = Field(default="internal", description="internal, external, database, cache")
     check_interval_seconds: int = Field(default=60, ge=10, le=3600)
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    extra_data: Dict[str, Any] = Field(default_factory=dict)
 
 
 class HealthCheckResponse(BaseModel):

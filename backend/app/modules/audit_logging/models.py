@@ -45,7 +45,7 @@ class AuditEventModel(Base):
     user_agent = Column(Text, nullable=True)
     severity = Column(String(20), nullable=False, default="info")
     message = Column(Text, nullable=True)
-    metadata = Column(JSONB, nullable=False, default=dict)
+    extra_data = Column(JSONB, nullable=False, default=dict)
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     
     def to_dict(self):

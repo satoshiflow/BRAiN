@@ -16,7 +16,7 @@ class AuditEventCreate(BaseModel):
     new_values: Optional[Dict[str, Any]] = Field(default=None)
     severity: str = Field(default="info")
     message: Optional[str] = Field(default=None)
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    extra_data: Dict[str, Any] = Field(default_factory=dict)
 
 class AuditEventResponse(BaseModel):
     id: UUID = Field(...)
@@ -32,7 +32,7 @@ class AuditEventResponse(BaseModel):
     user_agent: Optional[str] = Field(default=None)
     severity: str = Field(...)
     message: Optional[str] = Field(default=None)
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    extra_data: Dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(...)
     
     class Config:

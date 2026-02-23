@@ -53,7 +53,7 @@ class HealthCheckModel(Base):
     # Details
     error_message = Column(Text, nullable=True)
     check_output = Column(Text, nullable=True)
-    metadata = Column(JSONB, nullable=False, default=dict)
+    extra_data = Column(JSONB, nullable=False, default=dict)
     
     # Stats
     total_checks = Column(Integer, nullable=False, default=0)
@@ -85,7 +85,7 @@ class HealthCheckModel(Base):
             "response_time_ms": self.response_time_ms,
             "error_message": self.error_message,
             "check_output": self.check_output,
-            "metadata": self.metadata,
+            "extra_data": self.extra_data,
             "total_checks": self.total_checks,
             "failed_checks": self.failed_checks,
             "consecutive_failures": self.consecutive_failures,
