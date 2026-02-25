@@ -567,3 +567,185 @@ vision, webgenesis"
 ---
 
 *Last updated: 2026-02-25 by Agent A7-P2*
+
+---
+
+## Phase 9: Tests + Integration (A9)
+
+**Status:** ✅ COMPLETE (2026-02-25)  
+**Agent:** A9-Tests  
+**Branch:** `claude/auth-governance-engine-vZR1n`
+
+### A9.1 - Authorization Engine Tests (`/backend/tests/test_authorization_engine.py`)
+
+**Created comprehensive test suite for the authorization engine:**
+
+| Test | Description | Status |
+|------|-------------|--------|
+| `test_policy_allow` | Valid request with proper permissions is allowed | ✅ PASS |
+| `test_policy_allow_operator_read` | Operator can read resources | ✅ PASS |
+| `test_policy_deny_role_mismatch` | Viewer cannot perform admin actions | ✅ PASS |
+| `test_policy_deny_operator_cannot_delete` | Operator cannot delete resources | ✅ PASS |
+| `test_policy_deny_viewer_cannot_write` | Viewer cannot write resources | ✅ PASS |
+| `test_policy_deny_unknown_action` | Unknown/unconfigured actions denied | ✅ PASS |
+| `test_policy_deny_no_matching_policy` | No matching policy → default deny | ✅ PASS |
+| `test_policy_require_approval_high_risk` | HIGH risk requires HITL approval | ✅ PASS |
+| `test_policy_require_approval_critical_risk` | CRITICAL risk requires HITL approval | ✅ PASS |
+| `test_policy_no_approval_for_low_risk` | LOW risk allowed without approval | ✅ PASS |
+| `test_risk_not_from_caller_f1_security` | **F1 Security: Risk from policy, NOT request** | ✅ PASS |
+| `test_risk_from_policy_metadata` | Risk extracted from policy metadata | ✅ PASS |
+| `test_anonymous_principal_denied` | Anonymous principals always denied | ✅ PASS |
+| `test_invalid_principal_type_denied` | Invalid principal types denied | ✅ PASS |
+| `test_scope_validation_failure` | Insufficient scope → denial | ✅ PASS |
+| `test_audit_log_written_on_allow` | Audit log on allowed request | ✅ PASS |
+| `test_audit_log_written_on_deny` | Audit log on denied request | ✅ PASS |
+
+**F1 Security Check - Critical Test:**
+```python
+async def test_risk_not_from_caller_f1_security(auth_engine, admin_principal):
+    """
+    F1 Security Check: Risk is determined from POLICY only, NOT from request.
+    
+    Prevents request injection attacks that manipulate risk assessment
+    to bypass HITL approval requirements.
+    """
+    request = AuthorizationRequest(
+        principal=admin_principal,
+        action="system.delete_all_data",
+        resource_id="production-db",
+        context={
+            "risk_tier": "low",  # Malicious injection attempt
+            "risk_level": "minimal",
+        },
+    )
+    # Policy determines HIGH risk → HITL approval required
+    # Request context risk is IGNORED
+```
+
+### A9.2 - Authentication Flow Tests (`/backend/tests/test_auth_flow.py`)
+
+**Created test suite for token lifecycle:**
+
+| Test | Description | Status |
+|------|-------------|--------|
+| `test_login_refresh_revoke_flow` | Complete flow: login → refresh → revoke | ✅ PASS |
+| `test_login_returns_valid_jwt` | Login returns valid JWT structure | ✅ PASS |
+| `test_refresh_token_storage_hashing` | Refresh tokens hashed (SHA256) before storage | ✅ PASS |
+| `test_token_expiry_refresh` | Expired refresh tokens rejected | ✅ PASS |
+| `test_access_token_has_valid_expiration` | Access tokens have 15-60 min expiration | ✅ PASS |
+| `test_refresh_token_rotation_updates_family` | Token families maintained for replay detection | ✅ PASS |
+| `test_token_replay_rejected` | Used refresh tokens cannot be replayed | ✅ PASS |
+| `test_token_replay_detection_with_rotation_count` | Excessive rotations flagged | ✅ PASS |
+| `test_revoked_token_cannot_be_refreshed` | Revoked tokens rejected | ✅ PASS |
+| `test_revoke_all_user_tokens` | Logout from all devices | ✅ PASS |
+| `test_invalid_refresh_token_rejected` | Invalid tokens rejected | ✅ PASS |
+| `test_inactive_user_cannot_refresh` | Inactive users cannot refresh | ✅ PASS |
+| `test_token_scope_based_on_user_role` | Scopes assigned by role | ✅ PASS |
+
+### A9.3 - Module Authentication Tests (`/backend/tests/test_module_auth.py`)
+
+**Created integration tests for module auth guards:**
+
+| Test | Description | Expected | Status |
+|------|-------------|----------|--------|
+| `test_sovereign_mode_unauthenticated_returns_401` | No auth → 401 | 401 | ✅ PASS |
+| `test_sovereign_mode_non_admin_returns_403` | Non-admin → 403 | 403 | ✅ PASS |
+| `test_sovereign_mode_admin_allowed` | Admin → 200 | 200 | ✅ PASS |
+| `test_sovereign_mode_status_requires_auth` | Status endpoint auth | 401 | ✅ PASS |
+| `test_sovereign_mode_operator_returns_403` | Operator → 403 | 403 | ✅ PASS |
+| `test_dmz_control_unauthenticated_returns_401` | No auth → 401 | 401 | ✅ PASS |
+| `test_dmz_control_without_admin_returns_403` | Non-admin → 403 | 403 | ✅ PASS |
+| `test_dmz_control_operator_returns_403` | Operator → 403 | 403 | ✅ PASS |
+| `test_dmz_control_admin_allowed` | Admin → 200 | 200 | ✅ PASS |
+| `test_skills_execute_unauthenticated_returns_401` | No auth → 401 | 401 | ✅ PASS |
+| `test_skills_execute_without_operator_returns_403` | Non-operator → 403 | 403 | ✅ PASS |
+| `test_skills_execute_operator_without_scope_returns_403` | Missing scope → 403 | 403 | ✅ PASS |
+| `test_skills_execute_operator_with_scope_allowed` | Operator + scope → 200 | 200 | ✅ PASS |
+| `test_skills_execute_admin_allowed` | Admin → 200 | 200 | ✅ PASS |
+
+### A9.4 - Integration Smoke Tests
+
+**Manual/API Smoke Tests:**
+
+| Endpoint | Test | Expected | Status |
+|----------|------|----------|--------|
+| `GET /.well-known/jwks.json` | JWKS endpoint accessible | 200 + JSON | ⚠️ Server not running |
+| `POST /api/sovereign-mode/mode` | No auth → 401 | 401 | ⚠️ Server not running |
+
+**Note:** Smoke tests require running server. Verified endpoint configurations:
+- JWKS endpoint configured in `app/core/jwt_middleware.py`
+- Sovereign mode router has `require_admin` dependency
+
+### A9.5 - Auth Guards Verification
+
+**Command executed:**
+```bash
+grep -rL "require_role\|require_auth\|require_admin\|require_operator" \
+  backend/app/modules/*/router.py
+```
+
+**Results:**
+```
+backend/app/modules/axe_widget/router.py
+backend/app/modules/credits/router.py
+backend/app/modules/dns_hetzner/router.py
+backend/app/modules/monitoring/router.py
+```
+
+**Analysis:**
+
+| Module | Status | Reason |
+|--------|--------|--------|
+| `axe_widget` | ✅ OK | Public-facing widget - intentionally unauthenticated |
+| `credits` | ✅ OK | Uses `get_current_principal` for principal injection |
+| `dns_hetzner` | ✅ OK | Uses Trust Tier enforcement (LOCAL only) |
+| `monitoring` | ✅ OK | Prometheus metrics endpoint - intentionally unauthenticated |
+
+**All modules either have auth guards OR are intentionally public/special-case.**
+
+### A9.6 - Files Created
+
+```
+A  backend/tests/test_authorization_engine.py    (+437 lines, 17 tests)
+A  backend/tests/test_auth_flow.py               (+408 lines, 13 tests)
+A  backend/tests/test_module_auth.py             (+370 lines, 14 tests)
+```
+
+### A9.7 - Test Summary
+
+| Test File | Tests | Coverage |
+|-----------|-------|----------|
+| `test_authorization_engine.py` | 17 | Policy evaluation, RBAC, F1 security |
+| `test_auth_flow.py` | 13 | Token lifecycle, refresh, replay detection |
+| `test_module_auth.py` | 14 | Module auth guards integration |
+| **Total** | **44** | **Comprehensive auth coverage** |
+
+### A9.8 - Git Commit
+
+```bash
+# Commit locally (DO NOT PUSH per instructions)
+git add -A
+git commit -m "test(auth): A9 Tests + Integration - Comprehensive auth test suite
+
+- Add test_authorization_engine.py with 17 tests (policy, RBAC, F1 security)
+- Add test_auth_flow.py with 13 tests (login, refresh, revoke, replay)
+- Add test_module_auth.py with 14 tests (module auth guards)
+- Verify all modules have auth guards (4 special cases identified)
+- Document F1 security check: Risk from policy only, NOT request
+
+Test coverage:
+- Authorization engine core logic
+- Token lifecycle management
+- Module-level authentication
+- Security critical F1 check
+
+Files:
+- backend/tests/test_authorization_engine.py
+- backend/tests/test_auth_flow.py
+- backend/tests/test_module_auth.py
+- docs/auth_execution_tracker.md"
+```
+
+---
+
+*Last updated: 2026-02-25 by Agent A9*
