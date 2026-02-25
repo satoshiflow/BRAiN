@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 
 class MetricType(str, Enum):
     """Types of trackable metrics."""
+    ACCURACY = "accuracy"            # Model accuracy (0-1)
     LATENCY = "latency"              # Response time (ms)
     SUCCESS_RATE = "success_rate"    # Success ratio (0-1)
     TOKEN_USAGE = "token_usage"      # LLM tokens consumed
