@@ -52,13 +52,39 @@ function extractAuthHeaders(request: NextRequest): Record<string, string> {
 }
 
 /**
+ * Allowed path prefixes for the proxy — all backend API paths start with /api/
+ * Only paths matching these prefixes will be forwarded.
+ */
+const ALLOWED_PATH_PREFIXES = ['/api/', '/health', '/ws'];
+
+/**
+ * Validate the path before forwarding.
+ * Rejects path traversal and paths outside the allowed list.
+ */
+function validatePath(path: string): void {
+  // Reject path traversal (decoded and encoded variants)
+  const decoded = decodeURIComponent(path);
+  if (decoded.includes('..') || path.includes('%2e%2e') || path.includes('%2E%2E')) {
+    throw new Error('Path traversal not allowed');
+  }
+
+  // Must start with an allowed prefix
+  const allowed = ALLOWED_PATH_PREFIXES.some(prefix => path.startsWith(prefix));
+  if (!allowed) {
+    throw new Error(`Path not allowed: ${path}`);
+  }
+}
+
+/**
  * Build the target backend URL from the request
  */
 function buildTargetUrl(request: NextRequest): string {
   const backendBase = getBackendUrl();
   const path = request.nextUrl.pathname.replace('/api/proxy', '');
   const searchParams = request.nextUrl.search;
-  
+
+  validatePath(path);
+
   return `${backendBase}${path}${searchParams}`;
 }
 
@@ -130,13 +156,13 @@ async function handleProxy(request: NextRequest): Promise<NextResponse> {
     const duration = Date.now() - startTime;
     console.error(`[Proxy] Error after ${duration}ms:`, error);
     
+    // Check for validation errors (path traversal / not allowed) → 400
+    const isValidationError = error instanceof Error &&
+      (error.message.includes('not allowed') || error.message.includes('traversal'));
+
     return NextResponse.json(
-      { 
-        error: 'Proxy Error',
-        message: error instanceof Error ? error.message : 'Unknown error',
-        timestamp: new Date().toISOString(),
-      },
-      { status: 502 }
+      { error: isValidationError ? 'Bad Request' : 'Bad Gateway' },
+      { status: isValidationError ? 400 : 502 }
     );
   }
 }

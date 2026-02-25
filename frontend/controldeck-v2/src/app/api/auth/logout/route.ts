@@ -1,21 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { logout } from '@/lib/auth-server';
+import { auth } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
   try {
-    await logout();
+    const response = await auth.api.signOut({
+      headers: request.headers,
+      asResponse: true,
+    });
 
-    return NextResponse.json(
-      { 
-        success: true, 
-        message: 'Logout successful' 
-      },
-      { status: 200 }
-    );
+    return response;
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Logout failed';
+    console.error('[Auth] Logout error:', error);
     return NextResponse.json(
-      { error: message },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { login } from '@/lib/auth-server';
+import { auth } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { email, password, rememberMe } = body;
+    const { email, password } = body;
 
     if (!email || !password) {
       return NextResponse.json(
@@ -13,20 +13,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { userId, sessionId } = await login(email, password, rememberMe);
+    // Delegate to Better Auth
+    const response = await auth.api.signInEmail({
+      body: { email, password },
+      headers: request.headers,
+      asResponse: true,
+    });
 
-    return NextResponse.json(
-      { 
-        success: true, 
-        userId,
-        message: 'Login successful' 
-      },
-      { status: 200 }
-    );
+    return response;
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Login failed';
+    console.error('[Auth] Login error:', error);
     return NextResponse.json(
-      { error: message },
+      { error: 'Invalid credentials' },
       { status: 401 }
     );
   }

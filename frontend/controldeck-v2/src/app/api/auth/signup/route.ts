@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { signup } from '@/lib/auth-server';
+import { auth } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { email, password } = body;
+    const { email, password, name } = body;
 
     if (!email || !password) {
       return NextResponse.json(
@@ -13,20 +13,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { userId, sessionId } = await signup(email, password);
+    // Delegate to Better Auth
+    const response = await auth.api.signUpEmail({
+      body: { email, password, name: name || email },
+      headers: request.headers,
+      asResponse: true,
+    });
 
-    return NextResponse.json(
-      { 
-        success: true, 
-        userId,
-        message: 'User created successfully' 
-      },
-      { status: 201 }
-    );
+    return response;
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Signup failed';
+    console.error('[Auth] Signup error:', error);
     return NextResponse.json(
-      { error: message },
+      { error: 'Internal server error' },
       { status: 400 }
     );
   }
