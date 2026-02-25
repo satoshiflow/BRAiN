@@ -58,7 +58,9 @@ def _audit_log(
 
 
 @router.get("/status", response_model=FoundationStatus)
-async def get_foundation_status():
+async def get_foundation_status(
+    principal: Principal = Depends(require_auth),
+):
     """
     Get Foundation system status and metrics.
 
@@ -145,6 +147,7 @@ async def update_foundation_config(
 async def validate_action(
     request: Request,
     validation_request: ActionValidationRequest,
+    principal: Principal = Depends(require_auth),
 ):
     """
     Validate if an action is ethically and safely permissible.
@@ -198,7 +201,10 @@ async def validate_action(
 
 
 @router.post("/validate-batch", response_model=Dict[str, ActionValidationResponse])
-async def validate_actions_batch(requests: list[ActionValidationRequest]):
+async def validate_actions_batch(
+    requests: list[ActionValidationRequest],
+    principal: Principal = Depends(require_auth),
+):
     """
     Validate multiple actions in batch.
 
@@ -226,7 +232,10 @@ async def validate_actions_batch(requests: list[ActionValidationRequest]):
 
 
 @router.post("/behavior-tree/execute", response_model=BehaviorTreeExecutionResult)
-async def execute_behavior_tree(tree: BehaviorTreeNode):
+async def execute_behavior_tree(
+    tree: BehaviorTreeNode,
+    principal: Principal = Depends(require_auth),
+):
     """
     Execute a behavior tree.
 
@@ -268,7 +277,10 @@ async def execute_behavior_tree(tree: BehaviorTreeNode):
 
 
 @router.post("/behavior-tree/validate", response_model=Dict[str, Any])
-async def validate_behavior_tree(tree: BehaviorTreeNode):
+async def validate_behavior_tree(
+    tree: BehaviorTreeNode,
+    principal: Principal = Depends(require_auth),
+):
     """
     Validate a behavior tree without executing it.
 
@@ -319,7 +331,9 @@ async def validate_behavior_tree(tree: BehaviorTreeNode):
 
 
 @router.get("/info", response_model=FoundationInfo)
-async def get_foundation_info():
+async def get_foundation_info(
+    principal: Principal = Depends(require_auth),
+):
     """
     Get Foundation system information.
 

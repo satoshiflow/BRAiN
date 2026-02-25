@@ -1,248 +1,209 @@
-# Authentication & Authorization Execution Tracker
+# Auth & Governance Execution Tracker
 
-This document tracks the implementation progress of the BRAiN Authentication & Authorization system.
+**Project:** BRAiN Auth & Governance Engine  
+**Branch:** claude/auth-governance-engine-vZR1n  
+**Last Updated:** 2026-02-25  
+
+---
 
 ## Overview
 
-| Phase | Status | Completion |
-|-------|--------|------------|
-| A1 - Authentication Foundation | ✅ Complete | 100% |
-| A2 - Token & Session Management | ✅ Complete | 100% |
-| A3 - Authorization Engine | 🚧 In Progress | 80% |
-| A4 - Policy Integration | ⏳ Pending | 0% |
-| A5 - Audit & Compliance | ⏳ Pending | 0% |
+This document tracks the implementation progress of the BRAiN Authentication and Governance Engine (Phases 1-4).
 
 ---
 
-## A3 - Authorization Engine
+## Phase 1: Token Architecture (A1)
+
+**Status:** ✅ COMPLETE (2026-02-25)
+
+### A1.1 Token Key Management (`token_keys.py`)
+**File:** `/backend/app/core/token_keys.py`  
+**Status:** ✅ Complete
+
+**Features Implemented:**
+- [x] RSA private key loading from `BRAIN_JWT_PRIVATE_KEY` environment variable
+- [x] JWKS endpoint generation with proper JWK format
+- [x] Key ID derivation: `SHA256(public_key_der)[:16]`
+- [x] Support for both PKCS#8 and PKCS#1 key formats
+- [x] Base64url encoding for JWK components (n, e)
+- [x] Singleton pattern for global key management
+- [x] Public key PEM export for external distribution
+
+**Key Functions:**
+- `init_token_keys()` - Initialize from environment
+- `get_token_key_manager()` - Get singleton instance
+- `TokenKeyManager.get_jwks()` - Generate JWKS response
+- `TokenKeyManager.get_key_id()` - Get derived key ID
+
+### A1.2 Configuration Updates (`config.py`)
+**File:** `/backend/app/core/config.py`  
+**Status:** ✅ Complete
+
+**New Settings Added:**
+```python
+jwt_private_key_pem: str = ""           # RSA private key PEM
+jwt_algorithm: str = "RS256"            # JWT signing algorithm
+access_token_expire_minutes: int = 15   # Short-lived access tokens
+refresh_token_expire_days: int = 7      # Long-lived refresh tokens
+agent_token_expire_hours: int = 24      # Agent/service account tokens
+```
+
+### A1.3 Token Models (`models/token.py`)
+**File:** `/backend/app/models/token.py`  
+**Status:** ✅ Complete
+
+**Models Implemented:**
+
+#### RefreshToken
+- [x] Token hash storage (unique, indexed)
+- [x] Token family for rotation tracking
+- [x] User relationship
+- [x] Status tracking (active, revoked, expired, rotated)
+- [x] IP address and user agent tracking
+- [x] Device fingerprint support
+- [x] Rotation count for anomaly detection
+- [x] Self-referential previous token link
+
+#### ServiceAccount
+- [x] Client ID / Client Secret pattern
+- [x] Scope and role assignment (JSON arrays)
+- [x] IP whitelist support
+- [x] Rate limiting configuration
+- [x] Team ownership
+- [x] Usage tracking (count, last used, last IP)
+- [x] Optional expiration
+
+#### AgentCredential
+- [x] Agent ID / Name / Type
+- [x] Capability-based access control
+- [x] Scope and resource limitations
+- [x] Delegation chain tracking
+- [x] Parent-child agent relationships
+- [x] Dual ownership (user or service account)
+- [x] Karma/reputation scoring (V3 ready)
+- [x] Operation success/failure tracking
+
+### A1.4 Alembic Migration
+**File:** `/backend/alembic/versions/a1_add_token_tables.py`  
+**Status:** ✅ Complete
+
+**Migration Contents:**
+- [x] `refresh_tokens` table with all columns and indexes
+- [x] `service_accounts` table with all columns and indexes
+- [x] `agent_credentials` table with all columns and indexes
+- [x] Foreign key relationships
+- [x] Proper downgrades
+
+**Dependencies:**
+- Revision ID: `a1_add_token_tables`
+- Down Revision: `6b797059f074` (convert_role_columns_to_string)
+
+### A1.5 JWT Middleware Updates (`jwt_middleware.py`)
+**File:** `/backend/app/core/jwt_middleware.py`  
+**Status:** ✅ Complete
+
+**A1 Token Architecture Changes:**
+- [x] Default algorithm set to RS256 only (security hardening)
+- [x] Local key validation support via `token_keys.py`
+- [x] Hybrid validation: local keys first, fallback to remote JWKS
+- [x] Token creation functions using local RS256 keys
+
+**New Functions:**
+- `create_token()` - Generic token creation with RS256
+- `create_access_token()` - 15-minute access tokens
+- `create_refresh_token()` - 7-day refresh tokens
+- `create_agent_token()` - 24-hour agent tokens with capabilities
+
+**Updated Functions:**
+- `JWTValidator` - Now supports local and remote key validation
+- `get_jwt_validator()` - Added `use_local_keys` parameter
+
+### A1.6 Models Package Update
+**File:** `/backend/app/models/__init__.py`  
+**Status:** ✅ Complete
+
+- [x] Exported all token models
+- [x] Proper imports for Alembic autogenerate support
+
+---
+
+## Git Status
 
 **Branch:** `claude/auth-governance-engine-vZR1n`  
-**Agent:** A3-Governance  
-**Started:** 2026-02-25  
-**Status:** Phase 2 Implementation Complete
+**Commit Policy:** Local commits only (DO NOT PUSH)
 
-### A3.1 - Data Classes ✅
-
-#### AuthorizationRequest
-- [x] `principal: Principal` - Authenticated entity
-- [x] `action: str` - Requested action
-- [x] `resource_id: str` - Target resource
-- [x] `resource_type: Optional[str]` - Resource classification
-- [x] `context: Dict[str, Any]` - Evaluation context
-- [x] `ip_address: Optional[str]` - Network context
-- [x] `user_agent: Optional[str]` - Client info
-- [x] `request_id: Optional[str]` - Request tracking
-- [x] `axe_context: Optional[AXERequestContext]` - AXE-specific context
-
-#### AuthorizationDecision
-- [x] `allowed: bool` - Final decision
-- [x] `status: AuthorizationStatus` - Status enum (ALLOWED, DENIED, PENDING_APPROVAL, ERROR)
-- [x] `reason: str` - Human-readable explanation
-- [x] `request_id: str` - Request reference
-- [x] `principal_id: str` - Who requested
-- [x] `action: str` - What was requested
-- [x] `resource_id: str` - What was targeted
-- [x] `requires_approval: bool` - HITL flag
-- [x] `approval_id: Optional[str]` - HITL reference
-- [x] `policy_matched: Optional[str]` - Which policy applied
-- [x] `rule_matched: Optional[str]` - Which rule matched
-- [x] `effect: Optional[str]` - Policy effect (allow, deny, warn, audit)
-- [x] `risk_tier: RiskTier` - Risk assessment (LOW, MEDIUM, HIGH, CRITICAL)
-- [x] `failed_checks: List[str]` - Why checks failed
-- [x] `audit_log_id: Optional[str]` - Audit trail reference
-- [x] `warnings: List[str]` - Policy warnings
-- [x] `timestamp: datetime` - When decided
-- [x] `to_dict()` - Serialization method
-
-### A3.2 - AuthorizationEngine Class ✅
-
-#### Core Method: `authorize(req, db) -> AuthorizationDecision`
-
-Implements the complete authorization pipeline:
-
-**Step a: Principal Validation** ✅
-- [x] Check principal is not anonymous
-- [x] Validate principal_id exists
-- [x] Validate principal_type (HUMAN, AGENT, SERVICE)
-- [x] Return detailed error on failure
-
-**Step b: RBAC Check** ✅
-- [x] Map actions to required roles
-- [x] Support wildcard patterns (e.g., `admin.*`)
-- [x] Check principal.has_any_role()
-- [x] Configurable role mappings
-
-**Step c: Scope Validation** ✅
-- [x] Map actions to required OAuth scopes
-- [x] Support hierarchical scopes (read < write < admin)
-- [x] Check principal.has_any_scope()
-- [x] Default scope requirements
-
-**Step d: AXE Trust Tier Check** ✅
-- [x] Validate AXE context if provided
-- [x] Block EXTERNAL trust tier (fail-closed)
-- [x] Validate DMZ authentication
-- [x] Require source_service for DMZ
-
-**Step e: Policy Engine Evaluation** ✅
-- [x] Build PolicyEvaluationContext
-- [x] Call policy_engine.evaluate_action()
-- [x] Handle evaluation errors (fail-closed)
-- [x] Capture matched policy/rule
-
-**Step f: HITL Approval (HIGH/CRITICAL Risk)** ✅
-- [x] Extract risk from POLICY only (Security Critical)
-- [x] Request approval for HIGH risk
-- [x] Request approval for CRITICAL risk
-- [x] Require token for CRITICAL risk
-- [x] Return PENDING_APPROVAL status
-- [x] Link approval_id to decision
-
-**Step g: Audit Log Write** ✅
-- [x] Build comprehensive audit entry
-- [x] Persist to database (AuthAuditLog model)
-- [x] Support optional audit callback
-- [x] Handle DB write failures gracefully
-- [x] Set audit_log_id on decision
-
-**Step h: Return Decision** ✅
-- [x] Return fully populated AuthorizationDecision
-- [x] Include all metadata for audit trail
-- [x] Log result at INFO level
-
-### A3.3 - Risk Assessment ✅
-
-**SECURITY CRITICAL: Risk from POLICY only**
-
-- [x] `_extract_risk_from_policy()` method
-- [x] Never extract risk from request context
-- [x] Prevents request injection attacks
-- [x] Heuristic-based risk assessment
-- [x] Support for explicit policy risk metadata
-
-Risk determination logic:
-- DENY effect → at least MEDIUM risk
-- Rule name contains "critical" or "admin" → CRITICAL
-- Rule name contains "high" or "delete" → HIGH
-- Rule name contains "medium" or "write" → MEDIUM
-- Default → LOW
-
-### A3.4 - Governance Service Integration ✅
-
-- [x] Import GovernanceService
-- [x] `_request_hitl_approval()` method
-- [x] Create ApprovalContext from request
-- [x] Use POLICY_OVERRIDE approval type
-- [x] Set appropriate expiry (24h default)
-- [x] Require token for CRITICAL risk
-- [x] `check_approval_status()` method
-- [x] Map approval status to authorization decision
-- [x] Handle APPROVED, REJECTED, EXPIRED states
-
-### A3.5 - Helper Methods ✅
-
-- [x] `_validate_principal()` - Principal validation logic
-- [x] `_check_rbac()` - Role-based access control
-- [x] `_check_scopes()` - OAuth scope validation
-- [x] `_check_axe_trust_tier()` - AXE security check
-- [x] `_evaluate_policy()` - Policy engine integration
-- [x] `_extract_risk_from_policy()` - Risk assessment
-- [x] `_request_hitl_approval()` - HITL workflow
-- [x] `_write_audit_log()` - Audit persistence
-- [x] `check_approval_status()` - Async approval checking
-
-### A3.6 - Infrastructure ✅
-
-- [x] Singleton pattern with `get_authorization_engine()`
-- [x] `reset_authorization_engine()` for testing
-- [x] Comprehensive docstrings
-- [x] Type hints throughout
-- [x] Error handling with try/except blocks
-- [x] Loguru logging integration
-
-### A3.7 - Dependencies ✅
-
-Imported components:
-- `app.core.auth_deps.Principal, PrincipalType`
-- `app.modules.governance.governance_models.*`
-- `app.modules.governance.governance_service.GovernanceService`
-- `app.modules.policy.schemas.*`
-- `app.modules.policy.service.PolicyEngine`
-- `app.modules.axe_governance.TrustTier, AXERequestContext`
-- `app.models.audit.AuthAuditLog` (conditional)
-
-### A3.8 - Security Considerations ✅
-
-- [x] **Fail-closed**: All errors result in DENY
-- [x] **Risk from Policy**: Never trust request for risk assessment
-- [x] **Audit Everything**: All decisions logged
-- [x] **HITL for High Risk**: HIGH/CRITICAL requires human approval
-- [x] **AXE EXTERNAL Blocked**: Unknown sources cannot access
-- [x] **Principal Validation**: Anonymous principals rejected
-- [x] **No Token on Error**: Detailed errors for debugging, no info leakage
+**Files Created/Modified:**
+```
+A  backend/app/core/token_keys.py          (new)
+M  backend/app/core/config.py               (modified)
+A  backend/app/models/token.py              (new)
+A  backend/app/models/__init__.py           (new)
+A  backend/alembic/versions/a1_add_token_tables.py  (new)
+M  backend/app/core/jwt_middleware.py       (modified)
+A  docs/auth_execution_tracker.md           (new)
+```
 
 ---
 
-## Files Created
+## Next Steps
 
-| File | Purpose | Lines |
-|------|---------|-------|
-| `/backend/app/core/authorization_engine.py` | Main authorization engine | ~780 |
+### Phase 2: Token API Endpoints (A2)
+**Status:** 🔄 Pending
 
----
+**Planned Tasks:**
+1. `POST /auth/token` - Client credentials flow (service accounts)
+2. `POST /auth/refresh` - Refresh token rotation
+3. `POST /auth/revoke` - Token revocation
+4. `GET /.well-known/jwks.json` - JWKS endpoint
+5. Token validation middleware integration
+6. Rate limiting implementation
 
-## Integration Points
+### Phase 3: Agent Credential API (A3)
+**Status:** ⏳ Not Started
 
-### Upstream (Consumers)
-- API route handlers (via dependency injection)
-- AXE gateway handlers
-- Admin controllers
-- Agent execution controllers
+**Planned Tasks:**
+1. `POST /agents/credentials` - Create agent credentials
+2. `GET /agents/credentials` - List agent credentials
+3. `DELETE /agents/credentials/{id}` - Revoke credentials
+4. Capability validation middleware
+5. Delegation chain verification
 
-### Downstream (Dependencies)
-- `GovernanceService` - HITL approvals
-- `PolicyEngine` - Rule evaluation
-- `AuthAuditLog` - Audit persistence
-- `AXERequestContext` - Trust tier validation
+### Phase 4: Governance Features (A4)
+**Status:** ⏳ Not Started
 
----
-
-## Testing Checklist
-
-- [ ] Unit tests for each authorization step
-- [ ] Integration tests with GovernanceService
-- [ ] Integration tests with PolicyEngine
-- [ ] Audit log verification
-- [ ] HITL workflow end-to-end test
-- [ ] AXE trust tier validation test
-- [ ] RBAC edge cases
-- [ ] Scope validation edge cases
-- [ ] Error handling verification
-- [ ] Performance benchmarks
+**Planned Tasks:**
+1. Token audit logging
+2. Anomaly detection
+3. Automatic revocation
+4. Policy engine integration
 
 ---
 
-## Next Steps (A4 - Policy Integration)
+## Technical Notes
 
-1. Extend PolicyEngine with risk metadata
-2. Add policy risk tiers to Policy model
-3. Create admin UI for policy management
-4. Implement policy versioning
-5. Add policy testing framework
-6. Document policy DSL
+### Token Lifetimes (A1 Configuration)
+- **Access Tokens:** 15 minutes (short-lived for security)
+- **Refresh Tokens:** 7 days (with rotation)
+- **Agent Tokens:** 24 hours (service-to-service)
+
+### Security Considerations
+- RS256 only (no HS256 for asymmetric signing)
+- Key ID derived from public key fingerprint
+- All secrets stored as hashes (never plaintext)
+- Token families prevent replay attacks
+- Capability-based access for agents (RBAC alternative)
+
+### Database Schema
+- All token tables use UUID primary keys
+- Proper indexing on lookup fields (token_hash, client_id, agent_id)
+- JSON columns for flexible scope/role/capability storage
+- Self-referential relationships for token rotation and delegation
 
 ---
 
-## Notes
+## References
 
-- **Security Critical**: Risk is determined from POLICY only, NOT from request
-- **HITL**: HIGH/CRITICAL actions require human approval
-- **Audit**: All decisions are logged to AuthAuditLog
-- **Fail-Closed**: Any error results in DENY
-- **AXE**: EXTERNAL trust tier is always blocked
-
----
-
-**Document Version:** 1.0  
-**Last Updated:** 2026-02-25  
-**Author:** A3-Governance Agent
+- [RFC 7517 - JSON Web Key (JWK)](https://tools.ietf.org/html/rfc7517)
+- [RFC 7519 - JSON Web Token (JWT)](https://tools.ietf.org/html/rfc7519)
+- [RFC 7636 - Proof Key for Code Exchange](https://tools.ietf.org/html/rfc7636)
+- [OWASP JWT Security Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/JSON_Web_Token_for_Java_Cheat_Sheet.html)

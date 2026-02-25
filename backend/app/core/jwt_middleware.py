@@ -25,8 +25,13 @@ from jose.exceptions import JWTClaimsError
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.config import get_settings
+from app.core.token_keys import get_token_key_manager, TokenKeyManager
 
 logger = logging.getLogger(__name__)
+
+# A1 Token Architecture: Default to RS256 only
+DEFAULT_ALGORITHMS = ["RS256"]
+SUPPORTED_ALGORITHMS = ["RS256", "RS384", "RS512"]
 
 
 @dataclass
@@ -228,8 +233,10 @@ class JWTValidator:
     """
     JWT token validator with JWKS support.
     
+    A1 Token Architecture: Uses RS256 standard with local or remote JWKS.
+    
     Validates:
-    - Signature (using JWKS)
+    - Signature (using JWKS - local or remote)
     - Issuer
     - Audience
     - Expiration
@@ -238,15 +245,18 @@ class JWTValidator:
     
     def __init__(
         self,
-        jwks_client: JWKSClient,
-        issuer: str,
-        audience: str,
+        jwks_client: Optional[JWKSClient] = None,
+        issuer: str = "",
+        audience: str = "",
         allowed_algorithms: Optional[List[str]] = None,
+        token_key_manager: Optional[TokenKeyManager] = None,
     ):
         self.jwks_client = jwks_client
         self.issuer = issuer
         self.audience = audience
-        self.allowed_algorithms = allowed_algorithms or ["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"]
+        # A1: Default to RS256 only for security
+        self.allowed_algorithms = allowed_algorithms or DEFAULT_ALGORITHMS
+        self._local_key_manager = token_key_manager
     
     def _get_unverified_header(self, token: str) -> Dict[str, Any]:
         """Extract header without verification"""
@@ -266,6 +276,8 @@ class JWTValidator:
         """
         Validate a JWT token and return the payload.
         
+        A1 Token Architecture: Supports both local (token_keys.py) and remote JWKS validation.
+        
         Raises:
             ValueError: If token is invalid
             ExpiredSignatureError: If token is expired
@@ -280,18 +292,54 @@ class JWTValidator:
             raise ValueError("Token missing 'kid' header")
         
         if alg not in self.allowed_algorithms:
-            raise ValueError(f"Algorithm '{alg}' not allowed")
+            raise ValueError(f"Algorithm '{alg}' not allowed. Allowed: {self.allowed_algorithms}")
         
-        # Fetch the signing key
-        jwks_key = await self.jwks_client.get_key(kid)
-        if not jwks_key:
-            raise ValueError(f"Key with kid='{kid}' not found in JWKS")
+        # A1: Try local key manager first (if available), then remote JWKS
+        signing_key = None
+        
+        if self._local_key_manager:
+            try:
+                local_kid = self._local_key_manager.get_key_id()
+                if local_kid == kid:
+                    # Use local key for validation
+                    private_key = self._local_key_manager.get_private_key()
+                    public_key = private_key.public_key()
+                    
+                    # Convert to JWK dict for python-jose
+                    from cryptography.hazmat.primitives import serialization
+                    import base64
+                    
+                    public_numbers = public_key.public_numbers()
+                    n_bytes = public_numbers.n.to_bytes(
+                        (public_numbers.n.bit_length() + 7) // 8, byteorder='big'
+                    )
+                    e_bytes = public_numbers.e.to_bytes(
+                        (public_numbers.e.bit_length() + 7) // 8, byteorder='big'
+                    )
+                    
+                    signing_key = {
+                        "kty": "RSA",
+                        "n": base64.urlsafe_b64encode(n_bytes).rstrip(b'=').decode('ascii'),
+                        "e": base64.urlsafe_b64encode(e_bytes).rstrip(b'=').decode('ascii'),
+                    }
+            except Exception as e:
+                logger.debug(f"Local key validation not available: {e}")
+        
+        # Fall back to remote JWKS if local key not used
+        if signing_key is None:
+            if not self.jwks_client:
+                raise ValueError("No JWKS client configured and no local key available")
+            
+            jwks_key = await self.jwks_client.get_key(kid)
+            if not jwks_key:
+                raise ValueError(f"Key with kid='{kid}' not found in JWKS")
+            signing_key = jwks_key.to_jwk_dict()
         
         # Validate the token
         try:
             claims = jwt.decode(
                 token,
-                jwks_key.to_jwk_dict(),
+                signing_key,
                 algorithms=[alg],
                 issuer=self.issuer,
                 audience=self.audience,
@@ -364,18 +412,42 @@ def get_jwks_client() -> JWKSClient:
     return _jwks_client
 
 
-def get_jwt_validator() -> JWTValidator:
-    """Get or create the global JWT validator"""
+def get_jwt_validator(use_local_keys: bool = False) -> JWTValidator:
+    """
+    Get or create the global JWT validator.
+    
+    A1 Token Architecture: Supports local key validation via token_keys.py
+    
+    Args:
+        use_local_keys: If True, use local token_keys.py for validation (self-hosted JWKS)
+    
+    Returns:
+        JWTValidator configured for RS256
+    """
     global _jwt_validator
     if _jwt_validator is None:
         settings = get_settings()
         if not settings.jwt_issuer or not settings.jwt_audience:
             raise RuntimeError("JWT_ISSUER and JWT_AUDIENCE must be configured")
         
+        # A1: Use local keys if available and requested
+        local_key_manager = None
+        if use_local_keys:
+            try:
+                local_key_manager = get_token_key_manager()
+                # Verify keys are loaded
+                local_key_manager.get_key_id()
+                logger.info("A1 Token Architecture: Using local RS256 keys")
+            except Exception as e:
+                logger.warning(f"Local keys not available, falling back to remote JWKS: {e}")
+                local_key_manager = None
+        
         _jwt_validator = JWTValidator(
-            jwks_client=get_jwks_client(),
+            jwks_client=get_jwks_client() if not local_key_manager else None,
             issuer=settings.jwt_issuer,
             audience=settings.jwt_audience,
+            allowed_algorithms=DEFAULT_ALGORITHMS,  # A1: RS256 only
+            token_key_manager=local_key_manager,
         )
     return _jwt_validator
 
@@ -387,6 +459,140 @@ async def reset_jwks_cache():
         await _jwks_client.close()
     _jwks_client = None
     _jwt_validator = None
+
+
+# A1 Token Architecture: Token creation with RS256
+def create_token(
+    subject: str,
+    scopes: List[str],
+    roles: List[str] = None,
+    token_type: str = "human",
+    expires_delta: Optional[timedelta] = None,
+    extra_claims: Optional[Dict[str, Any]] = None,
+) -> str:
+    """
+    Create a JWT token signed with local RS256 key.
+    
+    A1 Token Architecture: Uses token_keys.py for signing.
+    
+    Args:
+        subject: Token subject (user ID or agent ID)
+        scopes: List of scopes (e.g., ["api:read", "api:write"])
+        roles: List of roles (e.g., ["admin", "operator"])
+        token_type: "human" or "agent"
+        expires_delta: Token lifetime (default: 15 minutes from config)
+        extra_claims: Additional claims to include
+    
+    Returns:
+        Signed JWT token string
+    
+    Raises:
+        RuntimeError: If token keys not initialized
+    """
+    from jose import jwt as jose_jwt
+    
+    settings = get_settings()
+    key_manager = get_token_key_manager()
+    
+    # Ensure keys are loaded
+    try:
+        key_id = key_manager.get_key_id()
+        private_key = key_manager.get_private_key()
+    except RuntimeError:
+        raise RuntimeError(
+            "Token keys not initialized. "
+            "Call init_token_keys() during application startup."
+        )
+    
+    # Build claims
+    now = datetime.utcnow()
+    if expires_delta is None:
+        expires_delta = timedelta(minutes=settings.access_token_expire_minutes)
+    
+    claims = {
+        "sub": subject,
+        "iss": settings.jwt_issuer,
+        "aud": settings.jwt_audience,
+        "iat": now,
+        "exp": now + expires_delta,
+        "scope": " ".join(scopes),
+        "roles": roles or [],
+        "type": token_type,
+    }
+    
+    # Add extra claims
+    if extra_claims:
+        claims.update(extra_claims)
+    
+    # Export private key to PEM for python-jose
+    from cryptography.hazmat.primitives import serialization
+    
+    private_key_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption()
+    ).decode('utf-8')
+    
+    # Sign token
+    token = jose_jwt.encode(
+        claims,
+        private_key_pem,
+        algorithm=settings.jwt_algorithm,  # RS256
+        headers={"kid": key_id}
+    )
+    
+    return token
+
+
+def create_access_token(subject: str, scopes: List[str], **kwargs) -> str:
+    """
+    Create a short-lived access token (default: 15 minutes).
+    
+    A1 Token Architecture: Short-lived access tokens for security.
+    """
+    settings = get_settings()
+    return create_token(
+        subject=subject,
+        scopes=scopes,
+        expires_delta=timedelta(minutes=settings.access_token_expire_minutes),
+        **kwargs
+    )
+
+
+def create_refresh_token(subject: str, scopes: List[str], **kwargs) -> str:
+    """
+    Create a long-lived refresh token (default: 7 days).
+    
+    A1 Token Architecture: Long-lived refresh tokens for session continuity.
+    """
+    settings = get_settings()
+    return create_token(
+        subject=subject,
+        scopes=scopes,
+        expires_delta=timedelta(days=settings.refresh_token_expire_days),
+        **kwargs
+    )
+
+
+def create_agent_token(agent_id: str, capabilities: List[str], **kwargs) -> str:
+    """
+    Create an agent token (default: 24 hours).
+    
+    A1 Token Architecture: Agent tokens with capability claims.
+    """
+    settings = get_settings()
+    extra_claims = kwargs.pop('extra_claims', {})
+    extra_claims['capabilities'] = capabilities
+    
+    return create_token(
+        subject=agent_id,
+        scopes=kwargs.pop('scopes', ['agent:access']),
+        roles=kwargs.pop('roles', ['agent']),
+        token_type='agent',
+        expires_delta=timedelta(hours=settings.agent_token_expire_hours),
+        extra_claims=extra_claims,
+        **kwargs
+    )
 
 
 class JWTAuthenticationMiddleware(BaseHTTPMiddleware):
