@@ -1,0 +1,558 @@
+{
+  "version": "1.0",
+  "created_date": "2026-02-25",
+  "status": "ready_for_execution",
+  "total_modules": 62,
+  "total_issues": 244,
+  "summary": {
+    "critical_modules": 10,
+    "high_modules": 20,
+    "medium_modules": 32,
+    "critical_issues": 33,
+    "high_issues": 117,
+    "medium_issues": 94,
+    "total_estimated_hours": 60,
+    "total_person_weeks": 1.5
+  },
+  "phases": {
+    "phase_0": {
+      "name": "BLOCKING ISSUES (MUST FIX FIRST)",
+      "estimated_hours": 10,
+      "modules": [
+        {
+          "rank": 1,
+          "module": "immune",
+          "score": "3/10",
+          "files": 3,
+          "issue": "Missing enum values (RESOURCE_EXHAUSTION, AGENT_FAILURE, PERFORMANCE_DEGRADATION)",
+          "fix_type": "CODE_FIX",
+          "eta_hours": 0.5,
+          "priority": "P0_IMMEDIATE",
+          "blocker": "YES - runtime crash",
+          "quickwin": true,
+          "dependencies": [],
+          "critical_files": [
+            "backend/app/modules/immune/schemas.py"
+          ],
+          "action": "Add 3 missing enum values to ImmuneEventType"
+        },
+        {
+          "rank": 2,
+          "module": "factory_executor",
+          "score": "5/10",
+          "files": 7,
+          "issue": "Syntax error: method not async but uses await (base.py:409)",
+          "fix_type": "CODE_FIX",
+          "eta_hours": 1,
+          "priority": "P0_IMMEDIATE",
+          "blocker": "YES - blocks factory module",
+          "quickwin": true,
+          "dependencies": ["immune"],
+          "critical_files": [
+            "backend/app/modules/factory_executor/base.py:409"
+          ],
+          "action": "Change 'def _validate_input_strict' to 'async def _validate_input_strict'"
+        },
+        {
+          "rank": 3,
+          "module": "axe_governance",
+          "score": "3/10",
+          "files": 1,
+          "issue": "Hardcoded DMZ_GATEWAY_SECRET",
+          "fix_type": "SECRETS",
+          "eta_hours": 1,
+          "priority": "P0_IMMEDIATE",
+          "blocker": "YES - security critical",
+          "quickwin": true,
+          "dependencies": ["factory_executor"],
+          "critical_files": [
+            "backend/app/modules/axe_governance/__init__.py"
+          ],
+          "action": "Move DMZ_GATEWAY_SECRET to os.environ.get()"
+        },
+        {
+          "rank": 4,
+          "module": "sovereign_mode",
+          "score": "4/10",
+          "files": 17,
+          "issue": "NameError: undefined class/function on import",
+          "fix_type": "CODE_FIX",
+          "eta_hours": 2,
+          "priority": "P0_IMMEDIATE",
+          "blocker": "YES - runtime crash on import",
+          "quickwin": false,
+          "dependencies": ["axe_governance"],
+          "critical_files": [
+            "backend/app/modules/sovereign_mode/"
+          ],
+          "action": "Run: python -c 'from backend.app.modules.sovereign_mode import *' to diagnose exact error, then fix"
+        },
+        {
+          "rank": 5,
+          "module": "skills",
+          "score": "2/10",
+          "files": 12,
+          "issue": "RCE via subprocess.shell=True + NO authentication",
+          "fix_type": "RCE_FIX + AUTH",
+          "eta_hours": 3.5,
+          "priority": "P0_IMMEDIATE",
+          "blocker": "YES - CRITICAL RCE vulnerability",
+          "quickwin": false,
+          "dependencies": ["sovereign_mode"],
+          "critical_files": [
+            "backend/app/modules/skills/router.py",
+            "backend/app/modules/skills/shell_command.py"
+          ],
+          "action": "1. Add require_role(OPERATOR) to all endpoints 2. Replace subprocess.shell=True with subprocess.exec() 3. Add path sandboxing 4. Add command allowlist"
+        },
+        {
+          "rank": 6,
+          "module": "physical_gateway",
+          "score": "6/10",
+          "files": 8,
+          "issue": "In-memory agents/commands (DATA LOSS) + hardcoded MASTER_KEY",
+          "fix_type": "DB_MIGRATION + SECRETS",
+          "eta_hours": 2.5,
+          "priority": "P0_IMMEDIATE",
+          "blocker": "YES - core gateway",
+          "quickwin": false,
+          "dependencies": ["skills"],
+          "critical_files": [
+            "backend/app/modules/physical_gateway/service.py",
+            "backend/app/modules/physical_gateway/security.py"
+          ],
+          "action": "1. Move agents dict to PostgreSQL 2. Move MASTER_KEY to os.environ 3. Create Alembic migration"
+        },
+        {
+          "rank": 7,
+          "module": "dmz_control",
+          "score": "3/10",
+          "files": 5,
+          "issue": "NO authentication on ALL endpoints",
+          "fix_type": "AUTH_ONLY",
+          "eta_hours": 1,
+          "priority": "P0_IMMEDIATE",
+          "blocker": "MEDIUM - security",
+          "quickwin": true,
+          "dependencies": ["physical_gateway"],
+          "critical_files": [
+            "backend/app/modules/dmz_control/router.py"
+          ],
+          "action": "Add require_role(ADMIN) to all endpoints"
+        },
+        {
+          "rank": 8,
+          "module": "foundation",
+          "score": "4/10",
+          "files": 4,
+          "issue": "Config endpoints NO auth + missing audit logging",
+          "fix_type": "AUTH_ONLY + LOGGING",
+          "eta_hours": 1.5,
+          "priority": "P0_IMMEDIATE",
+          "blocker": "MEDIUM",
+          "quickwin": true,
+          "dependencies": ["dmz_control"],
+          "critical_files": [
+            "backend/app/modules/foundation/router.py"
+          ],
+          "action": "1. Add require_role(ADMIN) to config endpoints 2. Add EventStream logging for all changes"
+        },
+        {
+          "rank": 9,
+          "module": "memory",
+          "score": "2/10",
+          "files": 12,
+          "issue": "Complete in-memory storage (DATA LOSS on restart)",
+          "fix_type": "DB_MIGRATION",
+          "eta_hours": 4.5,
+          "priority": "P0_IMMEDIATE",
+          "blocker": "HIGH - data loss",
+          "quickwin": false,
+          "dependencies": ["foundation"],
+          "critical_files": [
+            "backend/app/modules/memory/service.py",
+            "backend/alembic/versions/025_memory_persistence.py"
+          ],
+          "action": "1. Create SQLAlchemy ORM models 2. Create Alembic migration 3. Rewrite service with AsyncSession"
+        },
+        {
+          "rank": 10,
+          "module": "learning",
+          "score": "3/10",
+          "files": 11,
+          "issue": "In-memory strategies/experiments (DATA LOSS)",
+          "fix_type": "DB_MIGRATION",
+          "eta_hours": 3.5,
+          "priority": "P0_IMMEDIATE",
+          "blocker": "HIGH - data loss",
+          "quickwin": false,
+          "dependencies": ["memory"],
+          "critical_files": [
+            "backend/app/modules/learning/service.py"
+          ],
+          "action": "Apply DB migration pattern from memory module"
+        }
+      ]
+    },
+    "phase_1": {
+      "name": "HIGH PRIORITY (THIS WEEK)",
+      "estimated_hours": 20,
+      "modules": [
+        {
+          "rank": 11,
+          "module": "missions",
+          "fix_type": "AUTH_ONLY",
+          "eta_hours": 1,
+          "priority": "P1_THIS_WEEK",
+          "dependencies": ["learning"]
+        },
+        {
+          "rank": 12,
+          "module": "knowledge_graph",
+          "fix_type": "AUTH_ONLY",
+          "eta_hours": 1,
+          "priority": "P1_THIS_WEEK",
+          "dependencies": ["missions"]
+        },
+        {
+          "rank": 13,
+          "module": "fleet",
+          "fix_type": "AUTH_ONLY",
+          "eta_hours": 1,
+          "priority": "P1_THIS_WEEK",
+          "dependencies": ["knowledge_graph"]
+        },
+        {
+          "rank": 14,
+          "module": "threats",
+          "fix_type": "AUTH_ONLY + DB_MIGRATION",
+          "eta_hours": 1.5,
+          "priority": "P1_THIS_WEEK",
+          "dependencies": ["fleet"]
+        },
+        {
+          "rank": 15,
+          "module": "safe_mode",
+          "fix_type": "AUTH_ONLY",
+          "eta_hours": 0.5,
+          "priority": "P1_THIS_WEEK",
+          "dependencies": ["threats"]
+        },
+        {
+          "rank": 16,
+          "module": "runtime_auditor",
+          "fix_type": "DB_MIGRATION",
+          "eta_hours": 1.5,
+          "priority": "P1_THIS_WEEK",
+          "dependencies": ["safe_mode"]
+        },
+        {
+          "rank": 17,
+          "module": "ir_governance",
+          "fix_type": "AUTH_ONLY + LOGGING",
+          "eta_hours": 1.5,
+          "priority": "P1_THIS_WEEK",
+          "dependencies": ["runtime_auditor"]
+        },
+        {
+          "rank": 18,
+          "module": "tool_system",
+          "fix_type": "SANDBOX + SECURITY",
+          "eta_hours": 3.5,
+          "priority": "P1_THIS_WEEK",
+          "dependencies": ["ir_governance"]
+        },
+        {
+          "rank": 19,
+          "module": "connectors",
+          "fix_type": "VALIDATION + RATE_LIMIT + SECURITY",
+          "eta_hours": 3.5,
+          "priority": "P1_THIS_WEEK",
+          "dependencies": ["tool_system"]
+        },
+        {
+          "rank": 20,
+          "module": "llm_router",
+          "fix_type": "VALIDATION + PROMPT_INJECTION",
+          "eta_hours": 2,
+          "priority": "P1_THIS_WEEK",
+          "dependencies": ["connectors"]
+        },
+        {
+          "rank": 21,
+          "module": "integrations",
+          "fix_type": "SECURITY + ASYNC_FIX",
+          "eta_hours": 2.5,
+          "priority": "P1_THIS_WEEK",
+          "dependencies": ["llm_router"]
+        },
+        {
+          "rank": 22,
+          "module": "aro",
+          "fix_type": "DB_MIGRATION",
+          "eta_hours": 2.5,
+          "priority": "P1_THIS_WEEK",
+          "dependencies": ["integrations"]
+        },
+        {
+          "rank": 23,
+          "module": "credits",
+          "fix_type": "DB_MIGRATION + EVENT_SOURCING",
+          "eta_hours": 3.5,
+          "priority": "P1_THIS_WEEK",
+          "dependencies": ["aro"]
+        },
+        {
+          "rank": 24,
+          "module": "karma",
+          "fix_type": "DB_MIGRATION",
+          "eta_hours": 1.5,
+          "priority": "P1_THIS_WEEK",
+          "dependencies": ["credits"]
+        },
+        {
+          "rank": 25,
+          "module": "planning",
+          "fix_type": "DB_MIGRATION",
+          "eta_hours": 2.5,
+          "priority": "P1_THIS_WEEK",
+          "dependencies": ["karma"]
+        },
+        {
+          "rank": 26,
+          "module": "governance",
+          "fix_type": "DB_MIGRATION + LOGGING",
+          "eta_hours": 2.5,
+          "priority": "P1_THIS_WEEK",
+          "dependencies": ["planning"]
+        },
+        {
+          "rank": 27,
+          "module": "supervisor",
+          "fix_type": "AUTH_ONLY + DB_MIGRATION",
+          "eta_hours": 1.5,
+          "priority": "P1_THIS_WEEK",
+          "dependencies": ["governance"]
+        },
+        {
+          "rank": 28,
+          "module": "autonomous_pipeline",
+          "fix_type": "DB_MIGRATION + VALIDATION",
+          "eta_hours": 4.5,
+          "priority": "P1_THIS_WEEK",
+          "dependencies": ["supervisor"]
+        },
+        {
+          "rank": 29,
+          "module": "cluster_system",
+          "fix_type": "DB_MIGRATION + CONCURRENCY",
+          "eta_hours": 4.5,
+          "priority": "P1_THIS_WEEK",
+          "dependencies": ["autonomous_pipeline"]
+        },
+        {
+          "rank": 30,
+          "module": "dna",
+          "fix_type": "DB_MIGRATION",
+          "eta_hours": 2.5,
+          "priority": "P1_THIS_WEEK",
+          "dependencies": ["cluster_system"]
+        }
+      ]
+    },
+    "phase_2": {
+      "name": "MEDIUM PRIORITY (NEXT PHASE)",
+      "estimated_hours": 30,
+      "modules_count": 32,
+      "note": "Defer to next sprint, no blocking issues"
+    }
+  },
+  "execution_strategy": {
+    "team_size": 1,
+    "calendar_weeks": 4,
+    "person_hours_total": 60,
+    "parallel_groups": [
+      {
+        "name": "Group A: Quick Wins",
+        "modules": ["immune", "factory_executor", "safe_mode", "dmz_control", "foundation"],
+        "hours": 3,
+        "can_parallelize": true,
+        "dependencies": []
+      },
+      {
+        "name": "Group B: Code Fixes",
+        "modules": ["axe_governance", "sovereign_mode", "skills"],
+        "hours": 6,
+        "can_parallelize": false,
+        "dependencies": ["Group A"]
+      },
+      {
+        "name": "Group C: Gateway & Core",
+        "modules": ["physical_gateway"],
+        "hours": 2.5,
+        "can_parallelize": false,
+        "dependencies": ["Group B"]
+      },
+      {
+        "name": "Group D: Critical Auth",
+        "modules": ["missions", "knowledge_graph", "fleet", "threats"],
+        "hours": 4,
+        "can_parallelize": true,
+        "dependencies": ["Group C"]
+      },
+      {
+        "name": "Group E: Complex Security",
+        "modules": ["tool_system", "connectors", "llm_router", "integrations"],
+        "hours": 11.5,
+        "can_parallelize": false,
+        "dependencies": ["Group D"]
+      },
+      {
+        "name": "Group F: DB Migrations",
+        "modules": [
+          "memory", "learning", "dna", "aro", "credits", "karma",
+          "runtime_auditor", "planning", "governance", "autonomous_pipeline",
+          "cluster_system", "supervisor", "threats"
+        ],
+        "hours": 37,
+        "can_parallelize": true,
+        "dependencies": ["Group E"],
+        "notes": "Can parallelize after schema design (2-3h)"
+      }
+    ],
+    "critical_path": [
+      "immune (0.5h) → factory_executor (1h) → axe_governance (1h) → sovereign_mode (2h) → skills (3.5h) → physical_gateway (2.5h) → [ALL OTHERS CAN PARALLELIZE OR SEQUENCE]"
+    ],
+    "minimum_calendar_time_weeks": 4
+  },
+  "checkpoints": {
+    "checkpoint_1": {
+      "name": "All Blocking Issues Fixed",
+      "modules": ["immune", "factory_executor", "axe_governance", "sovereign_mode", "skills", "physical_gateway"],
+      "completion_criteria": [
+        "No syntax errors or runtime crashes",
+        "Skills module RCE fixed",
+        "Gateway agents persist across restart",
+        "Secrets moved to environment variables"
+      ],
+      "estimated_day": 3
+    },
+    "checkpoint_2": {
+      "name": "Auth + Quick Wins Complete",
+      "modules": ["dmz_control", "foundation", "missions", "knowledge_graph", "fleet", "threats", "safe_mode"],
+      "completion_criteria": [
+        "All protected endpoints return 401 without auth",
+        "Tests pass for auth enforcement",
+        "No data loss on service restart"
+      ],
+      "estimated_day": 5
+    },
+    "checkpoint_3": {
+      "name": "Complex Security Fixes",
+      "modules": ["tool_system", "connectors", "llm_router", "integrations"],
+      "completion_criteria": [
+        "RCE vectors eliminated from tool_system",
+        "Webhook input validation complete",
+        "No OAuth token leaks",
+        "Prompt injection detection working"
+      ],
+      "estimated_day": 10
+    },
+    "checkpoint_4": {
+      "name": "Database Migrations Complete",
+      "modules": [
+        "memory", "learning", "dna", "aro", "credits", "karma",
+        "runtime_auditor", "planning", "governance", "autonomous_pipeline",
+        "cluster_system", "supervisor"
+      ],
+      "completion_criteria": [
+        "All state persisted to PostgreSQL",
+        "Zero data loss on container restart",
+        "Alembic migrations tested in staging",
+        "Dual-write pattern validated for zero-downtime deploy"
+      ],
+      "estimated_day": 25
+    }
+  },
+  "risk_assessment": {
+    "high_risk_changes": [
+      {
+        "change": "RCE fixes in skills module",
+        "risk": "May break existing skill clients using shell injection",
+        "mitigation": "Test thoroughly before deploy, provide migration guide",
+        "rollback": "Feature flag to revert shell execution (not recommended long-term)"
+      },
+      {
+        "change": "Auth enforcement on previously unprotected endpoints",
+        "risk": "Breaks existing clients without auth tokens",
+        "mitigation": "Announce 1 week before, provide token generation instructions",
+        "rollback": "Temporarily disable auth requirement via environment variable"
+      },
+      {
+        "change": "In-memory to DB migrations",
+        "risk": "Data loss if migration fails during deploy",
+        "mitigation": "Use dual-write pattern, run migration in staging first",
+        "rollback": "Keep old code paths for 1 release, easy data restoration"
+      }
+    ],
+    "test_coverage_requirements": {
+      "unit_tests": "70%+ coverage required",
+      "integration_tests": "Auth, CRUD operations, error handling",
+      "security_tests": "Injection attacks, path traversal, shell escaping",
+      "persistence_tests": "Data survives service restart"
+    }
+  },
+  "deployment_strategy": {
+    "zero_downtime": true,
+    "dual_write_pattern": true,
+    "feature_flags": true,
+    "canary_deploy": true,
+    "health_checks": [
+      "Service starts without errors",
+      "All endpoints respond (401 if not auth)",
+      "Database migrations applied successfully",
+      "No data loss detected"
+    ]
+  },
+  "success_metrics": {
+    "phase_0": {
+      "criteria": [
+        "All blocking issues fixed",
+        "Zero syntax/runtime errors",
+        "All modules import successfully"
+      ]
+    },
+    "phase_1": {
+      "criteria": [
+        "All protected endpoints require auth",
+        "401 returned without token",
+        "403 returned without required role",
+        "No data loss on restart"
+      ]
+    },
+    "phase_2": {
+      "criteria": [
+        "All security vulnerabilities patched",
+        "No RCE vectors",
+        "No prompt injection possible",
+        "No token leaks"
+      ]
+    },
+    "phase_3": {
+      "criteria": [
+        "All state in PostgreSQL",
+        "Audit trail for all sensitive ops",
+        "Zero data loss on any failure",
+        "Full test coverage 70%+"
+      ]
+    },
+    "production_ready": [
+      "All P0+P1 issues resolved",
+      "Full security audit passed",
+      "All endpoints auth + input validation",
+      "All state persisted to DB",
+      "Documentation updated",
+      "Automated tests passing"
+    ]
+  }
+}

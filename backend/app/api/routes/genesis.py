@@ -6,9 +6,15 @@ REST API for agent spawning, evolution, and reproduction.
 
 from typing import List
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from loguru import logger
 
+from app.core.auth_deps import (
+    require_auth,
+    require_role,
+    SystemRole,
+    Principal,
+)
 from app.modules.genesis.blueprints import get_blueprint_library
 from app.modules.genesis.blueprints.schemas import AgentBlueprint
 from app.modules.genesis.core import (
@@ -41,12 +47,17 @@ router = APIRouter(prefix="/api/genesis", tags=["genesis"])
 
 
 @router.post("/spawn", response_model=GenesisAgentResult)
-async def spawn_agent(request: SpawnAgentRequest):
+async def spawn_agent(
+    request: SpawnAgentRequest,
+    principal: Principal = Depends(require_role(SystemRole.OPERATOR, SystemRole.ADMIN)),
+):
     """
     Spawn new agent from blueprint.
 
     Creates a new agent with traits initialized from blueprint profile.
     Supports trait overrides and deterministic spawning via seed.
+
+    **Requires:** OPERATOR or ADMIN role
 
     **Example:**
     ```json
@@ -64,7 +75,7 @@ async def spawn_agent(request: SpawnAgentRequest):
         genesis = get_genesis_service()
         result = await genesis.spawn_agent(request)
 
-        logger.info(f"Spawned agent {result.agent_id} from {request.blueprint_id}")
+        logger.info(f"Spawned agent {result.agent_id} from {request.blueprint_id} by {principal.principal_id}")
         return result
 
     except EthicsViolationError as e:
@@ -77,11 +88,16 @@ async def spawn_agent(request: SpawnAgentRequest):
 
 
 @router.post("/validate", response_model=FoundationValidationResult)
-async def validate_agent_config(context: AgentCreationContext):
+async def validate_agent_config(
+    context: AgentCreationContext,
+    principal: Principal = Depends(require_role(SystemRole.OPERATOR, SystemRole.ADMIN)),
+):
     """
     Validate agent configuration without creating.
 
     Dry-run validation to check if agent configuration passes ethics checks.
+
+    **Requires:** OPERATOR or ADMIN role
 
     **Example:**
     ```json
@@ -100,6 +116,7 @@ async def validate_agent_config(context: AgentCreationContext):
     try:
         foundation = get_foundation_layer()
         result = await foundation.validate_agent_creation(context)
+        logger.debug(f"Validated agent config by {principal.principal_id}")
         return result
 
     except Exception as e:
@@ -113,12 +130,17 @@ async def validate_agent_config(context: AgentCreationContext):
 
 
 @router.post("/evolve", response_model=GenesisEvolutionResult)
-async def evolve_agent(request: EvolveAgentRequest):
+async def evolve_agent(
+    request: EvolveAgentRequest,
+    principal: Principal = Depends(require_role(SystemRole.OPERATOR, SystemRole.ADMIN)),
+):
     """
     Evolve agent based on fitness scores.
 
     Applies beneficial mutations to improve agent performance.
     Mutations are validated by Foundation layer before application.
+
+    **Requires:** OPERATOR or ADMIN role
 
     **Example:**
     ```json
@@ -138,7 +160,7 @@ async def evolve_agent(request: EvolveAgentRequest):
         result = await genesis.evolve_agent(request)
 
         logger.info(
-            f"Evolved agent {request.agent_id}, fitness: {result.fitness_score:.3f}"
+            f"Evolved agent {request.agent_id} by {principal.principal_id}, fitness: {result.fitness_score:.3f}"
         )
         return result
 
@@ -157,11 +179,16 @@ async def evolve_agent(request: EvolveAgentRequest):
 
 
 @router.post("/reproduce", response_model=GenesisReproductionResult)
-async def reproduce_agents(request: ReproduceAgentsRequest):
+async def reproduce_agents(
+    request: ReproduceAgentsRequest,
+    principal: Principal = Depends(require_role(SystemRole.OPERATOR, SystemRole.ADMIN)),
+):
     """
     Create child agent from two parents.
 
     Genetic crossover combines traits from both parents with mutations.
+
+    **Requires:** OPERATOR or ADMIN role
 
     **Example:**
     ```json
@@ -177,7 +204,7 @@ async def reproduce_agents(request: ReproduceAgentsRequest):
         result = await genesis.reproduce_agents(request)
 
         logger.info(
-            f"Reproduced agent {result.child_id} from {request.parent1_id} + {request.parent2_id}"
+            f"Reproduced agent {result.child_id} from {request.parent1_id} + {request.parent2_id} by {principal.principal_id}"
         )
         return result
 
@@ -199,11 +226,14 @@ async def reproduce_agents(request: ReproduceAgentsRequest):
 async def list_blueprints(
     tag: str = None,
     allow_mutations: bool = None,
+    principal: Principal = Depends(require_auth),
 ):
     """
     List all available blueprints.
 
     Optionally filter by tag or mutation allowance.
+
+    **Requires:** Authentication
 
     **Query Parameters:**
     - `tag`: Filter by tag (e.g., "fleet", "safety")
@@ -212,6 +242,7 @@ async def list_blueprints(
     try:
         library = get_blueprint_library()
         blueprints = library.search(tag=tag, allow_mutations=allow_mutations)
+        logger.debug(f"Listed blueprints by {principal.principal_id}")
         return blueprints
 
     except Exception as e:
@@ -220,21 +251,36 @@ async def list_blueprints(
 
 
 @router.get("/blueprints/{blueprint_id}", response_model=AgentBlueprint)
-async def get_blueprint(blueprint_id: str):
-    """Get blueprint by ID."""
+async def get_blueprint(
+    blueprint_id: str,
+    principal: Principal = Depends(require_auth),
+):
+    """
+    Get blueprint by ID.
+
+    **Requires:** Authentication
+    """
     library = get_blueprint_library()
     blueprint = library.get(blueprint_id)
 
     if not blueprint:
         raise HTTPException(status_code=404, detail="Blueprint not found")
 
+    logger.debug(f"Retrieved blueprint {blueprint_id} by {principal.principal_id}")
     return blueprint
 
 
 @router.get("/blueprints/summary")
-async def get_blueprints_summary():
-    """Get blueprint library summary statistics."""
+async def get_blueprints_summary(
+    principal: Principal = Depends(require_auth),
+):
+    """
+    Get blueprint library summary statistics.
+
+    **Requires:** Authentication
+    """
     library = get_blueprint_library()
+    logger.debug(f"Retrieved blueprints summary by {principal.principal_id}")
     return library.get_summary()
 
 
@@ -244,11 +290,16 @@ async def get_blueprints_summary():
 
 
 @router.get("/traits", response_model=List[TraitDefinition])
-async def list_traits(category: str = None):
+async def list_traits(
+    category: str = None,
+    principal: Principal = Depends(require_auth),
+):
     """
     List all trait definitions.
 
     Optionally filter by category.
+
+    **Requires:** Authentication
 
     **Query Parameters:**
     - `category`: Filter by category (cognitive, ethical, performance, etc.)
@@ -268,6 +319,7 @@ async def list_traits(category: str = None):
                     status_code=400, detail=f"Invalid category: {category}"
                 )
 
+        logger.debug(f"Listed traits by {principal.principal_id}")
         return definitions
 
     except HTTPException:
@@ -278,14 +330,22 @@ async def list_traits(category: str = None):
 
 
 @router.get("/traits/{trait_id}", response_model=TraitDefinition)
-async def get_trait(trait_id: str):
-    """Get trait definition by ID."""
+async def get_trait(
+    trait_id: str,
+    principal: Principal = Depends(require_auth),
+):
+    """
+    Get trait definition by ID.
+
+    **Requires:** Authentication
+    """
     trait_service = get_trait_service()
     definition = trait_service.get_definition(trait_id)
 
     if not definition:
         raise HTTPException(status_code=404, detail="Trait not found")
 
+    logger.debug(f"Retrieved trait {trait_id} by {principal.principal_id}")
     return definition
 
 
@@ -295,11 +355,18 @@ async def get_trait(trait_id: str):
 
 
 @router.get("/info")
-async def get_genesis_info():
-    """Get Genesis system information."""
+async def get_genesis_info(
+    principal: Principal = Depends(require_auth),
+):
+    """
+    Get Genesis system information.
+
+    **Requires:** Authentication
+    """
     library = get_blueprint_library()
     trait_service = get_trait_service()
 
+    logger.debug(f"Retrieved genesis info by {principal.principal_id}")
     return {
         "name": "BRAIN Genesis Agent System",
         "version": "1.0.0",

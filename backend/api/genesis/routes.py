@@ -27,6 +27,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi_limiter.depends import RateLimiter
 
 from app.core.redis_client import get_redis
+from app.core.auth_deps import (
+    require_auth,
+    require_role,
+    SystemRole,
+    Principal,
+)
 from brain.agents.genesis_agent.config import get_genesis_settings
 from brain.agents.genesis_agent.dna_validator import ValidationError
 from brain.agents.genesis_agent.events import SimpleAuditLog
@@ -36,7 +42,6 @@ from brain.agents.genesis_agent.genesis_agent import (
     InMemoryRegistry,
 )
 
-from .auth import require_auth
 from .schemas import (
     AgentCreationRequest,
     AgentCreationResponse,
@@ -96,11 +101,14 @@ async def get_genesis_agent() -> GenesisAgent:
         429: {"model": ErrorResponse, "description": "Rate limit exceeded or insufficient budget"},
         503: {"model": ErrorResponse, "description": "Genesis system disabled"},
     },
-    dependencies=[Depends(RateLimiter(times=10, seconds=60))],
+    dependencies=[
+        Depends(RateLimiter(times=10, seconds=60)),
+        Depends(require_role(SystemRole.OPERATOR, SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN)),
+    ],
 )
 async def create_agent(
     request: AgentCreationRequest,
-    user_id: str = Depends(require_auth),
+    principal: Principal = Depends(require_role(SystemRole.OPERATOR, SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN)),
     genesis: GenesisAgent = Depends(get_genesis_agent),
 ):
     """
@@ -160,6 +168,12 @@ async def create_agent(
                    f"have {usable} after reserve ({reserve} reserved)."
         )
 
+    # Log audit trail
+    logger.info(
+        f"Agent creation requested by {principal.principal_id} "
+        f"(role={principal.roles}), template={request.template_name}"
+    )
+
     # Create agent
     try:
         dna = await genesis.create_agent(
@@ -170,6 +184,11 @@ async def create_agent(
 
         # Compute hashes for response
         dna_hash = genesis.compute_dna_hash(dna)
+
+        logger.info(
+            f"Agent created successfully: id={dna.metadata.id}, "
+            f"created_by={principal.principal_id}"
+        )
 
         return AgentCreationResponse(
             success=True,
@@ -192,7 +211,7 @@ async def create_agent(
         logger.error(f"Agent creation failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Agent creation failed: {str(e)}"
+            detail="Agent creation failed"
         )
 
 
@@ -205,6 +224,7 @@ async def create_agent(
 )
 async def get_info(
     genesis: GenesisAgent = Depends(get_genesis_agent),
+    principal: Principal = Depends(require_auth),
 ):
     """
     Get Genesis system information.
@@ -215,11 +235,12 @@ async def get_info(
     - Available templates
     - Budget reserve ratio
 
-    This endpoint does NOT require authentication (public info).
+    Requires authentication (read-only operation).
 
     Returns:
         GenesisInfoResponse with system details
     """
+    logger.debug(f"Genesis info requested by {principal.principal_id}")
     settings = get_genesis_settings()
     available_templates = genesis.validator.list_available_templates()
 
@@ -241,6 +262,7 @@ async def get_info(
 )
 async def list_templates(
     genesis: GenesisAgent = Depends(get_genesis_agent),
+    principal: Principal = Depends(require_auth),
 ):
     """
     List all available agent templates.
@@ -251,11 +273,12 @@ async def list_templates(
     - Agent type
     - Description
 
-    This endpoint does NOT require authentication (public info).
+    Requires authentication (read-only operation).
 
     Returns:
         List[TemplateInfoResponse]: List of template information
     """
+    logger.debug(f"Templates list requested by {principal.principal_id}")
     templates = genesis.validator.list_available_templates()
     result = []
 
@@ -288,6 +311,7 @@ async def list_templates(
 )
 async def get_customization_help(
     genesis: GenesisAgent = Depends(get_genesis_agent),
+    principal: Principal = Depends(require_auth),
 ):
     """
     Get documentation for allowed customizations.
@@ -295,11 +319,12 @@ async def get_customization_help(
     Returns the whitelist of fields that can be customized when creating
     an agent, along with validation rules for each field.
 
-    This endpoint does NOT require authentication (public info).
+    Requires authentication (read-only operation).
 
     Returns:
         CustomizationHelpResponse: Customization documentation
     """
+    logger.debug(f"Customization help requested by {principal.principal_id}")
     help_info = genesis.validator.get_customization_help()
 
     return CustomizationHelpResponse(
@@ -312,12 +337,13 @@ async def get_customization_help(
     response_model=BudgetCheckResponse,
     responses={
         200: {"description": "Budget information"},
+        401: {"description": "Authentication required"},
         403: {"description": "Insufficient permissions"},
     },
 )
 async def check_budget(
     template_name: str,
-    user_id: str = Depends(require_auth),
+    principal: Principal = Depends(require_role(SystemRole.OPERATOR, SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN)),
     genesis: GenesisAgent = Depends(get_genesis_agent),
 ):
     """
@@ -326,7 +352,7 @@ async def check_budget(
     This endpoint checks if sufficient budget is available to create
     an agent from the specified template, accounting for the reserve.
 
-    Requires SYSTEM_ADMIN role.
+    Requires OPERATOR, ADMIN, or SYSTEM_ADMIN role.
 
     Args:
         template_name: Name of template to check cost for
@@ -334,6 +360,7 @@ async def check_budget(
     Returns:
         BudgetCheckResponse: Budget availability information
     """
+    logger.debug(f"Budget check requested by {principal.principal_id} for template={template_name}")
     settings = get_genesis_settings()
 
     # Get costs
@@ -356,12 +383,13 @@ async def check_budget(
     "/killswitch",
     responses={
         200: {"description": "Kill switch toggled"},
+        401: {"description": "Authentication required"},
         403: {"description": "Insufficient permissions"},
     },
 )
 async def toggle_killswitch(
     enabled: bool,
-    user_id: str = Depends(require_auth),
+    principal: Principal = Depends(require_role(SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN)),
 ):
     """
     Toggle Genesis kill switch.
@@ -369,7 +397,7 @@ async def toggle_killswitch(
     This endpoint enables or disables the Genesis Agent system.
     When disabled, all agent creation requests will be rejected.
 
-    Requires SYSTEM_ADMIN role.
+    Requires ADMIN or SYSTEM_ADMIN role.
 
     Args:
         enabled: True to enable, False to disable
@@ -381,14 +409,15 @@ async def toggle_killswitch(
     settings.enabled = enabled
 
     logger.warning(
-        f"Genesis kill switch toggled by {user_id}: enabled={enabled}"
+        f"Genesis kill switch toggled by {principal.principal_id} "
+        f"(role={principal.roles}): enabled={enabled}"
     )
 
     # Emit event if disabled
     if not enabled:
         redis_client = await get_redis()
         await genesis.GenesisEvents.killswitch_triggered(
-            reason=f"Manual shutdown by {user_id}",
+            reason=f"Manual shutdown by {principal.principal_id}",
             redis_client=redis_client,
             audit_log=_audit_log
         )
