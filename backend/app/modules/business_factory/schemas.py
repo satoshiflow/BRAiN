@@ -72,9 +72,10 @@ class ExecutorType(str, Enum):
 
 class WebsiteConfig(BaseModel):
     """Website setup configuration"""
-    domain: str = Field(..., description="Desired domain (e.g., 'example.com')")
+    domain: str = Field(..., max_length=255, description="Desired domain (e.g., 'example.com')")
     template: str = Field(
         default="modern_landing",
+        max_length=100,
         description="Website template ID from template registry"
     )
     pages: List[str] = Field(
@@ -87,22 +88,27 @@ class WebsiteConfig(BaseModel):
     )
     primary_color: str = Field(
         default="#2563eb",
+        max_length=7,
         description="Brand primary color (hex)"
     )
     secondary_color: str = Field(
         default="#64748b",
+        max_length=7,
         description="Brand secondary color (hex)"
     )
     logo_url: Optional[str] = Field(
         None,
+        max_length=2048,
         description="Logo URL or base64 data URI"
     )
     tagline: str = Field(
         default="Welcome to our business",
+        max_length=255,
         description="Hero section tagline"
     )
     description: str = Field(
         default="",
+        max_length=1000,
         description="Meta description for SEO"
     )
 
@@ -139,22 +145,27 @@ class ERPConfig(BaseModel):
     )
     currency: str = Field(
         default="EUR",
+        max_length=3,
         description="Default currency (ISO code)"
     )
     fiscal_year_start: str = Field(
         default="01-01",
+        max_length=5,
         description="Fiscal year start (MM-DD)"
     )
     language: str = Field(
         default="en_US",
+        max_length=10,
         description="Default language (e.g., 'en_US', 'de_DE')"
     )
     timezone: str = Field(
         default="UTC",
-        description="Default timezone"
+        max_length=63,
+        description="Default timezone (IANA format)"
     )
     company_name: Optional[str] = Field(
         None,
+        max_length=255,
         description="Company name in Odoo (defaults to business_name)"
     )
     custom_fields: Dict[str, Any] = Field(
@@ -176,11 +187,12 @@ class ERPConfig(BaseModel):
 
 class IntegrationRequirement(BaseModel):
     """Integration between components"""
-    name: str = Field(..., description="Integration name")
-    source: str = Field(..., description="Source system (e.g., 'website')")
-    target: str = Field(..., description="Target system (e.g., 'odoo')")
+    name: str = Field(..., min_length=1, max_length=255, description="Integration name")
+    source: str = Field(..., max_length=100, description="Source system (e.g., 'website')")
+    target: str = Field(..., max_length=100, description="Target system (e.g., 'odoo')")
     type: str = Field(
         ...,
+        max_length=100,
         description="Integration type (e.g., 'contact_form', 'product_sync')"
     )
     enabled: bool = Field(default=True, description="Enable this integration")
@@ -206,14 +218,14 @@ class BusinessBriefing(BaseModel):
     )
 
     # Basic Info
-    business_name: str = Field(..., min_length=1, description="Legal business name")
+    business_name: str = Field(..., min_length=1, max_length=255, description="Legal business name")
     business_type: BusinessType = Field(..., description="Type of business")
-    industry: str = Field(..., description="Industry sector (e.g., 'IT Services')")
-    country: str = Field(default="DE", description="Primary country (ISO code)")
+    industry: str = Field(..., min_length=1, max_length=100, description="Industry sector (e.g., 'IT Services')")
+    country: str = Field(default="DE", max_length=2, description="Primary country (ISO code)")
 
     # Contact
     contact_email: EmailStr = Field(..., description="Primary contact email")
-    contact_phone: Optional[str] = Field(None, description="Contact phone")
+    contact_phone: Optional[str] = Field(None, max_length=20, description="Contact phone")
 
     # Website Requirements
     website_config: WebsiteConfig = Field(...)
@@ -243,10 +255,10 @@ class BusinessBriefing(BaseModel):
 
     # Metadata
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    created_by: str = Field(default="system", description="User/system that created briefing")
+    created_by: str = Field(default="system", max_length=255, description="User/system that created briefing")
     priority: int = Field(default=10, ge=1, le=100, description="Execution priority (1-100)")
     deadline: Optional[datetime] = Field(None, description="Optional deadline")
-    notes: str = Field(default="", description="Additional notes or requirements")
+    notes: str = Field(default="", max_length=10000, description="Additional notes or requirements")
 
     class Config:
         json_schema_extra = {
