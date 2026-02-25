@@ -38,9 +38,6 @@ class LearningService:
 
     def __init__(self, exploration_rate: float = 0.2) -> None:
         self._exploration_rate = exploration_rate
-        self._total_selections = 0
-        self._total_adaptations = 0
-        self._total_samples = 0
 
         logger.info("🎓 LearningService initialized with PostgreSQL persistence (v%s)", MODULE_VERSION)
 
@@ -231,9 +228,7 @@ class LearningService:
         
         if not strategies:
             return None
-        
-        self._total_selections += 1
-        
+
         # Epsilon-greedy
         if random.random() < self._exploration_rate:
             # Explore: prefer candidates (untested)
@@ -267,9 +262,7 @@ class LearningService:
         
         if not strategy:
             return None
-        
-        self._total_adaptations += 1
-        
+
         # KARMA change per outcome
         KARMA_SUCCESS_BOOST = 2.0
         KARMA_FAILURE_PENALTY = 1.5
@@ -491,8 +484,7 @@ class LearningService:
             exp.treatment_total_metric_value += metric_value
         else:
             return False
-        
-        self._total_samples += 1
+
         exp.updated_at = datetime.now(timezone.utc)
         
         # Auto-evaluate if both variants have min samples
@@ -590,7 +582,6 @@ class LearningService:
             active_strategies=active_strategies,
             total_experiments=total_experiments,
             running_experiments=running_experiments,
-            total_adaptations=self._total_adaptations,
         )
 
     # ------------------------------------------------------------------

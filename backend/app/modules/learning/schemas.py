@@ -254,4 +254,3 @@ class LearningStats(BaseModel):
     active_strategies: int = 0
     total_experiments: int = 0
     running_experiments: int = 0
-    total_adaptations: int = 0
