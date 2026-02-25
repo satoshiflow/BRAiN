@@ -8,7 +8,7 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query, Depends
 from loguru import logger
 
-from app.core.auth_deps import require_admin
+from app.core.auth_deps import require_admin, get_current_principal, Principal
 from app.modules.sovereign_mode.service import get_sovereign_service
 from app.modules.sovereign_mode.schemas import (
     SovereignMode,
@@ -28,12 +28,11 @@ from app.modules.sovereign_mode.schemas import (
 router = APIRouter(
     prefix="/api/sovereign-mode",
     tags=["sovereign-mode"],
-    dependencies=[Depends(require_admin)],
 )
 
 
-@router.get("/info", summary="Get sovereign mode information")
-async def get_info():
+@router.get("/info", summary="Get sovereign mode information", dependencies=[Depends(require_admin)])
+async def get_info(principal: Principal = Depends(get_current_principal)):
     """Get basic sovereign mode system information."""
     return {
         "name": "BRAiN Sovereign Mode",
@@ -62,8 +61,8 @@ async def get_info():
     }
 
 
-@router.get("/status", response_model=SovereignMode, summary="Get current status")
-async def get_status():
+@router.get("/status", response_model=SovereignMode, summary="Get current status", dependencies=[Depends(require_admin)])
+async def get_status(principal: Principal = Depends(get_current_principal)):
     """
     Get current sovereign mode status.
 
@@ -79,8 +78,8 @@ async def get_status():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/mode", response_model=SovereignMode, summary="Change operation mode")
-async def change_mode(request: ModeChangeRequest):
+@router.post("/mode", response_model=SovereignMode, summary="Change operation mode", dependencies=[Depends(require_admin)])
+async def change_mode(request: ModeChangeRequest, principal: Principal = Depends(get_current_principal)):
     """
     Change operation mode.
 
@@ -109,9 +108,10 @@ async def change_mode(request: ModeChangeRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/bundles", response_model=List[Bundle], summary="List bundles")
+@router.get("/bundles", response_model=List[Bundle], summary="List bundles", dependencies=[Depends(require_admin)])
 async def list_bundles(
-    status: Optional[BundleStatus] = Query(None, description="Filter by status")
+    status: Optional[BundleStatus] = Query(None, description="Filter by status"),
+    principal: Principal = Depends(get_current_principal),
 ):
     """
     List available offline bundles.
@@ -129,8 +129,8 @@ async def list_bundles(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/bundles/{bundle_id}", response_model=Bundle, summary="Get bundle details")
-async def get_bundle(bundle_id: str):
+@router.get("/bundles/{bundle_id}", response_model=Bundle, summary="Get bundle details", dependencies=[Depends(require_admin)])
+async def get_bundle(bundle_id: str, principal: Principal = Depends(get_current_principal)):
     """
     Get detailed information about a specific bundle.
 
@@ -153,8 +153,8 @@ async def get_bundle(bundle_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/bundles/load", response_model=Bundle, summary="Load bundle")
-async def load_bundle(request: BundleLoadRequest):
+@router.post("/bundles/load", response_model=Bundle, summary="Load bundle", dependencies=[Depends(require_admin)])
+async def load_bundle(request: BundleLoadRequest, principal: Principal = Depends(get_current_principal)):
     """
     Load an offline model bundle.
 
@@ -185,11 +185,13 @@ async def load_bundle(request: BundleLoadRequest):
 @router.post(
     "/bundles/{bundle_id}/validate",
     response_model=ValidationResult,
-    summary="Validate bundle"
+    summary="Validate bundle",
+    dependencies=[Depends(require_admin)]
 )
 async def validate_bundle(
     bundle_id: str,
     force: bool = Query(False, description="Force revalidation"),
+    principal: Principal = Depends(get_current_principal),
 ):
     """
     Validate bundle integrity.
@@ -213,10 +215,12 @@ async def validate_bundle(
 @router.get(
     "/network/check",
     response_model=NetworkCheckResult,
-    summary="Check network connectivity"
+    summary="Check network connectivity",
+    dependencies=[Depends(require_admin)]
 )
 async def check_network(
-    include_firewall: bool = True
+    include_firewall: bool = True,
+    principal: Principal = Depends(get_current_principal),
 ):
     """
     Check network connectivity.
@@ -268,8 +272,8 @@ async def check_network(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/config", response_model=ModeConfig, summary="Get configuration")
-async def get_config():
+@router.get("/config", response_model=ModeConfig, summary="Get configuration", dependencies=[Depends(require_admin)])
+async def get_config(principal: Principal = Depends(get_current_principal)):
     """
     Get current sovereign mode configuration.
 
@@ -284,8 +288,8 @@ async def get_config():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/config", response_model=ModeConfig, summary="Update configuration")
-async def update_config(updates: dict):
+@router.put("/config", response_model=ModeConfig, summary="Update configuration", dependencies=[Depends(require_admin)])
+async def update_config(updates: dict, principal: Principal = Depends(get_current_principal)):
     """
     Update sovereign mode configuration.
 
@@ -314,10 +318,11 @@ async def update_config(updates: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/audit", response_model=List[AuditEntry], summary="Get audit log")
+@router.get("/audit", response_model=List[AuditEntry], summary="Get audit log", dependencies=[Depends(require_admin)])
 async def get_audit_log(
     limit: int = Query(100, ge=1, le=1000, description="Max entries to return"),
     event_type: Optional[str] = Query(None, description="Filter by event type"),
+    principal: Principal = Depends(get_current_principal),
 ):
     """
     Get audit log entries.
@@ -349,8 +354,8 @@ async def get_audit_log(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/statistics", summary="Get statistics")
-async def get_statistics():
+@router.get("/statistics", summary="Get statistics", dependencies=[Depends(require_admin)])
+async def get_statistics(principal: Principal = Depends(get_current_principal)):
     """
     Get comprehensive sovereign mode statistics.
 
@@ -367,8 +372,8 @@ async def get_statistics():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/bundles/discover", summary="Discover bundles")
-async def discover_bundles():
+@router.post("/bundles/discover", summary="Discover bundles", dependencies=[Depends(require_admin)])
+async def discover_bundles(principal: Principal = Depends(get_current_principal)):
     """
     Trigger bundle discovery.
 
@@ -391,9 +396,10 @@ async def discover_bundles():
 
 @router.delete(
     "/bundles/{bundle_id}/quarantine",
-    summary="Remove from quarantine"
+    summary="Remove from quarantine",
+    dependencies=[Depends(require_admin)]
 )
-async def remove_quarantine(bundle_id: str):
+async def remove_quarantine(bundle_id: str, principal: Principal = Depends(get_current_principal)):
     """
     Remove bundle from quarantine.
 
@@ -442,8 +448,8 @@ from app.modules.sovereign_mode.ipv6_monitoring import (
 from fastapi.responses import PlainTextResponse
 
 
-@router.get("/ipv6/traffic", response_model=IPv6TrafficStats)
-async def get_ipv6_traffic_stats():
+@router.get("/ipv6/traffic", response_model=IPv6TrafficStats, dependencies=[Depends(require_admin)])
+async def get_ipv6_traffic_stats(principal: Principal = Depends(get_current_principal)):
     """
     Get IPv6 traffic statistics.
 
@@ -467,8 +473,8 @@ async def get_ipv6_traffic_stats():
         )
 
 
-@router.get("/ipv6/firewall", response_model=IPv6FirewallStats)
-async def get_ipv6_firewall_stats():
+@router.get("/ipv6/firewall", response_model=IPv6FirewallStats, dependencies=[Depends(require_admin)])
+async def get_ipv6_firewall_stats(principal: Principal = Depends(get_current_principal)):
     """
     Get IPv6 firewall statistics.
 
@@ -493,8 +499,8 @@ async def get_ipv6_firewall_stats():
         )
 
 
-@router.get("/ipv6/metrics/prometheus", response_class=PlainTextResponse)
-async def get_ipv6_prometheus_metrics():
+@router.get("/ipv6/metrics/prometheus", response_class=PlainTextResponse, dependencies=[Depends(require_admin)])
+async def get_ipv6_prometheus_metrics(principal: Principal = Depends(get_current_principal)):
     """
     Get IPv6 metrics in Prometheus format.
 
@@ -538,10 +544,11 @@ from app.modules.sovereign_mode.firewall_audit import (
 from typing import Dict, Any
 
 
-@router.get("/firewall/audit/recent", response_model=List[FirewallAuditEntry])
+@router.get("/firewall/audit/recent", response_model=List[FirewallAuditEntry], dependencies=[Depends(require_admin)])
 async def get_recent_firewall_audit_entries(
     limit: int = 100,
     operation: Optional[str] = None,
+    principal: Principal = Depends(get_current_principal),
 ):
     """
     Get recent firewall audit log entries.
@@ -591,8 +598,8 @@ async def get_recent_firewall_audit_entries(
         )
 
 
-@router.get("/firewall/audit/stats", response_model=Dict[str, Any])
-async def get_firewall_audit_stats():
+@router.get("/firewall/audit/stats", response_model=Dict[str, Any], dependencies=[Depends(require_admin)])
+async def get_firewall_audit_stats(principal: Principal = Depends(get_current_principal)):
     """
     Get firewall audit statistics.
 
@@ -623,22 +630,28 @@ async def get_firewall_audit_stats():
 # ============================================================================
 
 
-@router.post("/bundles/{bundle_id}/sign", summary="Sign bundle with system key")
-async def sign_bundle_endpoint(bundle_id: str):
+@router.post("/bundles/{bundle_id}/sign", summary="Sign bundle with system key", dependencies=[Depends(require_admin)])
+async def sign_bundle_endpoint(bundle_id: str, principal: Principal = Depends(get_current_principal)):
     """
-    Sign a bundle using the system signing key.
+    Sign a bundle using the persistent system signing key.
 
-    **Auth**: Owner only (TODO: Add auth middleware)
+    **Auth**: ADMIN role required
+
+    **Security Notes**:
+    - Uses persistent system key (not ephemeral)
+    - Key is stored with 0600 permissions (owner-only)
+    - Signatures are verifiable across system restarts
+    - All operations are audit-logged
 
     **Returns**: Bundle with signature added
     """
     from app.modules.sovereign_mode.crypto import (
-        generate_keypair,
         sign_bundle as crypto_sign_bundle,
         export_public_key_pem,
         export_public_key_hex,
     )
     from app.modules.sovereign_mode.keyring import get_trusted_keyring
+    from app.modules.sovereign_mode.system_key import get_system_signing_key
     from datetime import datetime
 
     service = get_sovereign_mode_service()
@@ -649,9 +662,8 @@ async def sign_bundle_endpoint(bundle_id: str):
         if not bundle:
             raise HTTPException(status_code=404, detail=f"Bundle not found: {bundle_id}")
 
-        # Generate or load system key (simplified for now)
-        # TODO: Use persistent system key from storage
-        private_key, public_key = generate_keypair()
+        # Load persistent system key (created once, reused thereafter)
+        private_key, public_key = get_system_signing_key()
         public_key_pem = export_public_key_pem(public_key)
         public_key_hex = export_public_key_hex(public_key)
 
@@ -666,7 +678,7 @@ async def sign_bundle_endpoint(bundle_id: str):
                 origin="system",
                 trust_level="full",
                 added_by="system",
-                description="System master signing key",
+                description="System master signing key (persistent)",
             )
 
         # Sign bundle
@@ -679,19 +691,22 @@ async def sign_bundle_endpoint(bundle_id: str):
         bundle.signed_by_key_id = key_id
         bundle.signed_at = datetime.utcnow()
 
-        logger.info(f"Signed bundle {bundle_id} with key {key_id}")
+        logger.info(
+            f"Signed bundle {bundle_id} with persistent system key {key_id} "
+            f"(admin: {principal.name})"
+        )
 
         return bundle
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to sign bundle {bundle_id}: {e}")
+        logger.error(f"Failed to sign bundle {bundle_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to sign bundle: {str(e)}")
 
 
-@router.post("/bundles/{bundle_id}/verify", summary="Verify bundle signature")
-async def verify_bundle_endpoint(bundle_id: str):
+@router.post("/bundles/{bundle_id}/verify", summary="Verify bundle signature", dependencies=[Depends(require_admin)])
+async def verify_bundle_endpoint(bundle_id: str, principal: Principal = Depends(get_current_principal)):
     """
     Verify a bundle's signature against trusted keyring.
 
@@ -717,11 +732,12 @@ async def verify_bundle_endpoint(bundle_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to verify bundle: {str(e)}")
 
 
-@router.get("/keys", summary="List trusted keys")
+@router.get("/keys", summary="List trusted keys", dependencies=[Depends(require_admin)])
 async def list_trusted_keys(
     origin: Optional[str] = None,
     trust_level: Optional[str] = None,
     include_revoked: bool = False,
+    principal: Principal = Depends(get_current_principal),
 ):
     """
     List all trusted public keys in keyring.
@@ -752,13 +768,14 @@ async def list_trusted_keys(
         raise HTTPException(status_code=500, detail=f"Failed to list keys: {str(e)}")
 
 
-@router.post("/keys", summary="Add trusted key")
+@router.post("/keys", summary="Add trusted key", dependencies=[Depends(require_admin)])
 async def add_trusted_key(
     key_id: str,
     public_key_pem: str,
     origin: str = "owner",
     trust_level: str = "full",
     description: Optional[str] = None,
+    principal: Principal = Depends(get_current_principal),
 ):
     """
     Add a new trusted public key to the keyring.
@@ -799,8 +816,8 @@ async def add_trusted_key(
         raise HTTPException(status_code=500, detail=f"Failed to add key: {str(e)}")
 
 
-@router.delete("/keys/{key_id}", summary="Remove trusted key")
-async def remove_trusted_key(key_id: str, revoke: bool = False):
+@router.delete("/keys/{key_id}", summary="Remove trusted key", dependencies=[Depends(require_admin)])
+async def remove_trusted_key(key_id: str, revoke: bool = False, principal: Principal = Depends(get_current_principal)):
     """
     Remove or revoke a trusted key.
 
@@ -851,8 +868,8 @@ async def remove_trusted_key(key_id: str, revoke: bool = False):
 # ============================================================================
 
 
-@router.post("/evidence/export", summary="Export governance evidence pack")
-async def export_evidence(request: EvidenceExportRequest) -> EvidencePack:
+@router.post("/evidence/export", summary="Export governance evidence pack", dependencies=[Depends(require_admin)])
+async def export_evidence(request: EvidenceExportRequest, principal: Principal = Depends(get_current_principal)) -> EvidencePack:
     """
     Generate auditor/investor-ready governance evidence pack.
     
@@ -930,8 +947,8 @@ async def export_evidence(request: EvidenceExportRequest) -> EvidencePack:
         raise HTTPException(status_code=500, detail=f"Failed to export evidence: {str(e)}")
 
 
-@router.post("/evidence/verify", summary="Verify evidence pack integrity")
-async def verify_evidence(pack: EvidencePack) -> dict:
+@router.post("/evidence/verify", summary="Verify evidence pack integrity", dependencies=[Depends(require_admin)])
+async def verify_evidence(pack: EvidencePack, principal: Principal = Depends(get_current_principal)) -> dict:
     """
     Verify integrity of an evidence pack.
     

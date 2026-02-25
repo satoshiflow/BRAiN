@@ -10,13 +10,12 @@ from loguru import logger
 from datetime import datetime
 
 from app.modules.safe_mode.service import get_safe_mode_service
-from app.core.auth_deps import require_operator, Principal
+from app.core.auth_deps import require_operator, require_admin, get_current_principal, Principal
 
 
 router = APIRouter(
     prefix="/api/safe-mode",
     tags=["safe-mode"],
-    dependencies=[Depends(require_operator)],
 )
 
 
@@ -68,9 +67,9 @@ def _audit_safe_mode_change(
     logger.bind(audit=True).info(f"Safe mode {action} by {principal.principal_id}", **audit_event)
 
 
-@router.get("/info")
+@router.get("/info", dependencies=[Depends(require_operator)])
 async def get_safe_mode_info(
-    principal: Principal = Depends(require_operator)
+    principal: Principal = Depends(get_current_principal)
 ):
     """
     Get safe mode information.
@@ -96,9 +95,9 @@ async def get_safe_mode_info(
     }
 
 
-@router.get("/status")
+@router.get("/status", dependencies=[Depends(require_operator)])
 async def get_safe_mode_status(
-    principal: Principal = Depends(require_operator)
+    principal: Principal = Depends(get_current_principal)
 ):
     """
     Get current safe mode status.
@@ -125,15 +124,15 @@ async def get_safe_mode_status(
         )
 
 
-@router.post("/enable")
+@router.post("/enable", dependencies=[Depends(require_admin)])
 async def enable_safe_mode(
     request: SafeModeEnableRequest,
-    principal: Principal = Depends(require_operator)
+    principal: Principal = Depends(get_current_principal)
 ):
     """
     Enable safe mode.
 
-    **Requires ADMIN role.**
+    **Requires ADMIN role (not OPERATOR).**
 
     **Blocks:**
     - Factory executions
@@ -200,15 +199,15 @@ async def enable_safe_mode(
         )
 
 
-@router.post("/disable")
+@router.post("/disable", dependencies=[Depends(require_admin)])
 async def disable_safe_mode(
     request: SafeModeDisableRequest,
-    principal: Principal = Depends(require_operator)
+    principal: Principal = Depends(get_current_principal)
 ):
     """
     Disable safe mode.
 
-    **Requires ADMIN role.**
+    **Requires ADMIN role (not OPERATOR).**
 
     **Restores:**
     - Factory executions
