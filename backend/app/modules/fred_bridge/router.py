@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.auth_deps import require_role
+from app.core.auth_deps import require_auth, require_role
 from app.modules.fred_bridge.schemas import (
     FredTicket,
     FredTicketCreate,
@@ -264,6 +264,7 @@ async def create_mock_patch(
 @router.get("/health")
 async def bridge_health(
     db: AsyncSession = Depends(get_db),
+    principal = Depends(require_auth),
 ):
     """Get Bridge system health status"""
     service = await get_bridge_service(db)
