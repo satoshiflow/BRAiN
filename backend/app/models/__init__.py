@@ -10,6 +10,7 @@ from app.models.courses import Course, CourseModule, CourseLesson, Enrollment
 from app.models.audit import AuthAuditLog
 from app.models.policy import Policy
 from app.models.autonomous_pipeline import Workspace, Project, RunContract
+from app.models.widget import WidgetSessionORM, WidgetMessageORM, WidgetCredentialORM
 
 __all__ = [
     # User models
@@ -32,4 +33,8 @@ __all__ = [
     "Workspace",
     "Project",
     "RunContract",
+    # Widget models
+    "WidgetSessionORM",
+    "WidgetMessageORM",
+    "WidgetCredentialORM",
 ]

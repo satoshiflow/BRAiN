@@ -105,6 +105,7 @@ from app.modules.governor.router import router as governor_router
 from app.modules.axe_fusion.router import router as axe_fusion_router
 from app.modules.axe_identity.router import router as axe_identity_router
 from app.modules.axe_knowledge.router import router as axe_knowledge_router
+from app.modules.axe_widget.router import router as axe_widget_router
 
 # Agent Management Router (Core Module - Phase 1)
 from app.modules.agent_management.router import router as agent_management_router
@@ -400,6 +401,9 @@ def create_app() -> FastAPI:
 
     # AXE Knowledge Router (Knowledge Base - TASK-003)
     app.include_router(axe_knowledge_router, tags=["axe-knowledge"])
+
+    # AXE Widget Router (Embedded Chat Widget)
+    app.include_router(axe_widget_router, tags=["axe-widget"])
 
     # Chat Router (AXE UI Integration)
     app.include_router(chat_router, prefix="/api", tags=["chat"])
