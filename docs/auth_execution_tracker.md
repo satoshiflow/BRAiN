@@ -250,3 +250,83 @@ Migration:
 ---
 
 *Last updated: 2025-02-25 by Agent A4*
+
+---
+
+## Phase 6: Router Security Lockdown (A6)
+
+**Status:** ✅ COMPLETE (2026-02-25)  
+**Agent:** A6-RouterSecurity  
+**Branch:** `claude/auth-governance-engine-vZR1n`
+
+### A6.1 - Memory Router (`/backend/app/modules/memory/router.py`)
+
+**Change:** Added router-level authentication dependency
+- [x] Import `require_auth` from `app.core.auth_deps`
+- [x] Added `dependencies=[Depends(require_auth)]` to router
+- [x] ALL endpoints now require authentication
+
+### A6.2 - Learning Router (`/backend/app/modules/learning/router.py`)
+
+**Change:** Added router-level authentication dependency
+- [x] Import `require_auth` from `app.core.auth_deps`
+- [x] Added `dependencies=[Depends(require_auth)]` to router
+- [x] ALL endpoints now require authentication
+
+### A6.3 - Foundation Router (`/backend/app/modules/foundation/router.py`)
+
+**Changes:** Added authentication to read endpoints
+- [x] `/status` - Added `require_auth`
+- [x] `/validate` - Added `require_auth`
+- [x] `/validate-batch` - Added `require_auth`
+- [x] `/behavior-tree/execute` - Added `require_auth`
+- [x] `/behavior-tree/validate` - Added `require_auth`
+- [x] `/info` - Added `require_auth`
+- [x] `/health` - Added `require_auth`
+- [x] `/config` (GET) - Already had `require_auth`
+- [x] `/config` (PUT) - Already had `require_admin`
+- [x] `/audit-log` - Already had `require_admin`
+
+### A6.4 - Knowledge Graph Router (`/backend/app/modules/knowledge_graph/router.py`)
+
+**Changes:** Added authentication to all non-reset endpoints
+- [x] Import `require_auth` from `app.core.auth_deps`
+- [x] `/info` - Added `require_auth`
+- [x] `/add` - Added `require_auth`
+- [x] `/cognify` - Added `require_auth`
+- [x] `/search` - Added `require_auth`
+- [x] `/datasets` - Added `require_auth`
+- [x] `/missions/record` - Added `require_auth`
+- [x] `/missions/similar` - Added `require_auth`
+- [x] `/agents/{agent_id}/expertise` - Added `require_auth`
+- [x] `/health` - Added `require_auth`
+- [x] `/reset/request` - Already had `require_admin`
+- [x] `/reset/confirm` - Already had `require_admin`
+
+### A6.5 - Skills Router (`/backend/app/modules/skills/router.py`)
+
+**Changes:** Updated execute endpoints to use `require_operator` + scope check
+- [x] Import `require_operator` from `app.core.auth_deps`
+- [x] `POST /{skill_id}/execute` - Changed to `require_operator` + scope `skills:execute`
+- [x] `POST /execute` - Changed to `require_operator` + scope `skills:execute`
+
+### A6.6 - Security Summary Table
+
+| Module | Auth Level | Endpoints |
+|--------|-----------|-----------|
+| Memory | `require_auth` | All 17 endpoints |
+| Learning | `require_auth` | All 16 endpoints |
+| Foundation | Mixed | Read=auth, Config=admin |
+| Knowledge Graph | Mixed | Read/Write=auth, Reset=admin |
+| Skills | Mixed | Execute=operator+scope |
+
+### A6.7 - Files Modified
+
+```
+M  backend/app/modules/memory/router.py      (+3 lines)
+M  backend/app/modules/learning/router.py    (+3 lines)
+M  backend/app/modules/foundation/router.py  (+9 endpoints)
+M  backend/app/modules/knowledge_graph/router.py (+10 endpoints)
+M  backend/app/modules/skills/router.py      (+2 endpoints)
+M  docs/auth_execution_tracker.md            (this update)
+```

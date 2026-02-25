@@ -17,8 +17,10 @@ Endpoints:
 - GET /api/aro/audit - Get audit log
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import List, Optional
+
+from app.core.auth_deps import require_auth, require_role, require_operator, get_current_principal, Principal
 
 from .service import get_aro_service
 from .schemas import (
@@ -34,7 +36,11 @@ from .schemas import (
     AuditLogEntry,
 )
 
-router = APIRouter(prefix="/api/aro", tags=["ARO"])
+router = APIRouter(
+    prefix="/api/aro",
+    tags=["ARO"],
+    dependencies=[Depends(require_auth)]
+)
 
 
 # ============================================================================

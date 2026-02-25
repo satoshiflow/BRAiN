@@ -6,8 +6,10 @@ FastAPI endpoints for Multi-Agent Coordination.
 
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, status, Depends
 from loguru import logger
+
+from app.core.auth_deps import require_auth, get_current_principal, Principal
 
 from .schemas import (
     AgentMessage,
@@ -25,7 +27,11 @@ from .schemas import (
 )
 from .service import get_coordination_service
 
-router = APIRouter(prefix="/api/coordination", tags=["coordination"])
+router = APIRouter(
+    prefix="/api/coordination",
+    tags=["coordination"],
+    dependencies=[Depends(require_auth)]
+)
 
 
 # ============================================================================

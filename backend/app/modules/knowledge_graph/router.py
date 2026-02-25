@@ -35,15 +35,19 @@ from .schemas import (
 
 # Import auth dependencies - try multiple locations for compatibility
 try:
-    from app.core.auth_deps import require_admin as require_admin_user
+    from app.core.auth_deps import require_admin as require_admin_user, require_auth
 except ImportError:
     try:
         from app.core.security import require_admin as require_admin_user
+        from app.core.auth_deps import require_auth
     except ImportError:
         # Fallback if auth not available
         async def require_admin_user():
             """Fallback - no auth required in dev mode"""
             return {"principal_id": "dev_user", "roles": ["admin"]}
+        async def require_auth():
+            """Fallback - no auth required in dev mode"""
+            return {"principal_id": "dev_user", "roles": ["user"]}
 
 
 # Create router
@@ -151,7 +155,9 @@ async def _audit_kg_reset(
     response_model=KnowledgeGraphInfo,
     summary="Get knowledge graph system information",
 )
-async def get_info():
+async def get_info(
+    user=Depends(require_auth),
+):
     """
     Get information about the knowledge graph system
 
@@ -167,7 +173,10 @@ async def get_info():
     response_model=AddDataResponse,
     summary="Add data to knowledge graph",
 )
-async def add_data(request: AddDataRequest):
+async def add_data(
+    request: AddDataRequest,
+    user=Depends(require_auth),
+):
     """
     Add data to the knowledge graph
 
@@ -189,7 +198,10 @@ async def add_data(request: AddDataRequest):
     response_model=CognifyResponse,
     summary="Process data into knowledge graph",
 )
-async def cognify_data(request: CognifyRequest):
+async def cognify_data(
+    request: CognifyRequest,
+    user=Depends(require_auth),
+):
     """
     Process data into knowledge graph (extract entities and relationships)
 
@@ -213,7 +225,10 @@ async def cognify_data(request: CognifyRequest):
     response_model=SearchResponse,
     summary="Search knowledge graph",
 )
-async def search_knowledge_graph(request: SearchRequest):
+async def search_knowledge_graph(
+    request: SearchRequest,
+    user=Depends(require_auth),
+):
     """
     Search the knowledge graph using semantic search
 
@@ -237,7 +252,9 @@ async def search_knowledge_graph(request: SearchRequest):
     response_model=ListDatasetsResponse,
     summary="List all datasets",
 )
-async def list_datasets():
+async def list_datasets(
+    user=Depends(require_auth),
+):
     """
     List all datasets in the knowledge graph
 
@@ -510,7 +527,10 @@ async def reset_knowledge_graph_deprecated():
     summary="Record mission context",
     tags=["agent-memory"],
 )
-async def record_mission_context(mission: MissionContextRequest):
+async def record_mission_context(
+    mission: MissionContextRequest,
+    user=Depends(require_auth),
+):
     """
     Record a mission's context in the knowledge graph
 
@@ -534,6 +554,7 @@ async def record_mission_context(mission: MissionContextRequest):
 async def find_similar_missions(
     mission: MissionContextRequest,
     limit: int = 5,
+    user=Depends(require_auth),
 ):
     """
     Find missions similar to the given mission
@@ -561,7 +582,10 @@ async def find_similar_missions(
     summary="Get agent expertise",
     tags=["agent-memory"],
 )
-async def get_agent_expertise(agent_id: str):
+async def get_agent_expertise(
+    agent_id: str,
+    user=Depends(require_auth),
+):
     """
     Extract agent's expertise from decision history
 
@@ -583,7 +607,9 @@ async def get_agent_expertise(agent_id: str):
     "/health",
     summary="Knowledge graph health check",
 )
-async def health_check():
+async def health_check(
+    user=Depends(require_auth),
+):
     """
     Check knowledge graph system health
 

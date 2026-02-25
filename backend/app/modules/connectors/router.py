@@ -9,8 +9,10 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from loguru import logger
+
+from app.core.auth_deps import require_auth, require_operator, get_current_principal, Principal
 
 from app.modules.connectors.schemas import (
     ConnectorActionRequest,
@@ -24,7 +26,11 @@ from app.modules.connectors.schemas import (
 )
 from app.modules.connectors.service import get_connector_service
 
-router = APIRouter(prefix="/api/connectors/v2", tags=["connectors-v2"])
+router = APIRouter(
+    prefix="/api/connectors/v2",
+    tags=["connectors-v2"],
+    dependencies=[Depends(require_auth)]
+)
 
 
 # ============================================================================

@@ -10,6 +10,8 @@ from fastapi.responses import JSONResponse
 from typing import Dict, Any, List, Optional
 from loguru import logger
 
+from app.core.auth_deps import require_auth, require_operator, get_current_principal, Principal
+
 # EventStream Integration (Sprint 1)
 from mission_control_core.core.event_stream import EventStream
 
@@ -43,7 +45,11 @@ from app.modules.autonomous_pipeline.ir_gateway import (
     IRGatewayResult,
 )
 
-router = APIRouter(prefix="/api/course-factory", tags=["course-factory"])
+router = APIRouter(
+    prefix="/api/course-factory",
+    tags=["course-factory"],
+    dependencies=[Depends(require_auth)]
+)
 
 
 # Dependency Injection (Sprint 1)

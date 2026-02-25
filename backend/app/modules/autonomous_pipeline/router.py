@@ -4,9 +4,11 @@ Autonomous Pipeline Router (Sprint 8)
 API endpoints for autonomous business pipeline.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from typing import Dict, Any
 from loguru import logger
+
+from app.core.auth_deps import require_auth, require_operator, get_current_principal, Principal
 
 from app.modules.autonomous_pipeline.schemas import (
     BusinessIntentInput,
@@ -28,7 +30,11 @@ from app.modules.autonomous_pipeline.run_contract import (
 )
 
 
-router = APIRouter(prefix="/api/pipeline", tags=["autonomous-pipeline"])
+router = APIRouter(
+    prefix="/api/pipeline",
+    tags=["autonomous-pipeline"],
+    dependencies=[Depends(require_auth)]
+)
 
 
 @router.get("/info")

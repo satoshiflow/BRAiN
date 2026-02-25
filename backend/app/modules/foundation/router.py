@@ -541,7 +541,9 @@ async def get_audit_log(
 
 
 @router.get("/health")
-async def foundation_health():
+async def foundation_health(
+    principal: Principal = Depends(require_auth),
+):
     """
     Health check endpoint for Foundation module.
 
