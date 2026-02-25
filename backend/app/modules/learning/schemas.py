@@ -71,11 +71,12 @@ class ExperimentStatus(str, Enum):
 
 class MetricEntry(BaseModel):
     """A single metric data point."""
+
     metric_id: str = Field(default_factory=lambda: f"met_{uuid.uuid4().hex[:12]}")
-    agent_id: str
+    agent_id: str = Field(..., max_length=100)
     metric_type: MetricType
     value: float
-    unit: str = ""
+    unit: str = Field("", max_length=50)
     tags: Dict[str, str] = Field(default_factory=dict)
     timestamp: float = Field(default_factory=time.time)
     context: Dict[str, Any] = Field(default_factory=dict)
@@ -108,7 +109,8 @@ class MetricAggregation(BaseModel):
 
 class MetricQuery(BaseModel):
     """Query for metrics."""
-    agent_id: Optional[str] = None
+
+    agent_id: Optional[str] = Field(None, max_length=100)
     metric_type: Optional[MetricType] = None
     tags: Optional[Dict[str, str]] = None
     since: Optional[float] = None
@@ -137,11 +139,12 @@ class MetricSummary(BaseModel):
 
 class LearningStrategy(BaseModel):
     """An adaptive behavior strategy with scoring."""
+
     strategy_id: str = Field(default_factory=lambda: f"strat_{uuid.uuid4().hex[:12]}")
-    name: str
-    description: str = ""
-    agent_id: str
-    domain: str = "general"  # e.g., "llm_prompting", "task_routing", "retry_logic"
+    name: str = Field(..., max_length=255)
+    description: str = Field("", max_length=5000)
+    agent_id: str = Field(..., max_length=100)
+    domain: str = Field("general", max_length=100)  # e.g., "llm_prompting", "task_routing", "retry_logic"
 
     # Strategy parameters (the "knobs" to tune)
     parameters: Dict[str, Any] = Field(default_factory=dict)
@@ -182,9 +185,10 @@ class LearningStrategy(BaseModel):
 
 class ExperimentVariant(BaseModel):
     """A variant in an A/B experiment."""
+
     variant_id: str = Field(default_factory=lambda: f"var_{uuid.uuid4().hex[:8]}")
-    name: str
-    strategy_id: str
+    name: str = Field(..., max_length=255)
+    strategy_id: str = Field(..., max_length=50)
     traffic_weight: float = 0.5  # 0-1, fraction of traffic
 
     # Results
@@ -203,11 +207,12 @@ class ExperimentVariant(BaseModel):
 
 class Experiment(BaseModel):
     """An A/B experiment comparing strategy variants."""
+
     experiment_id: str = Field(default_factory=lambda: f"exp_{uuid.uuid4().hex[:12]}")
-    name: str
-    description: str = ""
-    agent_id: str
-    domain: str = "general"
+    name: str = Field(..., max_length=255)
+    description: str = Field("", max_length=5000)
+    agent_id: str = Field(..., max_length=100)
+    domain: str = Field("general", max_length=100)
 
     # Variants
     control: ExperimentVariant
