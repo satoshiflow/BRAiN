@@ -8,8 +8,10 @@ Workspace-scoped pipeline execution for tenant isolation.
 from fastapi import APIRouter, HTTPException, Depends
 from typing import Dict, Any, List, Optional
 from loguru import logger
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth_deps import require_auth, get_current_principal, Principal
+from app.core.database import get_db
 from app.modules.autonomous_pipeline.workspace_schemas import (
     Workspace,
     Project,
@@ -23,10 +25,14 @@ from app.modules.autonomous_pipeline.workspace_schemas import (
     ProjectStatus,
 )
 from app.modules.autonomous_pipeline.workspace_service import (
-    get_workspace_service,
     WorkspaceNotFoundError,
     ProjectNotFoundError,
     QuotaExceededError,
+)
+from app.modules.autonomous_pipeline.workspace_service_db import DatabaseWorkspaceService
+from app.modules.autonomous_pipeline.rate_limiting import (
+    workspace_limiter as limiter,
+    PIPELINE_EXECUTE_LIMIT,
 )
 
 # Sprint 9-C: Workspace-scoped execution
@@ -655,20 +661,31 @@ async def get_project_stats(
 # ============================================================================
 
 @router.post("/{workspace_id}/pipeline/run")
+@limiter.limit(PIPELINE_EXECUTE_LIMIT)
 async def execute_workspace_pipeline(
     workspace_id: str,
     graph_spec: ExecutionGraphSpec,
     principal: Principal = Depends(get_current_principal),
+    db: AsyncSession = Depends(get_db),
     project_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Execute pipeline in workspace context (workspace-scoped).
 
+    **Rate Limiting:**
+    - 10 requests per minute per IP address
+    - Returns 429 (Too Many Requests) if exceeded
+
+    **Quota Enforcement:**
+    - Enforces max_runs_per_day limit per workspace
+    - Returns 429 if daily quota exceeded
+    - Enforces max_storage_gb limit for evidence/contracts
+
     **Isolation:**
     - Secrets scoped to workspace
     - Evidence packs saved in workspace storage
     - Run contracts saved in workspace storage
-    - Quota enforcement per workspace
+    - Persisted to PostgreSQL database
 
     **Example Request:**
     ```json
@@ -691,40 +708,59 @@ async def execute_workspace_pipeline(
     **Note:** You must own the workspace or be an admin.
     """
     try:
-        workspace_service = get_workspace_service()
+        db_service = DatabaseWorkspaceService()
 
         # Verify workspace exists and you own it
-        workspace = workspace_service.get_workspace(workspace_id)
+        workspace = await db_service.get_workspace(db, workspace_id)
         _verify_workspace_ownership(workspace, principal)
 
         # Verify workspace is active
-        if workspace.status != WorkspaceStatus.ACTIVE:
+        if workspace.status != WorkspaceStatus.ACTIVE.value:
             raise HTTPException(
                 status_code=403,
-                detail=f"Workspace {workspace_id} is not active (status={workspace.status.value})"
+                detail=f"Workspace {workspace_id} is not active (status={workspace.status})"
+            )
+
+        # ====================================================================
+        # QUOTA ENFORCEMENT: Check daily run limit
+        # ====================================================================
+        runs_today = await db_service.get_workspace_run_count_today(db, workspace_id)
+        if runs_today >= workspace.max_runs_per_day:
+            logger.warning(
+                f"[Workspace] Daily quota exceeded for {workspace_id}: "
+                f"{runs_today}/{workspace.max_runs_per_day} runs"
+            )
+            raise HTTPException(
+                status_code=429,
+                detail=f"Daily pipeline execution quota exceeded ({runs_today}/{workspace.max_runs_per_day}). "
+                       f"Please try again tomorrow."
             )
 
         # Verify project if specified
         if project_id:
-            project = workspace_service.get_project(project_id)
+            project = await db_service.get_project(db, project_id)
             if project.workspace_id != workspace_id:
                 raise HTTPException(
                     status_code=400,
                     detail=f"Project {project_id} does not belong to workspace {workspace_id}"
                 )
-            if project.status != ProjectStatus.ACTIVE:
+            if project.status != ProjectStatus.ACTIVE.value:
                 raise HTTPException(
                     status_code=403,
-                    detail=f"Project {project_id} is not active (status={project.status.value})"
+                    detail=f"Project {project_id} is not active (status={project.status})"
                 )
 
         # Get workspace-isolated storage paths
-        contracts_path = workspace_service.get_isolated_storage_path(workspace_id, "contracts")
-        evidence_path = workspace_service.get_isolated_storage_path(workspace_id, "evidence")
+        from pathlib import Path
+        storage_path = Path(workspace.storage_path) if workspace.storage_path else Path("storage/workspaces") / workspace_id
+        contracts_path = storage_path / "contracts"
+        evidence_path = storage_path / "evidence"
+        contracts_path.mkdir(parents=True, exist_ok=True)
+        evidence_path.mkdir(parents=True, exist_ok=True)
 
         logger.info(
             f"[Workspace] Executing pipeline in workspace {workspace_id} "
-            f"(project={project_id}, dry_run={graph_spec.dry_run})"
+            f"(project={project_id}, dry_run={graph_spec.dry_run}, runs_today={runs_today})"
         )
 
         # Create run contract (workspace-scoped)
@@ -741,15 +777,43 @@ async def execute_workspace_pipeline(
         # Finalize contract
         run_contract = run_contract_service.finalize_contract(run_contract, result)
 
+        # ====================================================================
+        # QUOTA ENFORCEMENT: Check storage limit
+        # ====================================================================
+        import json
+        contract_data = json.dumps(run_contract.model_dump(), default=str)
+        contract_size_mb = len(contract_data.encode('utf-8')) / (1024 * 1024)
+
+        # Calculate current storage
+        import os
+        total_size = sum(
+            os.path.getsize(os.path.join(dirpath, filename))
+            for dirpath, dirnames, filenames in os.walk(storage_path)
+            for filename in filenames
+        )
+        total_size_gb = total_size / (1024 ** 3)
+        new_total_size_gb = total_size_gb + contract_size_mb / 1024
+
+        if new_total_size_gb > workspace.max_storage_gb:
+            logger.warning(
+                f"[Workspace] Storage quota exceeded for {workspace_id}: "
+                f"{new_total_size_gb:.2f}GB / {workspace.max_storage_gb}GB"
+            )
+            raise HTTPException(
+                status_code=429,
+                detail=f"Storage quota exceeded ({new_total_size_gb:.2f}GB / {workspace.max_storage_gb}GB). "
+                       f"Please clean up old evidence and contracts."
+            )
+
         # Save contract in workspace storage
         contract_file_path = contracts_path / f"{run_contract.contract_id}.json"
-        import json
         with open(contract_file_path, "w") as f:
-            json.dump(run_contract.model_dump(), f, indent=2, default=str)
+            f.write(contract_data)
 
         logger.info(
             f"[Workspace] Pipeline execution completed: {result.graph_id} "
-            f"(workspace={workspace_id}, success={result.success}, contract={run_contract.contract_id})"
+            f"(workspace={workspace_id}, success={result.success}, contract={run_contract.contract_id}, "
+            f"storage={new_total_size_gb:.2f}GB)"
         )
 
         return {
@@ -758,6 +822,12 @@ async def execute_workspace_pipeline(
             "workspace_id": workspace_id,
             "project_id": project_id,
             "contract_path": str(contract_file_path),
+            "quota_status": {
+                "runs_today": runs_today + 1,
+                "max_runs_per_day": workspace.max_runs_per_day,
+                "storage_used_gb": new_total_size_gb,
+                "max_storage_gb": workspace.max_storage_gb,
+            },
             "isolated_storage": {
                 "contracts": str(contracts_path),
                 "evidence": str(evidence_path),
@@ -774,8 +844,8 @@ async def execute_workspace_pipeline(
         raise  # Re-raise HTTP exceptions
 
     except Exception as e:
-        logger.error(f"Workspace pipeline execution failed: {e}")
+        logger.error(f"Workspace pipeline execution failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Workspace pipeline execution failed: {str(e)}"
+            detail="Workspace pipeline execution failed"
         )
