@@ -11,9 +11,11 @@
 
 "use server";
 
-import { signIn, signOut } from "@/auth";
+import { signIn, signOut, auth } from "@/auth";
 import { AuthError } from "next-auth";
 import { redirect } from "next/navigation";
+
+const API_BASE = process.env.NEXT_PUBLIC_BRAIN_API_BASE || "http://localhost:8000";
 
 // ============================================================================
 // Types
@@ -124,12 +126,40 @@ export async function loginAction(formData: FormData): Promise<LoginResult> {
  * Server Action for user logout
  * 
  * SECURITY: 
+ * - Calls backend /api/auth/logout for token revocation
  * - Clears session cookie (HttpOnly)
- * - Invalidates JWT token
+ * - Invalidates JWT token on backend
  * - Redirects to sign-in page
  */
 export async function logoutAction() {
   try {
+    // Get current session to access the access token
+    const session = await auth();
+    
+    // If we have an access token, revoke it on the backend
+    if (session?.user?.accessToken) {
+      try {
+        const response = await fetch(`${API_BASE}/api/auth/logout`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${session.user.accessToken}`,
+          },
+        });
+
+        if (!response.ok) {
+          console.warn(`[Auth] Backend logout returned ${response.status}`);
+          // Continue with local logout even if backend logout fails
+        } else {
+          console.log("[Auth] Backend token revoked successfully");
+        }
+      } catch (backendError) {
+        console.error("[Auth] Backend logout error:", backendError);
+        // Continue with local logout even if backend call fails
+      }
+    }
+
+    // Clear local session
     await signOut({ 
       redirectTo: "/auth/signin",
       redirect: true,

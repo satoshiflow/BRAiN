@@ -16,9 +16,11 @@ Endpoints:
 from __future__ import annotations
 
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from fastapi.responses import FileResponse
 from loguru import logger
+
+from app.core.auth_deps import require_auth, require_operator, get_current_principal, Principal
 
 from app.modules.business_factory.schemas import (
     BusinessBriefing,
@@ -32,7 +34,11 @@ from app.modules.template_registry.loader import get_template_loader
 from app.modules.template_registry.schemas import Template
 
 # Initialize router
-router = APIRouter(prefix="/api/factory", tags=["factory"])
+router = APIRouter(
+    prefix="/api/factory",
+    tags=["factory"],
+    dependencies=[Depends(require_auth)]
+)
 
 # Storage for plans (in-memory for MVP - should be Redis/DB in production)
 _plans_storage: dict[str, BusinessPlan] = {}

@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, status, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
+from app.core.auth_deps import require_auth, get_current_principal, Principal
 
 from .service import (
     get_axe_fusion_service,
@@ -20,7 +21,11 @@ from .service import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/axe", tags=["axe-fusion"])
+router = APIRouter(
+    prefix="/axe",
+    tags=["axe-fusion"],
+    dependencies=[Depends(require_auth)]
+)
 
 
 # === Schemas ===

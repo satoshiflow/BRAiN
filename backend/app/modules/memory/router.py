@@ -6,8 +6,10 @@ FastAPI endpoints for the Advanced Memory Architecture.
 
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, status, Depends
 from loguru import logger
+
+from app.core.auth_deps import require_auth
 
 from .schemas import (
     CompressionRequest,
@@ -27,7 +29,11 @@ from .schemas import (
 )
 from .service import get_memory_service
 
-router = APIRouter(prefix="/api/memory", tags=["memory"])
+router = APIRouter(
+    prefix="/api/memory",
+    tags=["memory"],
+    dependencies=[Depends(require_auth)],
+)
 
 
 # ============================================================================

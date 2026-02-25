@@ -10,7 +10,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Header
 from loguru import logger
 
-from app.core.security import Principal, get_current_principal
+from app.core.auth_deps import require_auth, get_current_principal, Principal
 
 from .service import get_paycore_service, PayCoreService
 from .schemas import (
@@ -37,6 +37,7 @@ from .exceptions import (
 router = APIRouter(
     prefix="/api/paycore",
     tags=["paycore"],
+    dependencies=[Depends(require_auth)]
 )
 
 

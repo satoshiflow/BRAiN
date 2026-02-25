@@ -1,18 +1,30 @@
 """
-Models Package - SQLAlchemy ORM Models
+App Models Package
+
+Database models for the application.
 """
 
-from app.core.database import Base
-
-# Import all models for Alembic autogenerate
 from app.models.user import User, Invitation
-from app.models.token import RefreshToken, ServiceAccount, AgentCredential
+from app.models.business import BusinessProcess, ProcessStep, ProcessExecution, ProcessTrigger
+from app.models.courses import Course, CourseModule, CourseLesson, Enrollment
+from app.models.audit import AuthAuditLog
+from app.models.policy import Policy
 
 __all__ = [
-    "Base",
+    # User models
     "User",
     "Invitation",
-    "RefreshToken",
-    "ServiceAccount",
-    "AgentCredential",
+    # Business models
+    "BusinessProcess",
+    "ProcessStep",
+    "ProcessExecution",
+    "ProcessTrigger",
+    # Course models
+    "Course",
+    "CourseModule",
+    "CourseLesson",
+    "Enrollment",
+    # Auth governance models
+    "AuthAuditLog",
+    "Policy",
 ]

@@ -14,7 +14,7 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.auth_deps import require_role, get_current_principal, Principal, require_auth
+from app.core.auth_deps import require_role, get_current_principal, Principal, require_auth, require_operator, require_scope
 from app.core.security import UserRole
 from app.core.rate_limit import limiter, RateLimits
 
@@ -317,10 +317,11 @@ async def execute_skill(
     skill_id: UUID,
     skill_request: SkillExecutionRequest,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(require_role(UserRole.OPERATOR, UserRole.ADMIN)),
+    principal: Principal = Depends(require_operator),
 ):
     """
     Execute a skill with the given parameters.
+    Requires operator role and 'skills:execute' scope.
 
     Args:
         skill_id: UUID of the skill to execute
@@ -330,6 +331,13 @@ async def execute_skill(
         Execution result with success status and output
     """
     service = get_skill_service()
+
+    # Check scope: skills:execute
+    if not principal.has_scope("skills:execute"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient scope. Required: skills:execute"
+        )
 
     # Override skill_id from URL
     skill_request.skill_id = skill_id
@@ -348,10 +356,11 @@ async def execute_skill_by_body(
     request: Request,
     skill_request: SkillExecutionRequest,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(require_role(UserRole.OPERATOR, UserRole.ADMIN)),
+    principal: Principal = Depends(require_operator),
 ):
     """
     Execute a skill using skill_id from request body.
+    Requires operator role and 'skills:execute' scope.
 
     Alternative endpoint that accepts skill_id in the request body.
 
@@ -362,6 +371,13 @@ async def execute_skill_by_body(
         Execution result with success status and output
     """
     service = get_skill_service()
+
+    # Check scope: skills:execute
+    if not principal.has_scope("skills:execute"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient scope. Required: skills:execute"
+        )
 
     # Log skill execution for audit trail (CRITICAL - RCE protection)
     logger.info(f"Skill {skill_request.skill_id} executed by {principal.principal_id}")

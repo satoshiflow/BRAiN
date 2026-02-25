@@ -9,7 +9,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from loguru import logger
 
-from app.core.security import Principal, get_current_principal
+from app.core.auth_deps import require_auth, require_role, get_current_principal, Principal
 from .service import get_health, get_info, get_policy_engine
 from .schemas import (
     PolicyHealth,
@@ -27,6 +27,7 @@ from .schemas import (
 router = APIRouter(
     prefix="/api/policy",
     tags=["policy"],
+    dependencies=[Depends(require_auth)]
 )
 
 

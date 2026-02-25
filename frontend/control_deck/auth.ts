@@ -9,6 +9,7 @@ export interface AuthUser {
   role?: string;
   groups?: string[];
   accessToken?: string;
+  refreshToken?: string;
 }
 
 // Extend the User type to include custom fields
@@ -17,6 +18,7 @@ declare module "next-auth" {
     groups?: string[];
     role?: string;
     accessToken?: string;
+    refreshToken?: string;
   }
   interface Session {
     user: User & {
@@ -24,7 +26,9 @@ declare module "next-auth" {
       groups?: string[];
       role?: string;
       accessToken?: string;
+      refreshToken?: string;
     };
+    error?: string;
   }
 }
 
@@ -33,6 +37,48 @@ declare module "next-auth/jwt" {
     role?: string;
     groups?: string[];
     accessToken?: string;
+    refreshToken?: string;
+    accessTokenExpires?: number;
+    error?: string;
+  }
+}
+
+const API_BASE = process.env.NEXT_PUBLIC_BRAIN_API_BASE || "http://localhost:8000";
+
+/**
+ * Refreshes the access token using the refresh token
+ * Follows the backend token refresh pattern
+ */
+async function refreshAccessToken(token: import("next-auth/jwt").JWT): Promise<import("next-auth/jwt").JWT> {
+  try {
+    const response = await fetch(`${API_BASE}/api/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: token.refreshToken }),
+    });
+
+    if (!response.ok) {
+      console.error("[Auth] Token refresh failed:", response.status);
+      return {
+        ...token,
+        error: "RefreshAccessTokenError",
+      };
+    }
+
+    const data = await response.json();
+
+    return {
+      ...token,
+      accessToken: data.access_token,
+      accessTokenExpires: Date.now() + 15 * 60 * 1000, // 15 minutes
+      refreshToken: data.refresh_token ?? token.refreshToken, // Use new refresh token if provided
+    };
+  } catch (error) {
+    console.error("[Auth] Token refresh error:", error);
+    return {
+      ...token,
+      error: "RefreshAccessTokenError",
+    };
   }
 }
 
@@ -81,8 +127,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
         // PRODUCTION: Backend authentication
         try {
-          const API_BASE = process.env.NEXT_PUBLIC_BRAIN_API_BASE || "http://localhost:8000";
-
           const response = await fetch(`${API_BASE}/api/auth/login`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -103,6 +147,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             role: data.user.role,
             groups: [data.user.role],
             accessToken: data.access_token,
+            refreshToken: data.refresh_token,
           };
         } catch (error) {
           console.error("[Auth] Backend authentication error:", error);
@@ -157,14 +202,31 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   // CSRF ist jetzt AKTIVIERT (skipCSRFCheck entfernt!)
   trustHost: true,
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
+      // Initial sign in - store tokens and expiration
       if (user) {
         token.sub = user.id;
         token.email = user.email;
         token.name = user.name;
         token.role = user.role;
         token.groups = user.groups;
+        token.accessToken = user.accessToken;
+        token.refreshToken = user.refreshToken;
+        // Set token expiration (15 minutes from now)
+        token.accessTokenExpires = Date.now() + 15 * 60 * 1000;
       }
+
+      // Return previous token if the access token has not expired yet
+      if (token.accessTokenExpires && Date.now() < token.accessTokenExpires) {
+        return token;
+      }
+
+      // Access token has expired, try to refresh it
+      // Only refresh if we have a refresh token
+      if (token.refreshToken) {
+        return await refreshAccessToken(token);
+      }
+
       return token;
     },
     async session({ session, token }) {
@@ -174,6 +236,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         session.user.name = token.name as string;
         session.user.role = token.role as string;
         session.user.groups = token.groups as string[];
+        session.user.accessToken = token.accessToken as string;
+        session.user.refreshToken = token.refreshToken as string;
+      }
+      // Pass through any token errors to the session
+      if (token.error) {
+        session.error = token.error;
       }
       return session;
     },
@@ -185,3 +253,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
   },
 });
+
+// Export refreshAccessToken for potential external use
+export { refreshAccessToken };

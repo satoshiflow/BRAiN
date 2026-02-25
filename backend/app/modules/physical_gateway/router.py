@@ -25,8 +25,10 @@ Endpoints:
 """
 
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, HTTPException, Header, Depends
 from loguru import logger
+
+from app.core.auth_deps import require_auth, get_current_principal, Principal
 
 from .service import get_physical_gateway_service
 from .schemas import (
@@ -53,6 +55,7 @@ from .schemas import (
 router = APIRouter(
     prefix="/api/physical-gateway",
     tags=["physical-gateway"],
+    dependencies=[Depends(require_auth)]
 )
 
 

@@ -1,4 +1,6 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
+
+from app.core.auth_deps import require_auth, get_current_principal, Principal
 
 from app.modules.dna.core.service import DNAService
 from app.modules.dna.schemas import (
@@ -8,7 +10,11 @@ from app.modules.dna.schemas import (
     DNAHistoryResponse,
 )
 
-router = APIRouter(prefix="/api/dna", tags=["DNA"])
+router = APIRouter(
+    prefix="/api/dna",
+    tags=["DNA"],
+    dependencies=[Depends(require_auth)]
+)
 
 # Einfacher Singleton-Service im Prozess
 dna_service = DNAService()

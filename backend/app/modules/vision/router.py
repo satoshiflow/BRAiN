@@ -1,7 +1,13 @@
 """Vision Processing REST API."""
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
-router = APIRouter(prefix="/api/vision", tags=["Vision"])
+from app.core.auth_deps import require_auth, get_current_principal, Principal
+
+router = APIRouter(
+    prefix="/api/vision",
+    tags=["Vision"],
+    dependencies=[Depends(require_auth)]
+)
 
 @router.get("/info")
 def get_vision_info():

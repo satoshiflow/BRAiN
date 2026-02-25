@@ -7,13 +7,19 @@ API endpoints for comprehensive system health monitoring.
 from fastapi import APIRouter, Depends
 from typing import Optional
 
+from app.core.auth_deps import require_auth, get_current_principal, Principal
+
 from app.modules.system_health.service import SystemHealthService
 from app.modules.system_health.schemas import (
     SystemHealth,
     SystemHealthSummary,
 )
 
-router = APIRouter(prefix="/api/system/health", tags=["System Health"])
+router = APIRouter(
+    prefix="/api/system/health",
+    tags=["System Health"],
+    dependencies=[Depends(require_auth)]
+)
 
 # Singleton instances
 _system_health_service: Optional[SystemHealthService] = None

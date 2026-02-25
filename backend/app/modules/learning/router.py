@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.auth_deps import require_auth
 
 from .schemas import (
     Experiment,
@@ -25,7 +26,11 @@ from .schemas import (
 )
 from .service import get_learning_service
 
-router = APIRouter(prefix="/api/learning", tags=["learning"])
+router = APIRouter(
+    prefix="/api/learning",
+    tags=["learning"],
+    dependencies=[Depends(require_auth)],
+)
 
 
 # ============================================================================

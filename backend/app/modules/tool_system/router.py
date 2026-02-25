@@ -7,8 +7,10 @@ Auto-discovered by BRAIN's router loader.
 
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, status, Depends
 from loguru import logger
+
+from app.core.auth_deps import require_auth, require_operator, get_current_principal, Principal
 
 from .schemas import (
     ToolDefinition,
@@ -24,7 +26,11 @@ from .schemas import (
 )
 from .service import get_tool_system_service
 
-router = APIRouter(prefix="/api/tools", tags=["tools"])
+router = APIRouter(
+    prefix="/api/tools",
+    tags=["tools"],
+    dependencies=[Depends(require_auth)]
+)
 
 
 # ============================================================================

@@ -1,14 +1,20 @@
 """Hardware HAL REST API."""
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from typing import Optional
 import time
 import logging
+
+from app.core.auth_deps import require_auth, require_operator, get_current_principal, Principal
 
 from .schemas import RobotHardwareState, MovementCommand
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/hardware", tags=["Hardware"])
+router = APIRouter(
+    prefix="/api/hardware",
+    tags=["Hardware"],
+    dependencies=[Depends(require_auth)]
+)
 
 # Optional EventStream import (Sprint 5: EventStream Integration)
 try:

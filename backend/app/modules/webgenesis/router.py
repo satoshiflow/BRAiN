@@ -13,6 +13,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from loguru import logger
 
+from app.core.auth_deps import require_auth, require_operator, get_current_principal, Principal
+
 from app.modules.axe_governance import (
     TrustTier,
     AXERequestContext,
@@ -52,6 +54,7 @@ from .schemas import (
 router = APIRouter(
     prefix="/api/webgenesis",
     tags=["webgenesis"],
+    dependencies=[Depends(require_auth)]
 )
 
 

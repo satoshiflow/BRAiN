@@ -5,7 +5,9 @@ REST API endpoints for ROS2 communication.
 """
 
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, status, Depends
+
+from app.core.auth_deps import require_auth, get_current_principal, Principal
 
 from app.modules.ros2_bridge.schemas import (
     TopicInfo,
@@ -28,7 +30,11 @@ from app.modules.ros2_bridge.schemas import (
 )
 from app.modules.ros2_bridge.bridge import get_ros2_bridge
 
-router = APIRouter(prefix="/api/ros2", tags=["ROS2 Bridge"])
+router = APIRouter(
+    prefix="/api/ros2",
+    tags=["ROS2 Bridge"],
+    dependencies=[Depends(require_auth)]
+)
 
 
 # ============================================================================
