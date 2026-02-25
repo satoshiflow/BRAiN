@@ -84,9 +84,9 @@ class PayCoreHealth(BaseModel):
 class IntentCreateRequest(BaseModel):
     """Request to create payment intent"""
     amount_cents: int = Field(..., gt=0, description="Amount in cents (e.g., 5000 = 50.00 EUR)")
-    currency: str = Field(default="EUR", description="ISO currency code")
+    currency: str = Field(default="EUR", min_length=3, max_length=3, description="ISO currency code")
     provider: PaymentProvider = Field(default=PaymentProvider.STRIPE)
-    user_id: Optional[str] = Field(None, description="User ID (optional)")
+    user_id: Optional[str] = Field(None, max_length=100, description="User ID (optional)")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Custom metadata (course_id, product_type, etc.)")
 
     @field_validator("currency")

@@ -7,7 +7,7 @@ FastAPI endpoints for payment processing.
 from typing import Dict, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request, Header
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status, Request, Header
 from loguru import logger
 
 from app.core.auth_deps import require_auth, get_current_principal, Principal
@@ -39,6 +39,38 @@ router = APIRouter(
     tags=["paycore"],
     dependencies=[Depends(require_auth)]
 )
+
+
+# ============================================================================
+# Authorization Helpers
+# ============================================================================
+
+
+async def verify_intent_ownership(principal: Principal, intent_id: UUID, service: PayCoreService) -> bool:
+    """
+    Verify principal can access this intent.
+
+    For payment operations, ownership is based on tenant_id.
+    """
+    try:
+        intent = await service.get_intent_status(intent_id)
+        # Allow access if tenant matches
+        return principal.tenant_id == intent.tenant_id or principal.tenant_id == "default"
+    except IntentNotFoundException:
+        return False
+
+
+async def verify_refund_ownership(principal: Principal, refund_id: UUID, service: PayCoreService) -> bool:
+    """
+    Verify principal can access this refund.
+    """
+    try:
+        refund = await service.get_refund_status(refund_id)
+        # Get intent to check tenant
+        intent = await service.get_intent_status(refund.intent_id)
+        return principal.tenant_id == intent.tenant_id or principal.tenant_id == "default"
+    except (IntentNotFoundException, RefundNotFoundException):
+        return False
 
 
 # ============================================================================
@@ -113,19 +145,21 @@ async def create_intent(
         return await service.create_intent(request, tenant_id)
 
     except InvalidAmountException as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        logger.info(f"Invalid amount in intent creation: {e}")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid amount")
 
     except Exception as e:
-        logger.error(f"Intent creation failed: {e}")
+        logger.error(f"Intent creation failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Intent creation failed: {str(e)}"
+            detail="Intent creation failed"
         )
 
 
 @router.get("/intents/{intent_id}", response_model=IntentStatusResponse)
 async def get_intent(
     intent_id: UUID,
+    principal: Principal = Depends(get_current_principal),
     service: PayCoreService = Depends(get_paycore_service),
 ) -> IntentStatusResponse:
     """
@@ -133,30 +167,41 @@ async def get_intent(
 
     Args:
         intent_id: Payment intent UUID
+        principal: Current user principal
 
     Returns:
         IntentStatusResponse with current status
 
     Raises:
+        HTTPException 403: Not authorized to access this intent
         HTTPException 404: Intent not found
     """
     try:
+        # Verify ownership before returning intent details
+        if not await verify_intent_ownership(principal, intent_id, service):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to access this intent")
+
         return await service.get_intent_status(intent_id)
 
     except IntentNotFoundException as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+        logger.debug(f"Intent {intent_id} not found: {e}")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Intent not found")
+
+    except HTTPException:
+        raise
 
     except Exception as e:
-        logger.error(f"Get intent failed: {e}")
+        logger.error(f"Get intent failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Get intent failed: {str(e)}"
+            detail="Internal server error"
         )
 
 
 @router.get("/intents/{intent_id}/status", response_model=Dict[str, Any])
 async def get_intent_simple_status(
     intent_id: UUID,
+    principal: Principal = Depends(get_current_principal),
     service: PayCoreService = Depends(get_paycore_service),
 ) -> Dict[str, Any]:
     """
@@ -166,6 +211,7 @@ async def get_intent_simple_status(
 
     Args:
         intent_id: Payment intent UUID
+        principal: Current user principal
 
     Returns:
         Simple status dict
@@ -180,6 +226,10 @@ async def get_intent_simple_status(
         ```
     """
     try:
+        # Verify ownership before returning intent details
+        if not await verify_intent_ownership(principal, intent_id, service):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to access this intent")
+
         intent = await service.get_intent_status(intent_id)
         return {
             "intent_id": str(intent.intent_id),
@@ -188,7 +238,18 @@ async def get_intent_simple_status(
         }
 
     except IntentNotFoundException as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+        logger.debug(f"Intent {intent_id} not found: {e}")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Intent not found")
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        logger.error(f"Get intent status failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
 
 
 # ============================================================================
@@ -232,25 +293,29 @@ async def create_refund(
         return await service.create_refund(request, principal)
 
     except RefundDeniedException as e:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+        logger.warning(f"Refund denied by policy: {e}")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Refund request denied")
 
     except IntentNotFoundException as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+        logger.debug(f"Intent not found for refund: {e}")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payment intent not found")
 
     except InvalidAmountException as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        logger.info(f"Invalid refund amount: {e}")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid refund amount")
 
     except Exception as e:
-        logger.error(f"Refund creation failed: {e}")
+        logger.error(f"Refund creation failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Refund creation failed: {str(e)}"
+            detail="Refund creation failed"
         )
 
 
 @router.get("/refunds/{refund_id}", response_model=RefundStatusResponse)
 async def get_refund(
     refund_id: UUID,
+    principal: Principal = Depends(get_current_principal),
     service: PayCoreService = Depends(get_paycore_service),
 ) -> RefundStatusResponse:
     """
@@ -258,24 +323,34 @@ async def get_refund(
 
     Args:
         refund_id: Refund UUID
+        principal: Current user principal
 
     Returns:
         RefundStatusResponse
 
     Raises:
+        HTTPException 403: Not authorized to access this refund
         HTTPException 404: Refund not found
     """
     try:
+        # Verify ownership before returning refund details
+        if not await verify_refund_ownership(principal, refund_id, service):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to access this refund")
+
         return await service.get_refund_status(refund_id)
 
     except RefundNotFoundException as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+        logger.debug(f"Refund {refund_id} not found: {e}")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Refund not found")
+
+    except HTTPException:
+        raise
 
     except Exception as e:
-        logger.error(f"Get refund failed: {e}")
+        logger.error(f"Get refund failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Get refund failed: {str(e)}"
+            detail="Internal server error"
         )
 
 
@@ -320,14 +395,14 @@ async def stripe_webhook(
         return result
 
     except WebhookVerificationException as e:
-        logger.error(f"Webhook verification failed: {e}")
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        logger.warning(f"Webhook verification failed: {e}")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Webhook verification failed")
 
     except Exception as e:
-        logger.error(f"Webhook handling failed: {e}")
+        logger.error(f"Webhook handling failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Webhook handling failed: {str(e)}"
+            detail="Webhook processing failed"
         )
 
 
