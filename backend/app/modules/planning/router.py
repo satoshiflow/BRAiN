@@ -6,7 +6,9 @@ FastAPI endpoints for Advanced Planning Engine.
 
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, status, Depends
+
+from app.core.auth_deps import require_auth, get_current_principal, Principal
 
 from .schemas import (
     DecompositionRequest,
@@ -18,7 +20,11 @@ from .schemas import (
 )
 from .service import get_planning_service
 
-router = APIRouter(prefix="/api/planning", tags=["planning"])
+router = APIRouter(
+    prefix="/api/planning",
+    tags=["planning"],
+    dependencies=[Depends(require_auth)]
+)
 
 
 # ============================================================================

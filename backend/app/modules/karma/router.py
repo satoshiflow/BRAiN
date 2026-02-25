@@ -1,5 +1,7 @@
 from typing import Optional
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Depends
+
+from app.core.auth_deps import require_auth, get_current_principal, Principal
 
 from app.modules.karma.schemas import (
     KarmaMetrics,
@@ -11,7 +13,11 @@ from app.modules.karma.core.service import KarmaService, RYRKarmaService
 from app.modules.dna.core.service import DNAService
 from app.modules.dna.router import dna_service  # Singleton
 
-router = APIRouter(prefix="/api/karma", tags=["KARMA"])
+router = APIRouter(
+    prefix="/api/karma",
+    tags=["KARMA"],
+    dependencies=[Depends(require_auth)]
+)
 
 # Services
 karma_service = KarmaService(dna_service=dna_service)

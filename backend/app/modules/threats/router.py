@@ -4,7 +4,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.core.security import Principal, get_current_principal
+from app.core.auth_deps import require_auth, get_current_principal, Principal
 from .models import (
     Threat,
     ThreatCreate,
@@ -24,6 +24,7 @@ from .service import (
 router = APIRouter(
     prefix="/api/threats",
     tags=["threats"],
+    dependencies=[Depends(require_auth)]
 )
 
 

@@ -4,13 +4,14 @@ from typing import List
 
 from fastapi import APIRouter, Depends
 
-from app.core.security import Principal, get_current_principal
+from app.core.auth_deps import require_auth, get_current_principal, Principal
 from .schemas import AgentStatus, SupervisorHealth, SupervisorStatus
 from .service import get_health, get_status, list_agents
 
 router = APIRouter(
     prefix="/api/supervisor",
     tags=["supervisor"],
+    dependencies=[Depends(require_auth)]
 )
 
 

@@ -1,11 +1,17 @@
 """Fleet Telemetry REST API."""
-from fastapi import APIRouter, WebSocket
+from fastapi import APIRouter, WebSocket, Depends
 from typing import Dict, Optional
 import time
 
+from app.core.auth_deps import require_auth, get_current_principal, Principal
+
 from loguru import logger
 
-router = APIRouter(prefix="/api/telemetry", tags=["Telemetry"])
+router = APIRouter(
+    prefix="/api/telemetry",
+    tags=["Telemetry"],
+    dependencies=[Depends(require_auth)]
+)
 
 active_connections: Dict[str, WebSocket] = {}
 

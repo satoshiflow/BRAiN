@@ -7,13 +7,19 @@ API endpoints for runtime audit metrics and anomaly detection.
 from fastapi import APIRouter, Depends
 from typing import Optional
 
+from app.core.auth_deps import require_auth, get_current_principal, Principal
+
 from app.modules.runtime_auditor.service import RuntimeAuditor
 from app.modules.runtime_auditor.schemas import (
     RuntimeMetrics,
     RuntimeAuditorStatus,
 )
 
-router = APIRouter(prefix="/api/audit/runtime", tags=["Runtime Auditor"])
+router = APIRouter(
+    prefix="/api/audit/runtime",
+    tags=["Runtime Auditor"],
+    dependencies=[Depends(require_auth)]
+)
 
 # Singleton instance
 _runtime_auditor: Optional[RuntimeAuditor] = None
