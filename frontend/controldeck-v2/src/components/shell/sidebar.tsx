@@ -17,6 +17,7 @@ import {
   Activity,
   Bot,
   Sparkles,
+  Brain,
 } from "lucide-react";
 
 interface NavItem {
@@ -31,6 +32,7 @@ const navItems: NavItem[] = [
   { label: "Missions", href: "/missions", icon: Target, group: "Operations" },
   { label: "Agents", href: "/agents", icon: Bot, group: "Operations" },
   { label: "Events", href: "/events", icon: Radio, group: "Operations" },
+  { label: "Memory", href: "/modules/memory", icon: Brain, group: "Intelligence & Memory" },
   { label: "Learning", href: "/modules/learning", icon: Sparkles, group: "Intelligence & Memory" },
   { label: "Health", href: "/health", icon: Activity, group: "System" },
   { label: "Settings", href: "/settings", icon: Settings, group: "System" },

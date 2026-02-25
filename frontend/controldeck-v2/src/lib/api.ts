@@ -195,3 +195,42 @@ export const agentsApi = {
 export const healthApi = {
   getStatus: () => proxyCall<SystemHealth>('health'),
 };
+
+/**
+ * Learning API
+ */
+export interface LearningStats {
+  total_metrics_recorded: number;
+  total_strategies: number;
+  active_strategies: number;
+  total_experiments: number;
+  running_experiments: number;
+}
+
+export const learningApi = {
+  getStats: () => proxyCall<LearningStats>('modules/learning/stats'),
+  getStrategies: (agentId: string) =>
+    proxyCall<any>(`modules/learning/strategies/${agentId}`),
+  listExperiments: (agentId?: string) =>
+    proxyCall<any>('modules/learning/experiments', {
+      method: 'GET',
+      ...(agentId ? { body: JSON.stringify({ agent_id: agentId }) } : {}),
+    }),
+  getExperiment: (experimentId: string) =>
+    proxyCall<any>(`modules/learning/experiments/${experimentId}`),
+};
+
+/**
+ * Memory API
+ */
+export const memoryApi = {
+  getInfo: () => proxyCall<any>('modules/memory/info'),
+  getStats: () => proxyCall<any>('modules/memory/stats'),
+  getMemory: (id: string) => proxyCall<any>(`modules/memory/entries/${id}`),
+  storeMemory: (data: any) =>
+    proxyCall<any>('modules/memory/store', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  getSessions: () => proxyCall<any>('modules/memory/sessions'),
+};
