@@ -18,6 +18,7 @@ from .schemas import (
     RouterInfo,
     ProviderStatus,
     OpenWebUICompatibility,
+    OpenWebUIRequest,
     ChatMessage,
     MessageRole,
 )
@@ -97,10 +98,10 @@ async def chat(
         return response
 
     except Exception as e:
-        logger.error(f"Chat request failed: {e}")
+        logger.error(f"Chat request failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"LLM request failed: {str(e)}",
+            detail="LLM request failed",
         )
 
 
@@ -239,11 +240,7 @@ async def openwebui_compatibility():
     tags=["openwebui"],
 )
 async def openwebui_chat_completions(
-    messages: List[dict],
-    model: Optional[str] = None,
-    temperature: float = 0.7,
-    max_tokens: Optional[int] = None,
-    stream: bool = False,
+    request: OpenWebUIRequest,
 ):
     """
     OpenWebUI-compatible chat completions endpoint
@@ -251,12 +248,13 @@ async def openwebui_chat_completions(
     Accepts OpenWebUI format and translates to LLM Router format.
 
     Body:
-    - messages: List of {role, content} dicts
+    - messages: List of ChatMessage objects with validated role and content
     - model: Model name (optional)
-    - temperature: Sampling temperature
-    - max_tokens: Maximum tokens
+    - temperature: Sampling temperature (0.0-2.0)
+    - max_tokens: Maximum tokens (1-100000)
     - stream: Enable streaming
     """
+    import time
 
     llm_router = get_llm_router()
 
@@ -267,25 +265,17 @@ async def openwebui_chat_completions(
         )
 
     try:
-        # Convert to LLM Router format
-        chat_messages = []
-        for msg in messages:
-            role = MessageRole(msg.get("role", "user"))
-            content = msg.get("content", "")
-            chat_messages.append(
-                ChatMessage(role=role, content=content)
-            )
-
-        request = LLMRequest(
-            messages=chat_messages,
+        # Convert to LLM Router format (messages already validated as ChatMessage objects)
+        llm_request = LLMRequest(
+            messages=request.messages,
             provider=LLMProvider.AUTO,
-            model=model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            stream=stream,
+            model=request.model,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens,
+            stream=request.stream,
         )
 
-        response = await llm_router.chat(request)
+        response = await llm_router.chat(llm_request)
 
         # Return OpenWebUI-compatible format
         return {
@@ -307,10 +297,10 @@ async def openwebui_chat_completions(
         }
 
     except Exception as e:
-        logger.error(f"OpenWebUI chat request failed: {e}")
+        logger.error(f"OpenWebUI chat request failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Chat request failed: {str(e)}",
+            detail="Chat request failed",
         )
 
 
@@ -361,10 +351,10 @@ async def openwebui_models():
         return {"data": all_models, "object": "list"}
 
     except Exception as e:
-        logger.error(f"Failed to list models: {e}")
+        logger.error(f"Failed to list models: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to list models: {str(e)}",
+            detail="Failed to list models",
         )
 
 

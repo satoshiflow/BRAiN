@@ -369,6 +369,41 @@ class RouterInfo(BaseModel):
     fallback_enabled: bool
 
 
+class OpenWebUIRequest(BaseModel):
+    """OpenWebUI-compatible chat request"""
+
+    messages: List[ChatMessage] = Field(
+        ...,
+        description="Chat messages",
+        min_items=1,
+    )
+
+    model: Optional[str] = Field(
+        None,
+        max_length=256,
+        description="Model name",
+    )
+
+    temperature: float = Field(
+        0.7,
+        ge=0.0,
+        le=2.0,
+        description="Sampling temperature",
+    )
+
+    max_tokens: Optional[int] = Field(
+        None,
+        ge=1,
+        le=100000,
+        description="Maximum tokens to generate",
+    )
+
+    stream: bool = Field(
+        False,
+        description="Enable streaming responses",
+    )
+
+
 class OpenWebUICompatibility(BaseModel):
     """OpenWebUI compatibility information"""
 
