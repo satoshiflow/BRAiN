@@ -33,21 +33,7 @@ export default async function ProtectedLayout({
   }
 
   // Pass user context to children
-  return (
-    <>
-      <script
-        id="__USER_CONTEXT__"
-        type="application/json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
-            id: session.user.id,
-            email: session.user.email,
-            name: session.user.name,
-            role: session.user.role,
-          }),
-        }}
-      />
-      {children}
-    </>
-  );
+  // SECURITY: Removed __USER_CONTEXT__ script tag
+  // Client components should use authClient.useSession() instead
+  return <>{children}</>;
 }

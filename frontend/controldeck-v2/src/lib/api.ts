@@ -36,12 +36,28 @@ export function getApiBaseUrl(): string {
 
 /**
  * Get WebSocket base URL
+ * Fix E: WebSocket Security - wss:// validation in production
  */
 export function getWsBaseUrl(): string {
   if (isServer) {
-    return process.env.BRAIN_WS_BASE_INTERNAL || 'ws://backend:8000/ws';
+    const url = process.env.BRAIN_WS_BASE_INTERNAL;
+    if (!url) {
+      console.warn('[WS] BRAIN_WS_BASE_INTERNAL not set');
+      return 'ws://backend:8000/ws'; // OK internally (Docker network, no TLS needed)
+    }
+    return url;
   } else {
-    return process.env.NEXT_PUBLIC_BRAIN_WS_BASE || 'wss://api.brain.falklabs.de/ws';
+    const url = process.env.NEXT_PUBLIC_BRAIN_WS_BASE;
+    if (!url) {
+      // Browser: wss:// for HTTPS pages, ws:// for HTTP (dev)
+      const proto = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss' : 'ws';
+      return `${proto}://${typeof window !== 'undefined' ? window.location.host : 'localhost'}/ws`;
+    }
+    // Env var must use wss:// in production
+    if (process.env.NODE_ENV === 'production' && url.startsWith('ws://')) {
+      throw new Error('NEXT_PUBLIC_BRAIN_WS_BASE must use wss:// in production');
+    }
+    return url;
   }
 }
 
