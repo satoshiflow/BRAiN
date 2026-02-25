@@ -27,6 +27,13 @@ class Settings(BaseSettings):
     jwt_jwks_url: str = "https://brain.falklabs.de/.well-known/jwks.json"
     jwks_cache_ttl_seconds: int = 3600  # 1 hour cache for JWKS keys
 
+    # Token Key Configuration (A1 - Token Architecture)
+    jwt_private_key_pem: str = ""  # RSA private key PEM (from BRAIN_JWT_PRIVATE_KEY env)
+    jwt_algorithm: str = "RS256"  # JWT signing algorithm
+    access_token_expire_minutes: int = 15  # Short-lived access tokens
+    refresh_token_expire_days: int = 7  # Long-lived refresh tokens
+    agent_token_expire_hours: int = 24  # Agent/service account tokens
+
     # CORS - Strict allowed origins (SECURITY-001)
     # Default: production-safe whitelist, no wildcards
     cors_origins: Union[str, list[str]] = [

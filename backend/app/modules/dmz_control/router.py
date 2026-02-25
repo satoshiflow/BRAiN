@@ -21,13 +21,15 @@ from app.modules.dmz_control.monitoring import (
     GatewayHealthMetric,
 )
 from app.core.auth_deps import (
-    require_role,
-    SystemRole,
+    require_admin,
     Principal,
 )
-from app.core.security import UserRole
 
-router = APIRouter(prefix="/api/dmz", tags=["dmz"])
+router = APIRouter(
+    prefix="/api/dmz",
+    tags=["dmz"],
+    dependencies=[Depends(require_admin)],
+)
 
 
 def _audit_log(
@@ -46,12 +48,8 @@ def _audit_log(
     logger.info(f"[AUDIT] DMZ operation: {audit_entry}")
 
 
-@router.get(
-    "/status",
-    response_model=DMZStatus,
-    dependencies=[Depends(require_role(SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN))],
-)
-async def get_dmz_status(principal: Principal = Depends(require_role(SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN))):
+@router.get("/status", response_model=DMZStatus)
+async def get_dmz_status(principal: Principal = Depends(require_admin)):
     """
     Get DMZ gateway status.
 
@@ -74,12 +72,8 @@ async def get_dmz_status(principal: Principal = Depends(require_role(SystemRole.
         )
 
 
-@router.post(
-    "/start",
-    response_model=DMZControlResponse,
-    dependencies=[Depends(require_role(SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN))],
-)
-async def start_dmz(principal: Principal = Depends(require_role(SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN))):
+@router.post("/start", response_model=DMZControlResponse)
+async def start_dmz(principal: Principal = Depends(require_admin)):
     """
     Start DMZ gateway services.
 
@@ -125,12 +119,8 @@ async def start_dmz(principal: Principal = Depends(require_role(SystemRole.ADMIN
         )
 
 
-@router.post(
-    "/stop",
-    response_model=DMZControlResponse,
-    dependencies=[Depends(require_role(SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN))],
-)
-async def stop_dmz(principal: Principal = Depends(require_role(SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN))):
+@router.post("/stop", response_model=DMZControlResponse)
+async def stop_dmz(principal: Principal = Depends(require_admin)):
     """
     Stop DMZ gateway services.
 
@@ -170,12 +160,8 @@ async def stop_dmz(principal: Principal = Depends(require_role(SystemRole.ADMIN,
 # ============================================================================
 
 
-@router.get(
-    "/metrics",
-    response_model=DMZMetrics,
-    dependencies=[Depends(require_role(SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN))],
-)
-async def get_dmz_metrics(principal: Principal = Depends(require_role(SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN))):
+@router.get("/metrics", response_model=DMZMetrics)
+async def get_dmz_metrics(principal: Principal = Depends(require_admin)):
     """
     Get aggregated DMZ gateway metrics.
 
@@ -203,12 +189,8 @@ async def get_dmz_metrics(principal: Principal = Depends(require_role(SystemRole
         )
 
 
-@router.get(
-    "/metrics/gateways",
-    response_model=List[GatewayHealthMetric],
-    dependencies=[Depends(require_role(SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN))],
-)
-async def get_gateway_metrics(principal: Principal = Depends(require_role(SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN))):
+@router.get("/metrics/gateways", response_model=List[GatewayHealthMetric])
+async def get_gateway_metrics(principal: Principal = Depends(require_admin)):
     """
     Get individual gateway health metrics.
 
@@ -238,12 +220,8 @@ async def get_gateway_metrics(principal: Principal = Depends(require_role(System
         )
 
 
-@router.get(
-    "/metrics/prometheus",
-    response_class=PlainTextResponse,
-    dependencies=[Depends(require_role(SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN))],
-)
-async def get_prometheus_metrics(principal: Principal = Depends(require_role(SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN))):
+@router.get("/metrics/prometheus", response_class=PlainTextResponse)
+async def get_prometheus_metrics(principal: Principal = Depends(require_admin)):
     """
     Get metrics in Prometheus format.
 

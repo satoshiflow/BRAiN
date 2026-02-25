@@ -10,10 +10,14 @@ from loguru import logger
 from datetime import datetime
 
 from app.modules.safe_mode.service import get_safe_mode_service
-from app.core.auth_deps import require_auth, require_role, Principal
+from app.core.auth_deps import require_operator, Principal
 
 
-router = APIRouter(prefix="/api/safe-mode", tags=["safe-mode"])
+router = APIRouter(
+    prefix="/api/safe-mode",
+    tags=["safe-mode"],
+    dependencies=[Depends(require_operator)],
+)
 
 
 class SafeModeEnableRequest(BaseModel):
@@ -65,7 +69,9 @@ def _audit_safe_mode_change(
 
 
 @router.get("/info")
-async def get_safe_mode_info():
+async def get_safe_mode_info(
+    principal: Principal = Depends(require_operator)
+):
     """
     Get safe mode information.
 
@@ -92,7 +98,7 @@ async def get_safe_mode_info():
 
 @router.get("/status")
 async def get_safe_mode_status(
-    principal: Principal = Depends(require_auth)
+    principal: Principal = Depends(require_operator)
 ):
     """
     Get current safe mode status.
@@ -122,7 +128,7 @@ async def get_safe_mode_status(
 @router.post("/enable")
 async def enable_safe_mode(
     request: SafeModeEnableRequest,
-    principal: Principal = Depends(require_role("admin"))
+    principal: Principal = Depends(require_operator)
 ):
     """
     Enable safe mode.
@@ -197,7 +203,7 @@ async def enable_safe_mode(
 @router.post("/disable")
 async def disable_safe_mode(
     request: SafeModeDisableRequest,
-    principal: Principal = Depends(require_role("admin"))
+    principal: Principal = Depends(require_operator)
 ):
     """
     Disable safe mode.

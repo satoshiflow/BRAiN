@@ -5,8 +5,9 @@ REST API endpoints for fleet management and multi-robot coordination.
 """
 
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, status, Depends
 
+from app.core.auth_deps import require_operator, Principal
 from app.modules.fleet.schemas import (
     FleetInfo,
     FleetCreateRequest,
@@ -28,7 +29,11 @@ from app.modules.fleet.schemas import (
 from app.modules.fleet.service import get_fleet_service
 
 
-router = APIRouter(prefix="/api/fleet", tags=["Fleet"])
+router = APIRouter(
+    prefix="/api/fleet",
+    tags=["Fleet"],
+    dependencies=[Depends(require_operator)],
+)
 
 
 # ============================================================================
@@ -36,7 +41,9 @@ router = APIRouter(prefix="/api/fleet", tags=["Fleet"])
 # ============================================================================
 
 @router.get("/info")
-def get_fleet_info():
+def get_fleet_info(
+    principal: Principal = Depends(require_operator)
+):
     """Get Fleet module information."""
     return {
         "name": "Fleet",
@@ -65,7 +72,9 @@ def get_fleet_info():
 # ============================================================================
 
 @router.get("/fleets", response_model=FleetListResponse)
-def list_fleets():
+def list_fleets(
+    principal: Principal = Depends(require_operator)
+):
     """List all registered fleets."""
     service = get_fleet_service()
     fleets = service.list_fleets()
@@ -77,7 +86,10 @@ def list_fleets():
 
 
 @router.get("/fleets/{fleet_id}", response_model=FleetInfo)
-def get_fleet(fleet_id: str):
+def get_fleet(
+    fleet_id: str,
+    principal: Principal = Depends(require_operator)
+):
     """Get information about a specific fleet."""
     service = get_fleet_service()
     fleet = service.get_fleet(fleet_id)
@@ -92,7 +104,10 @@ def get_fleet(fleet_id: str):
 
 
 @router.post("/fleets", response_model=FleetInfo, status_code=status.HTTP_201_CREATED)
-def create_fleet(request: FleetCreateRequest):
+def create_fleet(
+    request: FleetCreateRequest,
+    principal: Principal = Depends(require_operator)
+):
     """Create a new fleet."""
     service = get_fleet_service()
 
@@ -108,7 +123,11 @@ def create_fleet(request: FleetCreateRequest):
 
 
 @router.put("/fleets/{fleet_id}", response_model=FleetInfo)
-def update_fleet(fleet_id: str, request: FleetUpdateRequest):
+def update_fleet(
+    fleet_id: str,
+    request: FleetUpdateRequest,
+    principal: Principal = Depends(require_operator)
+):
     """Update fleet information."""
     service = get_fleet_service()
 
@@ -124,7 +143,10 @@ def update_fleet(fleet_id: str, request: FleetUpdateRequest):
 
 
 @router.delete("/fleets/{fleet_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_fleet(fleet_id: str):
+def delete_fleet(
+    fleet_id: str,
+    principal: Principal = Depends(require_operator)
+):
     """Delete a fleet and unregister all its robots."""
     service = get_fleet_service()
     success = service.delete_fleet(fleet_id)
@@ -141,7 +163,10 @@ def delete_fleet(fleet_id: str):
 # ============================================================================
 
 @router.get("/robots", response_model=RobotListResponse)
-def list_robots(fleet_id: Optional[str] = Query(None, description="Filter by fleet ID")):
+def list_robots(
+    fleet_id: Optional[str] = Query(None, description="Filter by fleet ID"),
+    principal: Principal = Depends(require_operator)
+):
     """List all registered robots, optionally filtered by fleet."""
     service = get_fleet_service()
     robots = service.list_robots(fleet_id=fleet_id)
@@ -153,7 +178,10 @@ def list_robots(fleet_id: Optional[str] = Query(None, description="Filter by fle
 
 
 @router.get("/robots/{robot_id}", response_model=RobotInfo)
-def get_robot(robot_id: str):
+def get_robot(
+    robot_id: str,
+    principal: Principal = Depends(require_operator)
+):
     """Get information about a specific robot."""
     service = get_fleet_service()
     robot = service.get_robot(robot_id)
@@ -168,7 +196,10 @@ def get_robot(robot_id: str):
 
 
 @router.post("/robots", response_model=RobotInfo, status_code=status.HTTP_201_CREATED)
-def register_robot(request: RobotRegisterRequest):
+def register_robot(
+    request: RobotRegisterRequest,
+    principal: Principal = Depends(require_operator)
+):
     """Register a new robot to a fleet."""
     service = get_fleet_service()
 
@@ -184,7 +215,11 @@ def register_robot(request: RobotRegisterRequest):
 
 
 @router.put("/robots/{robot_id}", response_model=RobotInfo)
-def update_robot_status(robot_id: str, request: RobotUpdateRequest):
+def update_robot_status(
+    robot_id: str,
+    request: RobotUpdateRequest,
+    principal: Principal = Depends(require_operator)
+):
     """Update robot status."""
     service = get_fleet_service()
 
@@ -200,7 +235,10 @@ def update_robot_status(robot_id: str, request: RobotUpdateRequest):
 
 
 @router.delete("/robots/{robot_id}", status_code=status.HTTP_204_NO_CONTENT)
-def unregister_robot(robot_id: str):
+def unregister_robot(
+    robot_id: str,
+    principal: Principal = Depends(require_operator)
+):
     """Unregister a robot from its fleet."""
     service = get_fleet_service()
     success = service.unregister_robot(robot_id)
@@ -220,6 +258,7 @@ def unregister_robot(robot_id: str):
 def list_tasks(
     fleet_id: Optional[str] = Query(None, description="Filter by fleet ID"),
     status_filter: Optional[str] = Query(None, alias="status", description="Filter by task status"),
+    principal: Principal = Depends(require_operator)
 ):
     """List tasks, optionally filtered by fleet and/or status."""
     service = get_fleet_service()
@@ -232,7 +271,10 @@ def list_tasks(
 
 
 @router.get("/tasks/{task_id}", response_model=FleetTask)
-def get_task(task_id: str):
+def get_task(
+    task_id: str,
+    principal: Principal = Depends(require_operator)
+):
     """Get information about a specific task."""
     service = get_fleet_service()
     task = service.get_task(task_id)
@@ -247,7 +289,11 @@ def get_task(task_id: str):
 
 
 @router.post("/fleets/{fleet_id}/tasks", response_model=TaskAssignmentResponse, status_code=status.HTTP_201_CREATED)
-def assign_task(fleet_id: str, request: TaskAssignRequest):
+def assign_task(
+    fleet_id: str,
+    request: TaskAssignRequest,
+    principal: Principal = Depends(require_operator)
+):
     """
     Assign a task to the fleet.
 
@@ -274,6 +320,7 @@ def assign_task(fleet_id: str, request: TaskAssignRequest):
 def complete_task(
     task_id: str,
     success: bool = Query(True, description="Whether task completed successfully"),
+    principal: Principal = Depends(require_operator)
 ):
     """Mark a task as completed (or failed)."""
     service = get_fleet_service()
@@ -294,14 +341,19 @@ def complete_task(
 # ============================================================================
 
 @router.get("/zones", response_model=List[CoordinationZone])
-def list_zones():
+def list_zones(
+    principal: Principal = Depends(require_operator)
+):
     """List all coordination zones."""
     service = get_fleet_service()
     return list(service.zones.values())
 
 
 @router.get("/zones/{zone_id}", response_model=CoordinationZone)
-def get_zone(zone_id: str):
+def get_zone(
+    zone_id: str,
+    principal: Principal = Depends(require_operator)
+):
     """Get information about a coordination zone."""
     service = get_fleet_service()
     zone = service.zones.get(zone_id)
@@ -320,6 +372,7 @@ def create_zone(
     zone_id: str = Query(..., description="Zone identifier"),
     zone_type: str = Query(..., description="Type of zone"),
     max_concurrent_robots: int = Query(1, ge=1, description="Max robots allowed simultaneously"),
+    principal: Principal = Depends(require_operator)
 ):
     """Create a coordination zone."""
     service = get_fleet_service()
@@ -332,7 +385,10 @@ def create_zone(
 
 
 @router.post("/zones/request-entry", response_model=ZoneEntryResponse)
-def request_zone_entry(request: ZoneEntryRequest):
+def request_zone_entry(
+    request: ZoneEntryRequest,
+    principal: Principal = Depends(require_operator)
+):
     """
     Request permission for a robot to enter a coordination zone.
 
@@ -344,7 +400,11 @@ def request_zone_entry(request: ZoneEntryRequest):
 
 
 @router.post("/zones/{zone_id}/exit", status_code=status.HTTP_204_NO_CONTENT)
-def exit_zone(zone_id: str, robot_id: str = Query(..., description="Robot exiting the zone")):
+def exit_zone(
+    zone_id: str,
+    robot_id: str = Query(..., description="Robot exiting the zone"),
+    principal: Principal = Depends(require_operator)
+):
     """Robot exits a coordination zone."""
     service = get_fleet_service()
     success = service.exit_zone(zone_id, robot_id)
@@ -361,7 +421,10 @@ def exit_zone(zone_id: str, robot_id: str = Query(..., description="Robot exitin
 # ============================================================================
 
 @router.get("/fleets/{fleet_id}/statistics", response_model=FleetStatistics)
-def get_fleet_statistics(fleet_id: str):
+def get_fleet_statistics(
+    fleet_id: str,
+    principal: Principal = Depends(require_operator)
+):
     """Get comprehensive statistics for a fleet."""
     service = get_fleet_service()
 

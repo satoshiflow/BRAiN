@@ -8,17 +8,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
-from typing import Optional
-from uuid import UUID
+from typing import Optional, List, Dict, Any, Tuple
+from uuid import UUID, uuid4
 import secrets
+import hashlib
+import logging
+
+from jose import jwt
+from jose.exceptions import JWTError
 
 from app.models.user import User, Invitation, UserRole
+from app.models.token import RefreshToken, ServiceAccount, AgentCredential, TokenStatus, ServiceAccountStatus, AgentCredentialStatus
 from app.schemas.auth import (
     LoginRequest, RegisterRequest, FirstTimeSetupRequest,
-    InvitationCreate
+    InvitationCreate, TokenPair, DeviceInfo
 )
+from app.core.config import get_settings
+from app.core.token_keys import get_token_key_manager
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+logger = logging.getLogger(__name__)
+settings = get_settings()
 
 
 class AuthService:

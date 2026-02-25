@@ -5,9 +5,10 @@ REST API endpoints for sovereign mode operations.
 """
 
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from loguru import logger
 
+from app.core.auth_deps import require_admin
 from app.modules.sovereign_mode.service import get_sovereign_service
 from app.modules.sovereign_mode.schemas import (
     SovereignMode,
@@ -24,7 +25,11 @@ from app.modules.sovereign_mode.schemas import (
 )
 
 
-router = APIRouter(prefix="/api/sovereign-mode", tags=["sovereign-mode"])
+router = APIRouter(
+    prefix="/api/sovereign-mode",
+    tags=["sovereign-mode"],
+    dependencies=[Depends(require_admin)],
+)
 
 
 @router.get("/info", summary="Get sovereign mode information")

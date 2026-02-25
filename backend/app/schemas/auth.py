@@ -6,7 +6,7 @@ Pydantic models for authentication and user management.
 
 from pydantic import BaseModel, EmailStr, Field, validator
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from uuid import UUID
 from enum import Enum
 
@@ -82,6 +82,116 @@ class InvitationResponse(BaseModel):
     token: str
     expires_at: datetime
     invitation_url: str
+
+
+# ============================================================================
+# Token Pair & Refresh
+# ============================================================================
+
+class TokenPair(BaseModel):
+    """Access token and refresh token pair"""
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    expires_in: int  # Access token expiration in seconds
+
+
+class RefreshRequest(BaseModel):
+    """Token refresh request"""
+    refresh_token: str
+
+
+class LogoutRequest(BaseModel):
+    """Logout request"""
+    refresh_token: str
+
+
+class TokenIntrospectionResponse(BaseModel):
+    """Token introspection response (RFC 7662)"""
+    active: bool
+    sub: Optional[str] = None
+    scope: Optional[str] = None
+    client_id: Optional[str] = None
+    token_type: Optional[str] = None
+    exp: Optional[int] = None
+    iat: Optional[int] = None
+    nbf: Optional[int] = None
+    aud: Optional[str] = None
+    iss: Optional[str] = None
+    jti: Optional[str] = None
+
+
+# ============================================================================
+# Service Account Token
+# ============================================================================
+
+class ServiceTokenRequest(BaseModel):
+    """Service token request (Client Credentials Grant)"""
+    client_id: str
+    client_secret: str
+    scope: Optional[str] = None  # Space-separated scopes
+
+
+class ServiceTokenResponse(BaseModel):
+    """Service token response"""
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    scope: Optional[str] = None
+
+
+# ============================================================================
+# Agent Token
+# ============================================================================
+
+class AgentTokenRequest(BaseModel):
+    """Agent token request"""
+    agent_id: str
+    parent_agent_id: Optional[str] = None
+    scope: Optional[str] = None  # Space-separated scopes
+    capabilities: Optional[List[str]] = None
+
+
+class AgentTokenResponse(BaseModel):
+    """Agent token response"""
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    scope: str
+    agent_id: str
+
+
+# ============================================================================
+# JWKS
+# ============================================================================
+
+class JWK(BaseModel):
+    """JSON Web Key"""
+    kty: str
+    kid: str
+    use: str
+    alg: str
+    n: str  # RSA modulus (base64url-encoded)
+    e: str  # RSA exponent (base64url-encoded)
+
+
+class JWKSResponse(BaseModel):
+    """JSON Web Key Set response"""
+    keys: List[JWK]
+
+
+# ============================================================================
+# Device Info
+# ============================================================================
+
+class DeviceInfo(BaseModel):
+    """Device information for token binding"""
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    device_fingerprint: Optional[str] = None
+
+    class Config:
+        from_attributes = True
 
 
 # ============================================================================
