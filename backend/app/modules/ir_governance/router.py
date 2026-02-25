@@ -10,9 +10,11 @@ Endpoints:
 - GET /api/ir/approvals/{approval_id}/status - Get approval status
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from typing import Dict, Any
 from loguru import logger
+
+from app.core.auth_deps import require_auth, require_operator, get_current_principal, Principal
 
 from app.modules.ir_governance.schemas import (
     IR,
@@ -25,7 +27,11 @@ from app.modules.ir_governance.validator import get_validator
 from app.modules.ir_governance.approvals import get_approvals_service
 
 
-router = APIRouter(prefix="/api/ir", tags=["ir-governance"])
+router = APIRouter(
+    prefix="/api/ir",
+    tags=["ir-governance"],
+    dependencies=[Depends(require_auth)]
+)
 
 
 @router.get("/info")

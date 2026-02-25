@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, status, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.auth_deps import require_auth, require_operator, get_current_principal, Principal
 from app.modules.governor.service import (
     GovernorService,
     get_governor_service,
@@ -20,7 +21,11 @@ from app.modules.governor.schemas import (
     DecisionRequest,
 )
 
-router = APIRouter(prefix="/api/neurorail/v1/governor", tags=["NeuroRail Governor"])
+router = APIRouter(
+    prefix="/api/neurorail/v1/governor",
+    tags=["NeuroRail Governor"],
+    dependencies=[Depends(require_auth)]
+)
 
 
 # ============================================================================

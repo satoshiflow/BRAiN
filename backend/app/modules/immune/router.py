@@ -1,11 +1,17 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Depends
 from typing import Dict, Any
+
+from app.core.auth_deps import require_auth, require_role, get_current_principal, Principal
 
 from app.modules.immune.core.service import ImmuneService
 from app.modules.immune.schemas import ImmuneEvent, ImmuneHealthSummary
 from app.core.rate_limit import limiter, RateLimits
 
-router = APIRouter(prefix="/api/immune", tags=["Immune"])
+router = APIRouter(
+    prefix="/api/immune",
+    tags=["Immune"],
+    dependencies=[Depends(require_auth)]
+)
 
 # Singleton instance (EventStream can be injected at startup)
 # PHASE 3: Auto-protection enabled by default
