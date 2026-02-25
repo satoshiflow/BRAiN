@@ -4,7 +4,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, queryKeys, type Mission, type MissionHealth, type SystemEvent, type EventStats, type WorkerStatus } from '@/lib/api';
+import { api, queryKeys, type Mission, type MissionHealth, type SystemEvent, type EventStats, type WorkerStatus, learningApi, memoryApi, type LearningStats } from '@/lib/api';
 
 // Missions Hooks
 export function useMissions(limit = 20) {
@@ -149,4 +149,45 @@ export function useDashboardData() {
       eventStats.refetch();
     },
   };
+}
+
+// Learning Hooks
+export function useLearning() {
+  return useQuery({
+    queryKey: ['learning', 'stats'],
+    queryFn: () => learningApi.getStats(),
+    refetchInterval: 60000  // Refresh every minute
+  });
+}
+
+export function useLearningExperiments(agentId?: string) {
+  return useQuery({
+    queryKey: ['learning', 'experiments', agentId],
+    queryFn: () => learningApi.listExperiments(agentId),
+    refetchInterval: 30000
+  });
+}
+
+// Memory Hooks
+export function useMemory() {
+  return useQuery({
+    queryKey: ['memory', 'info'],
+    queryFn: () => memoryApi.getInfo(),
+    refetchInterval: 30000  // Refresh every 30s
+  });
+}
+
+export function useMemoryStats() {
+  return useQuery({
+    queryKey: ['memory', 'stats'],
+    queryFn: () => memoryApi.getStats(),
+  });
+}
+
+export function useMemorySessions() {
+  return useQuery({
+    queryKey: ['memory', 'sessions'],
+    queryFn: () => memoryApi.getSessions(),
+    refetchInterval: 60000
+  });
 }

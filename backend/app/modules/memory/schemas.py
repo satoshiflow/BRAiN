@@ -54,7 +54,7 @@ class ConversationTurn(BaseModel):
     """A single turn in a conversation."""
     turn_id: str = Field(default_factory=lambda: f"turn_{uuid.uuid4().hex[:10]}")
     role: str = Field(..., description="'user', 'assistant', or 'system'")
-    content: str
+    content: str = Field(..., max_length=10000)
     timestamp: float = Field(default_factory=time.time)
     metadata: Dict[str, Any] = Field(default_factory=dict)
     token_count: int = Field(0, ge=0, description="Estimated token count")
@@ -65,8 +65,8 @@ class MemoryEntry(BaseModel):
     memory_id: str = Field(default_factory=lambda: f"mem_{uuid.uuid4().hex[:12]}")
     layer: MemoryLayer
     memory_type: MemoryType
-    content: str = Field(..., description="Primary content of the memory")
-    summary: Optional[str] = Field(None, description="Compressed summary (if summarized)")
+    content: str = Field(..., max_length=10000, description="Primary content of the memory")
+    summary: Optional[str] = Field(None, max_length=2000, description="Compressed summary (if summarized)")
 
     # Context
     agent_id: Optional[str] = None
@@ -128,6 +128,7 @@ class SessionContext(BaseModel):
     # Summary of compressed older turns
     compressed_summary: Optional[str] = Field(
         None,
+        max_length=2000,
         description="Summary of turns that were compressed to save tokens"
     )
     compressed_turn_count: int = Field(
@@ -142,7 +143,7 @@ class SessionContext(BaseModel):
 
 class MemoryQuery(BaseModel):
     """Query for selective recall."""
-    query: str = Field(..., description="Natural language query or keyword")
+    query: str = Field(..., max_length=10000, description="Natural language query or keyword")
     agent_id: Optional[str] = None
     session_id: Optional[str] = None
     mission_id: Optional[str] = None
@@ -195,7 +196,7 @@ class CompressionResult(BaseModel):
 
 class MemoryStoreRequest(BaseModel):
     """Request to store a memory."""
-    content: str
+    content: str = Field(..., max_length=10000)
     memory_type: MemoryType
     layer: MemoryLayer = MemoryLayer.EPISODIC
     agent_id: Optional[str] = None
@@ -216,7 +217,7 @@ class SessionCreateRequest(BaseModel):
 class SessionAddTurnRequest(BaseModel):
     """Request to add a conversation turn."""
     role: str = Field(..., description="'user', 'assistant', or 'system'")
-    content: str
+    content: str = Field(..., max_length=10000)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 

@@ -1,4 +1,16 @@
 """
+DEPRECATED: Legacy in-memory implementation.
+
+This module is kept for backwards compatibility only.
+The LearningService now uses PostgreSQL-backed models instead.
+
+See: service.py for current async/DB implementation
+See: models.py for database schema
+
+Will be removed in BRAiN v0.4.0
+
+---
+
 Performance Tracker - Metric collection and time-series aggregation.
 
 Collects raw metrics from agents, aggregates into time windows,

@@ -313,6 +313,115 @@ TODO:
 """
 ```
 
+## Module Security Hardening Checklist
+
+**Use this checklist for EVERY module during implementation:**
+
+### Security Checklist (MANDATORY)
+```markdown
+## Module: [MODULE_NAME]
+
+### Authentication
+- [ ] All endpoints have auth (Depends(require_auth) or require_role)
+- [ ] Public/list endpoints: require_auth (read-only)
+- [ ] Create/Update/Delete endpoints: require_role(OPERATOR)
+- [ ] Admin endpoints: require_role(ADMIN)
+- [ ] Ownership verification for agent-specific resources
+
+### Input Validation
+- [ ] All request bodies use Pydantic models with Field constraints
+- [ ] File paths: No "..", no leading "/" (sandboxed)
+- [ ] Text fields: max_length set (default 10000 for content)
+- [ ] Numbers: min_value, max_value constraints
+- [ ] Enums: Validated against allowed values
+- [ ] No shell=True in subprocess (use exec not shell)
+
+### Secrets Management
+- [ ] No hardcoded secrets in code
+- [ ] All secrets from os.environ with fallback error
+- [ ] Secrets documented in .env.example
+- [ ] No secrets logged (use logger.debug, not print)
+
+### Data Persistence
+- [ ] In-memory state migrated to PostgreSQL (AsyncSession)
+- [ ] Models in /app/models/ with SQLAlchemy ORM
+- [ ] Alembic migration created if schema changed
+- [ ] No global singletons (use Depends() injection)
+
+### Async/Await
+- [ ] No blocking I/O (time.sleep, subprocess.run, file.read_text)
+- [ ] File I/O uses aiofiles
+- [ ] CPU-intensive work uses loop.run_in_executor()
+- [ ] Database queries async with AsyncSession
+
+### Error Handling
+- [ ] HTTPException with sanitized messages (no internal details)
+- [ ] All exceptions logged with logger.error(..., exc_info=True)
+- [ ] No stack traces exposed to clients
+- [ ] Rate limiting on expensive endpoints
+
+### Testing
+- [ ] Minimum 3 endpoint tests (POST, GET, DELETE)
+- [ ] Auth failure test (401/403 without token)
+- [ ] Input validation test (reject invalid data)
+- [ ] Happy path test (valid request succeeds)
+- [ ] Tests use AsyncSession fixtures
+
+### Documentation
+- [ ] Module docstring: Purpose, security notes, TODOs
+- [ ] README.md: Feature overview, API endpoints, auth requirements
+- [ ] CHANGELOG: New features, breaking changes, security fixes
+- [ ] Endpoints documented: Method, path, auth, params, response
+
+### Controldeck-v2 Integration
+- [ ] Sidebar navigation item added
+- [ ] Module page created (/app/(protected)/modules/[module]/page.tsx)
+- [ ] API client hooks added (lib/api.ts + hooks/use-api.ts)
+- [ ] Design system compliance (Button, Card, Badge, colors, icons)
+
+### Pre-Commit Verification
+```bash
+# Run before commit:
+ruff check app/modules/[MODULE]/
+black --check app/modules/[MODULE]/
+mypy app/modules/[MODULE]/ --no-error-summary 2>/dev/null | grep -v "Success"
+pytest app/modules/[MODULE]/tests/ -v
+```
+```
+
+### Vulnerability Assessment Template
+
+```markdown
+## Module: [NAME]
+
+### Critical RCE Risks
+- [ ] Shell execution: Check for subprocess.shell=True (CONVERT TO EXEC)
+- [ ] File operations: Check for unconstrained paths (ADD SANDBOXING)
+- [ ] Code evaluation: Check for eval/exec on user input (NEVER ALLOW)
+- [ ] External commands: Check for hardcoded paths (USE SHLEX.SPLIT)
+
+### Authentication Gaps
+- [ ] Missing endpoints auth
+- [ ] Overly broad role permissions
+- [ ] No ownership verification for multi-tenant resources
+- [ ] No rate limiting on expensive operations
+
+### Hardcoded Secrets
+- [ ] API keys
+- [ ] Database credentials
+- [ ] Master keys
+- [ ] JWT signing keys
+- [ ] Location: [file:line] → FIX: [os.environ.get solution]
+
+### In-Memory Data Loss
+- [ ] Services with self._data dicts
+- [ ] Session variables not persisted
+- [ ] Snapshots/states in module globals
+- [ ] Event queues not stored in DB
+```
+
+---
+
 ## CURRENT AUTH SYSTEM STATUS (2026-02-13)
 
 ### Frontend Auth Implementation (control_deck)

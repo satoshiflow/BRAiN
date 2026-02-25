@@ -26,6 +26,9 @@ from .schemas import (
 from .service import LearningService, get_learning_service
 from .router import router
 
+# Note: Legacy classes (PerformanceTracker, AdaptiveBehavior, ABTesting)
+# are deprecated. Use LearningService instead.
+
 __all__ = [
     # ORM Models
     "LearningStrategyORM",

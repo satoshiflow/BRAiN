@@ -16,8 +16,8 @@ import {
   ChevronRight,
   Activity,
   Bot,
-  MessageSquare,
   Brain,
+  MessageSquare,
   Puzzle,
   Lightbulb,
   UserCircle,
@@ -42,7 +42,11 @@ const navItems: NavItem[] = [
   { label: "Agent Family", href: "/agent-family", icon: MessageSquare, group: "Operations" },
   { label: "Events", href: "/events", icon: Radio, group: "Operations" },
   
-  // Intelligence (Wissen, Fähigkeiten, Identität)
+   // Intelligence & Memory (Backend Modules)
+  { label: "Memory Module", href: "/modules/memory", icon: Brain, group: "Intelligence & Memory" },
+  { label: "Learning Module", href: "/modules/learning", icon: Sparkles, group: "Intelligence & Memory" },
+
+  // Intelligence (Core Layer)
   { label: "Skills", href: "/intelligence/skills", icon: Puzzle, group: "Intelligence" },
   { label: "Knowledge", href: "/intelligence/knowledge", icon: Database, group: "Intelligence" },
   { label: "Memory", href: "/intelligence/memory", icon: Brain, group: "Intelligence" },
