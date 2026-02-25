@@ -9,6 +9,7 @@ from app.models.business import BusinessProcess, ProcessStep, ProcessExecution, 
 from app.models.courses import Course, CourseModule, CourseLesson, Enrollment
 from app.models.audit import AuthAuditLog
 from app.models.policy import Policy
+from app.models.autonomous_pipeline import Workspace, Project, RunContract
 
 __all__ = [
     # User models
@@ -27,4 +28,8 @@ __all__ = [
     # Auth governance models
     "AuthAuditLog",
     "Policy",
+    # Autonomous Pipeline models
+    "Workspace",
+    "Project",
+    "RunContract",
 ]

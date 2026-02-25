@@ -5,10 +5,11 @@ Multi-tenant workspace and project management endpoints.
 Workspace-scoped pipeline execution for tenant isolation.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from typing import Dict, Any, List, Optional
 from loguru import logger
 
+from app.core.auth_deps import require_auth, get_current_principal, Principal
 from app.modules.autonomous_pipeline.workspace_schemas import (
     Workspace,
     Project,
@@ -34,7 +35,34 @@ from app.modules.autonomous_pipeline.execution_graph import create_execution_gra
 from app.modules.autonomous_pipeline.run_contract import get_run_contract_service
 
 
-router = APIRouter(prefix="/api/workspaces", tags=["workspaces"])
+router = APIRouter(
+    prefix="/api/workspaces",
+    tags=["workspaces"],
+    dependencies=[Depends(require_auth)]
+)
+
+
+# ============================================================================
+# Helper Functions
+# ============================================================================
+
+def _verify_workspace_ownership(workspace: Workspace, principal: Principal, allow_admin: bool = True) -> None:
+    """
+    Verify that principal owns the workspace.
+
+    Raises HTTPException(403) if not authorized.
+    Admin users can always access if allow_admin=True.
+    """
+    # Allow admins to access any workspace (unless explicitly disabled)
+    if allow_admin and principal.role and "admin" in str(principal.role).lower():
+        return
+
+    # Check ownership: principal must be the owner
+    if principal.principal_id != workspace.owner_id:
+        raise HTTPException(
+            status_code=403,
+            detail="You are not authorized to access this workspace"
+        )
 
 
 # ============================================================================
@@ -76,33 +104,45 @@ async def get_workspaces_info():
 
 @router.get("")
 async def list_workspaces(
+    principal: Principal = Depends(get_current_principal),
     status: Optional[WorkspaceStatus] = None,
     owner_id: Optional[str] = None,
 ) -> List[Workspace]:
     """
-    List all workspaces.
+    List workspaces that you own.
 
     **Query Parameters:**
     - status: Filter by status (active, suspended, archived)
-    - owner_id: Filter by owner ID
+    - owner_id: Filter by owner ID (admins only)
 
     **Example:**
     ```bash
     GET /api/workspaces?status=active
     ```
+
+    **Note:** Non-admin users can only see their own workspaces.
     """
     try:
         service = get_workspace_service()
-        workspaces = service.list_workspaces(status=status, owner_id=owner_id)
+
+        # Non-admin users can only see their own workspaces
+        effective_owner_id = owner_id
+        if not principal.role or "admin" not in str(principal.role).lower():
+            effective_owner_id = principal.principal_id
+
+        workspaces = service.list_workspaces(status=status, owner_id=effective_owner_id)
         return workspaces
 
     except Exception as e:
         logger.error(f"Failed to list workspaces: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to list workspaces: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to list workspaces")
 
 
 @router.post("")
-async def create_workspace(request: WorkspaceCreateRequest) -> Workspace:
+async def create_workspace(
+    request: WorkspaceCreateRequest,
+    principal: Principal = Depends(get_current_principal),
+) -> Workspace:
     """
     Create new workspace.
 
@@ -117,10 +157,23 @@ async def create_workspace(request: WorkspaceCreateRequest) -> Workspace:
       "max_storage_gb": 50.0
     }
     ```
+
+    **Note:** The created workspace will be owned by the authenticated user.
     """
     try:
         service = get_workspace_service()
+
+        # Set owner_id from principal if not explicitly provided
+        if not request.owner_id:
+            request.owner_id = principal.principal_id
+
         workspace = service.create_workspace(request)
+
+        logger.info(
+            f"[Workspace] Created by {principal.principal_id}: {workspace.workspace_id} "
+            f"(name={workspace.name})"
+        )
+
         return workspace
 
     except ValueError as e:
@@ -128,11 +181,14 @@ async def create_workspace(request: WorkspaceCreateRequest) -> Workspace:
 
     except Exception as e:
         logger.error(f"Failed to create workspace: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to create workspace: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create workspace")
 
 
 @router.get("/{workspace_id}")
-async def get_workspace(workspace_id: str) -> Workspace:
+async def get_workspace(
+    workspace_id: str,
+    principal: Principal = Depends(get_current_principal),
+) -> Workspace:
     """
     Get workspace by ID.
 
@@ -140,24 +196,34 @@ async def get_workspace(workspace_id: str) -> Workspace:
     ```bash
     GET /api/workspaces/ws_01j12k34m56n78p90qrs
     ```
+
+    **Note:** You must own the workspace or be an admin.
     """
     try:
         service = get_workspace_service()
         workspace = service.get_workspace(workspace_id)
+
+        # Verify ownership
+        _verify_workspace_ownership(workspace, principal)
+
         return workspace
 
     except WorkspaceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
+    except HTTPException:
+        raise
+
     except Exception as e:
         logger.error(f"Failed to get workspace: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get workspace: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get workspace")
 
 
 @router.put("/{workspace_id}")
 async def update_workspace(
     workspace_id: str,
     request: WorkspaceUpdateRequest,
+    principal: Principal = Depends(get_current_principal),
 ) -> Workspace:
     """
     Update workspace.
@@ -169,22 +235,38 @@ async def update_workspace(
       "max_runs_per_day": 1000
     }
     ```
+
+    **Note:** You must own the workspace or be an admin.
     """
     try:
         service = get_workspace_service()
+        workspace = service.get_workspace(workspace_id)
+
+        # Verify ownership
+        _verify_workspace_ownership(workspace, principal)
+
         workspace = service.update_workspace(workspace_id, request)
+
+        logger.info(f"[Workspace] Updated by {principal.principal_id}: {workspace_id}")
+
         return workspace
 
     except WorkspaceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
+    except HTTPException:
+        raise
+
     except Exception as e:
         logger.error(f"Failed to update workspace: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to update workspace: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update workspace")
 
 
 @router.delete("/{workspace_id}")
-async def delete_workspace(workspace_id: str) -> Dict[str, Any]:
+async def delete_workspace(
+    workspace_id: str,
+    principal: Principal = Depends(get_current_principal),
+) -> Dict[str, Any]:
     """
     Delete workspace (soft delete - archive).
 
@@ -192,25 +274,41 @@ async def delete_workspace(workspace_id: str) -> Dict[str, Any]:
     ```bash
     DELETE /api/workspaces/ws_01j12k34m56n78p90qrs
     ```
+
+    **Note:** You must own the workspace or be an admin.
     """
     try:
         service = get_workspace_service()
+        workspace = service.get_workspace(workspace_id)
+
+        # Verify ownership
+        _verify_workspace_ownership(workspace, principal)
+
         success = service.delete_workspace(workspace_id)
+
+        logger.info(f"[Workspace] Archived by {principal.principal_id}: {workspace_id}")
+
         return {"success": success, "workspace_id": workspace_id, "message": "Workspace archived"}
 
     except WorkspaceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+    except HTTPException:
+        raise
 
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
     except Exception as e:
         logger.error(f"Failed to delete workspace: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete workspace: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete workspace")
 
 
 @router.get("/{workspace_id}/stats")
-async def get_workspace_stats(workspace_id: str) -> WorkspaceStats:
+async def get_workspace_stats(
+    workspace_id: str,
+    principal: Principal = Depends(get_current_principal),
+) -> WorkspaceStats:
     """
     Get workspace statistics.
 
@@ -226,18 +324,28 @@ async def get_workspace_stats(workspace_id: str) -> WorkspaceStats:
     ```bash
     GET /api/workspaces/ws_01j12k34m56n78p90qrs/stats
     ```
+
+    **Note:** You must own the workspace or be an admin.
     """
     try:
         service = get_workspace_service()
+
+        # Verify workspace exists and you own it
+        workspace = service.get_workspace(workspace_id)
+        _verify_workspace_ownership(workspace, principal)
+
         stats = service.get_workspace_stats(workspace_id)
         return stats
 
     except WorkspaceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
+    except HTTPException:
+        raise
+
     except Exception as e:
         logger.error(f"Failed to get workspace stats: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get workspace stats: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get workspace stats")
 
 
 # ============================================================================
@@ -247,6 +355,7 @@ async def get_workspace_stats(workspace_id: str) -> WorkspaceStats:
 @router.get("/{workspace_id}/projects")
 async def list_projects(
     workspace_id: str,
+    principal: Principal = Depends(get_current_principal),
     status: Optional[ProjectStatus] = None,
 ) -> List[Project]:
     """
@@ -259,12 +368,15 @@ async def list_projects(
     ```bash
     GET /api/workspaces/ws_01j12k34m56n78p90qrs/projects?status=active
     ```
+
+    **Note:** You must own the workspace or be an admin.
     """
     try:
         service = get_workspace_service()
 
-        # Verify workspace exists
-        service.get_workspace(workspace_id)
+        # Verify workspace exists and you own it
+        workspace = service.get_workspace(workspace_id)
+        _verify_workspace_ownership(workspace, principal)
 
         # List projects
         projects = service.list_projects(workspace_id=workspace_id, status=status)
@@ -273,15 +385,19 @@ async def list_projects(
     except WorkspaceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
+    except HTTPException:
+        raise
+
     except Exception as e:
         logger.error(f"Failed to list projects: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to list projects: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to list projects")
 
 
 @router.post("/{workspace_id}/projects")
 async def create_project(
     workspace_id: str,
     request: ProjectCreateRequest,
+    principal: Principal = Depends(get_current_principal),
 ) -> Project:
     """
     Create project in workspace.
@@ -298,14 +414,30 @@ async def create_project(
       }
     }
     ```
+
+    **Note:** You must own the workspace or be an admin.
     """
     try:
         service = get_workspace_service()
+
+        # Verify workspace exists and you own it
+        workspace = service.get_workspace(workspace_id)
+        _verify_workspace_ownership(workspace, principal)
+
         project = service.create_project(workspace_id, request)
+
+        logger.info(
+            f"[Workspace] Project created by {principal.principal_id}: {project.project_id} "
+            f"(workspace={workspace_id}, name={project.name})"
+        )
+
         return project
 
     except WorkspaceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+    except HTTPException:
+        raise
 
     except QuotaExceededError as e:
         raise HTTPException(status_code=429, detail=str(e))
@@ -315,11 +447,15 @@ async def create_project(
 
     except Exception as e:
         logger.error(f"Failed to create project: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to create project: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create project")
 
 
 @router.get("/{workspace_id}/projects/{project_id}")
-async def get_project(workspace_id: str, project_id: str) -> Project:
+async def get_project(
+    workspace_id: str,
+    project_id: str,
+    principal: Principal = Depends(get_current_principal),
+) -> Project:
     """
     Get project by ID.
 
@@ -327,9 +463,16 @@ async def get_project(workspace_id: str, project_id: str) -> Project:
     ```bash
     GET /api/workspaces/ws_xxx/projects/proj_yyy
     ```
+
+    **Note:** You must own the workspace or be an admin.
     """
     try:
         service = get_workspace_service()
+
+        # Verify workspace exists and you own it
+        workspace = service.get_workspace(workspace_id)
+        _verify_workspace_ownership(workspace, principal)
+
         project = service.get_project(project_id)
 
         # Verify project belongs to workspace
@@ -344,9 +487,12 @@ async def get_project(workspace_id: str, project_id: str) -> Project:
     except ProjectNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
+    except HTTPException:
+        raise
+
     except Exception as e:
         logger.error(f"Failed to get project: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get project: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get project")
 
 
 @router.put("/{workspace_id}/projects/{project_id}")
@@ -354,6 +500,7 @@ async def update_project(
     workspace_id: str,
     project_id: str,
     request: ProjectUpdateRequest,
+    principal: Principal = Depends(get_current_principal),
 ) -> Project:
     """
     Update project.
@@ -365,9 +512,16 @@ async def update_project(
       "status": "paused"
     }
     ```
+
+    **Note:** You must own the workspace or be an admin.
     """
     try:
         service = get_workspace_service()
+
+        # Verify workspace exists and you own it
+        workspace = service.get_workspace(workspace_id)
+        _verify_workspace_ownership(workspace, principal)
+
         project = service.get_project(project_id)
 
         # Verify project belongs to workspace
@@ -378,18 +532,28 @@ async def update_project(
             )
 
         project = service.update_project(project_id, request)
+
+        logger.info(f"[Workspace] Project updated by {principal.principal_id}: {project_id}")
+
         return project
 
     except ProjectNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
+    except HTTPException:
+        raise
+
     except Exception as e:
         logger.error(f"Failed to update project: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to update project: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update project")
 
 
 @router.delete("/{workspace_id}/projects/{project_id}")
-async def delete_project(workspace_id: str, project_id: str) -> Dict[str, Any]:
+async def delete_project(
+    workspace_id: str,
+    project_id: str,
+    principal: Principal = Depends(get_current_principal),
+) -> Dict[str, Any]:
     """
     Delete project (soft delete - archive).
 
@@ -397,9 +561,16 @@ async def delete_project(workspace_id: str, project_id: str) -> Dict[str, Any]:
     ```bash
     DELETE /api/workspaces/ws_xxx/projects/proj_yyy
     ```
+
+    **Note:** You must own the workspace or be an admin.
     """
     try:
         service = get_workspace_service()
+
+        # Verify workspace exists and you own it
+        workspace = service.get_workspace(workspace_id)
+        _verify_workspace_ownership(workspace, principal)
+
         project = service.get_project(project_id)
 
         # Verify project belongs to workspace
@@ -410,18 +581,28 @@ async def delete_project(workspace_id: str, project_id: str) -> Dict[str, Any]:
             )
 
         success = service.delete_project(project_id)
+
+        logger.info(f"[Workspace] Project archived by {principal.principal_id}: {project_id}")
+
         return {"success": success, "project_id": project_id, "message": "Project archived"}
 
     except ProjectNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
+    except HTTPException:
+        raise
+
     except Exception as e:
         logger.error(f"Failed to delete project: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete project: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete project")
 
 
 @router.get("/{workspace_id}/projects/{project_id}/stats")
-async def get_project_stats(workspace_id: str, project_id: str) -> ProjectStats:
+async def get_project_stats(
+    workspace_id: str,
+    project_id: str,
+    principal: Principal = Depends(get_current_principal),
+) -> ProjectStats:
     """
     Get project statistics.
 
@@ -436,9 +617,16 @@ async def get_project_stats(workspace_id: str, project_id: str) -> ProjectStats:
     ```bash
     GET /api/workspaces/ws_xxx/projects/proj_yyy/stats
     ```
+
+    **Note:** You must own the workspace or be an admin.
     """
     try:
         service = get_workspace_service()
+
+        # Verify workspace exists and you own it
+        workspace = service.get_workspace(workspace_id)
+        _verify_workspace_ownership(workspace, principal)
+
         project = service.get_project(project_id)
 
         # Verify project belongs to workspace
@@ -454,9 +642,12 @@ async def get_project_stats(workspace_id: str, project_id: str) -> ProjectStats:
     except ProjectNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
+    except HTTPException:
+        raise
+
     except Exception as e:
         logger.error(f"Failed to get project stats: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get project stats: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get project stats")
 
 
 # ============================================================================
@@ -467,6 +658,7 @@ async def get_project_stats(workspace_id: str, project_id: str) -> ProjectStats:
 async def execute_workspace_pipeline(
     workspace_id: str,
     graph_spec: ExecutionGraphSpec,
+    principal: Principal = Depends(get_current_principal),
     project_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
@@ -495,12 +687,17 @@ async def execute_workspace_pipeline(
     ```bash
     POST /api/workspaces/ws_xxx/pipeline/run?project_id=proj_yyy
     ```
+
+    **Note:** You must own the workspace or be an admin.
     """
     try:
         workspace_service = get_workspace_service()
 
-        # Verify workspace exists and is active
+        # Verify workspace exists and you own it
         workspace = workspace_service.get_workspace(workspace_id)
+        _verify_workspace_ownership(workspace, principal)
+
+        # Verify workspace is active
         if workspace.status != WorkspaceStatus.ACTIVE:
             raise HTTPException(
                 status_code=403,
