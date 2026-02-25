@@ -22,9 +22,18 @@ from pydantic import BaseModel, Field
 
 class MemoryLayer(str, Enum):
     """Which memory layer stores this entry."""
+
     WORKING = "working"      # Current session/mission state (volatile)
     EPISODIC = "episodic"    # Conversation turns, outcomes (persistent)
     SEMANTIC = "semantic"    # Compressed knowledge, abstractions (persistent)
+
+
+class ConversationRole(str, Enum):
+    """Role of the conversation participant."""
+
+    USER = "user"
+    ASSISTANT = "assistant"
+    SYSTEM = "system"
 
 
 class MemoryType(str, Enum):
@@ -52,8 +61,9 @@ class CompressionStatus(str, Enum):
 
 class ConversationTurn(BaseModel):
     """A single turn in a conversation."""
+
     turn_id: str = Field(default_factory=lambda: f"turn_{uuid.uuid4().hex[:10]}")
-    role: str = Field(..., description="'user', 'assistant', or 'system'")
+    role: ConversationRole = Field(..., description="Role: user, assistant, or system")
     content: str = Field(..., max_length=10000)
     timestamp: float = Field(default_factory=time.time)
     metadata: Dict[str, Any] = Field(default_factory=dict)
@@ -62,6 +72,7 @@ class ConversationTurn(BaseModel):
 
 class MemoryEntry(BaseModel):
     """A single memory record in BRAIN's memory system."""
+
     memory_id: str = Field(default_factory=lambda: f"mem_{uuid.uuid4().hex[:12]}")
     layer: MemoryLayer
     memory_type: MemoryType
@@ -69,9 +80,9 @@ class MemoryEntry(BaseModel):
     summary: Optional[str] = Field(None, max_length=2000, description="Compressed summary (if summarized)")
 
     # Context
-    agent_id: Optional[str] = None
-    session_id: Optional[str] = None
-    mission_id: Optional[str] = None
+    agent_id: Optional[str] = Field(None, max_length=100)
+    session_id: Optional[str] = Field(None, max_length=100)
+    mission_id: Optional[str] = Field(None, max_length=100)
     tags: List[str] = Field(default_factory=list)
 
     # Scoring
@@ -108,8 +119,9 @@ class SessionContext(BaseModel):
     Holds the conversation history, current mission state,
     and accumulated context for the current interaction.
     """
+
     session_id: str = Field(default_factory=lambda: f"sess_{uuid.uuid4().hex[:10]}")
-    agent_id: str
+    agent_id: str = Field(..., max_length=100)
     started_at: datetime = Field(default_factory=datetime.utcnow)
     last_activity_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -119,10 +131,10 @@ class SessionContext(BaseModel):
     max_tokens: int = Field(8000, description="Context window budget")
 
     # State
-    active_mission_id: Optional[str] = None
+    active_mission_id: Optional[str] = Field(None, max_length=100)
     context_vars: Dict[str, Any] = Field(
         default_factory=dict,
-        description="Key-value state accumulated during session"
+        description="Key-value state accumulated during session",
     )
 
     # Summary of compressed older turns
@@ -143,10 +155,11 @@ class SessionContext(BaseModel):
 
 class MemoryQuery(BaseModel):
     """Query for selective recall."""
+
     query: str = Field(..., max_length=10000, description="Natural language query or keyword")
-    agent_id: Optional[str] = None
-    session_id: Optional[str] = None
-    mission_id: Optional[str] = None
+    agent_id: Optional[str] = Field(None, max_length=100)
+    session_id: Optional[str] = Field(None, max_length=100)
+    mission_id: Optional[str] = Field(None, max_length=100)
     layer: Optional[MemoryLayer] = None
     memory_type: Optional[MemoryType] = None
     tags: Optional[List[str]] = None
@@ -171,12 +184,13 @@ class MemoryRecallResult(BaseModel):
 
 class CompressionRequest(BaseModel):
     """Request to compress memories."""
-    session_id: Optional[str] = None
-    agent_id: Optional[str] = None
+
+    session_id: Optional[str] = Field(None, max_length=100)
+    agent_id: Optional[str] = Field(None, max_length=100)
     max_age_hours: float = Field(24.0, description="Compress memories older than N hours")
     target_ratio: float = Field(
         0.3, ge=0.1, le=0.9,
-        description="Target compression ratio (0.3 = 30% of original size)"
+        description="Target compression ratio (0.3 = 30% of original size)",
     )
 
 
@@ -196,12 +210,13 @@ class CompressionResult(BaseModel):
 
 class MemoryStoreRequest(BaseModel):
     """Request to store a memory."""
+
     content: str = Field(..., max_length=10000)
     memory_type: MemoryType
     layer: MemoryLayer = MemoryLayer.EPISODIC
-    agent_id: Optional[str] = None
-    session_id: Optional[str] = None
-    mission_id: Optional[str] = None
+    agent_id: Optional[str] = Field(None, max_length=100)
+    session_id: Optional[str] = Field(None, max_length=100)
+    mission_id: Optional[str] = Field(None, max_length=100)
     importance: float = Field(50.0, ge=0.0, le=100.0)
     tags: List[str] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)
@@ -209,14 +224,16 @@ class MemoryStoreRequest(BaseModel):
 
 class SessionCreateRequest(BaseModel):
     """Request to create a new session."""
-    agent_id: str
+
+    agent_id: str = Field(..., max_length=100)
     max_tokens: int = Field(8000, ge=1000, le=128000)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 class SessionAddTurnRequest(BaseModel):
     """Request to add a conversation turn."""
-    role: str = Field(..., description="'user', 'assistant', or 'system'")
+
+    role: ConversationRole = Field(..., description="Role: user, assistant, or system")
     content: str = Field(..., max_length=10000)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
