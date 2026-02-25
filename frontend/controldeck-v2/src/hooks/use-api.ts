@@ -4,7 +4,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, queryKeys, type Mission, type MissionHealth, type SystemEvent, type EventStats, type WorkerStatus, learningApi, memoryApi, type LearningStats } from '@/lib/api';
+import { api, queryKeys, type Mission, type MissionHealth, type SystemEvent, type EventStats, type WorkerStatus, learningApi, memoryApi, type LearningStats, workspaceApi, type Workspace, type WorkspaceStats, type Project } from '@/lib/api';
 
 // Missions Hooks
 export function useMissions(limit = 20) {
@@ -189,5 +189,117 @@ export function useMemorySessions() {
     queryKey: ['memory', 'sessions'],
     queryFn: () => memoryApi.getSessions(),
     refetchInterval: 60000
+  });
+}
+
+// Workspace Hooks (Sprint 9-C)
+export function useWorkspaces() {
+  return useQuery({
+    queryKey: ['workspaces', 'list'],
+    queryFn: () => workspaceApi.listWorkspaces(),
+    refetchInterval: 30000
+  });
+}
+
+export function useWorkspace(workspaceId: string) {
+  return useQuery({
+    queryKey: ['workspaces', workspaceId],
+    queryFn: () => workspaceApi.getWorkspace(workspaceId),
+    enabled: !!workspaceId,
+  });
+}
+
+export function useWorkspaceStats(workspaceId: string) {
+  return useQuery({
+    queryKey: ['workspaces', workspaceId, 'stats'],
+    queryFn: () => workspaceApi.getWorkspaceStats(workspaceId),
+    enabled: !!workspaceId,
+    refetchInterval: 30000
+  });
+}
+
+export function useCreateWorkspace() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: Partial<Workspace>) => workspaceApi.createWorkspace(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+    },
+  });
+}
+
+export function useUpdateWorkspace(workspaceId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: Partial<Workspace>) => workspaceApi.updateWorkspace(workspaceId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId] });
+      queryClient.invalidateQueries({ queryKey: ['workspaces', 'list'] });
+    },
+  });
+}
+
+export function useDeleteWorkspace() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (workspaceId: string) => workspaceApi.deleteWorkspace(workspaceId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+    },
+  });
+}
+
+// Project Hooks
+export function useProjects(workspaceId: string) {
+  return useQuery({
+    queryKey: ['workspaces', workspaceId, 'projects'],
+    queryFn: () => workspaceApi.listProjects(workspaceId),
+    enabled: !!workspaceId,
+    refetchInterval: 30000
+  });
+}
+
+export function useProject(workspaceId: string, projectId: string) {
+  return useQuery({
+    queryKey: ['workspaces', workspaceId, 'projects', projectId],
+    queryFn: () => workspaceApi.getProject(workspaceId, projectId),
+    enabled: !!workspaceId && !!projectId,
+  });
+}
+
+export function useCreateProject(workspaceId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: Partial<Project>) => workspaceApi.createProject(workspaceId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'projects'] });
+    },
+  });
+}
+
+export function useUpdateProject(workspaceId: string, projectId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: Partial<Project>) => workspaceApi.updateProject(workspaceId, projectId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'projects', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'projects'] });
+    },
+  });
+}
+
+export function useDeleteProject(workspaceId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (projectId: string) => workspaceApi.deleteProject(workspaceId, projectId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'projects'] });
+    },
   });
 }
