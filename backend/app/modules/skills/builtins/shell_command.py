@@ -5,6 +5,7 @@ Executes shell commands with safety restrictions.
 """
 
 import asyncio
+import os
 import shlex
 from pathlib import Path
 from typing import Any, Dict, List, Optional
