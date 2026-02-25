@@ -4,8 +4,18 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
+// Fix A: Hardcoded Secret - CRITICAL
+// Validate that BETTER_AUTH_SECRET is set, no fallback to known defaults
+const secret = process.env.BETTER_AUTH_SECRET;
+if (!secret) {
+  throw new Error(
+    "BETTER_AUTH_SECRET environment variable is required. " +
+    "Set it to a random 32+ character string."
+  );
+}
+
 export const auth = betterAuth({
-  secret: process.env.BETTER_AUTH_SECRET || process.env.JWT_SECRET_KEY || "change-me-in-production",
+  secret,
   database: prismaAdapter(prisma, {
     provider: "postgresql",
   }),
@@ -15,8 +25,8 @@ export const auth = betterAuth({
     // bcrypt is used by default for password hashing
   },
   session: {
-    expiresIn: 60 * 60 * 24 * 7, // 7 days
-    updateAge: 60 * 60 * 24, // 1 day
+    expiresIn: 60 * 60 * 2, // 2 hours (was 7 days) - Security Best Practice
+    updateAge: 60 * 60 * 1, // 1 hour
     cookieCache: {
       enabled: true,
       maxAge: 5 * 60, // 5 minutes

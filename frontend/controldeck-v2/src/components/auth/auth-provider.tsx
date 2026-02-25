@@ -1,17 +1,17 @@
 "use client"
 
 import { createContext, useContext, ReactNode, useState, useEffect } from "react"
+import { createAuthClient } from "better-auth/client"
 
 /**
  * AUTH CONTEXT
  * 
  * Provides auth state to React components.
- * Uses /api/auth endpoint which stores sessions in SQLite.
+ * Uses Better Auth client for session management.
  * 
  * KI Note: To add fields to user, update:
  * 1. This User interface
  * 2. lib/auth.ts Session type
- * 3. api/auth/route.ts GET response
  */
 
 interface User {
@@ -35,24 +35,27 @@ const AuthContext = createContext<AuthContextType>({
   refreshSession: async () => {},
 })
 
+// Fix C: Use Better Auth client instead of deprecated /api/auth endpoint
+const authClient = createAuthClient({
+  baseURL: process.env.NEXT_PUBLIC_BRAIN_API_BASE || "http://localhost:3000",
+})
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   const refreshSession = async () => {
     try {
-      const res = await fetch("/api/auth", {
-        credentials: "include",
-        cache: "no-store",
-      })
+      // Use Better Auth client instead of raw fetch to /api/auth
+      const { data: session } = await authClient.getSession()
       
-      if (res.ok) {
-        const data = await res.json()
-        if (data.user) {
-          setUser(data.user)
-        } else {
-          setUser(null)
-        }
+      if (session?.user) {
+        setUser({
+          id: session.user.id,
+          email: session.user.email,
+          role: (session.user as any).role || "user",
+          name: session.user.name || undefined,
+        })
       } else {
         setUser(null)
       }

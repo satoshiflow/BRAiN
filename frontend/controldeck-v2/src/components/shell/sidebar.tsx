@@ -16,8 +16,13 @@ import {
   ChevronRight,
   Activity,
   Bot,
-  Sparkles,
   Brain,
+  MessageSquare,
+  Puzzle,
+  Lightbulb,
+  UserCircle,
+  Database,
+  Sparkles,
 } from "lucide-react";
 
 interface NavItem {
@@ -28,12 +33,27 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { label: "Dashboard", href: "/", icon: LayoutDashboard, group: "Overview" },
+  // Overview
+  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, group: "Overview" },
+  
+  // Operations
   { label: "Missions", href: "/missions", icon: Target, group: "Operations" },
   { label: "Agents", href: "/agents", icon: Bot, group: "Operations" },
+  { label: "Agent Family", href: "/agent-family", icon: MessageSquare, group: "Operations" },
   { label: "Events", href: "/events", icon: Radio, group: "Operations" },
-  { label: "Memory", href: "/modules/memory", icon: Brain, group: "Intelligence & Memory" },
-  { label: "Learning", href: "/modules/learning", icon: Sparkles, group: "Intelligence & Memory" },
+  
+   // Intelligence & Memory (Backend Modules)
+  { label: "Memory Module", href: "/modules/memory", icon: Brain, group: "Intelligence & Memory" },
+  { label: "Learning Module", href: "/modules/learning", icon: Sparkles, group: "Intelligence & Memory" },
+
+  // Intelligence (Core Layer)
+  { label: "Skills", href: "/intelligence/skills", icon: Puzzle, group: "Intelligence" },
+  { label: "Knowledge", href: "/intelligence/knowledge", icon: Database, group: "Intelligence" },
+  { label: "Memory", href: "/intelligence/memory", icon: Brain, group: "Intelligence" },
+  { label: "Identity", href: "/intelligence/identity", icon: UserCircle, group: "Intelligence" },
+  { label: "Learning", href: "/intelligence/learning", icon: Lightbulb, group: "Intelligence" },
+  
+  // System
   { label: "Health", href: "/health", icon: Activity, group: "System" },
   { label: "Settings", href: "/settings", icon: Settings, group: "System" },
 ];

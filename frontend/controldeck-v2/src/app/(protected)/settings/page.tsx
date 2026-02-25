@@ -1,8 +1,12 @@
 "use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { DashboardLayout } from "@/components/shell/dashboard-layout";
 import { PageContainer, PageHeader } from "@/components/shell/page-layout";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, Button, Badge } from "@ui-core/components";
+import { useAuth } from "@/components/auth/auth-provider";
+import { hasRole } from "@/lib/rbac";
 import { 
   Save,
   Moon,
@@ -14,6 +18,19 @@ import {
 } from "lucide-react";
 
 export default function SettingsPage() {
+  const { user, isLoading } = useAuth();
+  const router = useRouter();
+
+  // Fix B: RBAC - Admin only
+  useEffect(() => {
+    if (!isLoading && (!user || !hasRole(user.role, 'admin'))) {
+      router.push('/dashboard?error=unauthorized');
+    }
+  }, [user, isLoading, router]);
+
+  if (isLoading || !user || !hasRole(user.role, 'admin')) {
+    return null; // Or loading spinner
+  }
   return (
     <DashboardLayout title="Settings" subtitle="Systemkonfiguration">
       <PageContainer>
