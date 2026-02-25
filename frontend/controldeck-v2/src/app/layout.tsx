@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { Providers } from "@/components/providers";
 
 export const metadata: Metadata = {
   title: "BRAiN ControlDeck v2",
-  description: "Enterprise Futuristic Control System - Build 2026-02-23-1250",
+  description: "Enterprise Futuristic Control System",
 };
 
 export default function RootLayout({
@@ -15,7 +14,7 @@ export default function RootLayout({
   return (
     <html lang="de" className="dark">
       <body className="min-h-screen bg-background font-sans antialiased">
-        <Providers>{children}</Providers>
+        {children}
       </body>
     </html>
   );

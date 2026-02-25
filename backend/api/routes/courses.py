@@ -14,6 +14,7 @@ import uuid
 
 from app.models.courses import CourseTemplate, CourseModule, Lesson, LessonResource
 from app.core.database import get_db
+from app.core.auth_deps import require_auth
 
 router = APIRouter(prefix="/api/courses", tags=["course-factory"])
 
@@ -168,7 +169,8 @@ def generate_id(prefix: str) -> str:
 @router.post("/templates", response_model=CourseResponse, status_code=201)
 async def create_course(
     course: CourseCreate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user=Depends(require_auth)
 ):
     """
     Create a new course template with modules and lessons
@@ -285,7 +287,8 @@ async def list_courses(
     status: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user=Depends(require_auth)
 ):
     """
     List all course templates with optional filtering
@@ -344,7 +347,8 @@ async def list_courses(
 @router.get("/templates/{course_id}", response_model=CourseResponse)
 async def get_course(
     course_id: str,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user=Depends(require_auth)
 ):
     """Get course template by ID with all modules and lessons"""
     try:
@@ -379,7 +383,8 @@ async def get_course(
 async def update_course(
     course_id: str,
     course_update: CourseUpdate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user=Depends(require_auth)
 ):
     """Update course template metadata (not modules/lessons)"""
     try:
@@ -424,7 +429,8 @@ async def update_course(
 @router.delete("/templates/{course_id}", status_code=204)
 async def delete_course(
     course_id: str,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user=Depends(require_auth)
 ):
     """Delete course template (cascades to modules, lessons, resources)"""
     try:
@@ -453,7 +459,8 @@ async def delete_course(
 async def publish_course(
     course_id: str,
     publish_request: PublishRequest,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user=Depends(require_auth)
 ):
     """
     Publish or unpublish a course template

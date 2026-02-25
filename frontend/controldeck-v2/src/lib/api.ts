@@ -1,196 +1,197 @@
-// API Client für BRAiN Backend
-// Axios-basiert mit Interceptors für Error Handling
+/**
+ * BRAiN API Client
+ * 
+ * Handles both server-side and client-side API calls to the backend.
+ * Server-side uses BRAIN_API_BASE_INTERNAL (direct container networking)
+ * Client-side uses NEXT_PUBLIC_BRAIN_API_BASE (public endpoint)
+ */
 
-import { QueryClient } from '@tanstack/react-query';
+// Detect if we're running on the server
+const isServer = typeof window === 'undefined';
 
-// API Base URL - muss HTTPS sein für Production
-// Im Browser: relative URL (gleicher Origin) oder explizite HTTPS-URL
-const API_BASE = typeof window !== 'undefined' 
-  ? (process.env.NEXT_PUBLIC_BRAIN_API_BASE || 'https://api.brain.falklabs.de')
-  : 'http://backend:8000'; // Server-side rendering (Docker intern)
-
-// Types
-export interface Mission {
-  id: string;
-  type: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
-  priority: number;
-  score: number;
-  created_at: string;
-  progress?: number;
-  agent?: string;
-}
-
-export interface MissionQueueResponse {
-  items: Mission[];
-  length: number;
-}
-
-export interface MissionHealth {
-  status: 'ok' | 'degraded';
-  details: {
-    queue_healthy: boolean;
-    queue_length: number;
-    worker_running: boolean;
-    worker_poll_interval?: number;
-    redis_url?: string;
-  };
-}
-
-export interface SystemEvent {
-  id: string;
-  event_type: string;
-  severity: 'info' | 'warning' | 'error' | 'critical';
-  message: string;
-  details?: Record<string, unknown>;
-  source: string;
-  created_at: string;
-}
-
-export interface EventStats {
-  total: number;
-  by_severity: Record<string, number>;
-  by_type: Record<string, number>;
-  recent_24h: number;
-  last_event_at?: string;
-}
-
-export interface WorkerStatus {
-  running: boolean;
-  poll_interval?: number;
-  redis_url?: string;
-  last_check?: string;
-}
-
-// Error Handling
-class ApiError extends Error {
-  constructor(
-    message: string,
-    public status: number,
-    public data?: unknown
-  ) {
-    super(message);
-    this.name = 'ApiError';
+/**
+ * Get the appropriate base URL for API calls
+ * Server: Uses internal Docker network (http://backend:8000)
+ * Client: Uses public URL (https://api.brain.falklabs.de)
+ */
+export function getApiBaseUrl(): string {
+  if (isServer) {
+    // Server-side: use internal URL
+    const internalUrl = process.env.BRAIN_API_BASE_INTERNAL;
+    if (!internalUrl) {
+      console.warn('[API] BRAIN_API_BASE_INTERNAL not set, falling back to localhost:8000');
+      return 'http://localhost:8000';
+    }
+    return internalUrl;
+  } else {
+    // Client-side: use public URL
+    const publicUrl = process.env.NEXT_PUBLIC_BRAIN_API_BASE;
+    if (!publicUrl) {
+      console.warn('[API] NEXT_PUBLIC_BRAIN_API_BASE not set, falling back to current origin');
+      return '';
+    }
+    return publicUrl;
   }
 }
 
-// Fetch Wrapper mit Error Handling
-async function fetchApi<T>(
-  endpoint: string,
-  options: RequestInit = {}
-): Promise<T> {
-  const url = `${API_BASE}${endpoint}`;
-  
-  const response = await fetch(url, {
-    ...options,
+/**
+ * Get WebSocket base URL
+ */
+export function getWsBaseUrl(): string {
+  if (isServer) {
+    return process.env.BRAIN_WS_BASE_INTERNAL || 'ws://backend:8000/ws';
+  } else {
+    return process.env.NEXT_PUBLIC_BRAIN_WS_BASE || 'wss://api.brain.falklabs.de/ws';
+  }
+}
+
+/**
+ * Build full API URL from path
+ * @param path - API path (e.g., '/missions' or 'missions')
+ * @returns Full URL
+ */
+export function buildApiUrl(path: string): string {
+  const base = getApiBaseUrl();
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  return `${base}${cleanPath}`;
+}
+
+/**
+ * Standard fetch options for backend API calls
+ * Includes credentials and default headers
+ */
+export function getDefaultFetchOptions(): RequestInit {
+  return {
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
-      ...options.headers,
+      'Accept': 'application/json',
+    },
+  };
+}
+
+/**
+ * Make an API call to the backend
+ * Automatically handles server vs client environments
+ * 
+ * @param path - API path
+ * @param options - Fetch options
+ * @returns Promise with parsed JSON response
+ */
+export async function apiCall<T = unknown>(
+  path: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const url = buildApiUrl(path);
+  const defaultOptions = getDefaultFetchOptions();
+  
+  const response = await fetch(url, {
+    ...defaultOptions,
+    ...options,
+    headers: {
+      ...defaultOptions.headers,
+      ...(options.headers || {}),
     },
   });
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new ApiError(
-      errorData.detail || `HTTP ${response.status}`,
-      response.status,
-      errorData
-    );
+    const errorText = await response.text().catch(() => 'Unknown error');
+    throw new Error(`API Error ${response.status}: ${errorText}`);
   }
 
-  return response.json();
+  return response.json() as Promise<T>;
 }
 
-// API Functions
-export const api = {
-  // Missions
-  missions: {
-    getQueue: (limit = 20) => 
-      fetchApi<MissionQueueResponse>(`/api/missions/queue?limit=${limit}`),
-    
-    getHealth: () => 
-      fetchApi<MissionHealth>('/api/missions/health'),
-    
-    getWorkerStatus: () => 
-      fetchApi<WorkerStatus>('/api/missions/worker/status'),
-    
-    enqueue: (payload: {
-      type: string;
-      payload: Record<string, unknown>;
-      priority?: number;
-      created_by?: string;
-    }) => 
-      fetchApi<{ mission_id: string; status: string }>('/api/missions/enqueue', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      }),
-    
-    getEvents: (limit = 100) => 
-      fetchApi<{ events: SystemEvent[] }>(`/api/missions/events/history?limit=${limit}`),
-  },
-
-  // Events
-  events: {
-    getAll: (params?: { 
-      limit?: number; 
-      offset?: number; 
-      event_type?: string; 
-      severity?: string;
-    }) => {
-      const searchParams = new URLSearchParams();
-      if (params?.limit) searchParams.set('limit', String(params.limit));
-      if (params?.offset) searchParams.set('offset', String(params.offset));
-      if (params?.event_type) searchParams.set('event_type', params.event_type);
-      if (params?.severity) searchParams.set('severity', params.severity);
-      
-      return fetchApi<SystemEvent[]>(`/api/events?${searchParams.toString()}`);
+/**
+ * Use the local proxy route for internal API calls
+ * This avoids CORS issues and handles auth headers automatically
+ * 
+ * @param path - Path after /api/proxy/ (e.g., 'missions')
+ * @param options - Fetch options
+ * @returns Promise with parsed JSON response
+ */
+export async function proxyCall<T = unknown>(
+  path: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const cleanPath = path.startsWith('/') ? path.slice(1) : path;
+  const url = `/api/proxy/${cleanPath}`;
+  
+  const response = await fetch(url, {
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      ...(options.headers || {}),
     },
-    
-    getStats: () => 
-      fetchApi<EventStats>('/api/events/stats'),
-    
-    create: (event: Omit<SystemEvent, 'id' | 'created_at'>) => 
-      fetchApi<SystemEvent>('/api/events', {
-        method: 'POST',
-        body: JSON.stringify(event),
-      }),
-  },
+    ...options,
+  });
 
-  // Agents (Placeholder - erweitern wenn Backend verfügbar)
-  agents: {
-    getAll: () => 
-      fetchApi<{ agents: unknown[] }>('/api/missions/agents/info'),
-  },
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error');
+    throw new Error(`Proxy Error ${response.status}: ${errorText}`);
+  }
+
+  return response.json() as Promise<T>;
+}
+
+// =============================================================================
+// Typed API Endpoints
+// =============================================================================
+
+export interface Mission {
+  id: string;
+  name: string;
+  type: string;
+  status: 'running' | 'completed' | 'failed' | 'pending';
+  priority: 'high' | 'medium' | 'low';
+  progress: number;
+  createdAt: string;
+  agent: string | null;
+}
+
+export interface Agent {
+  id: string;
+  name: string;
+  status: 'online' | 'offline' | 'busy';
+  capabilities: string[];
+}
+
+export interface SystemHealth {
+  status: 'healthy' | 'degraded' | 'unhealthy';
+  components: Record<string, { status: string; message?: string }>;
+}
+
+/**
+ * Missions API
+ */
+export const missionsApi = {
+  getAll: () => proxyCall<Mission[]>('missions'),
+  getById: (id: string) => proxyCall<Mission>(`missions/${id}`),
+  create: (data: Partial<Mission>) => proxyCall<Mission>('missions', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
+  update: (id: string, data: Partial<Mission>) => proxyCall<Mission>(`missions/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  }),
+  delete: (id: string) => proxyCall<void>(`missions/${id}`, {
+    method: 'DELETE',
+  }),
 };
 
-// React Query Client
-export const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 30 * 1000, // 30 Sekunden
-      refetchOnWindowFocus: true,
-      retry: 2,
-      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
-    },
-  },
-});
-
-// Query Keys für Cache Management
-export const queryKeys = {
-  missions: {
-    all: ['missions'] as const,
-    queue: (limit: number) => ['missions', 'queue', limit] as const,
-    health: ['missions', 'health'] as const,
-    worker: ['missions', 'worker'] as const,
-    events: (limit: number) => ['missions', 'events', limit] as const,
-  },
-  events: {
-    all: (params?: unknown) => ['events', params] as const,
-    stats: ['events', 'stats'] as const,
-  },
-  agents: {
-    all: ['agents'] as const,
-  },
+/**
+ * Agents API
+ */
+export const agentsApi = {
+  getAll: () => proxyCall<Agent[]>('agents'),
+  getById: (id: string) => proxyCall<Agent>(`agents/${id}`),
 };
 
-export { ApiError };
+/**
+ * Health API
+ */
+export const healthApi = {
+  getStatus: () => proxyCall<SystemHealth>('health'),
+};

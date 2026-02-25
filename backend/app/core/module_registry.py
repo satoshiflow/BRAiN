@@ -1,6 +1,8 @@
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import json
+
 from pydantic import BaseModel
 
 
@@ -29,7 +31,11 @@ class ModuleManifest(BaseModel):
 def load_ui_manifests() -> List[ModuleManifest]:
     """
     Lädt UI_MANIFEST aus allen Modulen und gibt sie als ModuleManifest-Liste zurück.
-    Erwartet in jedem Modul eine ui_manifest.py mit einem UI_MANIFEST-Dict.
+    
+    SECURITY FIX: Verwendet JSON statt exec() für sicheres Manifest-Parsing.
+    Erwartet in jedem Modul eine ui_manifest.json mit dem UI_MANIFEST-Objekt.
+    
+    Legacy Python-Manifeste (ui_manifest.py) werden ignoriert um Code-Injection zu verhindern.
     """
     manifests: List[ModuleManifest] = []
 
@@ -40,25 +46,27 @@ def load_ui_manifests() -> List[ModuleManifest]:
         if not mod_dir.is_dir():
             continue
 
-        manifest_py = mod_dir / "ui_manifest.py"
-        if not manifest_py.exists():
+        # SECURITY: Use JSON manifest instead of Python to prevent code execution
+        manifest_json = mod_dir / "ui_manifest.json"
+        if not manifest_json.exists():
             continue
 
-        scope: Dict[str, Any] = {}
         try:
-            exec(manifest_py.read_text(), scope)
-        except Exception:
-            # Fehler in einem Modul-Manifest sollen nicht das ganze System killen
+            # Secure JSON parsing - no code execution
+            raw_manifest = json.loads(manifest_json.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as e:
+            logger.warning(f"Invalid JSON in {manifest_json}: {e}")
             continue
-
-        raw_manifest = scope.get("UI_MANIFEST")
-        if not raw_manifest:
+        except Exception as e:
+            # Fehler in einem Modul-Manifest sollen nicht das ganze System killen
+            logger.debug(f"Failed to load manifest from {manifest_json}: {e}")
             continue
 
         try:
             manifests.append(ModuleManifest(**raw_manifest))
         except Exception:
             # Falls Felder fehlen/inkompatibel sind – Modul einfach überspringen
+            logger.debug(f"Invalid manifest structure in {manifest_json}")
             continue
 
     return manifests
@@ -102,3 +110,8 @@ def get_registry() -> ModuleRegistry:
     if _registry is None:
         _registry = ModuleRegistry()
     return _registry
+
+
+# Import logger after class definitions to avoid circular imports
+import logging
+logger = logging.getLogger(__name__)

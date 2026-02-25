@@ -27,9 +27,12 @@ class Settings(BaseSettings):
     jwt_jwks_url: str = "https://brain.falklabs.de/.well-known/jwks.json"
     jwks_cache_ttl_seconds: int = 3600  # 1 hour cache for JWKS keys
 
-    # CORS - Accepts CSV string, JSON array, or wildcard
-    # Type as Union to prevent Pydantic from auto-parsing as JSON before validation
-    cors_origins: Union[str, list[str]] = "*"
+    # CORS - Strict allowed origins (SECURITY-001)
+    # Default: production-safe whitelist, no wildcards
+    cors_origins: Union[str, list[str]] = [
+        "https://control.brain.falklabs.de",
+        "https://axe.brain.falklabs.de",
+    ]
 
     # OpenRouter Configuration (Optional - for external LLM access)
     openrouter_api_key: str = ""
@@ -38,30 +41,43 @@ class Settings(BaseSettings):
     openrouter_site_name: str = "BRAiN"
 
     # DMZ Gateway Secret (Optional - for trust tier validation)
-    brain_dmz_gateway_secret: str = "dev-secret-change-in-production"
+    # SECURITY: No default - must be set via environment variable
+    brain_dmz_gateway_secret: str = ""
 
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, v):
-        """Parse CORS origins from CSV string, JSON array, or handle empty/None."""
-        # Handle None or empty string - default to wildcard
+        """Parse CORS origins from CSV string, JSON array, or handle empty/None.
+        
+        SECURITY-001: Wildcard "*" is REJECTED in production.
+        """
+        # Handle None or empty string - use secure defaults
         if v is None or v == "" or (isinstance(v, str) and not v.strip()):
-            return ["*"]
+            return [
+                "https://control.brain.falklabs.de",
+                "https://axe.brain.falklabs.de",
+            ]
 
         # Already a list (from JSON parsing)
         if isinstance(v, list):
+            # SECURITY-001: Reject wildcard in production
+            if "*" in v:
+                raise ValueError("CORS wildcard '*' is not allowed in production (SECURITY-001)")
             return v
 
         # String value
         if isinstance(v, str):
-            # Wildcard
+            # SECURITY-001: Reject wildcard
             if v.strip() == "*":
-                return ["*"]
+                raise ValueError("CORS wildcard '*' is not allowed in production (SECURITY-001)")
             # CSV string
             return [origin.strip() for origin in v.split(",") if origin.strip()]
 
-        # Fallback to wildcard for any other type
-        return ["*"]
+        # Fallback to secure defaults
+        return [
+            "https://control.brain.falklabs.de",
+            "https://axe.brain.falklabs.de",
+        ]
 
     @field_validator("cors_origins", mode="after")
     @classmethod

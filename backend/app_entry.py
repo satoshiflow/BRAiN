@@ -11,13 +11,18 @@ app = FastAPI(
     description="BRAIN+ Backend – direkter Einstieg ohne core.app",
 )
 
-# --- CORS ---
+# --- CORS - Strict allowed origins (SECURITY-001) ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # später einschränken
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=[
+        "https://control.brain.falklabs.de",
+        "https://axe.brain.falklabs.de",
+        "http://localhost:3000",  # dev only
+        "http://localhost:3001",  # dev only
+    ],
+    allow_credentials=True,  # Safe because origins are explicitly whitelisted
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
+    allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
 )
 
 

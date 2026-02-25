@@ -22,9 +22,20 @@ from pydantic import BaseModel
 # Configuration
 # ============================================================================
 
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "brain-dev-secret-key-change-in-production")
+SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "30"))
+
+# Security: Ensure SECRET_KEY is set in production
+if not SECRET_KEY:
+    if os.getenv("ENVIRONMENT", "development") == "production":
+        raise RuntimeError(
+            "FATAL SECURITY ERROR: JWT_SECRET_KEY must be set in production! "
+            "Set JWT_SECRET_KEY in .env file."
+        )
+    # In development, use a random key (not secure, but prevents hardcoded secrets)
+    import secrets as secrets_module
+    SECRET_KEY = secrets_module.token_urlsafe(32)
 
 security_scheme = HTTPBearer(auto_error=False)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -108,22 +119,41 @@ class TokenData(BaseModel):
 # ============================================================================
 
 # Load passwords from environment variables (Security Fix - Task 2.1)
-ADMIN_PASSWORD = os.getenv("BRAIN_ADMIN_PASSWORD", "password")  # Default for dev only
-OPERATOR_PASSWORD = os.getenv("BRAIN_OPERATOR_PASSWORD", "password")  # Default for dev only
-VIEWER_PASSWORD = os.getenv("BRAIN_VIEWER_PASSWORD", "password")  # Default for dev only
+# SECURITY: No default passwords - must be set via environment variables
+ADMIN_PASSWORD = os.getenv("BRAIN_ADMIN_PASSWORD")
+OPERATOR_PASSWORD = os.getenv("BRAIN_OPERATOR_PASSWORD")
+VIEWER_PASSWORD = os.getenv("BRAIN_VIEWER_PASSWORD")
 
-# Production Security Check: Fail fast if default passwords are used in production
+# Environment check for password configuration
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
-if ENVIRONMENT == "production":
-    if ADMIN_PASSWORD == "password":
+
+# Generate secure random passwords for development ONLY
+# In production, passwords MUST be explicitly set
+if ENVIRONMENT != "production":
+    import secrets as secrets_module
+    if not ADMIN_PASSWORD:
+        ADMIN_PASSWORD = secrets_module.token_urlsafe(16)
+        print(f"[DEV ONLY] Generated random admin password (check logs)")
+    if not OPERATOR_PASSWORD:
+        OPERATOR_PASSWORD = secrets_module.token_urlsafe(16)
+    if not VIEWER_PASSWORD:
+        VIEWER_PASSWORD = secrets_module.token_urlsafe(16)
+else:
+    # Production Security Check: Fail fast if passwords are not set
+    if not ADMIN_PASSWORD:
         raise RuntimeError(
             "FATAL SECURITY ERROR: BRAIN_ADMIN_PASSWORD must be set in production! "
-            "Default password is not allowed. Set BRAIN_ADMIN_PASSWORD in .env file."
+            "Set BRAIN_ADMIN_PASSWORD in .env file."
         )
-    if OPERATOR_PASSWORD == "password":
+    if not OPERATOR_PASSWORD:
         raise RuntimeError(
             "FATAL SECURITY ERROR: BRAIN_OPERATOR_PASSWORD must be set in production! "
-            "Default password is not allowed. Set BRAIN_OPERATOR_PASSWORD in .env file."
+            "Set BRAIN_OPERATOR_PASSWORD in .env file."
+        )
+    if not VIEWER_PASSWORD:
+        raise RuntimeError(
+            "FATAL SECURITY ERROR: BRAIN_VIEWER_PASSWORD must be set in production! "
+            "Set BRAIN_VIEWER_PASSWORD in .env file."
         )
 
 # User database with environment-based passwords

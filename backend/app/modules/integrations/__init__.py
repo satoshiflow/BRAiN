@@ -18,10 +18,12 @@ Usage:
     )
 
     # Configure client
+    # Configure with environment-based API key (NEVER hardcode secrets!)
+    import os
     config = APIClientConfig(
         name="my_api",
         base_url="https://api.example.com",
-        auth=AuthConfig(type=AuthType.API_KEY, token="sk-abc123"),
+        auth=AuthConfig(type=AuthType.API_KEY, token=os.getenv("MY_API_KEY")),
         rate_limit=RateLimitConfig(max_requests=100, window_seconds=60),
         retry=RetryConfig(max_retries=3),
     )

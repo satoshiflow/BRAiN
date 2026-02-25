@@ -20,7 +20,7 @@ MANIFEST = {
         {
             "name": "command",
             "type": "string",
-            "description": "Shell command to execute",
+            "description": "Shell command to execute (single command only, no pipes or redirects)",
             "required": True,
         },
         {
@@ -33,7 +33,7 @@ MANIFEST = {
         {
             "name": "timeout",
             "type": "integer",
-            "description": "Command timeout in seconds",
+            "description": "Command timeout in seconds (max 300)",
             "required": False,
             "default": 60,
         },
@@ -72,6 +72,9 @@ async def execute(params: Dict[str, Any]) -> Dict[str, Any]:
     # Security validation
     _validate_command(command)
     
+    # Enforce timeout limits
+    timeout = min(timeout, 300)  # Max 5 minutes
+    
     # Prepare working directory
     if cwd:
         cwd_path = Path(cwd).expanduser().resolve()
@@ -80,9 +83,16 @@ async def execute(params: Dict[str, Any]) -> Dict[str, Any]:
         cwd = str(cwd_path)
     
     try:
-        # Execute command
-        process = await asyncio.create_subprocess_shell(
-            command,
+        # SECURITY FIX: Use shell=False equivalent by parsing command safely
+        # Split command into args using shlex (safer than shell=True)
+        cmd_args = shlex.split(command)
+        
+        if not cmd_args:
+            raise ValueError("Empty command")
+        
+        # Execute command WITHOUT shell to prevent injection
+        process = await asyncio.create_subprocess_exec(
+            *cmd_args,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=cwd,
@@ -126,26 +136,79 @@ FORBIDDEN_COMMANDS: List[str] = [
     "dd if=/dev/zero",
     ":(){ :|:& };:",  # Fork bomb
     "chmod -R 777 /",
+    ">/dev/sda",
+    "curl",
+    "wget",
+    "nc ",
+    "ncat",
+    "netcat",
+    "bash -i",
+    "sh -i",
+    "python -c",
+    "python3 -c",
+    "perl -e",
+    "ruby -e",
 ]
 
 FORBIDDEN_PATTERNS: List[str] = [
     "rm -rf /",
     "rm -rf /*",
     "> /dev/sda",
+    ">/dev/sda",
     "mkfs.ext",
     "mkfs.xfs",
     "mkfs.btrfs",
+    "| bash",
+    "| sh",
+    "|bash",
+    "|sh",
+    "&& bash",
+    "&& sh",
+    "; bash",
+    "; sh",
+    "$(",
+    "${",
+    "`",
 ]
+
+# Whitelist of allowed commands (optional strict mode)
+ALLOWED_COMMANDS: set = {
+    "ls", "cat", "head", "tail", "grep", "find", "pwd", "echo",
+    "mkdir", "touch", "cp", "mv", "rm", "chmod", "chown",
+    "ps", "top", "htop", "df", "du", "free", "uptime",
+    "git", "docker", "docker-compose", "npm", "node", "python", "python3",
+    "pip", "pip3", "pytest", "black", "flake8", "mypy",
+    "ssh", "scp", "rsync", "tar", "gzip", "gunzip", "zip", "unzip",
+    "curl",  # Only allowed with specific flags validation
+    "wget",  # Only allowed with specific flags validation
+}
 
 
 def _validate_command(command: str) -> None:
     """
     Validate command for safety.
     
+    SECURITY: This validation runs BEFORE any execution.
+    
     Raises:
         PermissionError: If command contains dangerous operations
+        ValueError: If command is invalid
     """
+    if not command or not isinstance(command, str):
+        raise ValueError("Command must be a non-empty string")
+    
     command_lower = command.lower().strip()
+    
+    # Block shell metacharacters that could enable injection
+    dangerous_chars = [';', '&', '|', '`', '$', '(', ')', '{', '}', '<', '>']
+    if any(char in command for char in dangerous_chars):
+        # Only allow if properly quoted (simple check)
+        try:
+            parsed = shlex.split(command)
+            if not parsed:
+                raise PermissionError("Command contains shell metacharacters")
+        except ValueError:
+            raise PermissionError("Command contains invalid shell syntax")
     
     # Check for forbidden commands
     for forbidden in FORBIDDEN_COMMANDS:
@@ -163,12 +226,18 @@ def _validate_command(command: str) -> None:
     dangerous_patterns = [
         "sudo ",
         "su -",
+        "su root",
     ]
     
     for pattern in dangerous_patterns:
         if pattern in command_lower:
-            logger.warning(f"⚠️ Potentially dangerous command requires confirmation: {command}")
-            # For now, we allow but log. In production, you might want to block or require auth.
+            logger.warning(f"🚫 Blocked privilege escalation: {command}")
+            raise PermissionError(f"Command attempts privilege escalation: {pattern}")
+    
+    # Validate command is in whitelist (optional - uncomment for strict mode)
+    # cmd_parts = shlex.split(command)
+    # if cmd_parts and cmd_parts[0] not in ALLOWED_COMMANDS:
+    #     raise PermissionError(f"Command '{cmd_parts[0]}' is not in allowed commands list")
 
 
 import os

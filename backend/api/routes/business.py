@@ -14,6 +14,7 @@ import uuid
 
 from app.models.business import BusinessProcess, ProcessStep, ProcessExecution, ProcessTrigger
 from app.core.database import get_db
+from app.core.auth_deps import require_auth
 
 router = APIRouter(prefix="/api/business", tags=["business-factory"])
 
@@ -145,7 +146,8 @@ def generate_id(prefix: str) -> str:
 @router.post("/processes", response_model=ProcessResponse, status_code=201)
 async def create_process(
     process: ProcessCreate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user=Depends(require_auth)
 ):
     """
     Create a new business process with workflow steps
@@ -227,7 +229,8 @@ async def list_processes(
     enabled: Optional[bool] = None,
     limit: int = 50,
     offset: int = 0,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user=Depends(require_auth)
 ):
     """
     List all business processes with optional filtering
@@ -275,7 +278,8 @@ async def list_processes(
 @router.get("/processes/{process_id}", response_model=ProcessResponse)
 async def get_process(
     process_id: str,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user=Depends(require_auth)
 ):
     """Get business process by ID with all workflow steps"""
     try:
@@ -304,7 +308,8 @@ async def get_process(
 async def update_process(
     process_id: str,
     process_update: ProcessUpdate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user=Depends(require_auth)
 ):
     """Update business process metadata (not steps)"""
     try:
@@ -343,7 +348,8 @@ async def update_process(
 @router.delete("/processes/{process_id}", status_code=204)
 async def delete_process(
     process_id: str,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user=Depends(require_auth)
 ):
     """Delete business process (cascades to steps, executions, triggers)"""
     try:
@@ -372,7 +378,8 @@ async def delete_process(
 async def execute_process(
     process_id: str,
     execute_request: ProcessExecuteRequest,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user=Depends(require_auth)
 ):
     """
     Execute a business process (creates execution record)
@@ -436,7 +443,8 @@ async def get_execution_history(
     status: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user=Depends(require_auth)
 ):
     """Get execution history for a business process"""
     try:
@@ -465,7 +473,8 @@ async def get_execution_history(
 @router.get("/executions/{execution_id}", response_model=ProcessExecutionResponse)
 async def get_execution(
     execution_id: str,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user=Depends(require_auth)
 ):
     """Get execution details by ID"""
     try:
@@ -485,7 +494,7 @@ async def get_execution(
 
 
 @router.get("/info")
-async def get_business_factory_info():
+async def get_business_factory_info(user=Depends(require_auth)):
     """Get Business Factory system information"""
     return {
         "name": "Business Factory",

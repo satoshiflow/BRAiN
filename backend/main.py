@@ -269,25 +269,21 @@ def create_app() -> FastAPI:
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-    # CORS (from settings for production, with fallback)
-    cors_origins = settings.cors_origins if hasattr(settings, 'cors_origins') and settings.cors_origins else [
-        "http://localhost",
-        "http://localhost:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:3001",
-        "https://axe.brain.falklabs.de",
+    # CORS - Strict allowed origins for security (SECURITY-001)
+    # No wildcard "*" allowed in production
+    cors_origins = [
         "https://control.brain.falklabs.de",
-        "https://n8n.brain.falklabs.de",
-        "*",
+        "https://axe.brain.falklabs.de",
+        "http://localhost:3000",  # dev only
+        "http://localhost:3001",  # dev only
     ]
 
     app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_credentials=True,  # Safe because origins are explicitly whitelisted
+        allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
+        allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
     )
 
     # UTF-8 Middleware - Ensures all JSON responses have charset=utf-8
