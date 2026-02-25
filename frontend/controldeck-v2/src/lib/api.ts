@@ -250,3 +250,89 @@ export const memoryApi = {
     }),
   getSessions: () => proxyCall<any>('modules/memory/sessions'),
 };
+
+/**
+ * Workspace API - Multi-tenant workspace and project management
+ */
+export interface Workspace {
+  workspace_id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  status: 'active' | 'suspended' | 'archived';
+  owner_id?: string;
+  created_at: string;
+  updated_at: string;
+  max_projects: number;
+  max_runs_per_day: number;
+  max_storage_gb: number;
+  tags: string[];
+}
+
+export interface WorkspaceStats {
+  workspace_id: string;
+  total_projects: number;
+  active_projects: number;
+  total_runs: number;
+  runs_today: number;
+  storage_used_gb: number;
+  storage_limit_gb: number;
+  quota_usage_percent: number;
+}
+
+export interface Project {
+  project_id: string;
+  workspace_id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  status: 'active' | 'paused' | 'completed' | 'archived';
+  created_at: string;
+  updated_at: string;
+  total_runs: number;
+  successful_runs: number;
+  failed_runs: number;
+  tags: string[];
+}
+
+export const workspaceApi = {
+  // Workspace operations
+  listWorkspaces: () => proxyCall<Workspace[]>('api/workspaces'),
+  getWorkspace: (workspaceId: string) => proxyCall<Workspace>(`api/workspaces/${workspaceId}`),
+  createWorkspace: (data: Partial<Workspace>) =>
+    proxyCall<Workspace>('api/workspaces', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updateWorkspace: (workspaceId: string, data: Partial<Workspace>) =>
+    proxyCall<Workspace>(`api/workspaces/${workspaceId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  deleteWorkspace: (workspaceId: string) =>
+    proxyCall<{ success: boolean }>(`api/workspaces/${workspaceId}`, {
+      method: 'DELETE',
+    }),
+  getWorkspaceStats: (workspaceId: string) =>
+    proxyCall<WorkspaceStats>(`api/workspaces/${workspaceId}/stats`),
+
+  // Project operations
+  listProjects: (workspaceId: string) =>
+    proxyCall<Project[]>(`api/workspaces/${workspaceId}/projects`),
+  getProject: (workspaceId: string, projectId: string) =>
+    proxyCall<Project>(`api/workspaces/${workspaceId}/projects/${projectId}`),
+  createProject: (workspaceId: string, data: Partial<Project>) =>
+    proxyCall<Project>(`api/workspaces/${workspaceId}/projects`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updateProject: (workspaceId: string, projectId: string, data: Partial<Project>) =>
+    proxyCall<Project>(`api/workspaces/${workspaceId}/projects/${projectId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  deleteProject: (workspaceId: string, projectId: string) =>
+    proxyCall<{ success: boolean }>(`api/workspaces/${workspaceId}/projects/${projectId}`, {
+      method: 'DELETE',
+    }),
+};

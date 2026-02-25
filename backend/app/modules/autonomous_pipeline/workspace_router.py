@@ -9,6 +9,10 @@ from fastapi import APIRouter, HTTPException, Depends
 from typing import Dict, Any, List, Optional
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
+import json
+import aiofiles
+import aiofiles.os
+from pathlib import Path
 
 from app.core.auth_deps import require_auth, get_current_principal, Principal
 from app.core.database import get_db
@@ -51,6 +55,34 @@ router = APIRouter(
 # ============================================================================
 # Helper Functions
 # ============================================================================
+
+async def _get_directory_size(directory: Path) -> int:
+    """
+    Asynchronously calculate total size of directory in bytes.
+
+    Args:
+        directory: Path to directory
+
+    Returns:
+        Total size in bytes
+    """
+    total_size = 0
+    try:
+        for root, dirs, files in await aiofiles.os.walk(directory):
+            for filename in files:
+                filepath = Path(root) / filename
+                try:
+                    size = (await aiofiles.os.stat(filepath)).st_size
+                    total_size += size
+                except (OSError, FileNotFoundError):
+                    # Skip files that can't be accessed
+                    logger.debug(f"Could not stat file: {filepath}")
+    except (OSError, FileNotFoundError):
+        # Skip if directory doesn't exist
+        logger.debug(f"Could not walk directory: {directory}")
+
+    return total_size
+
 
 def _verify_workspace_ownership(workspace: Workspace, principal: Principal, allow_admin: bool = True) -> None:
     """
@@ -778,19 +810,13 @@ async def execute_workspace_pipeline(
         run_contract = run_contract_service.finalize_contract(run_contract, result)
 
         # ====================================================================
-        # QUOTA ENFORCEMENT: Check storage limit
+        # QUOTA ENFORCEMENT: Check storage limit (ASYNC)
         # ====================================================================
-        import json
         contract_data = json.dumps(run_contract.model_dump(), default=str)
         contract_size_mb = len(contract_data.encode('utf-8')) / (1024 * 1024)
 
-        # Calculate current storage
-        import os
-        total_size = sum(
-            os.path.getsize(os.path.join(dirpath, filename))
-            for dirpath, dirnames, filenames in os.walk(storage_path)
-            for filename in filenames
-        )
+        # Calculate current storage (async)
+        total_size = await _get_directory_size(storage_path)
         total_size_gb = total_size / (1024 ** 3)
         new_total_size_gb = total_size_gb + contract_size_mb / 1024
 
@@ -805,10 +831,10 @@ async def execute_workspace_pipeline(
                        f"Please clean up old evidence and contracts."
             )
 
-        # Save contract in workspace storage
+        # Save contract in workspace storage (ASYNC)
         contract_file_path = contracts_path / f"{run_contract.contract_id}.json"
-        with open(contract_file_path, "w") as f:
-            f.write(contract_data)
+        async with aiofiles.open(contract_file_path, "w") as f:
+            await f.write(contract_data)
 
         logger.info(
             f"[Workspace] Pipeline execution completed: {result.graph_id} "

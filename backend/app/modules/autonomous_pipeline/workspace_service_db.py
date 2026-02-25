@@ -12,6 +12,8 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
+import aiofiles
+import aiofiles.os
 
 from app.core.database import Base
 from app.models.autonomous_pipeline import (
@@ -91,15 +93,15 @@ class DatabaseWorkspaceService:
         timestamp_ms = int(datetime.utcnow().timestamp() * 1000)
         workspace_id = f"ws_{timestamp_ms}_{request.slug}"
 
-        # Create storage path
+        # Create storage path (ASYNC)
         storage_path = self.WORKSPACES_DIR / workspace_id
-        storage_path.mkdir(parents=True, exist_ok=True)
+        await aiofiles.os.makedirs(storage_path, exist_ok=True)
 
-        # Create subdirectories
-        (storage_path / "secrets").mkdir(exist_ok=True)
-        (storage_path / "evidence").mkdir(exist_ok=True)
-        (storage_path / "contracts").mkdir(exist_ok=True)
-        (storage_path / "projects").mkdir(exist_ok=True)
+        # Create subdirectories (ASYNC)
+        await aiofiles.os.makedirs(storage_path / "secrets", exist_ok=True)
+        await aiofiles.os.makedirs(storage_path / "evidence", exist_ok=True)
+        await aiofiles.os.makedirs(storage_path / "contracts", exist_ok=True)
+        await aiofiles.os.makedirs(storage_path / "projects", exist_ok=True)
 
         # Create workspace model
         workspace_model = WorkspaceModel(
@@ -524,16 +526,12 @@ class DatabaseWorkspaceService:
         # Calculate totals
         total_runs = sum(p.total_runs for p in projects)
 
-        # Estimate storage usage (simplified)
+        # Calculate storage usage (ASYNC)
         storage_used_gb = 0.0
         try:
             storage_path = Path(workspace_model.storage_path) if workspace_model.storage_path else None
-            if storage_path and storage_path.exists():
-                total_bytes = sum(
-                    f.stat().st_size
-                    for f in storage_path.rglob("*")
-                    if f.is_file()
-                )
+            if storage_path:
+                total_bytes = await self._get_directory_size_async(storage_path)
                 storage_used_gb = total_bytes / (1024 ** 3)
         except Exception as e:
             logger.warning(f"Failed to calculate storage usage: {e}")
@@ -619,6 +617,33 @@ class DatabaseWorkspaceService:
     # ========================================================================
     # Private Helper Methods
     # ========================================================================
+
+    async def _get_directory_size_async(self, directory: Path) -> int:
+        """
+        Asynchronously calculate total size of directory in bytes.
+
+        Args:
+            directory: Path to directory
+
+        Returns:
+            Total size in bytes
+        """
+        total_size = 0
+        try:
+            for root, dirs, files in await aiofiles.os.walk(directory):
+                for filename in files:
+                    filepath = Path(root) / filename
+                    try:
+                        size = (await aiofiles.os.stat(filepath)).st_size
+                        total_size += size
+                    except (OSError, FileNotFoundError):
+                        # Skip files that can't be accessed
+                        logger.debug(f"Could not stat file: {filepath}")
+        except (OSError, FileNotFoundError):
+            # Skip if directory doesn't exist
+            logger.debug(f"Could not walk directory: {directory}")
+
+        return total_size
 
     async def _get_workspace_model(
         self,
