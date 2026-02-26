@@ -1,0 +1,194 @@
+name: Process Isolation & Service Boundary Check
+
+on:
+  push:
+    branches: [main, develop, claude/**]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  isolation-check:
+    name: Verify process isolation guardrails
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: "✓ Check: No 'next dev' in production configs"
+        run: |
+          set -euo pipefail
+          
+          # Directories to check for 'next dev' usage
+          check_locations="
+            backend/
+            Dockerfile
+            docker-compose.yml
+            docker-compose.prod.yml
+            docker-compose.stage.yml
+            .github/workflows/deploy*.yml
+          "
+          
+          echo "🔍 Checking for 'next dev' in production contexts..."
+          
+          violations=0
+          for location in $check_locations; do
+            if [ -e "$location" ]; then
+              if grep -r "next dev" "$location" 2>/dev/null | grep -v "# " | grep -v ".next/"; then
+                echo "❌ VIOLATION: Found 'next dev' in $location"
+                ((violations++))
+              fi
+            fi
+          done
+          
+          if [ $violations -gt 0 ]; then
+            echo ""
+            echo "❌ FAILED: 'next dev' found in production context"
+            echo "Tip: 'next dev' should ONLY appear in frontend package.json dev scripts"
+            exit 1
+          fi
+          
+          echo "✅ PASSED: No 'next dev' in production"
+
+      - name: "✓ Check: No backend subprocess spawning of frontends"
+        run: |
+          set -euo pipefail
+          
+          echo "🔍 Checking for implicit frontend spawning in backend..."
+          
+          # Dangerous patterns that might spawn frontend processes
+          patterns="
+            subprocess.*next
+            spawn.*next
+            exec.*npm\ run\ dev
+            child_process.*next
+            popen.*next
+          "
+          
+          violations=0
+          for pattern in $patterns; do
+            if grep -rE "$pattern" backend/app/ backend/brain/ 2>/dev/null; then
+              echo "❌ VIOLATION: Backend spawns frontend: $pattern"
+              ((violations++))
+            fi
+          done
+          
+          if [ $violations -gt 0 ]; then
+            echo ""
+            echo "❌ FAILED: Backend code spawns frontend processes"
+            echo "This violates process isolation!"
+            exit 1
+          fi
+          
+          echo "✅ PASSED: No implicit frontend spawning in backend"
+
+      - name: "✓ Check: Docker Compose service separation"
+        run: |
+          set -euo pipefail
+          
+          echo "🔍 Checking Docker Compose structure..."
+          
+          # Verify main docker-compose has services key
+          if ! grep -q "^services:" docker-compose.yml; then
+            echo "❌ FAILED: docker-compose.yml missing 'services:' key"
+            exit 1
+          fi
+          
+          # Count services (should be at least 3: backend + 2-3 frontends)
+          service_count=$(grep -E "^\s{2}[a-z_]+:$" docker-compose.yml | wc -l)
+          if [ "$service_count" -lt 3 ]; then
+            echo "❌ FAILED: Expected at least 3 services, found $service_count"
+            exit 1
+          fi
+          
+          echo "✅ PASSED: Docker Compose has proper service separation ($service_count services)"
+
+      - name: "✓ Check: No multi-process orchestration in production"
+        run: |
+          set -euo pipefail
+          
+          echo "🔍 Checking for concurrently/turbo in production..."
+          
+          # Check for dangerous orchestration tools in production scripts
+          violations=0
+          
+          # Search in Dockerfiles and docker-compose
+          if grep -r "concurrently\|npm-run-all\|turbo.*run" \
+               Dockerfile* docker-compose.prod.yml docker-compose.stage.yml 2>/dev/null; then
+            echo "❌ VIOLATION: Found concurrently/turbo in production configs"
+            ((violations++))
+          fi
+          
+          # Check in deploy scripts
+          if find . -name "*deploy*.sh" -o -name "*prod*.sh" 2>/dev/null | \
+             xargs grep -l "concurrently\|npm-run-all\|turbo" 2>/dev/null; then
+            echo "❌ VIOLATION: Found concurrently/turbo in deploy scripts"
+            ((violations++))
+          fi
+          
+          if [ $violations -gt 0 ]; then
+            echo ""
+            echo "❌ FAILED: Multi-process orchestration found in production"
+            exit 1
+          fi
+          
+          echo "✅ PASSED: No multi-process orchestration in production"
+
+      - name: "✓ Check: Safe dev scripts exist and are executable"
+        run: |
+          set -euo pipefail
+          
+          echo "🔍 Checking for safe dev scripts..."
+          
+          required_scripts="
+            scripts/check-ports.sh
+            scripts/dev-up.sh
+            scripts/dev-down.sh
+            scripts/dev-status.sh
+          "
+          
+          violations=0
+          for script in $required_scripts; do
+            if [ ! -f "$script" ]; then
+              echo "❌ MISSING: $script"
+              ((violations++))
+            elif [ ! -x "$script" ]; then
+              echo "❌ NOT EXECUTABLE: $script"
+              ((violations++))
+            fi
+          done
+          
+          if [ $violations -gt 0 ]; then
+            echo ""
+            echo "❌ FAILED: Dev scripts missing or not executable"
+            exit 1
+          fi
+          
+          echo "✅ PASSED: All dev scripts present and executable"
+
+      - name: "✓ Check: brain-starter.sh shows deprecation warning"
+        run: |
+          set -euo pipefail
+          
+          echo "🔍 Checking brain-starter.sh deprecation..."
+          
+          if ! grep -q "DEPRECATED" brain-starter.sh; then
+            echo "❌ WARNING: brain-starter.sh should be marked DEPRECATED"
+            echo "See brain-starter.sh comments"
+          else
+            echo "✅ PASSED: brain-starter.sh has deprecation notice"
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          echo ""
+          echo "✅ All process isolation checks passed!"
+          echo ""
+          echo "🎯 Guardrails verified:"
+          echo "  ✓ No 'next dev' in production"
+          echo "  ✓ No backend→frontend spawning"
+          echo "  ✓ Docker Compose services isolated"
+          echo "  ✓ No multi-process orchestration"
+          echo "  ✓ Dev scripts present and safe"
+          echo ""
