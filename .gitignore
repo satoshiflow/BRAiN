@@ -132,3 +132,6 @@ Thumbs.db
 # END OF FILE
 ############################################################
 .aider*
+
+# Local external archive (do not commit)
+docs/archive/brain-team/
