@@ -9,8 +9,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Body, HTTPException, Query, status, Depends, Path
 from loguru import logger
 
-from app.core.auth_deps import require_auth, require_role, Principal
-from app.core.security import UserRole
+from app.core.auth_deps import require_auth, require_role, Principal, SystemRole as UserRole
 
 from .schemas import (
     CompressionRequest,

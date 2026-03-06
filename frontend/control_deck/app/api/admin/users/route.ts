@@ -13,6 +13,8 @@ import { auth } from "@/auth";
 import { NextResponse } from "next/server";
 import { hasRequiredRole } from "@/lib/auth-helpers";
 
+export const dynamic = "force-dynamic";
+
 // In-memory user store (replace with database in production)
 const USERS = [
   {
@@ -47,8 +49,17 @@ const USERS = [
   },
 ];
 
+const ALLOW_MOCK_USERS_IN_PROD = process.env.ALLOW_MOCK_USERS_IN_PROD === "true";
+
 export async function GET(request: Request) {
   try {
+    if (process.env.NODE_ENV === "production" && !ALLOW_MOCK_USERS_IN_PROD) {
+      return NextResponse.json(
+        { error: "Admin user directory backend not configured" },
+        { status: 503 }
+      );
+    }
+
     // Check authentication
     const session = await auth();
     if (!session?.user) {
@@ -68,8 +79,10 @@ export async function GET(request: Request) {
 
     // Get query parameters
     const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || "20");
+    const pageRaw = parseInt(searchParams.get("page") || "1", 10);
+    const limitRaw = parseInt(searchParams.get("limit") || "20", 10);
+    const page = Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1;
+    const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 100) : 20;
     const role = searchParams.get("role");
     const status = searchParams.get("status");
     const search = searchParams.get("search");

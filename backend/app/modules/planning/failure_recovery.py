@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Callable, Coroutine, Dict, List, Optional
 
 from loguru import logger
@@ -28,6 +28,11 @@ from .schemas import (
     RecoveryStrategy,
     RecoveryStrategyType,
 )
+
+
+def _utc_now_naive() -> datetime:
+    """UTC now as naive datetime for legacy compatibility."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class RecoveryAction:
@@ -48,7 +53,7 @@ class RecoveryAction:
         self.message = message
         self.next_status = next_status
         self.retry_after_ms = retry_after_ms
-        self.timestamp = datetime.utcnow()
+        self.timestamp = _utc_now_naive()
 
 
 class FailureRecovery:

@@ -18,7 +18,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
-from app.core.security import require_role, UserRole, get_current_principal, Principal
+from app.core.auth_deps import require_role, SystemRole as UserRole, get_current_principal, Principal
 from .service import AXEKnowledgeService
 from .schemas import (
     KnowledgeDocumentCreate,
@@ -172,8 +172,9 @@ async def create_document(
     Only ADMIN users can create documents to maintain content quality.
     """
     try:
-        document = await service.create(data, created_by=principal.agent_id)
-        logger.info(f"Document created: {document.name} by {principal.agent_id}")
+        actor_id: str = principal.agent_id or principal.principal_id or "system"
+        document = await service.create(data, created_by=actor_id)
+        logger.info(f"Document created: {document.name} by {actor_id}")
         return document
     except Exception as e:
         logger.error(f"Error creating document: {e}", exc_info=True)
@@ -200,7 +201,8 @@ async def update_document(
         if not document:
             raise HTTPException(404, f"Document {document_id} not found")
 
-        logger.info(f"Document updated: {document.name} by {principal.agent_id}")
+        actor_id = principal.agent_id or principal.principal_id or "system"
+        logger.info(f"Document updated: {document.name} by {actor_id}")
         return document
     except HTTPException:
         raise
@@ -228,7 +230,8 @@ async def delete_document(
         if not success:
             raise HTTPException(404, f"Document {document_id} not found")
 
-        logger.info(f"Document deleted: {document_id} by {principal.agent_id}")
+        actor_id = principal.agent_id or principal.principal_id or "system"
+        logger.info(f"Document deleted: {document_id} by {actor_id}")
         return None  # 204 No Content
     except HTTPException:
         raise

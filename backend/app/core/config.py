@@ -1,9 +1,11 @@
 from functools import lru_cache
 from typing import Union
 from pydantic import field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+
     app_name: str = "BRAiN Core v1.0"
     environment: str = "local"
 
@@ -93,10 +95,6 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return [v]
         return v
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
 
 @lru_cache
 def get_settings() -> Settings:

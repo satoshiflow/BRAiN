@@ -14,8 +14,7 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.auth_deps import require_role, get_current_principal, Principal, require_auth
-from app.core.security import UserRole
+from app.core.auth_deps import require_role, get_current_principal, Principal, require_auth, SystemRole as UserRole
 from app.core.rate_limit import limiter, RateLimits
 
 from .schemas import (

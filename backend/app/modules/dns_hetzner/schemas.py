@@ -12,7 +12,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 
 # ============================================================================
@@ -129,8 +129,9 @@ class DNSRecordCreateRequest(BaseModel):
     value: str = Field(..., description="Record value")
     ttl: int = Field(300, description="TTL in seconds", ge=60, le=86400)
 
-    @validator("name")
-    def validate_name(cls, v):
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
         """Validate record name"""
         if not v:
             raise ValueError("Record name cannot be empty")

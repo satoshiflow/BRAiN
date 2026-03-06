@@ -9,13 +9,11 @@ Provides:
 - JWTBearer security dependency
 """
 
-from __future__ import annotations
-
 import asyncio
 import logging
 from typing import Any, Dict, List, Optional, Set
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from fastapi import Request, HTTPException, status
@@ -28,6 +26,11 @@ from app.core.config import get_settings
 from app.core.token_keys import get_token_key_manager, TokenKeyManager
 
 logger = logging.getLogger(__name__)
+
+
+def _utc_now_naive() -> datetime:
+    """UTC now as naive datetime for backward-compatible comparisons."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 # A1 Token Architecture: Default to RS256 only
 DEFAULT_ALGORITHMS = ["RS256"]
@@ -150,7 +153,7 @@ class JWKSClient:
         """Check if cached keys are still valid"""
         if not self._last_fetch:
             return False
-        return datetime.utcnow() - self._last_fetch < self.cache_ttl
+        return _utc_now_naive() - self._last_fetch < self.cache_ttl
     
     async def fetch_keys(self) -> Dict[str, JWKSKey]:
         """Fetch JWKS from the configured URL"""
@@ -203,7 +206,7 @@ class JWKSClient:
             # Refresh cache
             try:
                 self._keys = await self.fetch_keys()
-                self._last_fetch = datetime.utcnow()
+                self._last_fetch = _utc_now_naive()
             except Exception as e:
                 logger.error(f"Failed to refresh JWKS cache: {e}")
                 # Return cached key even if expired (fail open with stale data)
@@ -220,7 +223,7 @@ class JWKSClient:
             if not self._is_cache_valid():
                 try:
                     self._keys = await self.fetch_keys()
-                    self._last_fetch = datetime.utcnow()
+                    self._last_fetch = _utc_now_naive()
                 except Exception as e:
                     logger.error(f"Failed to refresh JWKS cache: {e}")
                     if not self._keys:
@@ -378,8 +381,8 @@ class JWTValidator:
             sub=claims.get("sub", ""),
             iss=claims.get("iss", ""),
             aud=claims.get("aud", []) if isinstance(claims.get("aud"), list) else [claims.get("aud", "")],
-            exp=datetime.utcfromtimestamp(exp_ts) if exp_ts else datetime.utcnow(),
-            iat=datetime.utcfromtimestamp(iat_ts) if iat_ts else datetime.utcnow(),
+            exp=datetime.utcfromtimestamp(exp_ts) if exp_ts else _utc_now_naive(),
+            iat=datetime.utcfromtimestamp(iat_ts) if iat_ts else _utc_now_naive(),
             scope=scopes,
             roles=roles,
             token_type=token_type,
@@ -505,7 +508,7 @@ def create_token(
         )
     
     # Build claims
-    now = datetime.utcnow()
+    now = _utc_now_naive()
     if expires_delta is None:
         expires_delta = timedelta(minutes=settings.access_token_expire_minutes)
     

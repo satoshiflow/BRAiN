@@ -6,15 +6,15 @@ FastAPI endpoints for authentication and user management.
 
 from typing import List, Optional
 from uuid import UUID
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from jose import JWTError, jwt
+from app.core.jwt_middleware import get_jwt_validator
 
 from app.core.database import get_db
-from app.core.security import create_access_token, SECRET_KEY, ALGORITHM
 from app.core.config import get_settings
 from app.core.token_keys import get_token_key_manager
 from app.models.user import User, UserRole
@@ -41,6 +41,11 @@ __all__ = ["router", "admin_router", "get_current_user_db", "require_role_db", "
 device_security = HTTPBearer(auto_error=False)
 
 
+def _utc_now_naive() -> datetime:
+    """UTC now as naive datetime for legacy DB DateTime columns."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 # ============================================================================
 # DB-Based Authentication Dependencies
 # ============================================================================
@@ -59,14 +64,15 @@ async def get_current_user_db(
     
     token = credentials.credentials
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id: str = payload.get("sub")
-        if user_id is None:
+        validator = get_jwt_validator(use_local_keys=True)
+        payload = await validator.validate(token)
+        user_id = payload.sub
+        if not user_id:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token",
             )
-    except JWTError:
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
@@ -317,13 +323,12 @@ async def validate_invitation(
 ):
     """Validate invitation token (public endpoint for registration page)"""
     from app.models.user import Invitation
-    from datetime import datetime
     
     result = await db.execute(
         select(Invitation).where(
             Invitation.token == token,
             Invitation.used_at == None,
-            Invitation.expires_at > datetime.utcnow()
+            Invitation.expires_at > _utc_now_naive()
         )
     )
     invitation = result.scalar_one_or_none()
@@ -545,14 +550,13 @@ async def list_invitations(
 ):
     """List all invitations (admin only)"""
     from app.models.user import Invitation
-    from datetime import datetime
     
     query = select(Invitation)
     
     if pending_only:
         query = query.where(
             Invitation.used_at == None,
-            Invitation.expires_at > datetime.utcnow()
+            Invitation.expires_at > _utc_now_naive()
         )
     
     result = await db.execute(query)

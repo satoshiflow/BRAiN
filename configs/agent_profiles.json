@@ -1,0 +1,35 @@
+{
+  "version": "1.0",
+  "profiles": [
+    {
+      "id": "backend-implementer",
+      "purpose": "Routine backend feature and refactor work",
+      "default_model_tier": "low_cost",
+      "critic_required": false
+    },
+    {
+      "id": "frontend-implementer",
+      "purpose": "UI pages, hooks, route handlers, tests",
+      "default_model_tier": "low_cost",
+      "critic_required": false
+    },
+    {
+      "id": "devops-maintainer",
+      "purpose": "CI scripts, runner pipelines, deployment automation",
+      "default_model_tier": "medium_cost",
+      "critic_required": true
+    },
+    {
+      "id": "security-critic",
+      "purpose": "Auth, permissions, secrets, command execution, data isolation",
+      "default_model_tier": "high_quality",
+      "critic_required": true
+    },
+    {
+      "id": "release-critic",
+      "purpose": "Final review gate before merge/deploy",
+      "default_model_tier": "high_quality",
+      "critic_required": true
+    }
+  ]
+}

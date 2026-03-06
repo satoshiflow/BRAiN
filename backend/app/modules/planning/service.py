@@ -7,7 +7,7 @@ and FailureRecovery into a single service.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from loguru import logger
@@ -28,6 +28,11 @@ from .schemas import (
 from .task_decomposer import TaskDecomposer
 
 MODULE_VERSION = "1.0.0"
+
+
+def _utc_now_naive() -> datetime:
+    """UTC now as naive datetime for legacy compatibility."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class PlanningService:
@@ -113,7 +118,7 @@ class PlanningService:
             return None
 
         plan.status = PlanStatus.EXECUTING
-        plan.started_at = datetime.utcnow()
+        plan.started_at = _utc_now_naive()
 
         # Mark root nodes as READY
         graph = self._graphs.get(plan_id)
@@ -150,7 +155,7 @@ class PlanningService:
             return None
 
         node.status = NodeStatus.RUNNING
-        node.started_at = datetime.utcnow()
+        node.started_at = _utc_now_naive()
 
         # Reserve resources
         self.allocator.reserve_for_node(plan_id, node)
@@ -171,7 +176,7 @@ class PlanningService:
 
         node.status = NodeStatus.COMPLETED
         node.result = result
-        node.completed_at = datetime.utcnow()
+        node.completed_at = _utc_now_naive()
         plan.completed_nodes += 1
 
         # Consume actual resources
@@ -184,6 +189,38 @@ class PlanningService:
         self._check_plan_completion(plan_id)
 
         return node
+
+    def execute_next_node(self, plan_id: str, result: Optional[Dict] = None) -> Optional[PlanNode]:
+        """Execute one ready node (start + complete) for deterministic pipeline stepping."""
+        plan = self._plans.get(plan_id)
+        if not plan:
+            return None
+
+        if plan.status in (PlanStatus.DRAFT, PlanStatus.VALIDATED, PlanStatus.READY):
+            plan = self.start_plan(plan_id)
+            if not plan:
+                return None
+
+        if plan.status != PlanStatus.EXECUTING:
+            return None
+
+        ready_nodes = self.get_ready_nodes(plan_id)
+        if not ready_nodes:
+            self._check_plan_completion(plan_id)
+            return None
+
+        node = ready_nodes[0]
+        started = self.start_node(plan_id, node.node_id)
+        if not started:
+            return None
+
+        final_result = result or {
+            "status": "ok",
+            "execution_mode": "auto_step",
+            "node_id": node.node_id,
+            "action": node.action,
+        }
+        return self.complete_node(plan_id, node.node_id, final_result)
 
     async def fail_node(self, plan_id: str, node_id: str, error: str) -> Optional[RecoveryAction]:
         """Handle node failure with recovery."""
@@ -267,7 +304,7 @@ class PlanningService:
                 plan.status = PlanStatus.FAILED
             else:
                 plan.status = PlanStatus.COMPLETED
-            plan.completed_at = datetime.utcnow()
+            plan.completed_at = _utc_now_naive()
 
     # ------------------------------------------------------------------
     # Stats

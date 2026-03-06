@@ -12,6 +12,21 @@ export interface AuthUser {
   refreshToken?: string;
 }
 
+interface BackendTokenPair {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  expires_in: number;
+}
+
+interface BackendMeResponse {
+  id: string;
+  email: string;
+  username?: string;
+  full_name?: string;
+  role?: string;
+}
+
 // Extend the User type to include custom fields
 declare module "next-auth" {
   interface User {
@@ -138,14 +153,38 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             return null;
           }
 
-          const data = await response.json();
+          const data = (await response.json()) as BackendTokenPair;
+
+          if (!data?.access_token || !data?.refresh_token) {
+            console.warn("[Auth] Backend login returned invalid token payload");
+            return null;
+          }
+
+          let profile: BackendMeResponse | null = null;
+          try {
+            const meResponse = await fetch(`${API_BASE}/api/auth/me`, {
+              headers: {
+                Authorization: `Bearer ${data.access_token}`,
+              },
+            });
+
+            if (meResponse.ok) {
+              profile = (await meResponse.json()) as BackendMeResponse;
+            }
+          } catch (meError) {
+            console.warn("[Auth] Failed to fetch user profile after login:", meError);
+          }
+
+          const userRole = profile?.role || "viewer";
+          const userName = profile?.full_name || profile?.username || email;
+          const userId = profile?.id || email;
 
           return {
-            id: data.user.id,
-            email: data.user.email,
-            name: data.user.full_name || data.user.username,
-            role: data.user.role,
-            groups: [data.user.role],
+            id: userId,
+            email: profile?.email || email,
+            name: userName,
+            role: userRole,
+            groups: [userRole],
             accessToken: data.access_token,
             refreshToken: data.refresh_token,
           };

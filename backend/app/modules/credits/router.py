@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, List
-from app.core.security import Principal, get_current_principal
+from app.core.auth_deps import Principal, get_current_principal
 from . import service
 from .schemas import CreditsHealth, CreditsInfo
 

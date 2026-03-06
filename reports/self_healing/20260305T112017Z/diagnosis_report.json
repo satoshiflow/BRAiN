@@ -1,0 +1,120 @@
+{
+  "run_id": "20260305T112017Z",
+  "started_at": "2026-03-05T11:20:54.878376+00:00",
+  "duration_sec": 37.032,
+  "steps_total": 3,
+  "steps_failed": 1,
+  "overall_status": "failed",
+  "results": [
+    {
+      "name": "Compile touched files",
+      "command": "python3 -m py_compile backend/app/api/routes/auth.py backend/app/modules/skills/router.py",
+      "cwd": "/home/oli/dev/brain-v2",
+      "attempt": 1,
+      "retries": 0,
+      "timeout_sec": 120,
+      "started_at": "2026-03-05T11:20:17.845952+00:00",
+      "ended_at": "2026-03-05T11:20:18.002330+00:00",
+      "duration_sec": 0.156,
+      "exit_code": 0,
+      "status": "success",
+      "continue_on_error": true,
+      "log_file": "reports/self_healing/20260305T112017Z/compile_touched_files-attempt-1.log",
+      "tail": [],
+      "diagnosis": {
+        "tags": [
+          "success"
+        ],
+        "recommendations": []
+      }
+    },
+    {
+      "name": "Auth tests",
+      "command": "PYTHONPATH=. pytest tests/test_auth_flow.py tests/test_module_auth.py -q",
+      "cwd": "/home/oli/dev/brain-v2/backend",
+      "attempt": 2,
+      "retries": 1,
+      "timeout_sec": 600,
+      "started_at": "2026-03-05T11:20:38.201957+00:00",
+      "ended_at": "2026-03-05T11:20:54.519992+00:00",
+      "duration_sec": 16.318,
+      "exit_code": 1,
+      "status": "failed",
+      "continue_on_error": true,
+      "log_file": "reports/self_healing/20260305T112017Z/auth_tests-attempt-2.log",
+      "tail": [
+        "    expires_at=datetime.utcnow() + timedelta(days=7),",
+        "",
+        "tests/test_auth_flow.py::test_revoke_all_user_tokens",
+        "tests/test_auth_flow.py::test_revoke_all_user_tokens",
+        "tests/test_auth_flow.py::test_revoke_all_user_tokens",
+        "  /home/oli/dev/brain-v2/backend/app/services/auth_service.py:451: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).",
+        "    token.revoked_at = datetime.utcnow()",
+        "",
+        "tests/test_auth_flow.py::test_inactive_user_cannot_refresh",
+        "  /home/oli/dev/brain-v2/backend/tests/test_auth_flow.py:549: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).",
+        "    expires_at=datetime.utcnow() + timedelta(days=7),",
+        "",
+        "-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html",
+        "=========================== short test summary info ============================",
+        "FAILED tests/test_auth_flow.py::test_login_refresh_revoke_flow - RuntimeError...",
+        "FAILED tests/test_auth_flow.py::test_login_returns_valid_jwt - RuntimeError: ...",
+        "FAILED tests/test_auth_flow.py::test_refresh_token_storage_hashing - RuntimeE...",
+        "FAILED tests/test_auth_flow.py::test_access_token_has_valid_expiration - Runt...",
+        "FAILED tests/test_auth_flow.py::test_refresh_token_rotation_updates_family - ...",
+        "FAILED tests/test_auth_flow.py::test_token_replay_rejected - RuntimeError: No...",
+        "FAILED tests/test_auth_flow.py::test_revoked_token_cannot_be_refreshed - Attr...",
+        "FAILED tests/test_auth_flow.py::test_token_scope_based_on_user_role - Runtime...",
+        "FAILED tests/test_module_auth.py::TestSovereignModeAuth::test_sovereign_mode_unauthenticated_returns_401",
+        "FAILED tests/test_module_auth.py::TestSovereignModeAuth::test_sovereign_mode_non_admin_returns_403",
+        "FAILED tests/test_module_auth.py::TestSovereignModeAuth::test_sovereign_mode_admin_allowed",
+        "FAILED tests/test_module_auth.py::TestSovereignModeAuth::test_sovereign_mode_status_requires_auth",
+        "FAILED tests/test_module_auth.py::TestSovereignModeAuth::test_sovereign_mode_operator_returns_403",
+        "FAILED tests/test_module_auth.py::TestDMZControlAuth::test_dmz_control_unauthenticated_returns_401",
+        "FAILED tests/test_module_auth.py::TestDMZControlAuth::test_dmz_control_without_admin_returns_403",
+        "FAILED tests/test_module_auth.py::TestDMZControlAuth::test_dmz_control_operator_returns_403",
+        "FAILED tests/test_module_auth.py::TestDMZControlAuth::test_dmz_control_admin_allowed",
+        "FAILED tests/test_module_auth.py::TestSkillsExecuteAuth::test_skills_execute_unauthenticated_returns_401",
+        "FAILED tests/test_module_auth.py::TestSkillsExecuteAuth::test_skills_execute_without_operator_returns_403",
+        "FAILED tests/test_module_auth.py::TestSkillsExecuteAuth::test_skills_execute_operator_without_scope_returns_403",
+        "FAILED tests/test_module_auth.py::TestSkillsExecuteAuth::test_skills_execute_operator_with_scope_allowed",
+        "FAILED tests/test_module_auth.py::TestSkillsExecuteAuth::test_skills_execute_admin_allowed",
+        "FAILED tests/test_module_auth.py::TestSkillsExecuteAuth::test_skills_execute_body_endpoint_requires_auth",
+        "FAILED tests/test_module_auth.py::TestAuthErrorMessages::test_401_includes_www_authenticate_header",
+        "FAILED tests/test_module_auth.py::TestAuthErrorMessages::test_403_includes_reason",
+        "25 failed, 8 passed, 32 warnings in 14.42s"
+      ],
+      "diagnosis": {
+        "tags": [
+          "auth_flow_failures",
+          "module_auth_failures"
+        ],
+        "recommendations": []
+      }
+    },
+    {
+      "name": "Legacy auth import gate",
+      "command": "python3 - <<'PY'\nimport pathlib,re,sys\nroot=pathlib.Path('/home/oli/dev/brain-v2/backend/app')\npat=re.compile(r'^from app\\.core\\.security import',re.M)\nviol=[]\nfor p in root.rglob('*.py'):\n    if p.name=='auth_deps.py':\n        continue\n    txt=p.read_text(encoding='utf-8')\n    if pat.search(txt):\n        viol.append(str(p))\nif viol:\n    print('Legacy imports found:')\n    print('\\n'.join(viol))\n    sys.exit(1)\nprint('No legacy imports outside compatibility shim.')\nPY",
+      "cwd": "/home/oli/dev/brain-v2",
+      "attempt": 1,
+      "retries": 0,
+      "timeout_sec": 120,
+      "started_at": "2026-03-05T11:20:54.520277+00:00",
+      "ended_at": "2026-03-05T11:20:54.878204+00:00",
+      "duration_sec": 0.358,
+      "exit_code": 0,
+      "status": "success",
+      "continue_on_error": true,
+      "log_file": "reports/self_healing/20260305T112017Z/legacy_auth_import_gate-attempt-1.log",
+      "tail": [
+        "No legacy imports outside compatibility shim."
+      ],
+      "diagnosis": {
+        "tags": [
+          "success"
+        ],
+        "recommendations": []
+      }
+    }
+  ]
+}

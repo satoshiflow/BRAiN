@@ -9,12 +9,17 @@ Provides:
 
 import enum
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Enum, Text, Integer, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
+
+
+def _utc_now_naive() -> datetime:
+    """UTC now as naive datetime for legacy DB DateTime columns."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class TokenStatus(str, enum.Enum):
@@ -102,12 +107,12 @@ class RefreshToken(Base):
         """Check if token is currently active and not expired"""
         if self.status != TokenStatus.ACTIVE.value:
             return False
-        return datetime.utcnow() < self.expires_at
+        return _utc_now_naive() < self.expires_at
     
     @property
     def is_expired(self) -> bool:
         """Check if token has expired"""
-        return datetime.utcnow() >= self.expires_at
+        return _utc_now_naive() >= self.expires_at
 
 
 class ServiceAccount(Base):
@@ -172,7 +177,7 @@ class ServiceAccount(Base):
         """Check if service account is active and not expired"""
         if self.status != ServiceAccountStatus.ACTIVE.value:
             return False
-        if self.expires_at and datetime.utcnow() >= self.expires_at:
+        if self.expires_at and _utc_now_naive() >= self.expires_at:
             return False
         return True
 
@@ -230,7 +235,9 @@ class AgentCredential(Base):
     owner_service_account_id = Column(UUID(as_uuid=True), ForeignKey("service_accounts.id"), nullable=True)
     
     # Context
-    metadata = Column(JSON, default=dict, nullable=False)  # Agent-specific metadata
+    # NOTE: Python attribute name cannot be 'metadata' on Declarative models.
+    # Keep DB column name as 'metadata' for compatibility.
+    meta_json = Column("metadata", JSON, default=dict, nullable=False)  # Agent-specific metadata
     
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -260,7 +267,7 @@ class AgentCredential(Base):
         """Check if credential is active and not expired"""
         if self.status != AgentCredentialStatus.ACTIVE.value:
             return False
-        if self.expires_at and datetime.utcnow() >= self.expires_at:
+        if self.expires_at and _utc_now_naive() >= self.expires_at:
             return False
         return True
     

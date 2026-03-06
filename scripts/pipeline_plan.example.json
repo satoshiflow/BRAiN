@@ -1,0 +1,61 @@
+{
+  "name": "brain-auth-convergence-check",
+  "steps": [
+    {
+      "name": "Compile touched files",
+      "command": "python3 -m py_compile backend/app/api/routes/auth.py backend/app/modules/skills/router.py",
+      "cwd": "/home/oli/dev/brain-v2",
+      "retries": 0,
+      "timeout_sec": 120,
+      "continue_on_error": true
+    },
+    {
+      "name": "Auth tests",
+      "command": "PYTHONPATH=. pytest tests/test_auth_flow.py tests/test_module_auth.py -q",
+      "cwd": "/home/oli/dev/brain-v2/backend",
+      "retries": 1,
+      "timeout_sec": 600,
+      "continue_on_error": true
+    },
+    {
+      "name": "Legacy auth import gate",
+      "command": "python3 - <<'PY'\nimport pathlib,re,sys\nroot=pathlib.Path('/home/oli/dev/brain-v2/backend/app')\npat=re.compile(r'^from app\\.core\\.security import',re.M)\nviol=[]\nfor p in root.rglob('*.py'):\n    if p.name=='auth_deps.py':\n        continue\n    txt=p.read_text(encoding='utf-8')\n    if pat.search(txt):\n        viol.append(str(p))\nif viol:\n    print('Legacy imports found:')\n    print('\\n'.join(viol))\n    sys.exit(1)\nprint('No legacy imports outside compatibility shim.')\nPY",
+      "cwd": "/home/oli/dev/brain-v2",
+      "retries": 0,
+      "timeout_sec": 120,
+      "continue_on_error": true
+    },
+    {
+      "name": "Legacy event bus import gate",
+      "command": "python3 scripts/check_no_legacy_event_bus.py",
+      "cwd": "/home/oli/dev/brain-v2",
+      "retries": 0,
+      "timeout_sec": 120,
+      "continue_on_error": true
+    },
+    {
+      "name": "Auth utcnow deprecation gate",
+      "command": "python3 scripts/check_no_utcnow_auth.py",
+      "cwd": "/home/oli/dev/brain-v2",
+      "retries": 0,
+      "timeout_sec": 120,
+      "continue_on_error": true
+    },
+    {
+      "name": "Planning utcnow deprecation gate",
+      "command": "python3 scripts/check_no_utcnow_planning.py",
+      "cwd": "/home/oli/dev/brain-v2",
+      "retries": 0,
+      "timeout_sec": 120,
+      "continue_on_error": true
+    },
+    {
+      "name": "Critic routing gate",
+      "command": "python3 scripts/critic_gate.py",
+      "cwd": "/home/oli/dev/brain-v2",
+      "retries": 0,
+      "timeout_sec": 120,
+      "continue_on_error": true
+    }
+  ]
+}

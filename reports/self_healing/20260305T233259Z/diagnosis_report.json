@@ -1,0 +1,135 @@
+{
+  "run_id": "20260305T233259Z",
+  "started_at": "2026-03-05T23:34:02.175598+00:00",
+  "duration_sec": 62.261,
+  "steps_total": 5,
+  "steps_failed": 0,
+  "overall_status": "success",
+  "results": [
+    {
+      "name": "Compile touched files",
+      "command": "python3 -m py_compile backend/app/api/routes/auth.py backend/app/modules/skills/router.py",
+      "cwd": "/home/oli/dev/brain-v2",
+      "attempt": 1,
+      "retries": 0,
+      "timeout_sec": 120,
+      "started_at": "2026-03-05T23:32:59.914142+00:00",
+      "ended_at": "2026-03-05T23:33:00.468863+00:00",
+      "duration_sec": 0.555,
+      "exit_code": 0,
+      "status": "success",
+      "continue_on_error": true,
+      "log_file": "reports/self_healing/20260305T233259Z/compile_touched_files-attempt-1.log",
+      "tail": [],
+      "diagnosis": {
+        "tags": [
+          "success"
+        ],
+        "recommendations": []
+      }
+    },
+    {
+      "name": "Auth tests",
+      "command": "PYTHONPATH=. pytest tests/test_auth_flow.py tests/test_module_auth.py -q",
+      "cwd": "/home/oli/dev/brain-v2/backend",
+      "attempt": 1,
+      "retries": 1,
+      "timeout_sec": 600,
+      "started_at": "2026-03-05T23:33:00.469066+00:00",
+      "ended_at": "2026-03-05T23:33:45.571870+00:00",
+      "duration_sec": 45.103,
+      "exit_code": 0,
+      "status": "success",
+      "continue_on_error": true,
+      "log_file": "reports/self_healing/20260305T233259Z/auth_tests-attempt-1.log",
+      "tail": [
+        ".................................                                        [100%]",
+        "=============================== warnings summary ===============================",
+        "../../../.local/lib/python3.12/site-packages/passlib/utils/__init__.py:854",
+        "  /home/oli/.local/lib/python3.12/site-packages/passlib/utils/__init__.py:854: DeprecationWarning: 'crypt' is deprecated and slated for removal in Python 3.13",
+        "    from crypt import crypt as _crypt",
+        "",
+        "-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html",
+        "33 passed, 1 warning in 41.18s"
+      ],
+      "diagnosis": {
+        "tags": [
+          "success"
+        ],
+        "recommendations": []
+      }
+    },
+    {
+      "name": "Legacy auth import gate",
+      "command": "python3 - <<'PY'\nimport pathlib,re,sys\nroot=pathlib.Path('/home/oli/dev/brain-v2/backend/app')\npat=re.compile(r'^from app\\.core\\.security import',re.M)\nviol=[]\nfor p in root.rglob('*.py'):\n    if p.name=='auth_deps.py':\n        continue\n    txt=p.read_text(encoding='utf-8')\n    if pat.search(txt):\n        viol.append(str(p))\nif viol:\n    print('Legacy imports found:')\n    print('\\n'.join(viol))\n    sys.exit(1)\nprint('No legacy imports outside compatibility shim.')\nPY",
+      "cwd": "/home/oli/dev/brain-v2",
+      "attempt": 1,
+      "retries": 0,
+      "timeout_sec": 120,
+      "started_at": "2026-03-05T23:33:45.572105+00:00",
+      "ended_at": "2026-03-05T23:33:50.179466+00:00",
+      "duration_sec": 4.607,
+      "exit_code": 0,
+      "status": "success",
+      "continue_on_error": true,
+      "log_file": "reports/self_healing/20260305T233259Z/legacy_auth_import_gate-attempt-1.log",
+      "tail": [
+        "No legacy imports outside compatibility shim."
+      ],
+      "diagnosis": {
+        "tags": [
+          "success"
+        ],
+        "recommendations": []
+      }
+    },
+    {
+      "name": "Legacy event bus import gate",
+      "command": "python3 scripts/check_no_legacy_event_bus.py",
+      "cwd": "/home/oli/dev/brain-v2",
+      "attempt": 1,
+      "retries": 0,
+      "timeout_sec": 120,
+      "started_at": "2026-03-05T23:33:50.179690+00:00",
+      "ended_at": "2026-03-05T23:34:01.756050+00:00",
+      "duration_sec": 11.576,
+      "exit_code": 0,
+      "status": "success",
+      "continue_on_error": true,
+      "log_file": "reports/self_healing/20260305T233259Z/legacy_event_bus_import_gate-attempt-1.log",
+      "tail": [
+        "No legacy EventBus imports under backend/app."
+      ],
+      "diagnosis": {
+        "tags": [
+          "success"
+        ],
+        "recommendations": []
+      }
+    },
+    {
+      "name": "Auth utcnow deprecation gate",
+      "command": "python3 scripts/check_no_utcnow_auth.py",
+      "cwd": "/home/oli/dev/brain-v2",
+      "attempt": 1,
+      "retries": 0,
+      "timeout_sec": 120,
+      "started_at": "2026-03-05T23:34:01.756237+00:00",
+      "ended_at": "2026-03-05T23:34:02.175409+00:00",
+      "duration_sec": 0.419,
+      "exit_code": 0,
+      "status": "success",
+      "continue_on_error": true,
+      "log_file": "reports/self_healing/20260305T233259Z/auth_utcnow_deprecation_gate-attempt-1.log",
+      "tail": [
+        "No datetime.utcnow() usage in auth-critical files."
+      ],
+      "diagnosis": {
+        "tags": [
+          "success"
+        ],
+        "recommendations": []
+      }
+    }
+  ]
+}

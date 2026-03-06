@@ -71,15 +71,24 @@ export async function loginAction(formData: FormData): Promise<LoginResult> {
   }
 
   try {
-    // ✅ redirect: true ermöglicht Session-Erstellung
-    await signIn("credentials", {
+    const result = await signIn("credentials", {
       email,
       password,
+      redirect: false,
       redirectTo: callbackUrl,
     });
 
-    // Diese Zeile wird nie erreicht (signIn redirected bei Erfolg)
-    return { success: true };
+    if (result?.error) {
+      return {
+        success: false,
+        error: "Invalid email or password",
+      };
+    }
+
+    return {
+      success: true,
+      callbackUrl: result?.url ?? callbackUrl,
+    };
 
   } catch (error) {
     // Handle AuthError from NextAuth
@@ -101,11 +110,6 @@ export async function loginAction(formData: FormData): Promise<LoginResult> {
             error: "An error occurred during sign in",
           };
       }
-    }
-
-    // Handle Next.js redirect (expected behavior)
-    if ((error as Error)?.message?.includes("NEXT_REDIRECT")) {
-      throw error; // Let Next.js handle the redirect
     }
 
     // Log unexpected errors (don't expose details to client)

@@ -5,7 +5,7 @@ SQLAlchemy model for reusable mission templates.
 """
 
 from sqlalchemy import Column, String, DateTime, Text, JSON
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import declarative_base
 from datetime import datetime
 import uuid
 

@@ -1,0 +1,222 @@
+{
+  "run_id": "20260306T083113Z",
+  "started_at": "2026-03-06T08:31:53.897264+00:00",
+  "duration_sec": 40.647,
+  "steps_total": 7,
+  "steps_failed": 0,
+  "overall_status": "success",
+  "results": [
+    {
+      "name": "Compile touched files",
+      "command": "python3 -m py_compile backend/app/api/routes/auth.py backend/app/modules/skills/router.py",
+      "cwd": "/home/oli/dev/brain-v2",
+      "attempt": 1,
+      "retries": 0,
+      "timeout_sec": 120,
+      "started_at": "2026-03-06T08:31:13.250736+00:00",
+      "ended_at": "2026-03-06T08:31:13.667857+00:00",
+      "duration_sec": 0.417,
+      "exit_code": 0,
+      "status": "success",
+      "continue_on_error": true,
+      "log_file": "reports/self_healing/20260306T083113Z/compile_touched_files-attempt-1.log",
+      "tail": [],
+      "diagnosis": {
+        "tags": [
+          "success"
+        ],
+        "recommendations": []
+      }
+    },
+    {
+      "name": "Auth tests",
+      "command": "PYTHONPATH=. pytest tests/test_auth_flow.py tests/test_module_auth.py -q",
+      "cwd": "/home/oli/dev/brain-v2/backend",
+      "attempt": 1,
+      "retries": 1,
+      "timeout_sec": 600,
+      "started_at": "2026-03-06T08:31:13.668044+00:00",
+      "ended_at": "2026-03-06T08:31:45.554245+00:00",
+      "duration_sec": 31.886,
+      "exit_code": 0,
+      "status": "success",
+      "continue_on_error": true,
+      "log_file": "reports/self_healing/20260306T083113Z/auth_tests-attempt-1.log",
+      "tail": [
+        ".................................                                        [100%]",
+        "=============================== warnings summary ===============================",
+        "../../../.local/lib/python3.12/site-packages/passlib/utils/__init__.py:854",
+        "  /home/oli/.local/lib/python3.12/site-packages/passlib/utils/__init__.py:854: DeprecationWarning: 'crypt' is deprecated and slated for removal in Python 3.13",
+        "    from crypt import crypt as _crypt",
+        "",
+        "-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html",
+        "33 passed, 1 warning in 28.79s"
+      ],
+      "diagnosis": {
+        "tags": [
+          "success"
+        ],
+        "recommendations": []
+      }
+    },
+    {
+      "name": "Legacy auth import gate",
+      "command": "python3 - <<'PY'\nimport pathlib,re,sys\nroot=pathlib.Path('/home/oli/dev/brain-v2/backend/app')\npat=re.compile(r'^from app\\.core\\.security import',re.M)\nviol=[]\nfor p in root.rglob('*.py'):\n    if p.name=='auth_deps.py':\n        continue\n    txt=p.read_text(encoding='utf-8')\n    if pat.search(txt):\n        viol.append(str(p))\nif viol:\n    print('Legacy imports found:')\n    print('\\n'.join(viol))\n    sys.exit(1)\nprint('No legacy imports outside compatibility shim.')\nPY",
+      "cwd": "/home/oli/dev/brain-v2",
+      "attempt": 1,
+      "retries": 0,
+      "timeout_sec": 120,
+      "started_at": "2026-03-06T08:31:45.554432+00:00",
+      "ended_at": "2026-03-06T08:31:46.165519+00:00",
+      "duration_sec": 0.611,
+      "exit_code": 0,
+      "status": "success",
+      "continue_on_error": true,
+      "log_file": "reports/self_healing/20260306T083113Z/legacy_auth_import_gate-attempt-1.log",
+      "tail": [
+        "No legacy imports outside compatibility shim."
+      ],
+      "diagnosis": {
+        "tags": [
+          "success"
+        ],
+        "recommendations": []
+      }
+    },
+    {
+      "name": "Legacy event bus import gate",
+      "command": "python3 scripts/check_no_legacy_event_bus.py",
+      "cwd": "/home/oli/dev/brain-v2",
+      "attempt": 1,
+      "retries": 0,
+      "timeout_sec": 120,
+      "started_at": "2026-03-06T08:31:46.165715+00:00",
+      "ended_at": "2026-03-06T08:31:53.191770+00:00",
+      "duration_sec": 7.026,
+      "exit_code": 0,
+      "status": "success",
+      "continue_on_error": true,
+      "log_file": "reports/self_healing/20260306T083113Z/legacy_event_bus_import_gate-attempt-1.log",
+      "tail": [
+        "No legacy EventBus imports under backend/app."
+      ],
+      "diagnosis": {
+        "tags": [
+          "success"
+        ],
+        "recommendations": []
+      }
+    },
+    {
+      "name": "Auth utcnow deprecation gate",
+      "command": "python3 scripts/check_no_utcnow_auth.py",
+      "cwd": "/home/oli/dev/brain-v2",
+      "attempt": 1,
+      "retries": 0,
+      "timeout_sec": 120,
+      "started_at": "2026-03-06T08:31:53.191942+00:00",
+      "ended_at": "2026-03-06T08:31:53.318232+00:00",
+      "duration_sec": 0.126,
+      "exit_code": 0,
+      "status": "success",
+      "continue_on_error": true,
+      "log_file": "reports/self_healing/20260306T083113Z/auth_utcnow_deprecation_gate-attempt-1.log",
+      "tail": [
+        "No datetime.utcnow() usage in auth-critical files."
+      ],
+      "diagnosis": {
+        "tags": [
+          "success"
+        ],
+        "recommendations": []
+      }
+    },
+    {
+      "name": "Planning utcnow deprecation gate",
+      "command": "python3 scripts/check_no_utcnow_planning.py",
+      "cwd": "/home/oli/dev/brain-v2",
+      "attempt": 1,
+      "retries": 0,
+      "timeout_sec": 120,
+      "started_at": "2026-03-06T08:31:53.318401+00:00",
+      "ended_at": "2026-03-06T08:31:53.512167+00:00",
+      "duration_sec": 0.194,
+      "exit_code": 0,
+      "status": "success",
+      "continue_on_error": true,
+      "log_file": "reports/self_healing/20260306T083113Z/planning_utcnow_deprecation_gate-attempt-1.log",
+      "tail": [
+        "No datetime.utcnow() usage in planning module files."
+      ],
+      "diagnosis": {
+        "tags": [
+          "success"
+        ],
+        "recommendations": []
+      }
+    },
+    {
+      "name": "Critic routing gate",
+      "command": "python3 scripts/critic_gate.py",
+      "cwd": "/home/oli/dev/brain-v2",
+      "attempt": 1,
+      "retries": 0,
+      "timeout_sec": 120,
+      "started_at": "2026-03-06T08:31:53.512335+00:00",
+      "ended_at": "2026-03-06T08:31:53.897084+00:00",
+      "duration_sec": 0.385,
+      "exit_code": 0,
+      "status": "success",
+      "continue_on_error": true,
+      "log_file": "reports/self_healing/20260306T083113Z/critic_routing_gate-attempt-1.log",
+      "tail": [
+        "      \"path\": \"scripts/check_no_legacy_event_bus.py\",",
+        "      \"pattern\": \"scripts/\",",
+        "      \"tier\": \"medium_cost\",",
+        "      \"critic_required\": true",
+        "    },",
+        "    {",
+        "      \"path\": \"scripts/check_no_utcnow_auth.py\",",
+        "      \"pattern\": \"scripts/\",",
+        "      \"tier\": \"medium_cost\",",
+        "      \"critic_required\": true",
+        "    },",
+        "    {",
+        "      \"path\": \"scripts/check_no_utcnow_planning.py\",",
+        "      \"pattern\": \"scripts/\",",
+        "      \"tier\": \"medium_cost\",",
+        "      \"critic_required\": true",
+        "    },",
+        "    {",
+        "      \"path\": \"scripts/critic_gate.py\",",
+        "      \"pattern\": \"scripts/\",",
+        "      \"tier\": \"medium_cost\",",
+        "      \"critic_required\": true",
+        "    },",
+        "    {",
+        "      \"path\": \"scripts/pipeline_plan.example.json\",",
+        "      \"pattern\": \"scripts/\",",
+        "      \"tier\": \"medium_cost\",",
+        "      \"critic_required\": true",
+        "    },",
+        "    {",
+        "      \"path\": \"scripts/resilient_pipeline_runner.py\",",
+        "      \"pattern\": \"scripts/\",",
+        "      \"tier\": \"medium_cost\",",
+        "      \"critic_required\": true",
+        "    }",
+        "  ],",
+        "  \"critic_required\": true,",
+        "  \"recommended_tier\": \"high_quality\"",
+        "}",
+        "Report written to: /home/oli/dev/brain-v2/reports/critic/critic_gate_report.json"
+      ],
+      "diagnosis": {
+        "tags": [
+          "success"
+        ],
+        "recommendations": []
+      }
+    }
+  ]
+}

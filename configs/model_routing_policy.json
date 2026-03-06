@@ -1,0 +1,60 @@
+{
+  "version": "1.0",
+  "default_tier": "low_cost",
+  "tiers": {
+    "low_cost": {
+      "use_for": [
+        "boilerplate",
+        "formatting",
+        "small refactors",
+        "non-critical tests"
+      ],
+      "critic_required": false
+    },
+    "medium_cost": {
+      "use_for": [
+        "module integration",
+        "pipeline scripts",
+        "complex bugfix"
+      ],
+      "critic_required": true
+    },
+    "high_quality": {
+      "use_for": [
+        "security-sensitive changes",
+        "authentication",
+        "authorization",
+        "secrets handling",
+        "production rollouts"
+      ],
+      "critic_required": true
+    }
+  },
+  "risk_path_rules": [
+    {
+      "pattern": "backend/app/core/",
+      "tier": "high_quality",
+      "critic_required": true
+    },
+    {
+      "pattern": "backend/app/services/auth_service.py",
+      "tier": "high_quality",
+      "critic_required": true
+    },
+    {
+      "pattern": "backend/app/modules/*/router.py",
+      "tier": "medium_cost",
+      "critic_required": true
+    },
+    {
+      "pattern": "frontend/control_deck/auth.ts",
+      "tier": "high_quality",
+      "critic_required": true
+    },
+    {
+      "pattern": "scripts/",
+      "tier": "medium_cost",
+      "critic_required": true
+    }
+  ]
+}

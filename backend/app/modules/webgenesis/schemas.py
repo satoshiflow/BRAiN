@@ -13,7 +13,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 
 # ============================================================================
@@ -302,8 +302,9 @@ class WebsiteSpec(BaseModel):
         default_factory=dict, description="Extra metadata"
     )
 
-    @validator("pages")
-    def validate_pages(cls, v):
+    @field_validator("pages")
+    @classmethod
+    def validate_pages(cls, v: List[PageSpec]) -> List[PageSpec]:
         """Ensure at least one page and unique slugs"""
         if not v:
             raise ValueError("At least one page is required")
@@ -314,8 +315,9 @@ class WebsiteSpec(BaseModel):
 
         return v
 
-    @validator("name")
-    def validate_name(cls, v):
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
         """Ensure name is safe for filesystem"""
         import re
         if not re.match(r"^[a-zA-Z0-9_-]+$", v):

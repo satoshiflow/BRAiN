@@ -9,9 +9,10 @@ Tests for authentication flows including:
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
+from cryptography.hazmat.primitives.asymmetric import rsa
 
 from app.services.auth_service import AuthService
 from app.schemas.auth import (
@@ -21,6 +22,11 @@ from app.schemas.auth import (
 )
 from app.models.user import User, UserRole
 from app.models.token import RefreshToken, TokenStatus
+from app.core.token_keys import get_token_key_manager, reset_token_keys
+
+
+def _utc_now_naive() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 # ============================================================================
@@ -77,6 +83,19 @@ def device_info():
         user_agent="Mozilla/5.0 Test Browser",
         device_fingerprint="abc123xyz",
     )
+
+
+@pytest.fixture(autouse=True)
+def init_test_token_keys():
+    """Ensure RS256 signing key exists for auth token tests."""
+    reset_token_keys()
+    km = get_token_key_manager()
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    km._private_key = private_key
+    km._public_key = private_key.public_key()
+    km._key_id = km._derive_key_id(km._public_key)
+    yield
+    reset_token_keys()
 
 
 # ============================================================================
@@ -143,8 +162,10 @@ async def test_login_refresh_revoke_flow(mock_db, test_user, device_info):
     mock_refresh_result = MagicMock()
     mock_refresh_result.scalar_one_or_none.return_value = refresh_record
     
-    # Create a new mock for the refresh operation
-    mock_db.execute = AsyncMock(return_value=mock_refresh_result)
+    # Create sequenced mocks for refresh operation: token lookup then user lookup
+    mock_user_result = MagicMock()
+    mock_user_result.scalar_one_or_none.return_value = test_user
+    mock_db.execute = AsyncMock(side_effect=[mock_refresh_result, mock_user_result])
     
     # Refresh should create new token pair
     with patch.object(AuthService, 'create_token_pair') as mock_create:
@@ -159,7 +180,7 @@ async def test_login_refresh_revoke_flow(mock_db, test_user, device_info):
             token_family=refresh_record.token_family,
             user_id=test_user.id,
             status=TokenStatus.ACTIVE.value,
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=_utc_now_naive() + timedelta(days=7),
             previous_token_id=refresh_record.id,
             rotation_count=1,
         )
@@ -262,7 +283,7 @@ async def test_token_expiry_refresh(mock_db, test_user, device_info):
         token_family=uuid4(),
         user_id=test_user.id,
         status=TokenStatus.ACTIVE.value,
-        expires_at=datetime.utcnow() - timedelta(days=1),  # Expired yesterday
+        expires_at=_utc_now_naive() - timedelta(days=1),  # Expired yesterday
         rotation_count=0,
     )
     
@@ -298,8 +319,8 @@ async def test_access_token_has_valid_expiration(mock_db, test_user, device_info
     assert token_pair.expires_in >= 300   # Min 5 minutes
     
     # Refresh tokens should have much longer expiration (days)
-    assert refresh_record.expires_at > datetime.utcnow() + timedelta(days=6)
-    assert refresh_record.expires_at < datetime.utcnow() + timedelta(days=31)
+    assert refresh_record.expires_at > _utc_now_naive() + timedelta(days=6)
+    assert refresh_record.expires_at < _utc_now_naive() + timedelta(days=31)
 
 
 @pytest.mark.asyncio
@@ -318,10 +339,12 @@ async def test_refresh_token_rotation_updates_family(mock_db, test_user, device_
     
     original_family = original_record.token_family
     
-    # Mock the refresh operation
+    # Mock the refresh operation: token lookup then user lookup
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = original_record
-    mock_db.execute = AsyncMock(return_value=mock_result)
+    mock_user_result = MagicMock()
+    mock_user_result.scalar_one_or_none.return_value = test_user
+    mock_db.execute = AsyncMock(side_effect=[mock_result, mock_user_result])
     
     with patch.object(AuthService, 'create_token_pair') as mock_create:
         new_pair = TokenPair(
@@ -372,11 +395,11 @@ async def test_token_replay_rejected(mock_db, test_user, device_info):
     
     # Simulate the token being used once (rotated)
     original_record.status = TokenStatus.ROTATED.value
-    original_record.used_at = datetime.utcnow()
+    original_record.used_at = _utc_now_naive()
     
-    # Mock finding the already-used token
+    # Query includes ACTIVE status filter, so rotated token should not be found
     mock_result = MagicMock()
-    mock_result.scalar_one_or_none.return_value = original_record
+    mock_result.scalar_one_or_none.return_value = None
     mock_db.execute = AsyncMock(return_value=mock_result)
     
     # Attempt to replay the already-used token
@@ -406,7 +429,7 @@ async def test_token_replay_detection_with_rotation_count(mock_db, test_user, de
         token_family=uuid4(),
         user_id=test_user.id,
         status=TokenStatus.ACTIVE.value,
-        expires_at=datetime.utcnow() + timedelta(days=7),
+        expires_at=_utc_now_naive() + timedelta(days=7),
         rotation_count=15,  # Suspiciously high
     )
     
@@ -460,14 +483,14 @@ async def test_revoked_token_cannot_be_refreshed(mock_db, test_user):
         token_family=uuid4(),
         user_id=test_user.id,
         status=TokenStatus.REVOKED.value,  # Already revoked
-        expires_at=datetime.utcnow() + timedelta(days=7),
-        revoked_at=datetime.utcnow(),
+        expires_at=_utc_now_naive() + timedelta(days=7),
+        revoked_at=_utc_now_naive(),
         rotation_count=0,
     )
     
-    # Mock finding the revoked token
+    # Query includes ACTIVE status filter, so revoked token should not be found
     mock_result = MagicMock()
-    mock_result.scalar_one_or_none.return_value = revoked_token
+    mock_result.scalar_one_or_none.return_value = None
     mock_db.execute = AsyncMock(return_value=mock_result)
     
     # Attempt to refresh with revoked token
@@ -489,7 +512,7 @@ async def test_revoke_all_user_tokens(mock_db, test_user):
             token_family=uuid4(),
             user_id=test_user.id,
             status=TokenStatus.ACTIVE.value,
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=_utc_now_naive() + timedelta(days=7),
         )
         for i in range(3)
     ]
@@ -546,7 +569,7 @@ async def test_inactive_user_cannot_refresh(mock_db, test_user):
         token_family=uuid4(),
         user_id=test_user.id,
         status=TokenStatus.ACTIVE.value,
-        expires_at=datetime.utcnow() + timedelta(days=7),
+        expires_at=_utc_now_naive() + timedelta(days=7),
     )
     
     # Mock finding token but inactive user

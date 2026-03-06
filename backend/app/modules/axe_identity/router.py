@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 from app.core.database import get_db
-from app.core.security import get_current_principal, require_role, UserRole, Principal
+from app.core.auth_deps import get_current_principal, require_role, SystemRole as UserRole, Principal
 from .service import AXEIdentityService
 from .schemas import (
     AXEIdentityCreate,
@@ -90,7 +90,8 @@ async def create_identity(
     Requires ADMIN role.
     """
     try:
-        return await service.create(data, created_by=principal.agent_id)
+        created_by = principal.agent_id or principal.principal_id or "system"
+        return await service.create(data, created_by=created_by)
     except IntegrityError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

@@ -11,8 +11,7 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.auth_deps import require_auth, require_role, Principal
-from app.core.security import UserRole
+from app.core.auth_deps import require_auth, require_role, Principal, SystemRole as UserRole
 
 from .schemas import (
     Experiment,

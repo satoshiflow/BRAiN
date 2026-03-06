@@ -11,6 +11,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { LoginResult } from "../actions";
 
 // ============================================================================
@@ -27,6 +28,7 @@ interface SignInFormProps {
 // ============================================================================
 
 export function SignInForm({ callbackUrl, loginAction }: SignInFormProps) {
+  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -40,10 +42,19 @@ export function SignInForm({ callbackUrl, loginAction }: SignInFormProps) {
     try {
       const result = await loginAction(formData);
 
+      if (!result) {
+        router.push(callbackUrl || "/dashboard");
+        router.refresh();
+        return;
+      }
+
       if (!result.success) {
         setError(result.error || "Login failed. Please try again.");
+        return;
       }
-      // Bei Erfolg macht NextAuth den Redirect automatisch (redirect: true)
+
+      router.push(result.callbackUrl || callbackUrl || "/dashboard");
+      router.refresh();
     } catch (err) {
       setError("An unexpected error occurred. Please try again.");
     } finally {

@@ -4,7 +4,7 @@ Authentication Schemas
 Pydantic models for authentication and user management.
 """
 
-from pydantic import BaseModel, EmailStr, Field, validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from uuid import UUID
@@ -46,8 +46,9 @@ class RegisterRequest(BaseModel):
     password: str = Field(..., min_length=8)
     full_name: Optional[str] = None
 
-    @validator('username')
-    def username_alphanumeric(cls, v):
+    @field_validator('username')
+    @classmethod
+    def username_alphanumeric(cls, v: str) -> str:
         assert v.replace('_', '').replace('-', '').isalnum(), 'Username must be alphanumeric'
         return v
 
@@ -190,8 +191,7 @@ class DeviceInfo(BaseModel):
     user_agent: Optional[str] = None
     device_fingerprint: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============================================================================
@@ -210,5 +210,4 @@ class UserResponse(BaseModel):
     created_at: datetime
     last_login: Optional[datetime]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

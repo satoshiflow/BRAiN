@@ -454,3 +454,16 @@ class TestPlanningService:
     def test_stats(self):
         stats = self.svc.get_stats()
         assert stats.total_plans == 0
+
+    def test_execute_next_node_auto_step(self):
+        req = DecompositionRequest(task_name="llm_task", task_description="Execute one node")
+        result = self.svc.decompose_task(req)
+        plan_id = result.plan.plan_id
+
+        executed = self.svc.execute_next_node(plan_id)
+        assert executed is not None
+        assert executed.status == NodeStatus.COMPLETED
+
+        plan = self.svc.get_plan(plan_id)
+        assert plan is not None
+        assert plan.completed_nodes >= 1

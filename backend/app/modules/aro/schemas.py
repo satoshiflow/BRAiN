@@ -17,7 +17,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Literal, Optional
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 
 # ============================================================================
@@ -408,8 +408,9 @@ class RepoOperation(BaseModel):
         description="Last update time"
     )
 
-    @validator('current_state')
-    def validate_state_transition(cls, v, values):
+    @field_validator("current_state")
+    @classmethod
+    def validate_state_transition(cls, v: OperationState) -> OperationState:
         """
         Validate state transitions.
 

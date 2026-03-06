@@ -28,10 +28,8 @@ from fastapi.routing import APIRoute
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
-# Rate Limiting (Task 2.3)
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
+# Rate Limiting (single source: app.core.rate_limit)
+from app.core.rate_limit import limiter as shared_limiter, rate_limit_exceeded_handler
 
 # Core infrastructure
 from app.core.config import get_settings
@@ -169,6 +167,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info("✅ Event Stream started (required mode)")
         app.state.event_stream = event_stream
 
+        # Propagate EventStream to modules that support explicit injection
+        try:
+            from app.modules.planning.router import set_event_stream as set_planning_event_stream
+            set_planning_event_stream(event_stream)
+        except Exception as e:
+            logger.warning(f"⚠️ Could not wire EventStream into planning module: {e}")
+
     elif eventstream_mode == "degraded":
         # DEGRADED MODE: EventStream disabled, explicit log
         logger.warning(
@@ -261,14 +266,10 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # Rate Limiter Setup (Task 2.3 - DoS Protection)
-    limiter = Limiter(
-        key_func=get_remote_address,
-        default_limits=["100/minute"],  # Global default: 100 requests per minute
-        storage_uri=settings.redis_url,  # Use Redis for distributed rate limiting
-    )
-    app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    # Rate Limiter Setup (single shared limiter from app.core.rate_limit)
+    app.state.limiter = shared_limiter
+    from slowapi.errors import RateLimitExceeded
+    app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
     # CORS - Strict allowed origins for security (SECURITY-001)
     # No wildcard "*" allowed in production

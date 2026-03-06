@@ -7,12 +7,13 @@ Business logic for authentication, user management, and invitations.
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from passlib.context import CryptContext
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any, Tuple
 from uuid import UUID, uuid4
 import secrets
 import hashlib
 import logging
+from cryptography.hazmat.primitives import serialization
 
 from jose import jwt
 from jose.exceptions import JWTError
@@ -29,6 +30,11 @@ from app.core.token_keys import get_token_key_manager
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+
+def _utc_now_naive() -> datetime:
+    """UTC now as naive datetime for legacy DB DateTime columns."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class AuthService:
@@ -97,7 +103,7 @@ class AuthService:
             return None
 
         # Update last login
-        user.last_login = datetime.utcnow()
+        user.last_login = _utc_now_naive()
         await db.commit()
 
         return user
@@ -125,7 +131,7 @@ class AuthService:
             role=data.role,
             token=token,
             created_by=admin_id,
-            expires_at=datetime.utcnow() + timedelta(days=7),  # 7 days validity
+            expires_at=_utc_now_naive() + timedelta(days=7),  # 7 days validity
         )
 
         db.add(invitation)
@@ -145,7 +151,7 @@ class AuthService:
             select(Invitation).where(
                 Invitation.token == token,
                 Invitation.used_at == None,
-                Invitation.expires_at > datetime.utcnow()
+                Invitation.expires_at > _utc_now_naive()
             )
         )
         invitation = result.scalar_one_or_none()
@@ -172,7 +178,7 @@ class AuthService:
         db.add(user)
 
         # Mark invitation as used
-        invitation.used_at = datetime.utcnow()
+        invitation.used_at = _utc_now_naive()
 
         await db.commit()
         await db.refresh(user)
@@ -205,7 +211,7 @@ class AuthService:
         Returns:
             Tuple of (token, expires_in_seconds)
         """
-        now = datetime.utcnow()
+        now = _utc_now_naive()
         expires = now + timedelta(minutes=settings.access_token_expire_minutes)
         expires_in = int((expires - now).total_seconds())
 
@@ -213,6 +219,13 @@ class AuthService:
         key_manager = get_token_key_manager()
         private_key = key_manager.get_private_key()
         kid = key_manager.get_key_id()
+
+        # python-jose expects PEM/JWK-compatible key material
+        private_key_pem = private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
 
         claims = {
             "sub": subject,
@@ -231,7 +244,7 @@ class AuthService:
         # Sign with RS256 using private key
         token = jwt.encode(
             claims,
-            private_key,
+            private_key_pem,
             algorithm="RS256",
             headers={"kid": kid}
         )
@@ -273,7 +286,7 @@ class AuthService:
         refresh_token_hash = AuthService._hash_token(raw_refresh_token)
 
         # Calculate refresh token expiration
-        refresh_expires = datetime.utcnow() + timedelta(days=settings.refresh_token_expire_days)
+        refresh_expires = _utc_now_naive() + timedelta(days=settings.refresh_token_expire_days)
 
         # Create refresh token record in database
         refresh_token_record = RefreshToken(
@@ -353,7 +366,7 @@ class AuthService:
 
         # Mark old token as rotated
         token_record.status = TokenStatus.ROTATED.value
-        token_record.used_at = datetime.utcnow()
+        token_record.used_at = _utc_now_naive()
 
         # Determine scopes based on user role
         scopes = ["read"]
@@ -413,7 +426,7 @@ class AuthService:
             return False
 
         token_record.status = TokenStatus.REVOKED.value
-        token_record.revoked_at = datetime.utcnow()
+        token_record.revoked_at = _utc_now_naive()
 
         await db.commit()
         logger.info(f"Token {token_record.id} revoked. Reason: {reason}")
@@ -448,7 +461,7 @@ class AuthService:
         count = 0
         for token in tokens:
             token.status = TokenStatus.REVOKED.value
-            token.revoked_at = datetime.utcnow()
+            token.revoked_at = _utc_now_naive()
             count += 1
 
         await db.commit()
@@ -495,7 +508,7 @@ class AuthService:
             raise ValueError("Invalid client credentials")
 
         # Check if service account is expired
-        if service_account.expires_at and datetime.utcnow() >= service_account.expires_at:
+        if service_account.expires_at and _utc_now_naive() >= service_account.expires_at:
             raise ValueError("Service account has expired")
 
         # Validate requested scopes against allowed scopes
@@ -523,7 +536,7 @@ class AuthService:
         )
 
         # Update last used timestamp
-        service_account.last_used_at = datetime.utcnow()
+        service_account.last_used_at = _utc_now_naive()
         service_account.use_count += 1
         await db.commit()
 
@@ -575,7 +588,7 @@ class AuthService:
             raise ValueError("Parent agent mismatch")
 
         # Check if agent token is expired
-        if agent_cred.expires_at and datetime.utcnow() >= agent_cred.expires_at:
+        if agent_cred.expires_at and _utc_now_naive() >= agent_cred.expires_at:
             raise ValueError("Agent credentials have expired")
 
         # Validate requested scopes against allowed scopes
@@ -605,7 +618,7 @@ class AuthService:
         )
 
         # Update last used timestamp
-        agent_cred.last_used_at = datetime.utcnow()
+        agent_cred.last_used_at = _utc_now_naive()
         agent_cred.use_count += 1
         await db.commit()
 

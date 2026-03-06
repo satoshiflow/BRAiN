@@ -1,0 +1,121 @@
+{
+  "run_id": "20260304T142916Z",
+  "started_at": "2026-03-04T14:29:38.179557+00:00",
+  "duration_sec": 21.986,
+  "steps_total": 3,
+  "steps_failed": 1,
+  "overall_status": "failed",
+  "results": [
+    {
+      "name": "Compile touched files",
+      "command": "python3 -m py_compile backend/app/api/routes/auth.py backend/app/modules/skills/router.py",
+      "cwd": "/home/oli/dev/brain-v2",
+      "attempt": 1,
+      "retries": 0,
+      "timeout_sec": 120,
+      "started_at": "2026-03-04T14:29:16.193195+00:00",
+      "ended_at": "2026-03-04T14:29:16.837336+00:00",
+      "duration_sec": 0.644,
+      "exit_code": 0,
+      "status": "success",
+      "continue_on_error": true,
+      "log_file": "reports/self_healing/20260304T142916Z/compile_touched_files-attempt-1.log",
+      "tail": [],
+      "diagnosis": {
+        "tags": [
+          "success"
+        ],
+        "recommendations": []
+      }
+    },
+    {
+      "name": "Auth tests",
+      "command": "PYTHONPATH=. pytest tests/test_auth_flow.py tests/test_module_auth.py -q",
+      "cwd": "/home/oli/dev/brain-v2/backend",
+      "attempt": 2,
+      "retries": 1,
+      "timeout_sec": 600,
+      "started_at": "2026-03-04T14:29:29.286815+00:00",
+      "ended_at": "2026-03-04T14:29:37.737305+00:00",
+      "duration_sec": 8.45,
+      "exit_code": 2,
+      "status": "failed",
+      "continue_on_error": true,
+      "log_file": "reports/self_healing/20260304T142916Z/auth_tests-attempt-2.log",
+      "tail": [
+        "___________________ ERROR collecting tests/test_auth_flow.py ___________________",
+        "tests/test_auth_flow.py:16: in <module>",
+        "    from app.services.auth_service import AuthService",
+        "app/services/auth_service.py:21: in <module>",
+        "    from app.models.token import RefreshToken, ServiceAccount, AgentCredential, TokenStatus, ServiceAccountStatus, AgentCredentialStatus",
+        "app/models/token.py:180: in <module>",
+        "    class AgentCredential(Base):",
+        "../../../.local/lib/python3.12/site-packages/sqlalchemy/orm/decl_api.py:198: in __init__",
+        "    _as_declarative(reg, cls, dict_)",
+        "../../../.local/lib/python3.12/site-packages/sqlalchemy/orm/decl_base.py:244: in _as_declarative",
+        "    return _MapperConfig.setup_mapping(registry, cls, dict_, None, {})",
+        "../../../.local/lib/python3.12/site-packages/sqlalchemy/orm/decl_base.py:325: in setup_mapping",
+        "    return _ClassScanMapperConfig(",
+        "../../../.local/lib/python3.12/site-packages/sqlalchemy/orm/decl_base.py:572: in __init__",
+        "    self._extract_mappable_attributes()",
+        "../../../.local/lib/python3.12/site-packages/sqlalchemy/orm/decl_base.py:1531: in _extract_mappable_attributes",
+        "    raise exc.InvalidRequestError(",
+        "E   sqlalchemy.exc.InvalidRequestError: Attribute name 'metadata' is reserved when using the Declarative API.",
+        "=============================== warnings summary ===============================",
+        "../../../.local/lib/python3.12/site-packages/passlib/utils/__init__.py:854",
+        "  /home/oli/.local/lib/python3.12/site-packages/passlib/utils/__init__.py:854: DeprecationWarning: 'crypt' is deprecated and slated for removal in Python 3.13",
+        "    from crypt import crypt as _crypt",
+        "",
+        "../../../.local/lib/python3.12/site-packages/pydantic/_internal/_config.py:295",
+        "  /home/oli/.local/lib/python3.12/site-packages/pydantic/_internal/_config.py:295: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.10/migration/",
+        "    warnings.warn(DEPRECATION_MESSAGE, DeprecationWarning)",
+        "",
+        "app/models/business.py:12",
+        "  /home/oli/dev/brain-v2/backend/app/models/business.py:12: MovedIn20Warning: The ``declarative_base()`` function is now available as sqlalchemy.orm.declarative_base(). (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)",
+        "    Base = declarative_base()",
+        "",
+        "app/models/courses.py:12",
+        "  /home/oli/dev/brain-v2/backend/app/models/courses.py:12: MovedIn20Warning: The ``declarative_base()`` function is now available as sqlalchemy.orm.declarative_base(). (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)",
+        "    Base = declarative_base()",
+        "",
+        "-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html",
+        "=========================== short test summary info ============================",
+        "ERROR tests/test_auth_flow.py - sqlalchemy.exc.InvalidRequestError: Attribute...",
+        "!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!",
+        "4 warnings, 1 error in 6.25s"
+      ],
+      "diagnosis": {
+        "tags": [
+          "sqlalchemy_model_error"
+        ],
+        "recommendations": [
+          "Rename model attribute 'metadata' to non-reserved name (e.g. meta_json)."
+        ]
+      }
+    },
+    {
+      "name": "Legacy auth import gate",
+      "command": "python3 - <<'PY'\nimport pathlib,re,sys\nroot=pathlib.Path('/home/oli/dev/brain-v2/backend/app')\npat=re.compile(r'^from app\\.core\\.security import',re.M)\nviol=[]\nfor p in root.rglob('*.py'):\n    if p.name=='auth_deps.py':\n        continue\n    txt=p.read_text(encoding='utf-8')\n    if pat.search(txt):\n        viol.append(str(p))\nif viol:\n    print('Legacy imports found:')\n    print('\\n'.join(viol))\n    sys.exit(1)\nprint('No legacy imports outside compatibility shim.')\nPY",
+      "cwd": "/home/oli/dev/brain-v2",
+      "attempt": 1,
+      "retries": 0,
+      "timeout_sec": 120,
+      "started_at": "2026-03-04T14:29:37.737614+00:00",
+      "ended_at": "2026-03-04T14:29:38.179359+00:00",
+      "duration_sec": 0.442,
+      "exit_code": 0,
+      "status": "success",
+      "continue_on_error": true,
+      "log_file": "reports/self_healing/20260304T142916Z/legacy_auth_import_gate-attempt-1.log",
+      "tail": [
+        "No legacy imports outside compatibility shim."
+      ],
+      "diagnosis": {
+        "tags": [
+          "success"
+        ],
+        "recommendations": []
+      }
+    }
+  ]
+}

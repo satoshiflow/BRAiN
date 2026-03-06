@@ -10,7 +10,7 @@ Security Notes:
 - Messages sanitized to reject script tags
 """
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from uuid import UUID
@@ -53,9 +53,12 @@ class WidgetSessionCreate(BaseModel):
         max_items=5
     )
 
-    @validator('metadata')
-    def validate_metadata(cls, v):
+    @field_validator('metadata')
+    @classmethod
+    def validate_metadata(cls, v: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """Limit metadata to 5 keys to prevent payload bloat"""
+        if v is None:
+            return v
         if len(v) > 5:
             raise ValueError("Metadata must have at most 5 keys")
         return v
@@ -92,16 +95,20 @@ class WidgetMessageRequest(BaseModel):
         description="Additional context"
     )
 
-    @validator('message')
-    def validate_message(cls, v):
+    @field_validator('message')
+    @classmethod
+    def validate_message(cls, v: str) -> str:
         """Prevent XSS attacks by rejecting script tags"""
         if '<script' in v.lower() or '<?php' in v.lower() or '<iframe' in v.lower():
             raise ValueError("Message contains invalid content")
         return v.strip()
 
-    @validator('context')
-    def validate_context(cls, v):
+    @field_validator('context')
+    @classmethod
+    def validate_context(cls, v: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """Limit context to 10 keys"""
+        if v is None:
+            return v
         if len(v) > 10:
             raise ValueError("Context must have at most 10 keys")
         return v

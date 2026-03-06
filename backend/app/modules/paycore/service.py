@@ -14,15 +14,14 @@ import os
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 from uuid import UUID, uuid4
+from starlette.requests import Request
 
 from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
-from app.core.redis_client import get_redis
-from app.core.event_bus import EventBus
-from app.core.security import Principal
+from app.core.auth_deps import Principal
 
 from .models import PaymentIntent, Transaction, Refund
 from .schemas import (
@@ -106,21 +105,27 @@ class PayCoreService:
     """
 
     def __init__(self):
-        self.event_bus: Optional[EventBus] = None
+        self.event_stream: Optional[Any] = None
 
-    async def _get_event_bus(self) -> EventBus:
-        """Get or create event bus instance."""
-        if not self.event_bus:
-            redis = await get_redis()
-            self.event_bus = EventBus(redis)
-        return self.event_bus
+    def set_event_stream(self, event_stream: Optional[Any]) -> None:
+        """Inject shared EventStream instance from app state."""
+        self.event_stream = event_stream
 
     async def _publish_event(self, event: Dict[str, Any]) -> None:
-        """Publish event to brain.events.paycore stream."""
+        """Publish event via EventStream when available (non-blocking fallback)."""
         try:
-            bus = await self._get_event_bus()
-            bus.publish_domain("paycore", event)
-            logger.debug(f"Published event: {event.get('event_type')}")
+            if not self.event_stream:
+                logger.debug("EventStream unavailable; skipping paycore event publish")
+                return
+
+            # Keep payload simple and consistent with other module publishers
+            await self.event_stream.publish({
+                "event_type": f"paycore.{event.get('event_type', 'unknown')}",
+                "payload": event,
+                "source": "paycore",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+            logger.debug(f"Published paycore event: {event.get('event_type')}")
         except Exception as e:
             logger.error(f"Failed to publish event: {e}")
 
@@ -154,6 +159,24 @@ class PayCoreService:
             timestamp=datetime.now(timezone.utc),
             providers=providers_health
         )
+
+    async def get_intent_tenant_id(self, intent_id: UUID) -> Optional[str]:
+        """Return tenant_id for an intent, or None when not found."""
+        async with get_session() as session:
+            result = await session.execute(
+                select(PaymentIntent.tenant_id).where(PaymentIntent.id == intent_id)
+            )
+            return result.scalar_one_or_none()
+
+    async def get_refund_tenant_id(self, refund_id: UUID) -> Optional[str]:
+        """Return tenant_id for a refund via its linked intent, or None."""
+        async with get_session() as session:
+            result = await session.execute(
+                select(PaymentIntent.tenant_id)
+                .join(Refund, Refund.intent_id == PaymentIntent.id)
+                .where(Refund.id == refund_id)
+            )
+            return result.scalar_one_or_none()
 
     # ========================================================================
     # Payment Intents
@@ -563,9 +586,13 @@ class PayCoreService:
 _service: Optional[PayCoreService] = None
 
 
-def get_paycore_service() -> PayCoreService:
-    """Get or create PayCore service instance."""
+def get_paycore_service(request: Request = None) -> PayCoreService:
+    """Get or create PayCore service instance and inject shared EventStream."""
     global _service
     if _service is None:
         _service = PayCoreService()
+
+    if request is not None:
+        _service.set_event_stream(getattr(request.app.state, "event_stream", None))
+
     return _service

@@ -33,21 +33,8 @@ from .schemas import (
     ListDatasetsResponse,
 )
 
-# Import auth dependencies - try multiple locations for compatibility
-try:
-    from app.core.auth_deps import require_admin as require_admin_user, require_auth
-except ImportError:
-    try:
-        from app.core.security import require_admin as require_admin_user
-        from app.core.auth_deps import require_auth
-    except ImportError:
-        # Fallback if auth not available
-        async def require_admin_user():
-            """Fallback - no auth required in dev mode"""
-            return {"principal_id": "dev_user", "roles": ["admin"]}
-        async def require_auth():
-            """Fallback - no auth required in dev mode"""
-            return {"principal_id": "dev_user", "roles": ["user"]}
+# Import auth dependencies
+from app.core.auth_deps import require_admin as require_admin_user, require_auth
 
 
 # Create router

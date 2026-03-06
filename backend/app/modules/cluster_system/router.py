@@ -22,7 +22,7 @@ from typing import Optional, List
 from loguru import logger
 
 from app.core.database import get_db
-from app.core.security import get_current_principal, require_role, UserRole, Principal
+from app.core.auth_deps import get_current_principal, require_role, SystemRole as UserRole, Principal
 from app.core.rate_limit import limiter
 
 from .service import ClusterService

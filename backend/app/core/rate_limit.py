@@ -4,6 +4,8 @@ Rate Limiting Configuration for BRAiN
 Uses slowapi with Redis backend for distributed rate limiting.
 """
 
+import os
+
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -32,11 +34,14 @@ def get_ip_identifier(request: Request) -> str:
     return get_remote_address(request)
 
 
-# Create limiter instance with Redis backend (if available) or memory
-# In production, configure Redis: limiter = Limiter(key_func=..., storage_uri="redis://localhost:6379")
+# Create single global limiter instance used by all routers and app startup.
+# Use Redis storage when configured; fallback to in-memory for local/dev.
+_storage_uri = os.getenv("REDIS_URL") or os.getenv("BRAIN_REDIS_URL")
+
 limiter = Limiter(
     key_func=get_user_identifier,
     default_limits=["100/minute"],  # Global default: 100 req/min per user
+    storage_uri=_storage_uri,
 )
 
 
@@ -64,6 +69,11 @@ class RateLimits:
     
     # Agent Management: Heartbeats up to 60 per minute per agent
     AGENTS_HEARTBEAT = "60/minute"
+
+    # PayCore: expensive and external-provider-backed endpoints
+    PAYCORE_INTENT_CREATE = "20/minute"
+    PAYCORE_REFUND_CREATE = "10/minute"
+    PAYCORE_WEBHOOK = "120/minute"
 
 
 # Custom rate limit exceeded handler

@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, status, Requ
 from loguru import logger
 
 from app.core.auth_deps import require_auth, get_current_principal, Principal
+from app.core.rate_limit import limiter, RateLimits
 
 from .service import get_paycore_service, PayCoreService
 from .schemas import (
@@ -52,25 +53,20 @@ async def verify_intent_ownership(principal: Principal, intent_id: UUID, service
 
     For payment operations, ownership is based on tenant_id.
     """
-    try:
-        intent = await service.get_intent_status(intent_id)
-        # Allow access if tenant matches
-        return principal.tenant_id == intent.tenant_id or principal.tenant_id == "default"
-    except IntentNotFoundException:
+    tenant_id = await service.get_intent_tenant_id(intent_id)
+    if tenant_id is None:
         return False
+    return principal.tenant_id == tenant_id or principal.tenant_id == "default"
 
 
 async def verify_refund_ownership(principal: Principal, refund_id: UUID, service: PayCoreService) -> bool:
     """
     Verify principal can access this refund.
     """
-    try:
-        refund = await service.get_refund_status(refund_id)
-        # Get intent to check tenant
-        intent = await service.get_intent_status(refund.intent_id)
-        return principal.tenant_id == intent.tenant_id or principal.tenant_id == "default"
-    except (IntentNotFoundException, RefundNotFoundException):
+    tenant_id = await service.get_refund_tenant_id(refund_id)
+    if tenant_id is None:
         return False
+    return principal.tenant_id == tenant_id or principal.tenant_id == "default"
 
 
 # ============================================================================
@@ -104,7 +100,9 @@ async def get_health() -> PayCoreHealth:
 # ============================================================================
 
 @router.post("/intents", response_model=IntentCreateResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit(RateLimits.PAYCORE_INTENT_CREATE)
 async def create_intent(
+    request_ctx: Request,
     request: IntentCreateRequest,
     principal: Principal = Depends(get_current_principal),
     service: PayCoreService = Depends(get_paycore_service),
@@ -257,7 +255,9 @@ async def get_intent_simple_status(
 # ============================================================================
 
 @router.post("/refunds", response_model=RefundCreateResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit(RateLimits.PAYCORE_REFUND_CREATE)
 async def create_refund(
+    request_ctx: Request,
     request: RefundCreateRequest,
     principal: Principal = Depends(get_current_principal),
     service: PayCoreService = Depends(get_paycore_service),
@@ -359,7 +359,9 @@ async def get_refund(
 # ============================================================================
 
 @router.post("/webhooks/stripe", status_code=status.HTTP_200_OK)
+@limiter.limit(RateLimits.PAYCORE_WEBHOOK)
 async def stripe_webhook(
+    request_ctx: Request,
     request: Request,
     stripe_signature: str = Header(None, alias="stripe-signature"),
     service: PayCoreService = Depends(get_paycore_service),
@@ -407,7 +409,9 @@ async def stripe_webhook(
 
 
 @router.post("/webhooks/paypal", status_code=status.HTTP_200_OK)
+@limiter.limit(RateLimits.PAYCORE_WEBHOOK)
 async def paypal_webhook(
+    request_ctx: Request,
     request: Request,
     service: PayCoreService = Depends(get_paycore_service),
 ) -> Dict[str, Any]:

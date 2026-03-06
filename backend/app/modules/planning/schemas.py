@@ -9,11 +9,16 @@ from __future__ import annotations
 
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
+
+
+def _utc_now_naive() -> datetime:
+    """UTC now as naive datetime for legacy compatibility."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 # ============================================================================
@@ -192,7 +197,7 @@ class ExecutionPlan(BaseModel):
 
     # Status
     status: PlanStatus = PlanStatus.DRAFT
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utc_now_naive)
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
 
@@ -257,3 +262,15 @@ class PlanningStats(BaseModel):
     total_nodes_executed: int = 0
     total_recoveries: int = 0
     resource_utilization: Dict[str, float] = Field(default_factory=dict)
+
+
+class ExecuteNextResponse(BaseModel):
+    """Result of executing one ready node from a plan."""
+
+    plan_id: str
+    executed_node_id: str
+    executed_node_status: NodeStatus
+    plan_status: PlanStatus
+    completed_nodes: int
+    total_nodes: int
+    next_ready_node_ids: List[str] = Field(default_factory=list)

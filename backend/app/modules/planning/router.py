@@ -5,20 +5,108 @@ FastAPI endpoints for Advanced Planning Engine.
 """
 
 from typing import Dict, List, Optional
+import time
 
 from fastapi import APIRouter, HTTPException, Query, status, Depends
+from loguru import logger
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth_deps import require_auth, get_current_principal, Principal
+from app.core.auth_deps import require_auth, require_role, Principal, SystemRole as UserRole
+from app.core.database import get_db
 
 from .schemas import (
     DecompositionRequest,
     DecompositionResult,
+    ExecuteNextResponse,
     ExecutionPlan,
     PlanningInfo,
     PlanningStats,
     PlanStatus,
 )
 from .service import get_planning_service
+from app.modules.memory.service import get_memory_service
+from app.modules.memory.schemas import MemoryLayer, MemoryStoreRequest, MemoryType
+from app.modules.learning.service import get_learning_service
+from app.modules.learning.schemas import MetricEntry, MetricType
+
+# EventStream integration (non-blocking)
+try:
+    from mission_control_core.core import EventStream, Event
+except ImportError:
+    EventStream = None
+    Event = None
+
+_event_stream: Optional["EventStream"] = None
+
+
+def set_event_stream(stream: "EventStream") -> None:
+    global _event_stream
+    _event_stream = stream
+
+
+async def _emit_planning_event_safe(event_type: str, payload: dict) -> None:
+    if _event_stream is None or Event is None:
+        return
+    try:
+        event = Event(type=event_type, source="planning_service", target=None, payload=payload)
+        await _event_stream.publish(event)
+    except Exception as exc:
+        logger.error("[Planning] event publish failed: %s", exc)
+
+
+async def _persist_execution_feedback(
+    *,
+    plan: ExecutionPlan,
+    node_id: str,
+    db: AsyncSession,
+) -> None:
+    """Store execution outcomes into memory + learning (best-effort)."""
+    node = next((n for n in plan.nodes if n.node_id == node_id), None)
+    if not node:
+        return
+
+    agent_id = plan.agent_id or node.agent_id or "planning-system"
+    duration_ms = float(node.duration_ms or 0.0)
+
+    # Memory loop closure (episodic mission outcome)
+    try:
+        memory_service = get_memory_service()
+        await memory_service.store_memory(
+            MemoryStoreRequest(
+                content=f"Plan node executed: {node.name}",
+                memory_type=MemoryType.MISSION_OUTCOME,
+                layer=MemoryLayer.EPISODIC,
+                agent_id=agent_id,
+                mission_id=plan.mission_id,
+                importance=65.0,
+                tags=["planning", "execution", node.action or "unknown"],
+                metadata={
+                    "plan_id": plan.plan_id,
+                    "node_id": node.node_id,
+                    "status": node.status.value,
+                    "duration_ms": duration_ms,
+                },
+            )
+        )
+    except Exception as exc:
+        logger.error("[Planning] memory feedback failed: %s", exc)
+
+    # Learning loop closure (latency metric)
+    try:
+        learning_service = get_learning_service()
+        await learning_service.record_metric(
+            db,
+            MetricEntry(
+                agent_id=agent_id,
+                metric_type=MetricType.LATENCY,
+                value=duration_ms,
+                unit="ms",
+                tags={"source": "planning", "node_action": node.action or "unknown"},
+                context={"plan_id": plan.plan_id, "node_id": node.node_id},
+            ),
+        )
+    except Exception as exc:
+        logger.error("[Planning] learning feedback failed: %s", exc)
 
 router = APIRouter(
     prefix="/api/planning",
@@ -116,7 +204,66 @@ async def complete_node(plan_id: str, node_id: str, result: Dict):
     node = get_planning_service().complete_node(plan_id, node_id, result)
     if not node:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Plan or node not found")
+
+    plan = get_planning_service().get_plan(plan_id)
+    if plan:
+        await _emit_planning_event_safe(
+            "planning.node.completed",
+            {
+                "plan_id": plan_id,
+                "node_id": node_id,
+                "status": node.status.value,
+                "plan_status": plan.status.value,
+            },
+        )
     return node
+
+
+@router.post("/plans/{plan_id}/execute-next", response_model=ExecuteNextResponse)
+async def execute_next(
+    plan_id: str,
+    feedback: bool = Query(True, description="Persist memory + learning feedback"),
+    principal: Principal = Depends(require_role(UserRole.OPERATOR)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Execute exactly one ready node and optionally persist feedback."""
+    svc = get_planning_service()
+    node = svc.execute_next_node(plan_id)
+    plan = svc.get_plan(plan_id)
+
+    if not plan:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Plan '{plan_id}' not found")
+
+    if not node:
+        raise HTTPException(status.HTTP_409_CONFLICT, "No ready nodes available for execution")
+
+    if feedback:
+        await _persist_execution_feedback(plan=plan, node_id=node.node_id, db=db)
+
+    ready_nodes = svc.get_ready_nodes(plan_id)
+
+    await _emit_planning_event_safe(
+        "planning.node.executed",
+        {
+            "plan_id": plan_id,
+            "node_id": node.node_id,
+            "principal_id": principal.principal_id,
+            "plan_status": plan.status.value,
+            "ready_nodes_after": len(ready_nodes),
+            "feedback": feedback,
+            "timestamp": time.time(),
+        },
+    )
+
+    return ExecuteNextResponse(
+        plan_id=plan_id,
+        executed_node_id=node.node_id,
+        executed_node_status=node.status,
+        plan_status=plan.status,
+        completed_nodes=plan.completed_nodes,
+        total_nodes=plan.total_nodes,
+        next_ready_node_ids=[n.node_id for n in ready_nodes],
+    )
 
 
 @router.post("/plans/{plan_id}/nodes/{node_id}/fail")

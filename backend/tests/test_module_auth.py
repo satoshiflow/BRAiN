@@ -9,8 +9,8 @@ Integration tests for module router authentication guards:
 
 import pytest
 from fastapi.testclient import TestClient
-from fastapi import FastAPI, HTTPException, Depends
-from unittest.mock import MagicMock, patch
+from fastapi import FastAPI, HTTPException, Depends, Body
+from contextlib import contextmanager
 
 # Create a minimal app for testing
 from app.core.auth_deps import (
@@ -20,6 +20,29 @@ from app.core.auth_deps import (
     Principal,
     PrincipalType,
 )
+
+
+@contextmanager
+def override_auth_principal(client: TestClient, principal: Principal):
+    """Override require_auth to return a specific principal."""
+    client.app.dependency_overrides[require_auth] = lambda: principal
+    try:
+        yield
+    finally:
+        client.app.dependency_overrides.pop(require_auth, None)
+
+
+@contextmanager
+def override_auth_unauthorized(client: TestClient):
+    """Override require_auth to raise 401 Unauthorized."""
+    async def _unauthorized():
+        raise HTTPException(status_code=401, detail="Authentication required", headers={"WWW-Authenticate": "Bearer"})
+
+    client.app.dependency_overrides[require_auth] = _unauthorized
+    try:
+        yield
+    finally:
+        client.app.dependency_overrides.pop(require_auth, None)
 
 
 # ============================================================================
@@ -79,7 +102,7 @@ def test_app():
     # Sovereign mode routes - require admin
     @app.post("/api/sovereign-mode/mode")
     async def change_mode(
-        request: dict,
+        request: dict = Body(...),
         principal: Principal = Depends(require_admin)
     ):
         return {"status": "success", "mode": request.get("mode")}
@@ -113,7 +136,7 @@ def test_app():
     @app.post("/api/skills/{skill_id}/execute")
     async def execute_skill(
         skill_id: str,
-        request: dict,
+        request: dict = Body(...),
         principal: Principal = Depends(require_operator)
     ):
         # Also check scope
@@ -123,7 +146,7 @@ def test_app():
     
     @app.post("/api/skills/execute")
     async def execute_skill_body(
-        request: dict,
+        request: dict = Body(...),
         principal: Principal = Depends(require_operator)
     ):
         if not principal.has_scope("skills:execute"):
@@ -152,7 +175,7 @@ class TestSovereignModeAuth:
         
         Unauthenticated requests should be rejected before reaching the endpoint logic.
         """
-        with patch('app.core.auth_deps.get_current_principal', return_value=mock_anonymous_principal):
+        with override_auth_unauthorized(client):
             # Try to change mode without authentication
             response = client.post(
                 "/api/sovereign-mode/mode",
@@ -166,7 +189,7 @@ class TestSovereignModeAuth:
         """
         Test that non-admin users are forbidden from sovereign mode operations.
         """
-        with patch('app.core.auth_deps.get_current_principal', return_value=mock_principal):
+        with override_auth_principal(client, mock_principal):
             response = client.post(
                 "/api/sovereign-mode/mode",
                 json={"mode": "offline"},
@@ -179,7 +202,7 @@ class TestSovereignModeAuth:
         """
         Test that admin users can access sovereign mode operations.
         """
-        with patch('app.core.auth_deps.get_current_principal', return_value=mock_admin_principal):
+        with override_auth_principal(client, mock_admin_principal):
             response = client.post(
                 "/api/sovereign-mode/mode",
                 json={"mode": "offline"},
@@ -194,7 +217,7 @@ class TestSovereignModeAuth:
         """
         Test that status endpoint also requires authentication.
         """
-        with patch('app.core.auth_deps.get_current_principal', return_value=mock_anonymous_principal):
+        with override_auth_unauthorized(client):
             response = client.get("/api/sovereign-mode/status")
             
             assert response.status_code == 401
@@ -203,7 +226,7 @@ class TestSovereignModeAuth:
         """
         Test that operator role is insufficient for sovereign mode.
         """
-        with patch('app.core.auth_deps.get_current_principal', return_value=mock_operator_principal):
+        with override_auth_principal(client, mock_operator_principal):
             response = client.post(
                 "/api/sovereign-mode/mode",
                 json={"mode": "offline"},
@@ -223,7 +246,7 @@ class TestDMZControlAuth:
         """
         Test that accessing DMZ control without authentication returns 401.
         """
-        with patch('app.core.auth_deps.get_current_principal', return_value=mock_anonymous_principal):
+        with override_auth_unauthorized(client):
             response = client.get("/api/dmz/status")
             
             assert response.status_code == 401
@@ -234,7 +257,7 @@ class TestDMZControlAuth:
         
         Regular users should be forbidden from DMZ operations.
         """
-        with patch('app.core.auth_deps.get_current_principal', return_value=mock_principal):
+        with override_auth_principal(client, mock_principal):
             # Try status endpoint
             response = client.get("/api/dmz/status")
             assert response.status_code == 403
@@ -251,7 +274,7 @@ class TestDMZControlAuth:
         """
         Test that operator role is insufficient for DMZ control.
         """
-        with patch('app.core.auth_deps.get_current_principal', return_value=mock_operator_principal):
+        with override_auth_principal(client, mock_operator_principal):
             response = client.get("/api/dmz/status")
             
             assert response.status_code == 403
@@ -260,7 +283,7 @@ class TestDMZControlAuth:
         """
         Test that admin users can access DMZ control.
         """
-        with patch('app.core.auth_deps.get_current_principal', return_value=mock_admin_principal):
+        with override_auth_principal(client, mock_admin_principal):
             # Status
             response = client.get("/api/dmz/status")
             assert response.status_code == 200
@@ -288,7 +311,7 @@ class TestSkillsExecuteAuth:
         """
         Test that executing skills without authentication returns 401.
         """
-        with patch('app.core.auth_deps.get_current_principal', return_value=mock_anonymous_principal):
+        with override_auth_unauthorized(client):
             response = client.post(
                 "/api/skills/test-skill-123/execute",
                 json={"params": {"key": "value"}},
@@ -302,7 +325,7 @@ class TestSkillsExecuteAuth:
         
         Regular viewers should be forbidden from skill execution.
         """
-        with patch('app.core.auth_deps.get_current_principal', return_value=mock_principal):
+        with override_auth_principal(client, mock_principal):
             # Try with path parameter
             response = client.post(
                 "/api/skills/test-skill-123/execute",
@@ -326,7 +349,7 @@ class TestSkillsExecuteAuth:
         # Remove the skills:execute scope
         mock_operator_principal.scopes = ["brain:write", "brain:read"]  # No skills:execute
         
-        with patch('app.core.auth_deps.get_current_principal', return_value=mock_operator_principal):
+        with override_auth_principal(client, mock_operator_principal):
             response = client.post(
                 "/api/skills/test-skill-123/execute",
                 json={"params": {"key": "value"}},
@@ -342,7 +365,7 @@ class TestSkillsExecuteAuth:
         # Ensure operator has the required scope
         mock_operator_principal.scopes = ["brain:write", "brain:read", "skills:execute"]
         
-        with patch('app.core.auth_deps.get_current_principal', return_value=mock_operator_principal):
+        with override_auth_principal(client, mock_operator_principal):
             response = client.post(
                 "/api/skills/test-skill-123/execute",
                 json={"params": {"key": "value"}},
@@ -358,7 +381,7 @@ class TestSkillsExecuteAuth:
         """
         mock_admin_principal.scopes = ["brain:admin", "brain:write", "brain:read", "skills:execute"]
         
-        with patch('app.core.auth_deps.get_current_principal', return_value=mock_admin_principal):
+        with override_auth_principal(client, mock_admin_principal):
             response = client.post(
                 "/api/skills/test-skill-123/execute",
                 json={"params": {"key": "value"}},
@@ -371,7 +394,7 @@ class TestSkillsExecuteAuth:
         """
         Test that the POST /api/skills/execute endpoint also requires auth.
         """
-        with patch('app.core.auth_deps.get_current_principal', return_value=mock_anonymous_principal):
+        with override_auth_unauthorized(client):
             response = client.post(
                 "/api/skills/execute",
                 json={"skill_id": "test-skill-123", "params": {"key": "value"}},
@@ -393,7 +416,7 @@ class TestAuthErrorMessages:
         
         This is required by RFC 7235 for 401 responses.
         """
-        with patch('app.core.auth_deps.get_current_principal', return_value=mock_anonymous_principal):
+        with override_auth_unauthorized(client):
             response = client.get("/api/dmz/status")
             
             assert response.status_code == 401
@@ -404,7 +427,7 @@ class TestAuthErrorMessages:
         """
         Test that 403 responses include a helpful error message.
         """
-        with patch('app.core.auth_deps.get_current_principal', return_value=mock_principal):
+        with override_auth_principal(client, mock_principal):
             response = client.post("/api/sovereign-mode/mode", json={"mode": "offline"})
             
             assert response.status_code == 403

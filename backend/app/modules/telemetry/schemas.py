@@ -6,7 +6,7 @@ Pydantic models for AXE widget event validation and serialization.
 from enum import Enum
 from typing import Any, Dict, Optional
 from datetime import datetime
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
 import uuid
 
 
@@ -71,28 +71,29 @@ class AxeEventCreate(BaseModel):
     client_version: Optional[str] = Field(None, max_length=50)
     client_platform: Optional[str] = Field(None, max_length=50)
 
-    @validator('event_data')
-    def validate_event_data(cls, v, values):
+    @field_validator("event_data")
+    @classmethod
+    def validate_event_data(cls, v: Dict[str, Any], info: ValidationInfo) -> Dict[str, Any]:
         """Validate event_data based on event_type."""
-        event_type = values.get('event_type')
+        event_type = info.data.get("event_type") if info.data else None
 
         # Validation rules per event type
         if event_type == AxeEventType.MESSAGE:
-            if 'message' not in v:
+            if "message" not in v:
                 raise ValueError("axe_message requires 'message' field in event_data")
-            if 'role' not in v:
+            if "role" not in v:
                 raise ValueError("axe_message requires 'role' field in event_data")
 
         elif event_type == AxeEventType.ERROR:
-            if 'error' not in v and 'message' not in v:
+            if "error" not in v and "message" not in v:
                 raise ValueError("axe_error requires 'error' or 'message' field")
 
         elif event_type == AxeEventType.DIFF_APPLIED or event_type == AxeEventType.DIFF_REJECTED:
-            if 'diff_id' not in v:
+            if "diff_id" not in v:
                 raise ValueError(f"{event_type} requires 'diff_id' field")
 
         elif event_type == AxeEventType.CLICK:
-            if 'element' not in v:
+            if "element" not in v:
                 raise ValueError("axe_click requires 'element' field")
 
         return v
@@ -115,8 +116,9 @@ class AxeEventBatchCreate(BaseModel):
     """
     events: list[AxeEventCreate] = Field(..., min_items=1, max_items=100)
 
-    @validator('events')
-    def validate_batch_size(cls, v):
+    @field_validator("events")
+    @classmethod
+    def validate_batch_size(cls, v: list[AxeEventCreate]) -> list[AxeEventCreate]:
         """Ensure batch doesn't exceed 100 events."""
         if len(v) > 100:
             raise ValueError("Batch size limited to 100 events per request")
