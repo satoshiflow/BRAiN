@@ -28,8 +28,8 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, HTTPException, Request, Header, Depends, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
-from modules.connector_hub.services import get_gateway
-from modules.llm_client import get_llm_client
+from app.compat.legacy_connector_hub import get_gateway
+from app.compat.legacy_llm import get_llm_client
 
 # NEW: LLM Router for OpenRouter/Kimi support
 try:

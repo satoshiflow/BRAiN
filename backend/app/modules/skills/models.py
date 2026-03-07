@@ -39,13 +39,26 @@ class SkillModel(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(100), unique=True, nullable=False, index=True)
     description = Column(Text, nullable=True)
-    category = Column(SQLEnum(SkillCategory), nullable=False, default=SkillCategory.CUSTOM)
+    category = Column(
+        SQLEnum(
+            SkillCategory,
+            name="skillcategory",
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
+        nullable=False,
+        default=SkillCategory.CUSTOM,
+    )
     manifest = Column(JSONB, nullable=False, default=dict)
     handler_path = Column(String(255), nullable=False)
     enabled = Column(Boolean, nullable=False, default=True)
     is_builtin = Column(Boolean, nullable=False, default=False)
-    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+    )
     
     def __repr__(self) -> str:
         return f"<Skill(id={self.id}, name={self.name}, category={self.category}, enabled={self.enabled})>"

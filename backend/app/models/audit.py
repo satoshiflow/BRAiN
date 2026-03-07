@@ -60,7 +60,7 @@ class AuthAuditLog(Base):
     session_id = Column(String(255), nullable=True, index=True)
     
     # Additional metadata (flexible JSON storage)
-    metadata = Column(JSON, nullable=False, default=dict)
+    audit_metadata = Column("metadata", JSON, nullable=False, default=dict)
     
     # Additional context fields stored in metadata but extracted for common queries
     agent_id = Column(String(255), nullable=True, index=True)  # If acting on behalf of agent
@@ -94,7 +94,7 @@ class AuthAuditLog(Base):
             "ip_address": self.ip_address,
             "request_id": self.request_id,
             "session_id": self.session_id,
-            "metadata": self.metadata,
+            "metadata": self.audit_metadata,
             "agent_id": self.agent_id,
             "organization_id": self.organization_id,
         }

@@ -7,6 +7,7 @@ Provides JWT token generation/validation and role-based access control.
 from __future__ import annotations
 
 import os
+import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional, List
 from enum import Enum
@@ -16,6 +17,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================================
@@ -38,7 +41,8 @@ if not SECRET_KEY:
     SECRET_KEY = secrets_module.token_urlsafe(32)
 
 security_scheme = HTTPBearer(auto_error=False)
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Prefer pbkdf2 for deterministic local behavior; keep bcrypt for legacy verification.
+pwd_context = CryptContext(schemes=["pbkdf2_sha256", "bcrypt"], deprecated="auto")
 
 
 # ============================================================================
@@ -133,7 +137,7 @@ if ENVIRONMENT != "production":
     import secrets as secrets_module
     if not ADMIN_PASSWORD:
         ADMIN_PASSWORD = secrets_module.token_urlsafe(16)
-        print(f"[DEV ONLY] Generated random admin password (check logs)")
+        logger.debug("[DEV ONLY] Generated random admin password (set BRAIN_ADMIN_PASSWORD to override)")
     if not OPERATOR_PASSWORD:
         OPERATOR_PASSWORD = secrets_module.token_urlsafe(16)
     if not VIEWER_PASSWORD:

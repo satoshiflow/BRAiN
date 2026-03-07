@@ -19,6 +19,11 @@ from app.modules.neurorail.errors import (
     should_alert_immune,
 )
 
+try:
+    from app.modules.recovery_policy_engine.service import get_recovery_policy_service
+except Exception:  # pragma: no cover
+    get_recovery_policy_service = None
+
 
 class RetryHandler:
     """
@@ -77,6 +82,7 @@ class RetryHandler:
         self.retry_count = 0
         self.success_after_retry_count = 0
         self.exhausted_count = 0
+        self.recovery_policy_service = get_recovery_policy_service() if get_recovery_policy_service else None
 
     def _compute_delay(self, attempt: int) -> float:
         """
@@ -207,6 +213,24 @@ class RetryHandler:
                     "elapsed_ms": elapsed_ms,
                 })
 
+                if self.recovery_policy_service:
+                    try:
+                        await self.recovery_policy_service.decide_from_adapter(
+                            "neurorail",
+                            {
+                                "id": f"neurorail-{context.get('job_id', 'unknown')}-{attempt}",
+                                "job_id": context.get("job_id"),
+                                "entity_id": context.get("job_id", "unknown"),
+                                "failure_type": type(e).__name__,
+                                "severity": "high" if attempt > 0 else "medium",
+                                "retry_count": attempt,
+                                "recurrence": attempt,
+                                "correlation_id": context.get("correlation_id"),
+                            },
+                        )
+                    except Exception:
+                        pass
+
                 # If not retriable, raise immediately
                 if not is_retriable:
                     logger.error(
@@ -238,9 +262,9 @@ class RetryHandler:
 
                     # Raise BudgetRetryExhaustedError
                     raise BudgetRetryExhaustedError(
-                        message=f"Retry budget exhausted after {attempt} retries: {e}",
-                        error_code=NeuroRailErrorCode.BUDGET_RETRY_EXHAUSTED,
-                        context={
+                        max_retries=max_retries,
+                        last_error=e,
+                        details={
                             **context,
                             "max_retries": max_retries,
                             "attempts": attempt,

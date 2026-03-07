@@ -122,7 +122,7 @@ class DatabaseAdapter:
                 "created_at": entry.created_at,
                 "expires_at": entry.expires_at,
                 "embedding": entry.embedding,
-                "metadata": entry.metadata,
+                "entry_metadata": entry.metadata,
             }
             
             if existing:
@@ -358,7 +358,7 @@ class DatabaseAdapter:
                 role=turn.role,
                 content=turn.content,
                 timestamp=turn.timestamp,
-                metadata=turn.metadata,
+                turn_metadata=turn.metadata,
                 token_count=turn.token_count,
             )
             session.add(orm_turn)
@@ -447,7 +447,7 @@ class DatabaseAdapter:
             created_at=orm.created_at,
             expires_at=orm.expires_at,
             embedding=orm.embedding,
-            metadata=orm.metadata or {},
+            metadata=orm.entry_metadata or {},
         )
     
     @staticmethod
@@ -475,7 +475,7 @@ class DatabaseAdapter:
             role=orm.role,
             content=orm.content,
             timestamp=orm.timestamp,
-            metadata=orm.metadata or {},
+            metadata=orm.turn_metadata or {},
             token_count=orm.token_count,
         )
 

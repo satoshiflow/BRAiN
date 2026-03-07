@@ -284,7 +284,7 @@ def test_action_suspend_invalid_state_raises_error():
     with pytest.raises(ReflexActionFailedError) as exc_info:
         action.suspend(reason="Test", cooldown_seconds=0.0)
 
-    assert exc_info.value.action_type == "SUSPEND"
+    assert exc_info.value.details["action_type"] == "SUSPEND"
 
 
 def test_action_throttle_invalid_state_raises_error():
@@ -298,7 +298,7 @@ def test_action_throttle_invalid_state_raises_error():
     with pytest.raises(ReflexActionFailedError) as exc_info:
         action.throttle(reason="Test", cooldown_seconds=0.0)
 
-    assert exc_info.value.action_type == "THROTTLE"
+    assert exc_info.value.details["action_type"] == "THROTTLE"
 
 
 def test_action_cancel_invalid_state_raises_error():
@@ -313,7 +313,7 @@ def test_action_cancel_invalid_state_raises_error():
     with pytest.raises(ReflexActionFailedError) as exc_info:
         action.cancel(reason="Test")
 
-    assert exc_info.value.action_type == "CANCEL"
+    assert exc_info.value.details["action_type"] == "CANCEL"
 
 
 # ============================================================================

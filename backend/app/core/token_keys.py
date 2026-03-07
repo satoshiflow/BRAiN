@@ -10,6 +10,7 @@ Provides:
 import os
 import hashlib
 import base64
+import logging
 from typing import Dict, Any, Optional
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -29,6 +30,36 @@ class TokenKeyManager:
         self._public_key = None
         self._key_id = None
         self._jwks_cache = None
+
+    def _generate_ephemeral_key(self) -> None:
+        """Generate an ephemeral RSA key for non-production environments."""
+        private_key = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=2048,
+            backend=default_backend(),
+        )
+        self._private_key = private_key
+        self._public_key = private_key.public_key()
+        self._key_id = self._derive_key_id(self._public_key)
+        self._jwks_cache = None
+
+    def ensure_loaded(self, env_var: str = "BRAIN_JWT_PRIVATE_KEY") -> None:
+        """Ensure key material is available; allow dev-only ephemeral fallback."""
+        if self._private_key is not None:
+            return
+
+        try:
+            self.load_key_from_env(env_var)
+            return
+        except ValueError:
+            env = os.getenv("ENVIRONMENT", "development").lower()
+            if env == "production":
+                raise
+            logging.getLogger(__name__).warning(
+                "BRAIN_JWT_PRIVATE_KEY not set; using ephemeral RSA key in %s environment",
+                env,
+            )
+            self._generate_ephemeral_key()
     
     def _load_private_key_from_pem(self, pem_data: str) -> rsa.RSAPrivateKey:
         """Load RSA private key from PEM string"""
@@ -119,18 +150,21 @@ class TokenKeyManager:
     
     def get_key_id(self) -> str:
         """Get the derived Key ID for the current key"""
+        self.ensure_loaded()
         if not self._key_id:
             raise RuntimeError("No key loaded. Call load_key_from_env() first.")
         return self._key_id
     
     def get_private_key(self) -> rsa.RSAPrivateKey:
         """Get the loaded RSA private key"""
+        self.ensure_loaded()
         if not self._private_key:
             raise RuntimeError("No key loaded. Call load_key_from_env() first.")
         return self._private_key
     
     def get_public_key(self) -> rsa.RSAPublicKey:
         """Get the RSA public key"""
+        self.ensure_loaded()
         if not self._public_key:
             raise RuntimeError("No key loaded. Call load_key_from_env() first.")
         return self._public_key
@@ -148,6 +182,7 @@ class TokenKeyManager:
             - n: Modulus (base64url-encoded)
             - e: Exponent (base64url-encoded)
         """
+        self.ensure_loaded()
         if self._jwks_cache:
             return self._jwks_cache
         

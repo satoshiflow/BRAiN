@@ -182,7 +182,7 @@ class PolicyEngine:
                 conditions=rule_conditions,
                 priority=db_policy.priority,
                 enabled=db_policy.is_active,
-                metadata=db_policy.metadata or {}
+                metadata=db_policy.policy_metadata or {}
             ))
 
         return PolicySchema(
@@ -201,7 +201,7 @@ class PolicyEngine:
                 "resource_pattern": db_policy.resource_pattern,
                 "action_pattern": db_policy.action_pattern,
                 "tags": db_policy.tags or [],
-                **(db_policy.metadata or {})
+                **(db_policy.policy_metadata or {})
             }
         )
 
@@ -330,7 +330,7 @@ class PolicyEngine:
                 ip_address=ip_address or context.environment.get("ip_address"),
                 request_id=request_id or context.environment.get("request_id"),
                 session_id=context.environment.get("session_id"),
-                metadata={
+                audit_metadata={
                     "allowed": result.allowed,
                     "warnings": result.warnings,
                     "requires_audit": result.requires_audit,
@@ -737,7 +737,7 @@ class PolicyEngine:
                 priority=max((r.priority for r in request.rules), default=0) if request.rules else 0,
                 is_active=request.enabled,
                 created_by=created_by,
-                metadata={"rules_count": len(request.rules)} if request.rules else {}
+                policy_metadata={"rules_count": len(request.rules)} if request.rules else {}
             )
 
             self.db_session.add(db_policy)
@@ -1002,20 +1002,31 @@ class PolicyEngine:
 # Factory Function
 # ============================================================================
 
-async def get_policy_engine(
-    db_session: AsyncSession,
-    event_stream: Optional["EventStream"] = None
+def get_policy_engine(
+    db_session: Optional[AsyncSession] = None,
+    event_stream: Optional["EventStream"] = None,
 ) -> PolicyEngine:
-    """
-    Factory function to create a Policy Engine instance.
+    """Factory returning a policy engine instance.
 
-    Args:
-        db_session: Database session for persistence
-        event_stream: Optional EventStream for event publishing
-
-    Returns:
-        PolicyEngine instance
+    This synchronous accessor is used widely across runtime and background workers.
+    When no DB session is provided, a singleton in-memory-compatible engine is
+    returned for backward compatibility.
     """
+    global _policy_engine_instance
+
+    if db_session is None:
+        if _policy_engine_instance is None:
+            _policy_engine_instance = PolicyEngine(db_session=None, event_stream=event_stream)
+        return _policy_engine_instance
+
+    return PolicyEngine(db_session=db_session, event_stream=event_stream)
+
+
+async def get_policy_engine_async(
+    db_session: AsyncSession,
+    event_stream: Optional["EventStream"] = None,
+) -> PolicyEngine:
+    """Async factory that eagerly warms policy cache."""
     engine = PolicyEngine(db_session=db_session, event_stream=event_stream)
     await engine._ensure_cache_loaded()
     return engine
@@ -1032,10 +1043,7 @@ def get_policy_engine_sync(
     Synchronous factory for backward compatibility.
     NOTE: This creates an engine without DB session. Use get_policy_engine() for full functionality.
     """
-    global _policy_engine_instance
-    if _policy_engine_instance is None:
-        _policy_engine_instance = PolicyEngine(db_session=None, event_stream=event_stream)
-    return _policy_engine_instance
+    return get_policy_engine(db_session=None, event_stream=event_stream)
 
 
 async def get_health() -> PolicyHealth:

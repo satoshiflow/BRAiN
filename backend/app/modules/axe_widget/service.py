@@ -98,7 +98,7 @@ class WidgetService:
             user_agent=user_agent,
             message_count=0,
             status='active',
-            metadata=metadata or {},
+            session_metadata=metadata or {},
         )
 
         try:
@@ -229,7 +229,7 @@ class WidgetService:
             role=role,
             content=content,
             created_at=datetime.utcnow(),
-            metadata=metadata or {},
+            message_metadata=metadata or {},
         )
 
         try:
@@ -333,7 +333,7 @@ class WidgetService:
             rate_limit=data.rate_limit,
             scopes=data.scopes or [],
             created_by=created_by,
-            metadata=data.metadata or {},
+            credential_metadata=data.metadata or {},
         )
 
         try:

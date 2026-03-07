@@ -35,9 +35,7 @@ from app.core.rate_limit import limiter as shared_limiter, rate_limit_exceeded_h
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.core.redis_client import get_redis
-
-# Mission worker (from old backend/main.py)
-from modules.missions.worker import start_mission_worker, stop_mission_worker
+from app.compat.legacy_missions import start_mission_worker, stop_mission_worker
 
 # Autoscaler worker (Cluster System auto-scaling)
 from app.workers.autoscaler import start_autoscaler, stop_autoscaler
@@ -63,9 +61,6 @@ except ImportError as e:
             f"EventStream is required core infrastructure (ADR-001). "
             f"mission_control_core must be available. ImportError: {e}"
         ) from e
-
-# Legacy supervisor router (from old backend/main.py)
-from modules.supervisor.router import router as supervisor_router
 
 # App module routers (from app/main.py)
 from app.modules.dna.router import router as dna_router
@@ -119,6 +114,16 @@ from app.modules.config_management.router import router as config_management_rou
 
 # Audit Logging Router (Core Module - Phase 5)
 from app.modules.audit_logging.router import router as audit_logging_router
+from app.modules.immune_orchestrator.router import router as immune_orchestrator_router
+from app.modules.recovery_policy_engine.router import router as recovery_policy_router
+from app.modules.genetic_integrity.router import router as genetic_integrity_router
+from app.modules.genetic_quarantine.router import router as genetic_quarantine_router
+from app.modules.opencode_repair.router import router as opencode_repair_router
+from app.modules.immune_orchestrator.service import get_immune_orchestrator_service
+from app.modules.recovery_policy_engine.service import get_recovery_policy_service
+from app.modules.genetic_integrity.service import get_genetic_integrity_service
+from app.modules.genetic_quarantine.service import get_genetic_quarantine_service
+from app.modules.opencode_repair.service import get_opencode_repair_service
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -137,6 +142,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Startup
     configure_logging()
     logger.info(f"🧠 BRAiN Core v0.3.0 starting (env: {settings.environment})")
+
+    startup_profile = os.getenv("BRAIN_STARTUP_PROFILE", "full").lower()
+    logger.info("🚀 Startup profile: %s", startup_profile)
+
+    def _feature_enabled(flag: str, default: str = "true") -> bool:
+        if startup_profile == "minimal":
+            return False
+        return os.getenv(flag, default).lower() == "true"
 
     # Initialize Redis (optional - skip if not available)
     redis = None
@@ -166,6 +179,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await event_stream.start()
         logger.info("✅ Event Stream started (required mode)")
         app.state.event_stream = event_stream
+
+        # Wire EventStream into new architecture modules
+        get_immune_orchestrator_service(event_stream=event_stream)
+        get_recovery_policy_service(event_stream=event_stream)
+        get_genetic_integrity_service(event_stream=event_stream)
+        get_genetic_quarantine_service(event_stream=event_stream)
+        repair_service = get_opencode_repair_service(event_stream=event_stream)
+
+        # Wire repair loop triggers from immune/recovery high-risk outcomes
+        immune_service = get_immune_orchestrator_service()
+        recovery_service = get_recovery_policy_service()
+
+        async def _repair_trigger(payload: dict) -> None:
+            from app.modules.opencode_repair.schemas import RepairAutotriggerRequest
+
+            await repair_service.create_ticket_from_signal(RepairAutotriggerRequest(**payload), db=None)
+
+        immune_service.set_repair_trigger(_repair_trigger)
+        recovery_service.set_repair_trigger(_repair_trigger)
 
         # Propagate EventStream to modules that support explicit injection
         try:
@@ -197,30 +229,34 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Start mission worker (if enabled) with EventStream integration (Sprint 2)
     mission_worker_task = None
-    if os.getenv("ENABLE_MISSION_WORKER", "true").lower() == "true":
-        mission_worker_task = await start_mission_worker(event_stream=event_stream)
-        logger.info("✅ Mission worker started (EventStream: %s)", "enabled" if event_stream else "disabled")
+    if _feature_enabled("ENABLE_MISSION_WORKER", "true"):
+        try:
+            mission_worker_task = await start_mission_worker(event_stream=event_stream)
+            logger.info("✅ Mission worker started (EventStream: %s)", "enabled" if event_stream else "disabled")
+        except Exception as e:
+            logger.warning(f"⚠️ Mission worker not started (legacy path unavailable): {e}")
 
     # Start metrics collector worker (Cluster System metrics)
     metrics_collector_task = None
-    if os.getenv("ENABLE_METRICS_COLLECTOR", "true").lower() == "true":
+    if _feature_enabled("ENABLE_METRICS_COLLECTOR", "true"):
         metrics_collector_task = asyncio.create_task(start_metrics_collector(collection_interval=30))
         logger.info("✅ Metrics collector started (interval: 30s)")
 
     # Start autoscaler worker (Cluster System auto-scaling)
     autoscaler_task = None
-    if os.getenv("ENABLE_AUTOSCALER", "true").lower() == "true":
+    if _feature_enabled("ENABLE_AUTOSCALER", "true"):
         autoscaler_task = asyncio.create_task(start_autoscaler(check_interval=60))
         logger.info("✅ Autoscaler worker started (interval: 60s)")
 
-    # Seed built-in skills
-    try:
-        from app.modules.skills.builtins_seeder import seed_builtin_skills
-        from app.core.database import async_session_maker
-        async with async_session_maker() as db:
-            await seed_builtin_skills(db)
-    except Exception as e:
-        logger.warning(f"⚠️ Could not seed built-in skills: {e}")
+    # Seed built-in skills (optional in local profiles)
+    if _feature_enabled("ENABLE_BUILTIN_SKILL_SEED", "true"):
+        try:
+            from app.modules.skills.builtins_seeder import seed_builtin_skills
+            from app.core.database import AsyncSessionLocal
+            async with AsyncSessionLocal() as db:
+                await seed_builtin_skills(db)
+        except Exception as e:
+            logger.warning(f"⚠️ Could not seed built-in skills: {e}")
 
     logger.info("✅ All systems operational")
 
@@ -357,8 +393,20 @@ def create_app() -> FastAPI:
     # Include Routers
     # -------------------------------------------------------
 
-    # 1. Legacy supervisor router (from backend/modules)
-    app.include_router(supervisor_router, prefix="/api", tags=["legacy-supervisor"])
+    # 1. Legacy supervisor router (from backend/modules) - opt-in only
+    if os.getenv("ENABLE_LEGACY_SUPERVISOR_ROUTER", "false").lower() == "true":
+        try:
+            from app.compat.legacy_supervisor import get_legacy_supervisor_router
+
+            app.include_router(
+                get_legacy_supervisor_router(),
+                prefix="/api",
+                tags=["legacy-supervisor"],
+            )
+        except Exception as e:
+            logger.warning(f"⚠️ Legacy supervisor router unavailable: {e}")
+    else:
+        logger.info("ℹ️ Legacy supervisor router disabled")
 
     # 2. App module routers (from app/modules) - Main API
     app.include_router(agent_management_router, tags=["agents"])  # NEW: Agent Management (Core)
@@ -366,6 +414,11 @@ def create_app() -> FastAPI:
     app.include_router(health_monitor_router, tags=["health"])  # NEW: Health Monitor (Core)
     app.include_router(config_management_router, tags=["config"])  # NEW: Config Management (Core)
     app.include_router(audit_logging_router, tags=["audit"])  # NEW: Audit Logging (Core)
+    app.include_router(immune_orchestrator_router, tags=["immune-orchestrator"])
+    app.include_router(recovery_policy_router, tags=["recovery-policy"])
+    app.include_router(genetic_integrity_router, tags=["genetic-integrity"])
+    app.include_router(genetic_quarantine_router, tags=["genetic-quarantine"])
+    app.include_router(opencode_repair_router, tags=["opencode-repair"])
     app.include_router(foundation_router, tags=["foundation"])  # NEW: Foundation module
     app.include_router(sovereign_mode_router, tags=["sovereign-mode"])  # NEW: Sovereign Mode
     app.include_router(dmz_control_router, tags=["dmz-control"])  # NEW: DMZ Control
@@ -414,10 +467,16 @@ def create_app() -> FastAPI:
     app.include_router(admin_auth_router)
 
     # 3. Auto-discover routes from backend/api/routes/*
-    _include_legacy_routers(app)
+    if os.getenv("ENABLE_LEGACY_ROUTER_AUTODISCOVERY", "false").lower() == "true":
+        _include_legacy_routers(app)
+    else:
+        logger.info("ℹ️ Legacy router autodiscovery disabled")
 
     # 4. Auto-discover routes from app/api/routes/*
-    _include_app_routers(app)
+    if os.getenv("ENABLE_APP_ROUTER_AUTODISCOVERY", "false").lower() == "true":
+        _include_app_routers(app)
+    else:
+        logger.info("ℹ️ App router autodiscovery disabled")
 
     logger.info("✅ App created, all routers registered")
     return app
@@ -487,7 +546,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
         "main:app",
-        host="0.0.0.0",
+        host="127.0.0.1",
         port=8000,
         reload=True,
         log_level="info"

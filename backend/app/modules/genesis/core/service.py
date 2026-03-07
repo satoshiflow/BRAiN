@@ -15,6 +15,7 @@ import numpy as np
 from loguru import logger
 
 from app.modules.dna.core.service import DNAService
+from app.modules.genetic_integrity.service import get_genetic_integrity_service
 from app.modules.dna.schemas import (
     CreateDNASnapshotRequest,
     MutateDNARequest,
@@ -60,6 +61,7 @@ class GenesisService:
         agent_manager: Optional[AgentManager] = None,
     ):
         self.dna = dna_service or DNAService()
+        self.dna.set_genetic_integrity_service(get_genetic_integrity_service())
         self.traits = trait_service or get_trait_service()
         self.blueprints = blueprint_library or get_blueprint_library()
         self.foundation = foundation_layer or get_foundation_layer()
@@ -269,7 +271,7 @@ class GenesisService:
             raise EthicsViolationError(f"Mutation blocked: {validation.violations}")
 
         # Create new DNA snapshot
-        new_snapshot = self.dna.mutate(
+        new_snapshot = await self.dna.mutate(
             request.agent_id,
             MutateDNARequest(
                 mutation={},  # No config changes in this version

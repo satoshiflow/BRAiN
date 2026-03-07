@@ -42,6 +42,7 @@ async def register_agent(
     registration: AgentRegister,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_role(UserRole.AGENT, UserRole.SERVICE, UserRole.OPERATOR, UserRole.ADMIN)),
 ):
     """
     Register a new agent.
@@ -70,6 +71,7 @@ async def agent_heartbeat(
     request: Request,
     heartbeat: AgentHeartbeat,
     db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_role(UserRole.AGENT, UserRole.SERVICE, UserRole.OPERATOR, UserRole.ADMIN)),
 ):
     """
     Process agent heartbeat.
@@ -81,6 +83,9 @@ async def agent_heartbeat(
     
     host = request.client.host if request.client else None
     
+    if principal.agent_id and principal.agent_id != heartbeat.agent_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Agent identity mismatch")
+
     agent = await service.process_heartbeat(
         db=db,
         heartbeat=heartbeat,

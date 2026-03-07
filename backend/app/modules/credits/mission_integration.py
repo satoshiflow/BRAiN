@@ -304,20 +304,18 @@ async def register_mission_hooks() -> None:
         return
 
     try:
-        # Try to import mission system
+        from app.compat.legacy_missions import register_credit_hooks
+
         try:
-            from modules.mission_system import register_hooks
+            await register_credit_hooks(
+                on_start=MissionCreditHooks.on_mission_start,
+                on_complete=MissionCreditHooks.on_mission_complete,
+                on_failed=MissionCreditHooks.on_mission_failed,
+                on_cancelled=MissionCreditHooks.on_mission_cancelled,
+            )
         except ImportError:
             logger.warning("Mission system not available, hooks not registered")
             return
-
-        # Register hooks
-        await register_hooks(
-            on_start=MissionCreditHooks.on_mission_start,
-            on_complete=MissionCreditHooks.on_mission_complete,
-            on_failed=MissionCreditHooks.on_mission_failed,
-            on_cancelled=MissionCreditHooks.on_mission_cancelled,
-        )
 
         logger.info("Mission credit hooks registered successfully")
 

@@ -7,7 +7,7 @@ from typing import Any, Dict
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from modules.llm_client import get_llm_client
+from app.compat.legacy_llm import get_llm_client
 
 router = APIRouter(
     prefix="/api/debug",

@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, status, Depends
 from app.core.auth_deps import require_auth, get_current_principal, Principal
 
 from app.modules.dna.core.service import DNAService
+from app.modules.genetic_integrity.service import get_genetic_integrity_service
 from app.modules.dna.schemas import (
     CreateDNASnapshotRequest,
     MutateDNARequest,
@@ -18,6 +19,8 @@ router = APIRouter(
 
 # Einfacher Singleton-Service im Prozess
 dna_service = DNAService()
+genetic_integrity_service = get_genetic_integrity_service()
+dna_service.set_genetic_integrity_service(genetic_integrity_service)
 
 
 @router.post(
@@ -40,7 +43,8 @@ async def mutate_agent_dna(
 ) -> AgentDNASnapshot:
     """Apply DNA mutation (async for EventStream integration)"""
     try:
-        return await dna_service.mutate(agent_id, payload)
+        snapshot = await dna_service.mutate(agent_id, payload)
+        return snapshot
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 

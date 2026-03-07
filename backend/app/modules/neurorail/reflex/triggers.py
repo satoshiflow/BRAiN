@@ -140,7 +140,7 @@ class ReflexTrigger:
             trigger_type=self.trigger_id,
             reason=reason,
             details={
-                **context or {},
+                **(context or {}),
                 "trigger_id": self.trigger_id,
                 "error_rate": self.compute_error_rate(),
                 "budget_violations": self.budget_violations,

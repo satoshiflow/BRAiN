@@ -45,8 +45,8 @@ class AuditEventModel(Base):
     user_agent = Column(Text, nullable=True)
     severity = Column(String(20), nullable=False, default="info")
     message = Column(Text, nullable=True)
-    extra_data = Column(JSONB, nullable=False, default=dict)
-    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    extra_data = Column("metadata", JSONB, nullable=False, default=dict)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     
     def to_dict(self):
         return {
@@ -63,6 +63,6 @@ class AuditEventModel(Base):
             "user_agent": self.user_agent,
             "severity": self.severity,
             "message": self.message,
-            "metadata": self.metadata,
+            "metadata": self.extra_data,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }

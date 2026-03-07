@@ -34,7 +34,7 @@ class AuditLoggingService:
             user_agent=user_agent,
             severity=event_data.severity,
             message=event_data.message,
-            metadata=event_data.metadata,
+            extra_data=event_data.extra_data,
         )
         db.add(event)
         await db.commit()

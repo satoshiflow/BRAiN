@@ -12,7 +12,6 @@ from sqlalchemy import select
 
 from .builtins import BUILTIN_SKILLS, http_request, file_read, file_write, shell_command, web_search
 from .models import SkillModel, SkillCategory
-from .schemas import SkillCategory as SkillCategoryEnum
 
 
 # Map builtin names to their handler paths and modules
@@ -26,11 +25,11 @@ BUILTIN_HANDLERS = {
 
 # Category mapping for builtins
 BUILTIN_CATEGORIES = {
-    "http_request": SkillCategoryEnum.api,
-    "file_read": SkillCategoryEnum.file,
-    "file_write": SkillCategoryEnum.file,
-    "shell_command": SkillCategoryEnum.custom,
-    "web_search": SkillCategoryEnum.analysis,
+    "http_request": SkillCategory.API,
+    "file_read": SkillCategory.FILE,
+    "file_write": SkillCategory.FILE,
+    "shell_command": SkillCategory.CUSTOM,
+    "web_search": SkillCategory.ANALYSIS,
 }
 
 
@@ -58,7 +57,7 @@ async def seed_builtin_skills(db: AsyncSession) -> None:
         
         # Create new builtin skill (disabled by default for security)
         handler_path = BUILTIN_HANDLERS.get(skill_name)
-        category = BUILTIN_CATEGORIES.get(skill_name, SkillCategoryEnum.custom)
+        category = BUILTIN_CATEGORIES.get(skill_name, SkillCategory.CUSTOM)
         
         if not handler_path:
             logger.warning(f"  ⚠️ No handler path for builtin '{skill_name}', skipping")
@@ -67,7 +66,7 @@ async def seed_builtin_skills(db: AsyncSession) -> None:
         skill = SkillModel(
             name=skill_name,
             description=manifest.get("description", f"Built-in skill: {skill_name}"),
-            category=category.value,
+            category=category,
             manifest=manifest,
             handler_path=handler_path,
             enabled=False,  # Disabled by default - admin must explicitly enable

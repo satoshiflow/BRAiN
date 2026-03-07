@@ -78,7 +78,7 @@ def upgrade() -> None:
     op.execute("CREATE INDEX IF NOT EXISTS idx_tasks_claimed_by ON tasks (claimed_by);")
     op.execute("CREATE INDEX IF NOT EXISTS idx_tasks_task_type ON tasks (task_type);")
     op.execute("CREATE INDEX IF NOT EXISTS idx_tasks_scheduled_at ON tasks (scheduled_at);")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks (created_at);
+    op.execute("CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks (created_at);")
     
     # Create trigger for updated_at
     op.execute("""

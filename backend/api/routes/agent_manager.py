@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from modules.llm_client import get_llm_client
+from app.compat.legacy_llm import get_llm_client
 
 router = APIRouter(
     prefix="/api/agents",

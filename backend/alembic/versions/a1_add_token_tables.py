@@ -104,7 +104,8 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(['owner_service_account_id'], ['service_accounts.id'], ),
         sa.ForeignKeyConstraint(['owner_user_id'], ['users.id'], ),
         sa.ForeignKeyConstraint(['parent_agent_id'], ['agent_credentials.agent_id'], ),
-        sa.PrimaryKeyConstraint('id')
+        sa.PrimaryKeyConstraint('id'),
+        sa.UniqueConstraint('agent_id')
     )
     op.create_index(op.f('ix_agent_credentials_agent_id'), 'agent_credentials', ['agent_id'], unique=True)
     op.create_index(op.f('ix_agent_credentials_expires_at'), 'agent_credentials', ['expires_at'], unique=False)

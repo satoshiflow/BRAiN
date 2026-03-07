@@ -22,8 +22,8 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
-from modules.missions.mission_control_runtime import get_mission_runtime
-from modules.missions.schemas import (
+from app.compat.legacy_missions import (
+    get_mission_runtime,
     MissionInfoResponse,
     MissionHealthResponse,
     MissionHealthDetails,
@@ -34,8 +34,8 @@ from modules.missions.schemas import (
     MissionEventHistoryResponse,
     MissionEventStatsResponse,
     MissionEvent,
+    get_worker_status,
 )
-from modules.missions.worker import get_worker_status
 
 router = APIRouter(
     prefix="/api/missions",

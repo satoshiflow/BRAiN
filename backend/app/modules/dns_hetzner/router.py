@@ -22,6 +22,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from loguru import logger
 
+from app.core.auth_deps import require_auth, require_role, SystemRole
+
 from app.modules.axe_governance import (
     TrustTier,
     AXERequestContext,
@@ -112,6 +114,7 @@ async def validate_local_only(request: Request) -> AXERequestContext:
 async def apply_dns_record(
     request_data: DNSRecordApplyRequest,
     context: AXERequestContext = Depends(validate_local_only),
+    principal=Depends(require_role(SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN)),
 ) -> DNSApplyResult:
     """
     Apply DNS record (idempotent upsert).
@@ -196,6 +199,7 @@ async def apply_dns_record(
 @router.get("/zones", response_model=ZonesListResponse)
 async def list_zones(
     context: AXERequestContext = Depends(validate_local_only),
+    principal=Depends(require_auth),
 ) -> ZonesListResponse:
     """
     List all allowed DNS zones.

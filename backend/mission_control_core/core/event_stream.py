@@ -250,10 +250,22 @@ class EventStream:
         Routes to appropriate channels based on event type and target
         """
         try:
+            raw_fields = event.to_dict()
+            redis_fields = {}
+            for key, value in raw_fields.items():
+                if value is None:
+                    continue
+                if isinstance(value, (dict, list)):
+                    redis_fields[key] = json.dumps(value)
+                elif isinstance(value, (str, int, float, bytes)):
+                    redis_fields[key] = value
+                else:
+                    redis_fields[key] = str(value)
+
             # Add to main event stream (for audit trail)
             await self.redis.xadd(
                 self.keys['event_stream'],
-                event.to_dict(),
+                redis_fields,
                 maxlen=10000  # Keep last 10k events
             )
             
@@ -271,6 +283,33 @@ class EventStream:
         except Exception as e:
             logger.error(f"Failed to publish event {event.id}: {e}")
             return False
+
+    async def publish(self, event: Any) -> bool:
+        """Compatibility wrapper for callers using `publish(...)`."""
+        if isinstance(event, Event):
+            return await self.publish_event(event)
+
+        if isinstance(event, dict):
+            import uuid
+
+            event_type = event.get("type", EventType.SYSTEM_ALERT.value)
+            try:
+                resolved_type = EventType(event_type)
+            except Exception:
+                resolved_type = EventType.SYSTEM_ALERT
+
+            wrapped = Event(
+                id=event.get("id", str(uuid.uuid4())),
+                type=resolved_type,
+                source=event.get("source", "system"),
+                target=event.get("target"),
+                payload=event.get("payload", event),
+                timestamp=datetime.utcnow(),
+                correlation_id=event.get("correlation_id"),
+            )
+            return await self.publish_event(wrapped)
+
+        raise TypeError("Unsupported event type for publish")
 
     async def subscribe_agent(self, agent_id: str, event_types: Set[EventType]) -> bool:
         """Subscribe agent to specific event types"""

@@ -1,5 +1,8 @@
 from datetime import datetime
-from typing import Dict, List, Optional
+import inspect
+import time
+import uuid
+from typing import Dict, List, Optional, Callable, Awaitable
 
 from loguru import logger
 
@@ -10,6 +13,8 @@ from app.modules.dna.schemas import (
     DNAMetadata,
     DNAHistoryResponse,
 )
+from app.modules.genetic_integrity.service import GeneticIntegrityService, get_genetic_integrity_service
+from app.modules.genetic_integrity.schemas import MutationAuditRequest
 
 # EventStream integration (Sprint 4)
 try:
@@ -40,6 +45,17 @@ class DNAService:
         self._store: Dict[str, List[AgentDNASnapshot]] = {}
         self._id_counter: int = 1
         self.event_stream = event_stream  # EventStream integration (Sprint 4)
+        self.genetic_integrity_service: Optional[GeneticIntegrityService] = None
+        self.mutation_governance_hook: Optional[Callable[[str, MutateDNARequest], Awaitable[bool]]] = None
+
+    def set_genetic_integrity_service(self, service: GeneticIntegrityService) -> None:
+        self.genetic_integrity_service = service
+
+    def set_mutation_governance_hook(
+        self,
+        hook: Callable[[str, MutateDNARequest], Awaitable[bool]],
+    ) -> None:
+        self.mutation_governance_hook = hook
 
     async def _emit_event_safe(
         self,
@@ -58,7 +74,7 @@ class DNAService:
         - Graceful degradation when EventStream unavailable
         """
         if self.event_stream is None or Event is None:
-            logger.debug("[DNAService] EventStream not available, skipping event: %s", event_type)
+            logger.debug(f"[DNAService] EventStream not available, skipping event: {event_type}")
             return
 
         try:
@@ -100,29 +116,34 @@ class DNAService:
                     payload["previous_score"] = previous_karma
                     payload["score_delta"] = snapshot.karma_score - previous_karma
 
-            # Create and publish event
-            event = Event(
-                type=event_type,
-                source="dna_service",
-                target=None,
-                payload=payload,
-            )
+            # Create and publish event (compatible with multiple Event signatures)
+            event_kwargs = {
+                "type": event_type,
+                "source": "dna_service",
+                "target": None,
+                "payload": payload,
+            }
+            event_params = inspect.signature(Event).parameters
+            if "id" in event_params:
+                event_kwargs["id"] = f"evt_dna_{uuid.uuid4().hex[:12]}"
+            if "timestamp" in event_params:
+                event_kwargs["timestamp"] = time.time()
+            if "meta" in event_params:
+                event_kwargs["meta"] = {"correlation_id": None, "version": "1.0"}
+
+            event = Event(**event_kwargs)
 
             await self.event_stream.publish(event)
 
             logger.debug(
-                "[DNAService] Event published: %s (snapshot_id=%s, agent_id=%s)",
-                event_type,
-                snapshot.id,
-                snapshot.agent_id,
+                f"[DNAService] Event published: {event_type} "
+                f"(snapshot_id={snapshot.id}, agent_id={snapshot.agent_id})"
             )
 
         except Exception as e:
             logger.error(
-                "[DNAService] Event publishing failed: %s (event_type=%s, snapshot_id=%s)",
-                e,
-                event_type,
-                snapshot.id,
+                f"[DNAService] Event publishing failed: {e} "
+                f"(event_type={event_type}, snapshot_id={snapshot.id})",
                 exc_info=True,
             )
             # DO NOT raise - business logic must continue
@@ -156,12 +177,34 @@ class DNAService:
             snapshot=snapshot,
         )
 
+        # Genetic integrity registration (primary core-path integration)
+        gis = self.genetic_integrity_service or get_genetic_integrity_service()
+        try:
+            await gis.register_from_dna_snapshot(
+                agent_id=snapshot.agent_id,
+                snapshot_version=snapshot.version,
+                parent_snapshot=snapshot.meta.parent_snapshot_id,
+                dna_payload=snapshot.dna,
+            )
+        except Exception:
+            pass
+
         return snapshot
 
     async def mutate(self, agent_id: str, req: MutateDNARequest) -> AgentDNASnapshot:
         snapshots = self._store.get(agent_id)
         if not snapshots:
             raise ValueError(f"No DNA found for agent {agent_id}")
+
+        # Optional governance pre-check hook (preparation point, non-enforcing fallback)
+        requires_governance_hook = bool(req.reason and "high_risk" in req.reason.lower())
+        if self.mutation_governance_hook:
+            try:
+                approved = await self.mutation_governance_hook(agent_id, req)
+                if not approved:
+                    raise ValueError("Mutation rejected by governance hook")
+            except Exception as exc:
+                raise ValueError(f"Mutation governance check failed: {exc}")
 
         latest = snapshots[-1]
         new_dna = {**latest.dna, **req.mutation}
@@ -193,6 +236,28 @@ class DNAService:
             mutation_keys=list(req.mutation.keys()),
             traits_delta=req.traits_delta,
         )
+
+        gis = self.genetic_integrity_service or get_genetic_integrity_service()
+        try:
+            await gis.register_from_dna_snapshot(
+                agent_id=snapshot.agent_id,
+                snapshot_version=snapshot.version,
+                parent_snapshot=snapshot.meta.parent_snapshot_id,
+                dna_payload=snapshot.dna,
+            )
+            await gis.record_mutation(
+                MutationAuditRequest(
+                    agent_id=snapshot.agent_id,
+                    from_version=max(1, snapshot.version - 1),
+                    to_version=snapshot.version,
+                    mutation=req.mutation,
+                    actor="dna_service",
+                    reason=req.reason or "dna_mutation",
+                    requires_governance_hook=requires_governance_hook,
+                )
+            )
+        except Exception:
+            pass
 
         return snapshot
 

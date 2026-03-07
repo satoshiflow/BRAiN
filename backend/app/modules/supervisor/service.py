@@ -5,8 +5,6 @@ from typing import List, Optional
 import time
 import logging
 
-# Import from LEGACY missions module (modules.missions, not app.modules.missions which was deleted)
-from modules.missions.models import MissionStatus
 from .schemas import AgentStatus, SupervisorHealth, SupervisorStatus
 
 logger = logging.getLogger(__name__)

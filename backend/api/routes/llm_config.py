@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, status
 
-from modules.llm_config import (
+from app.compat.legacy_llm import (
     LLMConfig,
     LLMConfigUpdate,
     get_llm_config,

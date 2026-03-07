@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, List
-from app.core.auth_deps import Principal, get_current_principal
+from app.core.auth_deps import Principal, get_current_principal, require_auth, require_role, SystemRole
 from . import service
 from .schemas import CreditsHealth, CreditsInfo
 
@@ -55,13 +55,13 @@ class AddCreditsRequest(BaseModel):
 
 
 @router.get("/health", response_model=CreditsHealth)
-async def credits_health(principal: Principal = Depends(get_current_principal)):
+async def credits_health(principal: Principal = Depends(require_auth)):
     """Get Credits module health status."""
     return await service.get_health()
 
 
 @router.get("/info", response_model=CreditsInfo)
-async def credits_info(principal: Principal = Depends(get_current_principal)):
+async def credits_info(principal: Principal = Depends(require_auth)):
     """
     Get Credits module information.
 
@@ -81,7 +81,7 @@ async def credits_info(principal: Principal = Depends(get_current_principal)):
 @router.post("/agents", response_model=Dict)
 async def create_agent(
     request: CreateAgentRequest,
-    principal: Principal = Depends(get_current_principal),
+    principal: Principal = Depends(require_role(SystemRole.OPERATOR, SystemRole.ADMIN, SystemRole.SERVICE)),
 ):
     """
     Create agent and allocate initial credits (Event Sourcing).
@@ -113,7 +113,7 @@ async def create_agent(
 @router.post("/consume", response_model=Dict)
 async def consume_credits(
     request: ConsumeCreditsRequest,
-    principal: Principal = Depends(get_current_principal),
+    principal: Principal = Depends(require_role(SystemRole.OPERATOR, SystemRole.ADMIN, SystemRole.SERVICE)),
 ):
     """
     Consume credits for agent (Event Sourcing).
@@ -146,7 +146,7 @@ async def consume_credits(
 @router.post("/refund", response_model=Dict)
 async def refund_credits(
     request: RefundCreditsRequest,
-    principal: Principal = Depends(get_current_principal),
+    principal: Principal = Depends(require_role(SystemRole.OPERATOR, SystemRole.ADMIN, SystemRole.SERVICE)),
 ):
     """
     Refund credits to agent (Event Sourcing).
@@ -180,7 +180,7 @@ async def refund_credits(
 @router.post("/add", response_model=Dict)
 async def add_credits(
     request: AddCreditsRequest,
-    principal: Principal = Depends(get_current_principal),
+    principal: Principal = Depends(require_role(SystemRole.OPERATOR, SystemRole.ADMIN, SystemRole.SERVICE)),
 ):
     """
     Add credits to existing agent (Event Sourcing).
@@ -223,7 +223,7 @@ async def add_credits(
 @router.get("/balance/{agent_id}", response_model=Dict)
 async def get_balance(
     agent_id: str,
-    principal: Principal = Depends(get_current_principal),
+    principal: Principal = Depends(require_auth),
 ):
     """
     Get current balance for agent (Event Sourcing).
@@ -242,7 +242,7 @@ async def get_balance(
 
 @router.get("/balances", response_model=Dict)
 async def get_all_balances(
-    principal: Principal = Depends(get_current_principal),
+    principal: Principal = Depends(require_auth),
 ):
     """
     Get all agent balances (Event Sourcing).
@@ -263,7 +263,7 @@ async def get_all_balances(
 async def get_history(
     agent_id: str,
     limit: int = 10,
-    principal: Principal = Depends(get_current_principal),
+    principal: Principal = Depends(require_auth),
 ):
     """
     Get transaction history for agent (Event Sourcing).
@@ -287,7 +287,7 @@ async def get_history(
 
 @router.get("/metrics", response_model=Dict)
 async def get_metrics(
-    principal: Principal = Depends(get_current_principal),
+    principal: Principal = Depends(require_auth),
 ):
     """
     Get Event Sourcing system metrics.

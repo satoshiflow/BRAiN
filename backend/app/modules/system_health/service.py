@@ -6,6 +6,7 @@ comprehensive system health overview.
 """
 
 import time
+import os
 from datetime import datetime
 from typing import Optional, List, Any
 from loguru import logger
@@ -24,24 +25,29 @@ from app.modules.system_health.schemas import (
     OptimizationRecommendation,
 )
 
+
+_STRICT_OPTIONAL_DEPS = os.getenv("BRAIN_STRICT_OPTIONAL_DEPS", "false").lower() == "true"
+
+
+def _log_optional(module_name: str) -> None:
+    msg = f"[SystemHealth] {module_name} not available"
+    if _STRICT_OPTIONAL_DEPS:
+        logger.warning(msg)
+    else:
+        logger.debug(msg)
+
 # Import sub-systems (with fallback if not available)
 try:
     from app.modules.immune.core.service import ImmuneService
 except ImportError:
     ImmuneService = None
-    logger.warning("[SystemHealth] ImmuneService not available")
+    _log_optional("ImmuneService")
 
 try:
     from app.modules.threats.service import ThreatsService
 except ImportError:
     ThreatsService = None
-    logger.warning("[SystemHealth] ThreatsService not available")
-
-try:
-    from modules.mission_system.service import MissionService
-except ImportError:
-    MissionService = None
-    logger.warning("[SystemHealth] MissionService not available")
+    _log_optional("ThreatsService")
 
 try:
     from app.modules.runtime_auditor.service import RuntimeAuditor
@@ -49,7 +55,7 @@ try:
 except ImportError:
     RuntimeAuditor = None
     RuntimeMetrics = None
-    logger.warning("[SystemHealth] RuntimeAuditor not available")
+    _log_optional("RuntimeAuditor")
 
 
 class SystemHealthService:
@@ -71,6 +77,7 @@ class SystemHealthService:
 
     def __init__(self):
         self.start_time = time.time()
+        self._mission_health_unavailable_logged = False
 
         # Initialize sub-services (singleton pattern)
         self.immune_service = ImmuneService() if ImmuneService else None
@@ -220,16 +227,17 @@ class SystemHealthService:
     async def _get_mission_health(self) -> Optional[MissionHealthData]:
         """Get health data from Mission System"""
         try:
-            from modules.missions.queue import MissionQueue
-            from app.core.config import get_settings
+            from app.compat.legacy_missions import get_mission_health_metrics
 
-            settings = get_settings()
-            queue = MissionQueue(redis_url=settings.REDIS_URL)
-            metrics = await queue.get_health_metrics()
+            metrics = await get_mission_health_metrics()
 
             return MissionHealthData(**metrics)
         except Exception as e:
-            logger.error(f"Failed to get mission health: {e}")
+            if not self._mission_health_unavailable_logged:
+                logger.warning(f"Mission health unavailable: {e}")
+                self._mission_health_unavailable_logged = True
+            else:
+                logger.debug(f"Mission health still unavailable: {e}")
             # Return None to indicate health check failed
             return None
 

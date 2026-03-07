@@ -20,6 +20,11 @@ from .schemas import (
     TaskResponse, TaskStats, QueueStats
 )
 
+try:
+    from app.modules.recovery_policy_engine.service import get_recovery_policy_service
+except Exception:  # pragma: no cover
+    get_recovery_policy_service = None
+
 
 class TaskQueueService:
     """
@@ -36,6 +41,7 @@ class TaskQueueService:
     def __init__(self, event_stream=None):
         """Initialize task queue service"""
         self.event_stream = event_stream
+        self.recovery_policy_service = get_recovery_policy_service() if get_recovery_policy_service else None
         logger.info("📋 Task Queue Service initialized")
     
     async def _publish_event(self, event_type: str, task_id: str, data: Dict[str, Any] = None):
@@ -349,9 +355,34 @@ class TaskQueueService:
         task.error_message = fail_data.error_message
         task.error_details = fail_data.error_details
         task.retry_count += 1
+
+        # Optional centralized recovery policy hook
+        recovery_action = None
+        if self.recovery_policy_service:
+            try:
+                decision = await self.recovery_policy_service.decide_from_adapter(
+                    "task_queue",
+                    {
+                        "id": f"task-{task_id}-{task.retry_count}",
+                        "task_id": task_id,
+                        "entity_id": task_id,
+                        "failure_type": fail_data.error_message,
+                        "severity": "high" if task.retry_count >= task.max_retries else "medium",
+                        "retry_count": task.retry_count,
+                        "recurrence": task.retry_count,
+                    },
+                    db=db,
+                )
+                recovery_action = decision.action.value
+            except Exception:
+                recovery_action = None
         
         # Check if we should retry
-        if fail_data.retry and task.retry_count < task.max_retries:
+        allow_retry = fail_data.retry and task.retry_count < task.max_retries
+        if recovery_action in {"isolate", "escalate", "rollback"}:
+            allow_retry = False
+
+        if allow_retry:
             # Schedule retry
             task.status = TaskStatus.RETRYING
             task.scheduled_at = datetime.now(timezone.utc) + timedelta(seconds=task.retry_delay_seconds)

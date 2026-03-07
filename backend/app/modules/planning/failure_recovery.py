@@ -29,6 +29,11 @@ from .schemas import (
     RecoveryStrategyType,
 )
 
+try:
+    from app.modules.recovery_policy_engine.service import get_recovery_policy_service
+except Exception:  # pragma: no cover
+    get_recovery_policy_service = None
+
 
 def _utc_now_naive() -> datetime:
     """UTC now as naive datetime for legacy compatibility."""
@@ -74,6 +79,7 @@ class FailureRecovery:
         self._detox_cooldowns: Dict[str, float] = {}
         self._total_recoveries = 0
         self._successful_recoveries = 0
+        self._recovery_policy_service = get_recovery_policy_service() if get_recovery_policy_service else None
 
         logger.info("🔧 FailureRecovery initialized")
 
@@ -96,6 +102,9 @@ class FailureRecovery:
         self._total_recoveries += 1
         strategy = node.recovery_strategy
 
+        # Optional central recovery policy integration (adapter hookpoint)
+        strategy = await self._resolve_strategy_via_policy(node=node, error=error, fallback=strategy)
+
         if strategy == RecoveryStrategyType.RETRY:
             return await self._recover_retry(node, error)
         elif strategy == RecoveryStrategyType.ROLLBACK:
@@ -116,6 +125,40 @@ class FailureRecovery:
                 message=f"Unknown recovery strategy: {strategy}",
                 next_status=NodeStatus.FAILED,
             )
+
+    async def _resolve_strategy_via_policy(
+        self,
+        *,
+        node: PlanNode,
+        error: str,
+        fallback: RecoveryStrategyType,
+    ) -> RecoveryStrategyType:
+        if self._recovery_policy_service is None:
+            return fallback
+        try:
+            decision = await self._recovery_policy_service.decide_from_adapter(
+                "planning",
+                {
+                    "id": f"planning-{node.node_id}-{node.retry_count}",
+                    "entity_id": node.node_id,
+                    "failure_type": error,
+                    "severity": "high" if node.retry_count >= node.max_retries else "medium",
+                    "retry_count": node.retry_count,
+                    "recurrence": node.retry_count,
+                },
+            )
+            mapping = {
+                "retry": RecoveryStrategyType.RETRY,
+                "circuit_break": RecoveryStrategyType.ESCALATE,
+                "rollback": RecoveryStrategyType.ROLLBACK,
+                "backpressure": RecoveryStrategyType.DETOX,
+                "detox": RecoveryStrategyType.DETOX,
+                "isolate": RecoveryStrategyType.ESCALATE,
+                "escalate": RecoveryStrategyType.ESCALATE,
+            }
+            return mapping.get(decision.action.value, fallback)
+        except Exception:
+            return fallback
 
     # ------------------------------------------------------------------
     # Strategy implementations

@@ -765,7 +765,7 @@ class AuthorizationEngine:
                         ip_address=req.ip_address,
                         user_agent=req.user_agent,
                         request_id=req.request_id,
-                        metadata={
+                        audit_metadata={
                             "failed_checks": decision.failed_checks,
                             "warnings": decision.warnings,
                             "requires_approval": decision.requires_approval,

@@ -1,0 +1,1 @@
+"""Genetic Quarantine Manager module."""

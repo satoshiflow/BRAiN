@@ -42,7 +42,7 @@ def task_to_response(task: TaskModel) -> TaskResponse:
 async def create_task(
     task_data: TaskCreate,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_current_principal),
+    principal: Principal = Depends(require_role(UserRole.OPERATOR, UserRole.ADMIN, UserRole.SERVICE)),
 ):
     """
     Create a new task in the queue.
@@ -116,7 +116,7 @@ async def update_task(
     task_id: str,
     update: TaskUpdate,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_current_principal),
+    principal: Principal = Depends(require_role(UserRole.OPERATOR, UserRole.ADMIN, UserRole.SERVICE)),
 ):
     """
     Update task properties.
@@ -173,6 +173,7 @@ async def claim_task(
     task_types: Optional[List[str]] = Query(None, description="Filter by task types"),
     min_priority: Optional[int] = Query(None, ge=10, le=100, description="Minimum priority"),
     db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_role(UserRole.AGENT, UserRole.SERVICE, UserRole.OPERATOR, UserRole.ADMIN)),
 ):
     """
     Claim the next available task for execution.
@@ -182,6 +183,9 @@ async def claim_task(
     """
     service = get_task_queue_service()
     
+    if principal.agent_id and principal.agent_id != claim.agent_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Agent identity mismatch")
+
     task = await service.claim_next_task(
         db=db,
         agent_id=claim.agent_id,
@@ -206,6 +210,7 @@ async def start_task(
     task_id: str,
     claim: TaskClaim,
     db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_role(UserRole.AGENT, UserRole.SERVICE, UserRole.OPERATOR, UserRole.ADMIN)),
 ):
     """
     Mark a claimed task as running.
@@ -215,6 +220,8 @@ async def start_task(
     service = get_task_queue_service()
     
     try:
+        if principal.agent_id and principal.agent_id != claim.agent_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Agent identity mismatch")
         task = await service.start_task(db, task_id, claim.agent_id)
         if not task:
             raise HTTPException(
@@ -235,6 +242,7 @@ async def complete_task(
     claim: TaskClaim,
     complete_data: TaskComplete,
     db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_role(UserRole.AGENT, UserRole.SERVICE, UserRole.OPERATOR, UserRole.ADMIN)),
 ):
     """
     Mark a task as completed.
@@ -244,6 +252,8 @@ async def complete_task(
     service = get_task_queue_service()
     
     try:
+        if principal.agent_id and principal.agent_id != claim.agent_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Agent identity mismatch")
         task = await service.complete_task(db, task_id, claim.agent_id, complete_data)
         if not task:
             raise HTTPException(
@@ -264,6 +274,7 @@ async def fail_task(
     claim: TaskClaim,
     fail_data: TaskFail,
     db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_role(UserRole.AGENT, UserRole.SERVICE, UserRole.OPERATOR, UserRole.ADMIN)),
 ):
     """
     Mark a task as failed.
@@ -273,6 +284,8 @@ async def fail_task(
     service = get_task_queue_service()
     
     try:
+        if principal.agent_id and principal.agent_id != claim.agent_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Agent identity mismatch")
         task = await service.fail_task(db, task_id, claim.agent_id, fail_data)
         if not task:
             raise HTTPException(
@@ -295,7 +308,7 @@ async def fail_task(
 async def cancel_task(
     task_id: str,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_current_principal),
+    principal: Principal = Depends(require_role(UserRole.OPERATOR, UserRole.ADMIN, UserRole.SERVICE)),
 ):
     """Cancel a pending/scheduled task"""
     service = get_task_queue_service()

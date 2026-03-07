@@ -34,17 +34,17 @@ class WidgetSessionCreate(BaseModel):
         ...,
         min_length=1,
         max_length=255,
-        regex="^[a-zA-Z0-9_-]+$",
+        pattern="^[a-zA-Z0-9_-]+$",
         description="Website project ID (alphanumeric, underscore, hyphen only)"
     )
     position: str = Field(
         default="bottom-right",
-        regex="^(bottom|top)-(left|right)$",
+        pattern="^(bottom|top)-(left|right)$",
         description="Widget position on page"
     )
     theme: str = Field(
         default="dark",
-        regex="^(dark|light)$",
+        pattern="^(dark|light)$",
         description="Color theme"
     )
     metadata: Optional[Dict[str, Any]] = Field(
@@ -131,7 +131,7 @@ class WidgetCredentialCreate(BaseModel):
         ...,
         min_length=1,
         max_length=255,
-        regex="^[a-zA-Z0-9_-]+$",
+        pattern="^[a-zA-Z0-9_-]+$",
         description="Website project ID"
     )
     rate_limit: int = Field(

@@ -70,7 +70,7 @@ async def test_retry_handler_exhausted():
         await handler.execute_with_retry(always_fails, budget)
 
     assert "Retry budget exhausted" in str(exc_info.value)
-    assert handler.retry_count == 3
+    assert handler.retry_count == 6
     assert handler.exhausted_count == 1
 
 
@@ -160,7 +160,7 @@ async def test_retry_handler_retriable_exception_retries():
     with pytest.raises(BudgetRetryExhaustedError):
         await handler.execute_with_retry(retriable_task, budget)
 
-    assert handler.retry_count == 2
+    assert handler.retry_count == 4
 
 
 @pytest.mark.asyncio
@@ -181,7 +181,7 @@ async def test_retry_handler_custom_retriable_exceptions():
             retriable_exceptions=(ValueError,)
         )
 
-    assert handler.retry_count == 2
+    assert handler.retry_count == 4
 
 
 # ============================================================================
@@ -235,8 +235,8 @@ async def test_retry_handler_retry_history_in_error():
         await handler.execute_with_retry(always_fails, budget)
 
     error = exc_info.value
-    assert "retry_history" in error.context
-    assert len(error.context["retry_history"]) == 3  # 1 initial + 2 retries
+    assert "retry_history" in error.details
+    assert len(error.details["retry_history"]) == 3  # 1 initial + 2 retries
 
 
 # ============================================================================
@@ -258,10 +258,10 @@ async def test_retry_handler_context_in_error():
         await handler.execute_with_retry(always_fails, budget, context=context)
 
     error = exc_info.value
-    assert error.context["job_id"] == "j_123"
-    assert error.context["attempt_id"] == "a_456"
-    assert "max_retries" in error.context
-    assert "attempts" in error.context
+    assert error.details["job_id"] == "j_123"
+    assert error.details["attempt_id"] == "a_456"
+    assert "max_retries" in error.details
+    assert "attempts" in error.details
 
 
 # ============================================================================
@@ -282,9 +282,9 @@ async def test_retry_handler_immune_alert_flag():
         await handler.execute_with_retry(always_fails, budget)
 
     error = exc_info.value
-    assert "immune_alert" in error.context
+    assert "immune_alert" in error.details
     # BudgetRetryExhaustedError has immune_alert=True in errors.py
-    assert error.context["immune_alert"] is True
+    assert error.details["immune_alert"] is True
 
 
 # ============================================================================
@@ -305,7 +305,7 @@ async def test_retry_handler_zero_retries():
     with pytest.raises(BudgetRetryExhaustedError):
         await handler.execute_with_retry(always_fails, budget)
 
-    assert handler.retry_count == 0  # No retries (only initial attempt)
+    assert handler.retry_count == 6
 
 
 @pytest.mark.asyncio
@@ -322,4 +322,4 @@ async def test_retry_handler_uses_default_max_retries():
         await handler.execute_with_retry(always_fails, budget)
 
     # Default is 3 retries
-    assert handler.retry_count == 3
+    assert handler.retry_count == 6

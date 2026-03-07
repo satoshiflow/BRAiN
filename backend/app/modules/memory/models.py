@@ -70,7 +70,7 @@ class MemoryEntryORM(Base):
     embedding = Column(JSONB, nullable=True)
     
     # Flexible metadata
-    metadata = Column(JSONB, nullable=False, default=dict)
+    entry_metadata = Column("metadata", JSONB, nullable=False, default=dict)
 
     # Indexes for common query patterns
     __table_args__ = (
@@ -107,7 +107,7 @@ class MemoryEntryORM(Base):
             "created_at": self.created_at,
             "expires_at": self.expires_at,
             "embedding": self.embedding,
-            "metadata": self.metadata or {},
+            "metadata": self.entry_metadata or {},
         }
 
     @classmethod
@@ -131,7 +131,7 @@ class MemoryEntryORM(Base):
             created_at=data.get("created_at", datetime.utcnow()),
             expires_at=data.get("expires_at"),
             embedding=data.get("embedding"),
-            metadata=data.get("metadata", {}),
+            entry_metadata=data.get("metadata", {}),
         )
 
 
@@ -150,7 +150,7 @@ class ConversationTurnORM(Base):
     role = Column(String(20), nullable=False)  # user, assistant, system
     content = Column(Text, nullable=False)
     timestamp = Column(Float, nullable=False)
-    metadata = Column(JSONB, nullable=False, default=dict)
+    turn_metadata = Column("metadata", JSONB, nullable=False, default=dict)
     token_count = Column(Integer, nullable=False, default=0)
 
     __table_args__ = (
@@ -163,7 +163,7 @@ class ConversationTurnORM(Base):
             "role": self.role,
             "content": self.content,
             "timestamp": self.timestamp,
-            "metadata": self.metadata or {},
+            "metadata": self.turn_metadata or {},
             "token_count": self.token_count,
         }
 

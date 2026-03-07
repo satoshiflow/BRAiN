@@ -53,7 +53,7 @@ class WidgetSessionORM(Base):
     user_agent = Column(String(500), nullable=True)
     message_count = Column(Integer, default=0, nullable=False)
     status = Column(String(50), nullable=False, default='active', index=True)
-    metadata = Column(JSONB, nullable=True)
+    session_metadata = Column("metadata", JSONB, nullable=True)
 
     # Relationships
     messages = relationship("WidgetMessageORM", back_populates="session", cascade="all, delete-orphan")
@@ -97,7 +97,7 @@ class WidgetMessageORM(Base):
     role = Column(String(50), nullable=False)
     content = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
-    metadata = Column(JSONB, nullable=True)
+    message_metadata = Column("metadata", JSONB, nullable=True)
 
     # Relationships
     session = relationship("WidgetSessionORM", back_populates="messages")
@@ -154,7 +154,7 @@ class WidgetCredentialORM(Base):
     rate_limit = Column(Integer, default=30, nullable=False)
     scopes = Column(JSON, nullable=True)
     created_by = Column(String(255), nullable=True)
-    metadata = Column(JSONB, nullable=True)
+    credential_metadata = Column("metadata", JSONB, nullable=True)
 
     def __repr__(self):
         return f"<WidgetCredential(project_id={self.project_id}, active={self.is_active}, rate_limit={self.rate_limit})>"

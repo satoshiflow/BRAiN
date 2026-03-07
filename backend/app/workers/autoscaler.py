@@ -24,6 +24,7 @@ class AutoscalerWorker:
         self.check_interval = check_interval  # seconds
         self.running = False
         self.service = None
+        self._schema_missing_logged = False
     
     async def start(self):
         """Start the autoscaling loop."""
@@ -54,8 +55,16 @@ class AutoscalerWorker:
                     )
                     clusters = result.scalars().all()
                 except ProgrammingError as e:
-                    if "relation \"clusters\" does not exist" in str(e):
-                        logger.warning("⚠️  Cluster table not found. Migration may be missing. Skipping auto-scaling check.")
+                    error_text = str(e)
+                    if (
+                        "relation \"clusters\" does not exist" in error_text
+                        or "type \"clusterstatus\" does not exist" in error_text
+                    ):
+                        if not self._schema_missing_logged:
+                            logger.warning("⚠️  Cluster schema not ready. Skipping auto-scaling until migrations are aligned.")
+                            self._schema_missing_logged = True
+                        else:
+                            logger.debug("Cluster schema still unavailable; autoscaling skipped")
                         return
                     raise
                 

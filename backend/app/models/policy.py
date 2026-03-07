@@ -72,7 +72,7 @@ class Policy(Base):
     
     # Additional metadata
     tags = Column(JSON, nullable=False, default=list)
-    metadata = Column(JSON, nullable=False, default=dict)
+    policy_metadata = Column("metadata", JSON, nullable=False, default=dict)
     
     # Relationships
     creator = relationship("User", foreign_keys=[created_by], backref="created_policies")
@@ -108,7 +108,7 @@ class Policy(Base):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "tags": self.tags,
-            "metadata": self.metadata,
+            "metadata": self.policy_metadata,
         }
     
     def matches_resource(self, resource: str) -> bool:

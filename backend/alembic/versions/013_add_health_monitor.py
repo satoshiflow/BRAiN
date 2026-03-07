@@ -64,7 +64,7 @@ def upgrade() -> None:
     op.execute("CREATE INDEX IF NOT EXISTS idx_health_checks_service ON health_checks (service_name);")
     op.execute("CREATE INDEX IF NOT EXISTS idx_health_checks_status ON health_checks (status);")
     op.execute("CREATE INDEX IF NOT EXISTS idx_health_history_service ON health_check_history (service_name);")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_health_history_checked ON health_check_history (checked_at);
+    op.execute("CREATE INDEX IF NOT EXISTS idx_health_history_checked ON health_check_history (checked_at);")
 
 
 def downgrade() -> None:

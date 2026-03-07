@@ -13,17 +13,30 @@ Provides:
 import time
 import asyncio
 import statistics
+import os
 from datetime import datetime, timedelta
 from typing import List, Optional, Deque
 from collections import deque
 from loguru import logger
+
+_STRICT_OPTIONAL_DEPS = os.getenv("BRAIN_STRICT_OPTIONAL_DEPS", "false").lower() == "true"
+
+
+def _log_optional(module_name: str, detail: str = "") -> None:
+    msg = f"[RuntimeAuditor] {module_name} not available"
+    if detail:
+        msg += f" - {detail}"
+    if _STRICT_OPTIONAL_DEPS:
+        logger.warning(msg)
+    else:
+        logger.debug(msg)
 
 # Import psutil for resource monitoring
 try:
     import psutil
 except ImportError:
     psutil = None
-    logger.warning("[RuntimeAuditor] psutil not available - resource metrics disabled")
+    _log_optional("psutil", "resource metrics disabled")
 
 # Import numpy for statistical analysis
 try:
@@ -32,7 +45,7 @@ try:
 except ImportError:
     np = None
     scipy_stats = None
-    logger.warning("[RuntimeAuditor] numpy/scipy not available - advanced analysis disabled")
+    _log_optional("numpy/scipy", "advanced analysis disabled")
 
 from app.modules.runtime_auditor.schemas import (
     RuntimeMetrics,
@@ -50,7 +63,7 @@ try:
     from app.modules.immune.schemas import ImmuneEvent, ImmuneSeverity, ImmuneType
 except ImportError:
     ImmuneService = None
-    logger.warning("[RuntimeAuditor] ImmuneService not available")
+    _log_optional("ImmuneService")
 
 
 class RuntimeAuditor:

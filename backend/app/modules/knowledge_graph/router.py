@@ -482,8 +482,9 @@ async def confirm_reset(
     "/reset",
     summary="⚠️ DEPRECATED: Reset knowledge graph (UNPROTECTED)",
     deprecated=True,
+    dependencies=[Depends(require_admin_user)],
 )
-async def reset_knowledge_graph_deprecated():
+async def reset_knowledge_graph_deprecated(admin=Depends(require_admin_user)):
     """
     ⚠️ **DEPRECATED - DO NOT USE** ⚠️
     
