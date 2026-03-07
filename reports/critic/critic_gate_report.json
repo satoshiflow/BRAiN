@@ -1,75 +1,112 @@
 {
   "changed_paths": [
-    "backend/app/api/routes/auth.py",
-    "backend/app/core/config.py",
-    "backend/app/core/jwt_middleware.py",
-    "backend/app/core/rate_limit.py",
-    "backend/app/models/__init__.py",
-    "backend/app/models/business.py",
-    "backend/app/models/courses.py",
-    "backend/app/models/token.py",
+    ".env.example",
+    "backend/alembic/versions/012_add_task_queue.py",
+    "backend/alembic/versions/013_add_health_monitor.py",
+    "backend/alembic/versions/a1_add_token_tables.py",
+    "backend/api/routes/agent_manager.py",
+    "backend/api/routes/axe.py",
+    "backend/api/routes/debug_llm.py",
+    "backend/api/routes/llm_config.py",
+    "backend/api/routes/missions.py",
+    "backend/app/core/authorization_engine.py",
+    "backend/app/core/security.py",
+    "backend/app/core/token_keys.py",
+    "backend/app/models/audit.py",
+    "backend/app/models/policy.py",
+    "backend/app/models/widget.py",
     "backend/app/modules/agent_management/router.py",
-    "backend/app/modules/aro/schemas.py",
-    "backend/app/modules/audit_logging/router.py",
-    "backend/app/modules/axe_identity/router.py",
-    "backend/app/modules/axe_knowledge/router.py",
-    "backend/app/modules/axe_widget/router.py",
+    "backend/app/modules/audit_logging/models.py",
+    "backend/app/modules/audit_logging/service.py",
     "backend/app/modules/axe_widget/schemas.py",
-    "backend/app/modules/cluster_system/router.py",
-    "backend/app/modules/config_management/router.py",
+    "backend/app/modules/axe_widget/service.py",
+    "backend/app/modules/cluster_system/models.py",
+    "backend/app/modules/credits/mission_integration.py",
     "backend/app/modules/credits/router.py",
-    "backend/app/modules/dns_hetzner/schemas.py",
+    "backend/app/modules/dna/core/service.py",
+    "backend/app/modules/dna/router.py",
+    "backend/app/modules/dns_hetzner/router.py",
+    "backend/app/modules/genesis/core/service.py",
     "backend/app/modules/knowledge_graph/router.py",
-    "backend/app/modules/learning/router.py",
-    "backend/app/modules/memory/router.py",
-    "backend/app/modules/missions/models.py",
-    "backend/app/modules/paycore/router.py",
-    "backend/app/modules/paycore/service.py",
+    "backend/app/modules/memory/db_adapter.py",
+    "backend/app/modules/memory/models.py",
+    "backend/app/modules/neurorail/enforcement/retry.py",
+    "backend/app/modules/neurorail/reflex/triggers.py",
     "backend/app/modules/planning/failure_recovery.py",
-    "backend/app/modules/planning/router.py",
-    "backend/app/modules/planning/schemas.py",
-    "backend/app/modules/planning/service.py",
-    "backend/app/modules/planning/tests/test_planning.py",
-    "backend/app/modules/skills/router.py",
+    "backend/app/modules/policy/service.py",
+    "backend/app/modules/runtime_auditor/service.py",
+    "backend/app/modules/skills/builtins_seeder.py",
+    "backend/app/modules/skills/models.py",
+    "backend/app/modules/supervisor/service.py",
+    "backend/app/modules/system_health/service.py",
     "backend/app/modules/task_queue/router.py",
-    "backend/app/modules/telemetry/schemas.py",
-    "backend/app/modules/webgenesis/schemas.py",
-    "backend/app/schemas/auth.py",
-    "backend/app/services/auth_service.py",
+    "backend/app/modules/task_queue/service.py",
+    "backend/app/workers/autoscaler.py",
+    "backend/app/workers/metrics_collector.py",
+    "backend/brain/agents/llm_client.py",
     "backend/main.py",
-    "backend/tests/test_auth_flow.py",
-    "backend/tests/test_module_auth.py",
-    "frontend/control_deck/app/api/admin/users/route.ts",
-    "frontend/control_deck/app/auth/actions.ts",
-    "frontend/control_deck/app/auth/signin/signin-form.tsx",
-    "frontend/control_deck/auth.ts",
-    "backend/tests/test_paycore_ownership.py",
-    "configs/",
-    "docs/brain-basics/",
-    "reports/critic/",
-    "reports/self_healing/",
-    "scripts/check_no_legacy_event_bus.py",
-    "scripts/check_no_utcnow_auth.py",
-    "scripts/check_no_utcnow_planning.py",
-    "scripts/critic_gate.py",
-    "scripts/pipeline_plan.example.json",
-    "scripts/resilient_pipeline_runner.py"
+    "backend/mission_control_core/core/event_stream.py",
+    "backend/modules/llm_client.py",
+    "backend/modules/mission_system/llm_client.py",
+    "backend/tests/test_enforcement_retry.py",
+    "backend/tests/test_reflex_actions.py",
+    "docker-compose.dev.yml",
+    "reports/critic/critic_gate_report.json",
+    ".opencode/",
+    "BRAIN_ARCH_IMPLEMENTATION_REPORT.md",
+    "BRAIN_SYSTEM_ANALYSIS.md",
+    "README_DEVSTACK.md",
+    "README_MOCK_LLM.md",
+    "backend/alembic/versions/017_add_stabilization_layer_persistence.py",
+    "backend/alembic/versions/018_add_quarantine_and_repair_tables.py",
+    "backend/app/compat/",
+    "backend/app/core/audit_bridge.py",
+    "backend/app/core/event_contract.py",
+    "backend/app/modules/genetic_integrity/",
+    "backend/app/modules/genetic_quarantine/",
+    "backend/app/modules/immune_orchestrator/",
+    "backend/app/modules/opencode_repair/",
+    "backend/app/modules/recovery_policy_engine/",
+    "backend/scripts/auth_surface_report.py",
+    "backend/tests/modules/",
+    "brain/",
+    "docs/architecture/BRAIN_DEPLOYMENT_MODEL.md",
+    "docs/architecture/BRAIN_IMMUNE_DNA_RECOVERY_ROADMAP.md",
+    "docs/architecture/BRAIN_INFRASTRUCTURE_TOPOLOGY.md",
+    "docs/architecture/BRAIN_KERNEL_ARCHITECTURE.md",
+    "docs/architecture/BRAIN_LOCAL_MICRO_MANIFEST.md",
+    "docs/architecture/BRAIN_META_AGENT_MODEL.md",
+    "docs/architecture/BRAIN_MODULE_CLASSIFICATION.md",
+    "docs/architecture/BRAIN_RUNTIME_SERVICES.md",
+    "docs/architecture/BRAIN_RUNTIME_TARGET_ARCHITECTURE.md",
+    "docs/architecture/BRAIN_SYSTEM_MAP.md",
+    "docs/architecture/BRAiN_AGENT_ROLES_EVOLUTION.md",
+    "docs/architecture/BRAiN_EVOLUTION_MODEL.md",
+    "docs/architecture/RC_STAGING_VERIFICATION_CHECKLIST.md",
+    "docs/brain-basics/MERGE_POLICY.md",
+    "docs/frontend/AXE_UI_ANALYSIS_20260307.md",
+    "docs/governance/BRAIN_CONTROLLED_COLLABORATION.md",
+    "docs/roadmap/",
+    "ops/",
+    "reports/self_healing/20260306T140245Z/",
+    "scripts/run_rc_staging_gate.sh",
+    "services/mock-llm/"
   ],
   "matches": [
     {
-      "path": "backend/app/core/config.py",
+      "path": "backend/app/core/authorization_engine.py",
       "pattern": "backend/app/core/",
       "tier": "high_quality",
       "critic_required": true
     },
     {
-      "path": "backend/app/core/jwt_middleware.py",
+      "path": "backend/app/core/security.py",
       "pattern": "backend/app/core/",
       "tier": "high_quality",
       "critic_required": true
     },
     {
-      "path": "backend/app/core/rate_limit.py",
+      "path": "backend/app/core/token_keys.py",
       "pattern": "backend/app/core/",
       "tier": "high_quality",
       "critic_required": true
@@ -81,43 +118,19 @@
       "critic_required": true
     },
     {
-      "path": "backend/app/modules/audit_logging/router.py",
-      "pattern": "backend/app/modules/*/router.py",
-      "tier": "medium_cost",
-      "critic_required": true
-    },
-    {
-      "path": "backend/app/modules/axe_identity/router.py",
-      "pattern": "backend/app/modules/*/router.py",
-      "tier": "medium_cost",
-      "critic_required": true
-    },
-    {
-      "path": "backend/app/modules/axe_knowledge/router.py",
-      "pattern": "backend/app/modules/*/router.py",
-      "tier": "medium_cost",
-      "critic_required": true
-    },
-    {
-      "path": "backend/app/modules/axe_widget/router.py",
-      "pattern": "backend/app/modules/*/router.py",
-      "tier": "medium_cost",
-      "critic_required": true
-    },
-    {
-      "path": "backend/app/modules/cluster_system/router.py",
-      "pattern": "backend/app/modules/*/router.py",
-      "tier": "medium_cost",
-      "critic_required": true
-    },
-    {
-      "path": "backend/app/modules/config_management/router.py",
-      "pattern": "backend/app/modules/*/router.py",
-      "tier": "medium_cost",
-      "critic_required": true
-    },
-    {
       "path": "backend/app/modules/credits/router.py",
+      "pattern": "backend/app/modules/*/router.py",
+      "tier": "medium_cost",
+      "critic_required": true
+    },
+    {
+      "path": "backend/app/modules/dna/router.py",
+      "pattern": "backend/app/modules/*/router.py",
+      "tier": "medium_cost",
+      "critic_required": true
+    },
+    {
+      "path": "backend/app/modules/dns_hetzner/router.py",
       "pattern": "backend/app/modules/*/router.py",
       "tier": "medium_cost",
       "critic_required": true
@@ -129,85 +142,25 @@
       "critic_required": true
     },
     {
-      "path": "backend/app/modules/learning/router.py",
-      "pattern": "backend/app/modules/*/router.py",
-      "tier": "medium_cost",
-      "critic_required": true
-    },
-    {
-      "path": "backend/app/modules/memory/router.py",
-      "pattern": "backend/app/modules/*/router.py",
-      "tier": "medium_cost",
-      "critic_required": true
-    },
-    {
-      "path": "backend/app/modules/paycore/router.py",
-      "pattern": "backend/app/modules/*/router.py",
-      "tier": "medium_cost",
-      "critic_required": true
-    },
-    {
-      "path": "backend/app/modules/planning/router.py",
-      "pattern": "backend/app/modules/*/router.py",
-      "tier": "medium_cost",
-      "critic_required": true
-    },
-    {
-      "path": "backend/app/modules/skills/router.py",
-      "pattern": "backend/app/modules/*/router.py",
-      "tier": "medium_cost",
-      "critic_required": true
-    },
-    {
       "path": "backend/app/modules/task_queue/router.py",
       "pattern": "backend/app/modules/*/router.py",
       "tier": "medium_cost",
       "critic_required": true
     },
     {
-      "path": "backend/app/services/auth_service.py",
-      "pattern": "backend/app/services/auth_service.py",
+      "path": "backend/app/core/audit_bridge.py",
+      "pattern": "backend/app/core/",
       "tier": "high_quality",
       "critic_required": true
     },
     {
-      "path": "frontend/control_deck/auth.ts",
-      "pattern": "frontend/control_deck/auth.ts",
+      "path": "backend/app/core/event_contract.py",
+      "pattern": "backend/app/core/",
       "tier": "high_quality",
       "critic_required": true
     },
     {
-      "path": "scripts/check_no_legacy_event_bus.py",
-      "pattern": "scripts/",
-      "tier": "medium_cost",
-      "critic_required": true
-    },
-    {
-      "path": "scripts/check_no_utcnow_auth.py",
-      "pattern": "scripts/",
-      "tier": "medium_cost",
-      "critic_required": true
-    },
-    {
-      "path": "scripts/check_no_utcnow_planning.py",
-      "pattern": "scripts/",
-      "tier": "medium_cost",
-      "critic_required": true
-    },
-    {
-      "path": "scripts/critic_gate.py",
-      "pattern": "scripts/",
-      "tier": "medium_cost",
-      "critic_required": true
-    },
-    {
-      "path": "scripts/pipeline_plan.example.json",
-      "pattern": "scripts/",
-      "tier": "medium_cost",
-      "critic_required": true
-    },
-    {
-      "path": "scripts/resilient_pipeline_runner.py",
+      "path": "scripts/run_rc_staging_gate.sh",
       "pattern": "scripts/",
       "tier": "medium_cost",
       "critic_required": true
