@@ -7,6 +7,7 @@ For MVP: Template-based generation with deterministic structure.
 Future: LLM-enhanced generation for custom topics.
 """
 
+import uuid
 from typing import List, Dict, Any
 from loguru import logger
 
@@ -273,11 +274,13 @@ class OutlineGenerator:
 
         modules = []
         for idx, module_data in enumerate(template["modules"]):
+            module_id = str(uuid.uuid4())
             lessons = []
             total_duration = 0
 
             for lesson_idx, lesson_data in enumerate(module_data["lessons"]):
                 lesson = CourseLesson(
+                    module_id=module_id,
                     title=lesson_data["title"],
                     description=lesson_data["description"],
                     learning_objectives=lesson_data["objectives"],
@@ -289,6 +292,7 @@ class OutlineGenerator:
                 total_duration += lesson_data["duration"]
 
             module = CourseModule(
+                module_id=module_id,
                 title=module_data["title"],
                 description=module_data["description"],
                 learning_objectives=[],  # Can be derived from lessons
@@ -301,8 +305,10 @@ class OutlineGenerator:
         return CourseOutline(
             metadata=metadata,
             modules=modules,
-            total_lessons=0,  # Will be computed
-            total_estimated_duration_minutes=0,  # Will be computed
+            total_lessons=sum(len(module.lessons) for module in modules),
+            total_estimated_duration_minutes=sum(
+                module.estimated_total_duration_minutes for module in modules
+            ),
         )
 
     def _generate_generic_outline(self, metadata: CourseMetadata) -> CourseOutline:
@@ -315,9 +321,11 @@ class OutlineGenerator:
 
         modules = []
         for i in range(4):
+            module_id = str(uuid.uuid4())
             lessons = []
             for j in range(3):
                 lesson = CourseLesson(
+                    module_id=module_id,
                     title=f"Lektion {j+1}: {metadata.title} - Teil {i+1}.{j+1}",
                     description=f"Lerninhalt für Lektion {j+1} in Modul {i+1}",
                     learning_objectives=[
@@ -330,6 +338,7 @@ class OutlineGenerator:
                 lessons.append(lesson)
 
             module = CourseModule(
+                module_id=module_id,
                 title=f"Modul {i+1}: {metadata.title}",
                 description=f"Beschreibung für Modul {i+1}",
                 learning_objectives=[f"Modulziel {k+1}" for k in range(3)],
@@ -342,8 +351,10 @@ class OutlineGenerator:
         return CourseOutline(
             metadata=metadata,
             modules=modules,
-            total_lessons=0,
-            total_estimated_duration_minutes=0,
+            total_lessons=sum(len(module.lessons) for module in modules),
+            total_estimated_duration_minutes=sum(
+                module.estimated_total_duration_minutes for module in modules
+            ),
         )
 
     def _mark_lesson_statuses(

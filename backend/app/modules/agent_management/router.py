@@ -6,8 +6,8 @@ FastAPI endpoints for agent management with EventStream integration.
 
 from __future__ import annotations
 
-from typing import List, Optional
-from uuid import UUID
+from datetime import datetime
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Request
 from loguru import logger
@@ -18,11 +18,22 @@ from app.core.auth_deps import require_role, get_current_principal, Principal, r
 from app.core.rate_limit import limiter, RateLimits
 
 from .schemas import (
-    AgentRegister, AgentUpdate, AgentHeartbeat,
-    AgentResponse, AgentListResponse, AgentStats, AgentStatus
+    AgentDelegateRequest,
+    AgentDelegationListResponse,
+    AgentDelegationResponse,
+    AgentDelegationWithRunResponse,
+    AgentHeartbeat,
+    AgentInvokeSkillRequest,
+    AgentInvokeSkillResponse,
+    AgentListResponse,
+    AgentRegister,
+    AgentResponse,
+    AgentStats,
+    AgentStatus,
+    AgentUpdate,
 )
-from .service import get_agent_service, AgentService
-from .models import AgentModel
+from .service import get_agent_service
+from .models import AgentModel, AgentStatus as AgentModelStatus
 
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
@@ -121,7 +132,8 @@ async def list_agents(
     """
     service = get_agent_service()
     
-    agents = await service.get_agents(db, status=status, agent_type=agent_type)
+    model_status = AgentModelStatus(status.value) if status else None
+    agents = await service.get_agents(db, status=model_status, agent_type=agent_type)
     
     # Calculate status counts
     by_status = {}
@@ -153,6 +165,73 @@ async def get_agent(
         )
     
     return agent_to_response(agent)
+
+
+@router.post("/{agent_id}/invoke-skill", response_model=AgentInvokeSkillResponse, dependencies=[Depends(require_auth)])
+async def invoke_agent_skill(
+    agent_id: str,
+    payload: AgentInvokeSkillRequest,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_role(UserRole.AGENT, UserRole.SERVICE, UserRole.OPERATOR, UserRole.ADMIN, UserRole.SYSTEM_ADMIN)),
+):
+    if principal.agent_id and principal.agent_id != agent_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Agent identity mismatch")
+
+    service = get_agent_service()
+    try:
+        _, skill_run, execution_report = await service.invoke_skill(db, agent_id, payload, principal)
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except ValueError as exc:
+        message = str(exc)
+        status_code = status.HTTP_404_NOT_FOUND if "not found" in message.lower() else status.HTTP_409_CONFLICT
+        raise HTTPException(status_code=status_code, detail=message) from exc
+
+    return AgentInvokeSkillResponse(agent_id=agent_id, skill_run=skill_run, execution_report=execution_report)
+
+
+@router.post("/{agent_id}/delegate", response_model=AgentDelegationWithRunResponse, dependencies=[Depends(require_auth)])
+async def delegate_agent_skill(
+    agent_id: str,
+    payload: AgentDelegateRequest,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_role(UserRole.AGENT, UserRole.SERVICE, UserRole.OPERATOR, UserRole.ADMIN, UserRole.SYSTEM_ADMIN)),
+):
+    if principal.agent_id and principal.agent_id != agent_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Agent identity mismatch")
+
+    service = get_agent_service()
+    try:
+        delegation, skill_run, execution_report = await service.create_delegation(db, agent_id, payload, principal)
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except ValueError as exc:
+        message = str(exc)
+        status_code = status.HTTP_404_NOT_FOUND if "not found" in message.lower() else status.HTTP_409_CONFLICT
+        raise HTTPException(status_code=status_code, detail=message) from exc
+
+    return AgentDelegationWithRunResponse(
+        delegation=AgentDelegationResponse.model_validate(delegation),
+        skill_run=skill_run,
+        execution_report=execution_report,
+    )
+
+
+@router.get("/{agent_id}/delegations", response_model=AgentDelegationListResponse, dependencies=[Depends(require_auth)])
+async def list_agent_delegations(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+):
+    if principal.agent_id and principal.agent_id != agent_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Agent identity mismatch")
+
+    service = get_agent_service()
+    items = await service.list_delegations(db, principal.tenant_id, agent_id=agent_id)
+    return AgentDelegationListResponse(
+        items=[AgentDelegationResponse.model_validate(item) for item in items],
+        total=len(items),
+    )
 
 
 @router.put("/{agent_id}", response_model=AgentResponse, dependencies=[Depends(require_auth)])

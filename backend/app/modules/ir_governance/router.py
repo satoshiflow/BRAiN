@@ -107,7 +107,7 @@ async def validate_ir(ir: IR) -> IRValidationResult:
     """
     try:
         validator = get_validator()
-        result = validator.validate_ir(ir)
+        result = await validator.avalidate_ir(ir)
         return result
 
     except Exception as e:
@@ -154,7 +154,7 @@ async def create_approval(
     """
     try:
         approvals_service = get_approvals_service()
-        approval, raw_token = approvals_service.create_approval(
+        approval, raw_token = await approvals_service.acreate_approval(
             tenant_id=tenant_id,
             ir_hash=ir_hash,
             ttl_seconds=ttl_seconds,
@@ -219,7 +219,7 @@ async def consume_approval(
     """
     try:
         approvals_service = get_approvals_service()
-        result = approvals_service.consume_approval(request, consumed_by=consumed_by)
+        result = await approvals_service.aconsume_approval(request, consumed_by=consumed_by)
         return result
 
     except Exception as e:

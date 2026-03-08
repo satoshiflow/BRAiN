@@ -82,7 +82,21 @@ class DiffAuditGate:
             )
             # DO NOT raise - business logic must continue
 
-    async def audit_ir_dag_mapping(
+    def audit_ir_dag_mapping(
+        self,
+        ir: IR,
+        dag_nodes: List[Dict[str, Any]],
+    ) -> DiffAuditResult:
+        return self._audit_ir_dag_mapping_sync(ir, dag_nodes)
+
+    async def aaudit_ir_dag_mapping(
+        self,
+        ir: IR,
+        dag_nodes: List[Dict[str, Any]],
+    ) -> DiffAuditResult:
+        return self._audit_ir_dag_mapping_sync(ir, dag_nodes)
+
+    def _audit_ir_dag_mapping_sync(
         self,
         ir: IR,
         dag_nodes: List[Dict[str, Any]],
@@ -188,37 +202,7 @@ class DiffAuditGate:
             request_id=ir.request_id,
         )
 
-        # Emit audit event
         if success:
-            # EVENT: ir.dag_diff_ok
-            if Event is not None and EventType is not None:
-                await self._publish_event_safe(
-                    Event(
-                        id=str(uuid.uuid4()),
-                        type=EventType.IR_DAG_DIFF_OK,
-                        source="ir_governance",
-                        target=None,
-                        timestamp=datetime.utcnow(),
-                        payload={
-                            "tenant_id": ir.tenant_id,
-                            "request_id": ir.request_id,
-                            "ir_hash": computed_ir_hash,
-                            "dag_hash": computed_dag_hash,
-                            "step_count": len(ir.steps),
-                            "dag_node_count": len(dag_nodes),
-                            "all_hashes_match": True,
-                            "verified_at": datetime.utcnow().isoformat() + "Z",
-                        },
-                        meta={
-                            "schema_version": "1.0",
-                            "producer": "ir_governance",
-                            "source_module": "ir_governance",
-                            "tenant_id": ir.tenant_id,
-                            "correlation_id": ir.request_id,
-                        },
-                    )
-                )
-
             logger.info(
                 f"[DiffAudit] ir.dag_diff_ok: "
                 f"tenant_id={ir.tenant_id}, "
@@ -228,40 +212,6 @@ class DiffAuditGate:
                 f"steps={len(ir.steps)}"
             )
         else:
-            # EVENT: ir.dag_diff_failed
-            if Event is not None and EventType is not None:
-                await self._publish_event_safe(
-                    Event(
-                        id=str(uuid.uuid4()),
-                        type=EventType.IR_DAG_DIFF_FAILED,
-                        source="ir_governance",
-                        target=None,
-                        timestamp=datetime.utcnow(),
-                        payload={
-                            "tenant_id": ir.tenant_id,
-                            "request_id": ir.request_id,
-                            "ir_hash": computed_ir_hash,
-                            "dag_hash": computed_dag_hash,
-                            "step_count": len(ir.steps),
-                            "dag_node_count": len(dag_nodes),
-                            "all_hashes_match": False,
-                            "mismatch_details": {
-                                "missing_ir_steps": missing_ir_steps,
-                                "extra_dag_nodes": extra_dag_nodes,
-                                "hash_mismatches": hash_mismatches,
-                            },
-                            "verified_at": datetime.utcnow().isoformat() + "Z",
-                        },
-                        meta={
-                            "schema_version": "1.0",
-                            "producer": "ir_governance",
-                            "source_module": "ir_governance",
-                            "tenant_id": ir.tenant_id,
-                            "correlation_id": ir.request_id,
-                        },
-                    )
-                )
-
             logger.error(
                 f"[DiffAudit] ir.dag_diff_failed: "
                 f"tenant_id={ir.tenant_id}, "

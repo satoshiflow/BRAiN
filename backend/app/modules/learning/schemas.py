@@ -82,6 +82,11 @@ class MetricEntry(BaseModel):
     context: Dict[str, Any] = Field(default_factory=dict)
 
 
+class SkillRunMetricIngestResponse(BaseModel):
+    skill_run_id: str
+    metrics: List[MetricEntry] = Field(default_factory=list)
+
+
 class MetricAggregation(BaseModel):
     """Aggregated metric over a time window."""
     agent_id: str

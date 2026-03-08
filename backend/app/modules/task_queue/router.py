@@ -16,14 +16,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.auth_deps import require_role, get_current_principal, Principal, require_auth, SystemRole as UserRole
 from app.core.rate_limit import limiter, RateLimits
+from app.modules.skill_engine.service import get_skill_engine_service
 
 from .schemas import (
     TaskCreate, TaskUpdate, TaskClaim, TaskComplete, TaskFail,
     TaskResponse, TaskListResponse, TaskStats, QueueStats, TaskStatus,
-    TaskClaimResponse
+    TaskClaimResponse, TaskLeaseCreateResponse
 )
 from .service import get_task_queue_service, TaskQueueService
-from .models import TaskModel
+from .models import TaskModel, TaskStatus as TaskModelStatus
 
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
@@ -32,6 +33,12 @@ router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 def task_to_response(task: TaskModel) -> TaskResponse:
     """Convert TaskModel to TaskResponse"""
     return TaskResponse.model_validate(task)
+
+
+def _to_model_status(status: Optional[TaskStatus]) -> Optional[TaskModelStatus]:
+    if status is None:
+        return None
+    return TaskModelStatus(status.value)
 
 
 # ============================================================================
@@ -50,7 +57,7 @@ async def create_task(
     Tasks can be scheduled for immediate or future execution.
     """
     service = get_task_queue_service()
-    
+
     try:
         task = await service.create_task(
             db=db,
@@ -66,6 +73,30 @@ async def create_task(
         )
 
 
+@router.post("/skill-runs/{run_id}/lease", response_model=TaskLeaseCreateResponse, status_code=status.HTTP_201_CREATED)
+async def create_skill_run_lease(
+    run_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_role(UserRole.OPERATOR, UserRole.ADMIN, UserRole.SERVICE)),
+):
+    run = await get_skill_engine_service().get_run(db, run_id, principal.tenant_id)
+    if run is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Skill run {run_id} not found",
+        )
+
+    try:
+        task = await get_task_queue_service().create_task_lease_for_skill_run(db, run, principal)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e),
+        ) from e
+
+    return TaskLeaseCreateResponse(skill_run_id=run.id, task=task_to_response(task))
+
+
 @router.get("", response_model=TaskListResponse, dependencies=[Depends(require_auth)])
 async def list_tasks(
     status: Optional[TaskStatus] = Query(None, description="Filter by status"),
@@ -77,7 +108,13 @@ async def list_tasks(
 ):
     """List tasks with optional filtering"""
     service = get_task_queue_service()
-    tasks = await service.get_tasks(db, status=status, task_type=task_type, limit=limit, offset=offset)
+    tasks = await service.get_tasks(
+        db,
+        status=_to_model_status(status),
+        task_type=task_type,
+        limit=limit,
+        offset=offset,
+    )
     
     # Count by status
     by_status = {}
@@ -134,7 +171,7 @@ async def update_task(
         )
     
     # Only allow updates to pending/scheduled tasks
-    if task.status not in (TaskStatus.PENDING, TaskStatus.SCHEDULED):
+    if task.status not in (TaskModelStatus.PENDING, TaskModelStatus.SCHEDULED):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Cannot update task in {task.status.value} state"

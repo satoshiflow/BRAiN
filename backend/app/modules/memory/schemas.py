@@ -83,6 +83,7 @@ class MemoryEntry(BaseModel):
     agent_id: Optional[str] = Field(None, max_length=100)
     session_id: Optional[str] = Field(None, max_length=100)
     mission_id: Optional[str] = Field(None, max_length=100)
+    skill_run_id: Optional[str] = Field(None, max_length=64)
     tags: List[str] = Field(default_factory=list)
 
     # Scoring
@@ -160,6 +161,7 @@ class MemoryQuery(BaseModel):
     agent_id: Optional[str] = Field(None, max_length=100)
     session_id: Optional[str] = Field(None, max_length=100)
     mission_id: Optional[str] = Field(None, max_length=100)
+    skill_run_id: Optional[str] = Field(None, max_length=64)
     layer: Optional[MemoryLayer] = None
     memory_type: Optional[MemoryType] = None
     tags: Optional[List[str]] = None
@@ -217,8 +219,14 @@ class MemoryStoreRequest(BaseModel):
     agent_id: Optional[str] = Field(None, max_length=100)
     session_id: Optional[str] = Field(None, max_length=100)
     mission_id: Optional[str] = Field(None, max_length=100)
+    skill_run_id: Optional[str] = Field(None, max_length=64)
     importance: float = Field(50.0, ge=0.0, le=100.0)
     tags: List[str] = Field(default_factory=list)
+
+
+class SkillRunMemoryIngestResponse(BaseModel):
+    skill_run_id: str
+    memory: MemoryEntry
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 

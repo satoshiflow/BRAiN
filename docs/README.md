@@ -11,9 +11,11 @@ This folder is organized into active documentation and historical archives.
 - `governance/` - Governance, constitutional model, and safety controls
 - `guides/` - Developer and workflow guides
 - `infrastructure/` - DNS and infrastructure-specific integration docs
+- `knowledge/` - Knowledge layer and persistence concepts
 - `modules/` - Module-specific docs (`axe`, `webgenesis`, `course_factory`, `credits`)
 - `mission_system/` - Mission subsystem docs (plus internal mission archives)
 - `security/` - Security posture, egress, safe mode, and lockdown docs
+- `skills/` - Skill engine and capability composition docs
 - `specs/` - Detailed technical specs
 
 ## Archive

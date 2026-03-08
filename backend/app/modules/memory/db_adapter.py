@@ -113,6 +113,7 @@ class DatabaseAdapter:
                 "agent_id": entry.agent_id,
                 "session_id": entry.session_id,
                 "mission_id": entry.mission_id,
+                "skill_run_id": entry.skill_run_id,
                 "tags": entry.tags,
                 "importance": entry.importance,
                 "karma_score": entry.karma_score,
@@ -165,6 +166,7 @@ class DatabaseAdapter:
         agent_id: Optional[str] = None,
         session_id: Optional[str] = None,
         mission_id: Optional[str] = None,
+        skill_run_id: Optional[str] = None,
         layer: Optional[MemoryLayer] = None,
         memory_type: Optional[MemoryType] = None,
         tags: Optional[List[str]] = None,
@@ -184,6 +186,8 @@ class DatabaseAdapter:
                 query = query.where(MemoryEntryORM.session_id == session_id)
             if mission_id:
                 query = query.where(MemoryEntryORM.mission_id == mission_id)
+            if skill_run_id:
+                query = query.where(MemoryEntryORM.skill_run_id == skill_run_id)
             if layer:
                 query = query.where(MemoryEntryORM.layer == layer.value)
             if memory_type:
@@ -233,6 +237,8 @@ class DatabaseAdapter:
                 db_query = db_query.where(MemoryEntryORM.session_id == filters["session_id"])
             if filters.get("mission_id"):
                 db_query = db_query.where(MemoryEntryORM.mission_id == filters["mission_id"])
+            if filters.get("skill_run_id"):
+                db_query = db_query.where(MemoryEntryORM.skill_run_id == filters["skill_run_id"])
             if filters.get("layer"):
                 db_query = db_query.where(MemoryEntryORM.layer == filters["layer"].value)
             
@@ -438,6 +444,7 @@ class DatabaseAdapter:
             agent_id=orm.agent_id,
             session_id=orm.session_id,
             mission_id=orm.mission_id,
+            skill_run_id=orm.skill_run_id,
             tags=orm.tags or [],
             importance=orm.importance,
             karma_score=orm.karma_score,

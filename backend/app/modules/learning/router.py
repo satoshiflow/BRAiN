@@ -23,9 +23,11 @@ from .schemas import (
     MetricQuery,
     MetricSummary,
     MetricType,
+    SkillRunMetricIngestResponse,
     StrategyStatus,
 )
 from .service import get_learning_service
+from app.modules.skill_engine.service import get_skill_engine_service
 
 router = APIRouter(
     prefix="/api/learning",
@@ -120,6 +122,40 @@ async def agent_metrics(
     if not await verify_learning_ownership(principal, agent_id):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not authorized for this agent")
     return await get_learning_service().get_agent_metrics(db, agent_id)
+
+
+@router.post("/metrics/skill-runs/{skill_run_id}/ingest", response_model=SkillRunMetricIngestResponse, status_code=status.HTTP_201_CREATED)
+async def ingest_skill_run_metrics(
+    skill_run_id: str = Path(..., max_length=64),
+    principal: Principal = Depends(require_role(UserRole.OPERATOR)),
+    db: AsyncSession = Depends(get_db),
+):
+    run = await get_skill_engine_service().get_run(db, skill_run_id, principal.tenant_id)
+    if run is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Skill run not found")
+    service = get_learning_service()
+    metrics = [
+        MetricEntry(
+            agent_id=run.requested_by,
+            metric_type=MetricType.SUCCESS_RATE,
+            value=1.0 if run.state == "succeeded" else 0.0,
+            unit="ratio",
+            tags={"skill_key": run.skill_key},
+            context={"skill_run_id": str(run.id), "correlation_id": run.correlation_id},
+        ),
+        MetricEntry(
+            agent_id=run.requested_by,
+            metric_type=MetricType.COST,
+            value=float(run.cost_actual or 0.0),
+            unit="credits",
+            tags={"skill_key": run.skill_key},
+            context={"skill_run_id": str(run.id), "correlation_id": run.correlation_id},
+        ),
+    ]
+    recorded: List[MetricEntry] = []
+    for entry in metrics:
+        recorded.append(await service.record_metric(db, entry))
+    return SkillRunMetricIngestResponse(skill_run_id=str(run.id), metrics=recorded)
 
 
 # ============================================================================

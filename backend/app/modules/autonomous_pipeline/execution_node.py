@@ -16,6 +16,7 @@ from app.modules.autonomous_pipeline.schemas import (
     ExecutionNodeResult,
     ExecutionNodeStatus,
     ExecutionCapability,
+    ExecutionNodeType,
 )
 
 
@@ -116,6 +117,12 @@ class ExecutionNode(ABC):
         self.node_id = spec.node_id
         self.name = spec.name
         self.capabilities = spec.capabilities
+
+        if not self.capabilities and spec.node_type == ExecutionNodeType.WEBGENESIS:
+            self.capabilities = [
+                ExecutionCapability.DRY_RUN,
+                ExecutionCapability.ROLLBACKABLE,
+            ]
 
         logger.info(f"[{self.node_id}] Node initialized: {self.name}")
 

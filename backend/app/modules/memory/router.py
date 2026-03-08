@@ -21,6 +21,7 @@ from .schemas import (
     MemoryRecallResult,
     MemoryStats,
     MemoryStoreRequest,
+    SkillRunMemoryIngestResponse,
     MemorySystemInfo,
     MemoryType,
     SessionAddTurnRequest,
@@ -28,6 +29,10 @@ from .schemas import (
     SessionCreateRequest,
 )
 from .service import get_memory_service
+from app.core.database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.modules.skill_engine.service import get_skill_engine_service
+from app.modules.skill_evaluator.service import get_skill_evaluator_service
 
 router = APIRouter(
     prefix="/api/memory",
@@ -349,6 +354,44 @@ async def get_mission_context(
     svc = get_memory_service()
     # Get mission context and verify ownership of associated agent (if any)
     return await svc.get_mission_context(mission_id)
+
+
+@router.get("/skill-runs/{skill_run_id}", response_model=list[MemoryEntry])
+async def get_skill_run_context(
+    skill_run_id: str = Path(..., max_length=64),
+    principal: Principal = Depends(require_auth),
+):
+    svc = get_memory_service()
+    return await svc.get_skill_run_context(skill_run_id)
+
+
+@router.post("/skill-runs/{skill_run_id}/ingest", response_model=SkillRunMemoryIngestResponse, status_code=status.HTTP_201_CREATED)
+async def ingest_skill_run_memory(
+    skill_run_id: str = Path(..., max_length=64),
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_role(UserRole.OPERATOR)),
+):
+    run = await get_skill_engine_service().get_run(db, skill_run_id, principal.tenant_id)
+    if run is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Skill run not found")
+    memory = await get_memory_service().store_memory(
+        MemoryStoreRequest(
+            content=f"SkillRun {run.skill_key} v{run.skill_version} ended as {run.state}",
+            memory_type=MemoryType.MISSION_OUTCOME,
+            layer=MemoryLayer.EPISODIC,
+            agent_id=run.requested_by,
+            mission_id=run.mission_id,
+            skill_run_id=str(run.id),
+            importance=75.0 if run.state == 'succeeded' else 85.0,
+            tags=[run.skill_key, run.state],
+            metadata={
+                "evaluation_summary": run.evaluation_summary,
+                "failure_code": run.failure_code,
+                "correlation_id": run.correlation_id,
+            },
+        )
+    )
+    return SkillRunMemoryIngestResponse(skill_run_id=str(run.id), memory=memory)
 
 
 # ============================================================================

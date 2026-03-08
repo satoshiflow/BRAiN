@@ -7,6 +7,8 @@ class DNAMetadata(BaseModel):
     reason: Optional[str] = None
     source: str = Field(default="manual", description="manual|system|mutation")
     parent_snapshot_id: Optional[int] = None
+    skill_run_id: Optional[str] = None
+    correlation_id: Optional[str] = None
 
 
 class AgentDNASnapshot(BaseModel):
@@ -25,12 +27,16 @@ class CreateDNASnapshotRequest(BaseModel):
     dna: Dict[str, Any]
     traits: Dict[str, Any] = {}
     reason: Optional[str] = None
+    skill_run_id: Optional[str] = None
+    correlation_id: Optional[str] = None
 
 
 class MutateDNARequest(BaseModel):
     mutation: Dict[str, Any]
     traits_delta: Dict[str, Any] = {}
     reason: Optional[str] = None
+    skill_run_id: Optional[str] = None
+    correlation_id: Optional[str] = None
 
 
 class DNAHistoryResponse(BaseModel):

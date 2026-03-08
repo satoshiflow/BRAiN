@@ -108,7 +108,7 @@ async def execute_pipeline_with_ir(request: PipelineExecuteRequest) -> Dict[str,
 
     # Step 1: IR Gateway validation
     legacy_request = request.ir is None
-    gateway_result = gateway.validate_request(
+    gateway_result = await gateway.avalidate_request(
         ir=request.ir,
         approval_token=request.approval_token,
         legacy_request=legacy_request,
@@ -155,7 +155,7 @@ async def execute_pipeline_with_ir(request: PipelineExecuteRequest) -> Dict[str,
             }
             dag_nodes.append(dag_node)
 
-        diff_audit_result = diff_audit_gate.audit_ir_dag_mapping(request.ir, dag_nodes)
+        diff_audit_result = await diff_audit_gate.aaudit_ir_dag_mapping(request.ir, dag_nodes)
 
         if not diff_audit_result.success:
             logger.error(

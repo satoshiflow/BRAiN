@@ -63,6 +63,7 @@ class MemoryService:
             agent_id=request.agent_id,
             session_id=request.session_id,
             mission_id=request.mission_id,
+            skill_run_id=request.skill_run_id,
             importance=request.importance,
             tags=request.tags,
             metadata=request.metadata,
@@ -129,6 +130,9 @@ class MemoryService:
 
     async def get_mission_context(self, mission_id: str) -> List[MemoryEntry]:
         return await self.context.get_mission_context(mission_id)
+
+    async def get_skill_run_context(self, skill_run_id: str) -> List[MemoryEntry]:
+        return await self.store.query(skill_run_id=skill_run_id, limit=100)
 
     # ------------------------------------------------------------------
     # Compression & maintenance

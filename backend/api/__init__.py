@@ -2,8 +2,8 @@
 
 from fastapi import APIRouter
 
-from api.routes.agent_manager import router as agent_router
-from api.routes.axe import router as axe_router
+from .routes.agent_manager import router as agent_router
+from .routes.axe import router as axe_router
 
 # Zentraler API-Router für alle "Core"-APIs (nicht modulbasiert)
 api_router = APIRouter()

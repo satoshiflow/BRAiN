@@ -13,6 +13,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.modules.skill_engine.schemas import SkillRunExecutionReport, SkillRunResponse, TriggerType
+
 
 class AgentStatus(str, Enum):
     """Agent lifecycle states"""
@@ -110,6 +112,74 @@ class AgentStats(BaseModel):
     total_tasks_completed: int = Field(...)
     total_tasks_failed: int = Field(...)
     avg_uptime_percent: Optional[float] = Field(default=None)
+
+
+class AgentInvokeSkillRequest(BaseModel):
+    skill_key: str = Field(..., min_length=1, max_length=120)
+    version: Optional[int] = Field(default=None, ge=1)
+    input_payload: Dict[str, Any] = Field(default_factory=dict)
+    idempotency_key: str = Field(..., min_length=1, max_length=160)
+    trigger_type: TriggerType = Field(default=TriggerType.API)
+    mission_id: Optional[str] = Field(default=None, max_length=120)
+    deadline_at: Optional[datetime] = Field(default=None)
+    causation_id: Optional[str] = Field(default=None, max_length=160)
+    execute_now: bool = Field(default=False)
+
+
+class AgentInvokeSkillResponse(BaseModel):
+    agent_id: str
+    skill_run: SkillRunResponse
+    execution_report: Optional[SkillRunExecutionReport] = None
+
+
+class AgentDelegationStatus(str, Enum):
+    REQUESTED = "requested"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+    COMPLETED = "completed"
+
+
+class AgentDelegateRequest(BaseModel):
+    target_agent_id: str = Field(..., min_length=1, max_length=100)
+    skill_key: str = Field(..., min_length=1, max_length=120)
+    version: Optional[int] = Field(default=None, ge=1)
+    input_payload: Dict[str, Any] = Field(default_factory=dict)
+    idempotency_key: str = Field(..., min_length=1, max_length=160)
+    trigger_type: TriggerType = Field(default=TriggerType.MISSION)
+    mission_id: Optional[str] = Field(default=None, max_length=120)
+    deadline_at: Optional[datetime] = Field(default=None)
+    causation_id: Optional[str] = Field(default=None, max_length=160)
+    delegation_reason: Optional[str] = Field(default=None, max_length=1000)
+    execute_now: bool = Field(default=False)
+
+
+class AgentDelegationResponse(BaseModel):
+    id: UUID
+    tenant_id: Optional[str] = None
+    source_agent_id: str
+    target_agent_id: str
+    skill_run_id: UUID
+    status: AgentDelegationStatus
+    delegation_reason: Optional[str] = None
+    correlation_id: str
+    requested_by: str
+    created_at: datetime
+    accepted_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class AgentDelegationWithRunResponse(BaseModel):
+    delegation: AgentDelegationResponse
+    skill_run: SkillRunResponse
+    execution_report: Optional[SkillRunExecutionReport] = None
+
+
+class AgentDelegationListResponse(BaseModel):
+    items: List[AgentDelegationResponse] = Field(default_factory=list)
+    total: int
 
 
 # ============================================================================

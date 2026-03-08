@@ -6,7 +6,7 @@ Business logic for agent lifecycle management with EventStream integration.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 
@@ -14,11 +14,12 @@ from loguru import logger
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .models import AgentModel, AgentStatus
-from .schemas import (
-    AgentRegister, AgentUpdate, AgentHeartbeat,
-    AgentResponse, AgentStats
-)
+from app.core.auth_deps import Principal
+from app.modules.skill_engine.schemas import SkillRunCreate, SkillRunExecutionReport, SkillRunResponse
+from app.modules.skill_engine.service import SkillEngineService, get_skill_engine_service
+
+from .models import AgentDelegationModel, AgentDelegationStatus, AgentModel, AgentStatus
+from .schemas import AgentDelegateRequest, AgentInvokeSkillRequest, AgentRegister, AgentUpdate, AgentHeartbeat, AgentStats
 
 
 class AgentService:
@@ -32,13 +33,14 @@ class AgentService:
     - Event publishing
     """
     
-    def __init__(self, event_stream=None):
+    def __init__(self, event_stream=None, skill_engine: SkillEngineService | None = None):
         """Initialize agent service with optional EventStream"""
         self.event_stream = event_stream
+        self.skill_engine = skill_engine or get_skill_engine_service()
         self._offline_threshold = 3  # Missed heartbeats before marking offline
         logger.info("🤖 Agent Service initialized")
     
-    async def _publish_event(self, event_type: str, agent_id: str, data: Dict[str, Any] = None):
+    async def _publish_event(self, event_type: str, agent_id: str, data: Dict[str, Any] | None = None):
         """Publish event to EventStream if available"""
         if self.event_stream is None:
             return
@@ -298,6 +300,122 @@ class AgentService:
             select(AgentModel).where(AgentModel.agent_id == agent_id)
         )
         return result.scalar_one_or_none()
+
+    async def invoke_skill(
+        self,
+        db: AsyncSession,
+        agent_id: str,
+        payload: AgentInvokeSkillRequest,
+        principal: Principal,
+    ) -> tuple[AgentModel, SkillRunResponse, SkillRunExecutionReport | None]:
+        agent = await self.get_agent(db, agent_id)
+        if not agent:
+            raise ValueError(f"Agent {agent_id} not found")
+
+        skill_run = await self.skill_engine.create_run(
+            db,
+            SkillRunCreate(
+                skill_key=payload.skill_key,
+                version=payload.version,
+                input_payload=payload.input_payload,
+                idempotency_key=payload.idempotency_key,
+                trigger_type=payload.trigger_type,
+                mission_id=payload.mission_id,
+                deadline_at=payload.deadline_at,
+                causation_id=payload.causation_id,
+            ),
+            principal,
+        )
+        await self._publish_event(
+            "agent.skillrun.requested.v1",
+            agent_id,
+            {
+                "skill_run_id": str(skill_run.id),
+                "skill_key": skill_run.skill_key,
+                "correlation_id": skill_run.correlation_id,
+            },
+        )
+        execution_report: SkillRunExecutionReport | None = None
+        if payload.execute_now:
+            execution_report = await self.skill_engine.execute_run(db, skill_run.id, principal)
+        return agent, SkillRunResponse.model_validate(skill_run), execution_report
+
+    async def create_delegation(
+        self,
+        db: AsyncSession,
+        source_agent_id: str,
+        payload: AgentDelegateRequest,
+        principal: Principal,
+    ) -> tuple[AgentDelegationModel, SkillRunResponse, SkillRunExecutionReport | None]:
+        source_agent = await self.get_agent(db, source_agent_id)
+        if not source_agent:
+            raise ValueError(f"Source agent {source_agent_id} not found")
+        target_agent = await self.get_agent(db, payload.target_agent_id)
+        if not target_agent:
+            raise ValueError(f"Target agent {payload.target_agent_id} not found")
+
+        skill_run = await self.skill_engine.create_run(
+            db,
+            SkillRunCreate(
+                skill_key=payload.skill_key,
+                version=payload.version,
+                input_payload=payload.input_payload,
+                idempotency_key=payload.idempotency_key,
+                trigger_type=payload.trigger_type,
+                mission_id=payload.mission_id,
+                deadline_at=payload.deadline_at,
+                causation_id=payload.causation_id,
+            ),
+            principal,
+        )
+
+        record = AgentDelegationModel(
+            tenant_id=principal.tenant_id,
+            source_agent_id=source_agent_id,
+            target_agent_id=payload.target_agent_id,
+            skill_run_id=skill_run.id,
+            status=AgentDelegationStatus.REQUESTED,
+            delegation_reason=payload.delegation_reason,
+            correlation_id=skill_run.correlation_id,
+            requested_by=principal.principal_id,
+        )
+        db.add(record)
+        await db.commit()
+        await db.refresh(record)
+
+        execution_report: SkillRunExecutionReport | None = None
+        if payload.execute_now:
+            execution_report = await self.skill_engine.execute_run(db, skill_run.id, principal)
+
+        await self._publish_event(
+            "agent.delegation.requested.v1",
+            source_agent_id,
+            {
+                "target_agent_id": payload.target_agent_id,
+                "skill_run_id": str(skill_run.id),
+                "delegation_id": str(record.id),
+                "correlation_id": skill_run.correlation_id,
+            },
+        )
+        return record, SkillRunResponse.model_validate(skill_run), execution_report
+
+    async def list_delegations(
+        self,
+        db: AsyncSession,
+        tenant_id: str | None,
+        agent_id: str | None = None,
+    ) -> List[AgentDelegationModel]:
+        query = select(AgentDelegationModel)
+        if tenant_id:
+            query = query.where(AgentDelegationModel.tenant_id == tenant_id)
+        if agent_id:
+            query = query.where(
+                (AgentDelegationModel.source_agent_id == agent_id)
+                | (AgentDelegationModel.target_agent_id == agent_id)
+            )
+        query = query.order_by(AgentDelegationModel.created_at.desc())
+        result = await db.execute(query)
+        return list(result.scalars().all())
     
     async def get_agent_by_uuid(self, db: AsyncSession, uuid: UUID) -> Optional[AgentModel]:
         """Get agent by UUID"""

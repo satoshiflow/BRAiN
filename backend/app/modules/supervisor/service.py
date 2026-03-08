@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Any, List
 import time
 import logging
+
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.modules.agent_management.models import AgentModel, AgentStatus as ManagedAgentStatus
+from app.modules.skill_engine.models import SkillRunModel
 
 from .schemas import AgentStatus, SupervisorHealth, SupervisorStatus
 
@@ -17,10 +23,10 @@ except ImportError:
     Event = None
 
 # Module-level EventStream (Sprint 5: EventStream Integration)
-_event_stream: Optional["EventStream"] = None
+_event_stream: Any = None
 
 
-def set_event_stream(stream: "EventStream") -> None:
+def set_event_stream(stream: Any) -> None:
     """Initialize EventStream for Supervisor module (Sprint 5)."""
     global _event_stream
     _event_stream = stream
@@ -75,7 +81,7 @@ async def get_health() -> SupervisorHealth:
     return result
 
 
-async def get_status() -> SupervisorStatus:
+async def get_status(db: AsyncSession | None = None) -> SupervisorStatus:
     """Get supervisor status with mission statistics.
 
     Returns:
@@ -85,18 +91,41 @@ async def get_status() -> SupervisorStatus:
         - supervisor.status_queried: Status queried with statistics
 
     Note:
-        Mission statistics currently stubbed (app.modules.missions was removed).
-        TODO: Integrate with legacy modules.missions or NeuroRail for real stats.
+        When DB is available, canonical execution counts are derived from `SkillRun`.
+        Compatibility response fields keep the historic `*_missions` naming for now.
     """
-    # STUB: Return zero counts until missions integration is restored
     total = 0
     running = 0
     pending = 0
     completed = 0
     failed = 0
     cancelled = 0
-
     agents: List[AgentStatus] = []
+
+    if db is not None:
+        total = (await db.execute(select(func.count(SkillRunModel.id)))).scalar() or 0
+        running = (
+            await db.execute(select(func.count(SkillRunModel.id)).where(SkillRunModel.state == "running"))
+        ).scalar() or 0
+        pending = (
+            await db.execute(
+                select(func.count(SkillRunModel.id)).where(
+                    SkillRunModel.state.in_(["queued", "planning", "waiting_approval"])
+                )
+            )
+        ).scalar() or 0
+        completed = (
+            await db.execute(select(func.count(SkillRunModel.id)).where(SkillRunModel.state == "succeeded"))
+        ).scalar() or 0
+        failed = (
+            await db.execute(select(func.count(SkillRunModel.id)).where(SkillRunModel.state == "failed"))
+        ).scalar() or 0
+        cancelled = (
+            await db.execute(
+                select(func.count(SkillRunModel.id)).where(SkillRunModel.state.in_(["cancelled", "timed_out"]))
+            )
+        ).scalar() or 0
+        agents = await list_agents(db)
 
     result = SupervisorStatus(
         status="ok",
@@ -125,7 +154,7 @@ async def get_status() -> SupervisorStatus:
     return result
 
 
-async def list_agents() -> List[AgentStatus]:
+async def list_agents(db: AsyncSession | None = None) -> List[AgentStatus]:
     """List all supervised agents.
 
     Returns:
@@ -134,7 +163,30 @@ async def list_agents() -> List[AgentStatus]:
     Events:
         - supervisor.agents_listed (optional): Agents queried
     """
-    result = []  # Stub implementation
+    result: List[AgentStatus] = []
+
+    if db is not None:
+        running_query = (
+            select(SkillRunModel.requested_by, func.count(SkillRunModel.id))
+            .where(SkillRunModel.state == "running")
+            .group_by(SkillRunModel.requested_by)
+        )
+        running_result = await db.execute(running_query)
+        running_by_agent = {row[0]: row[1] for row in running_result.all()}
+
+        agents_result = await db.execute(select(AgentModel).order_by(AgentModel.registered_at.desc()))
+        for agent in agents_result.scalars().all():
+            state = agent.status.value if isinstance(agent.status, ManagedAgentStatus) else str(agent.status)
+            result.append(
+                AgentStatus(
+                    id=agent.agent_id,
+                    name=agent.name,
+                    role=agent.agent_type,
+                    state=state,
+                    last_heartbeat=agent.last_heartbeat,
+                    missions_running=running_by_agent.get(agent.agent_id, 0),
+                )
+            )
 
     # EVENT: supervisor.agents_listed (optional - Sprint 5)
     await _emit_event_safe("supervisor.agents_listed", {

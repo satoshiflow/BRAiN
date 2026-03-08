@@ -1,0 +1,29 @@
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any
+from uuid import UUID
+
+from pydantic import BaseModel, Field
+
+
+class SkillOptimizerRecommendationResponse(BaseModel):
+    id: UUID
+    tenant_id: str | None
+    skill_key: str
+    skill_version: int
+    recommendation_type: str
+    confidence: float
+    status: str
+    rationale: str
+    evidence: dict[str, Any] = Field(default_factory=dict)
+    source_snapshot: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+    created_by: str
+
+    model_config = {"from_attributes": True}
+
+
+class SkillOptimizerRecommendationListResponse(BaseModel):
+    items: list[SkillOptimizerRecommendationResponse] = Field(default_factory=list)
+    total: int

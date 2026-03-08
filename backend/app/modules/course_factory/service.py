@@ -218,7 +218,7 @@ class CourseFactoryService:
                 ir_hash=None,  # Will be set by IR governance
                 total_modules=len(outline.modules),
                 total_lessons=outline.total_lessons,
-                full_lessons_generated=len(outline.get_full_lessons()),
+                full_lessons_generated=0 if request.dry_run else len(outline.get_full_lessons()),
                 quiz_questions_count=len(quiz.questions) if quiz else 0,
                 execution_time_seconds=execution_time,
             )

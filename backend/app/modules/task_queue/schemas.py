@@ -51,6 +51,10 @@ class TaskCreate(BaseModel):
     priority: TaskPriority = Field(default=TaskPriority.NORMAL, description="Task priority")
     payload: Dict[str, Any] = Field(default_factory=dict, description="Task payload/data")
     config: Dict[str, Any] = Field(default_factory=dict, description="Task configuration")
+    tenant_id: Optional[str] = Field(default=None, max_length=64)
+    mission_id: Optional[str] = Field(default=None, max_length=120)
+    skill_run_id: Optional[UUID] = Field(default=None)
+    correlation_id: Optional[str] = Field(default=None, max_length=160)
     scheduled_at: Optional[datetime] = Field(default=None, description="Schedule for future execution")
     deadline_at: Optional[datetime] = Field(default=None, description="Hard deadline")
     max_retries: int = Field(default=3, ge=0, le=10, description="Maximum retry attempts")
@@ -100,6 +104,10 @@ class TaskResponse(BaseModel):
     priority: int = Field(...)
     payload: Dict[str, Any] = Field(default_factory=dict)
     config: Dict[str, Any] = Field(default_factory=dict)
+    tenant_id: Optional[str] = Field(default=None)
+    mission_id: Optional[str] = Field(default=None)
+    skill_run_id: Optional[UUID] = Field(default=None)
+    correlation_id: Optional[str] = Field(default=None)
     scheduled_at: Optional[datetime] = Field(default=None)
     deadline_at: Optional[datetime] = Field(default=None)
     claimed_by: Optional[str] = Field(default=None)
@@ -148,6 +156,11 @@ class TaskClaimResponse(BaseModel):
     success: bool = Field(...)
     task: Optional[TaskResponse] = Field(default=None)
     message: Optional[str] = Field(default=None)
+
+
+class TaskLeaseCreateResponse(BaseModel):
+    skill_run_id: UUID
+    task: TaskResponse
 
 
 class QueueStats(BaseModel):

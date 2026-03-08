@@ -194,7 +194,7 @@ class WebGenesisService:
         Args:
             storage_base: Storage base path (default: storage/webgenesis)
         """
-        self.storage_base = storage_base or STORAGE_BASE
+        self.storage_base = (storage_base or STORAGE_BASE).resolve()
         self.storage_base.mkdir(parents=True, exist_ok=True)
 
         # Audit log
@@ -228,7 +228,7 @@ class WebGenesisService:
             Unique site ID
         """
         # Use spec name + timestamp for uniqueness
-        timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
         site_id = f"{spec.name}_{timestamp}"
 
         # Ensure valid format

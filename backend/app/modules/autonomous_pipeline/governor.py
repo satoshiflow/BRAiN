@@ -268,7 +268,7 @@ class ExecutionGovernor:
                 )
                 self.violations.append(violation)
                 raise BudgetExceededException(
-                    f"Step limit exceeded: {self.steps_consumed}/{self.budget.max_steps}"
+                    f"Budget exceeded: max_steps step limit exceeded: {self.steps_consumed}/{self.budget.max_steps}"
                 )
 
         # Check duration

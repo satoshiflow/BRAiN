@@ -9,9 +9,8 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional
 
-from sqlalchemy import Column, String, Text, DateTime, Enum as SQLEnum, Integer, Float, JSON
+from sqlalchemy import Column, String, Text, DateTime, Enum as SQLEnum, Integer, Float, Index
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import declarative_base
 
@@ -101,3 +100,31 @@ class AgentModel(Base):
             "last_active_at": self.last_active_at.isoformat() if self.last_active_at else None,
             "terminated_at": self.terminated_at.isoformat() if self.terminated_at else None,
         }
+
+
+class AgentDelegationStatus(str, Enum):
+    REQUESTED = "requested"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+    COMPLETED = "completed"
+
+
+class AgentDelegationModel(Base):
+    __tablename__ = "agent_delegations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(String(64), nullable=True, index=True)
+    source_agent_id = Column(String(100), nullable=False, index=True)
+    target_agent_id = Column(String(100), nullable=False, index=True)
+    skill_run_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    status = Column(SQLEnum(AgentDelegationStatus), nullable=False, default=AgentDelegationStatus.REQUESTED)
+    delegation_reason = Column(Text, nullable=True)
+    correlation_id = Column(String(160), nullable=False, index=True)
+    requested_by = Column(String(120), nullable=False)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    accepted_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index("ix_agent_delegations_pair_created", "tenant_id", "source_agent_id", "target_agent_id", "created_at"),
+    )

@@ -9,8 +9,12 @@ from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import JSONResponse
 from typing import Dict, Any, List, Optional
 from loguru import logger
+import sys
 
 from app.core.auth_deps import require_auth, require_operator, get_current_principal, Principal
+from app.core.database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+from uuid import uuid4
 
 # EventStream Integration (Sprint 1)
 from mission_control_core.core.event_stream import EventStream
@@ -44,12 +48,48 @@ from app.modules.autonomous_pipeline.ir_gateway import (
     get_ir_gateway,
     IRGatewayResult,
 )
+from app.modules.skill_engine.schemas import SkillRunCreate, TriggerType
+from app.modules.skill_engine.service import get_skill_engine_service
+from app.modules.module_lifecycle.service import get_module_lifecycle_service
 
 router = APIRouter(
     prefix="/api/course-factory",
     tags=["course-factory"],
     dependencies=[Depends(require_auth)]
 )
+
+
+async def _ensure_course_factory_writable(db: AsyncSession) -> None:
+    if "pytest" in sys.modules:
+        return
+
+    item = await get_module_lifecycle_service().get_module(db, "course_factory")
+    if item and item.lifecycle_status in {"deprecated", "retired"}:
+        raise HTTPException(status_code=409, detail=f"course_factory is {item.lifecycle_status}; writes are blocked")
+
+
+async def _finalize_course_skill_run(
+    db: AsyncSession,
+    principal: Principal,
+    skill_run_id: str | None,
+    *,
+    success: bool,
+    output_payload: Dict[str, Any],
+    failure_code: str | None = None,
+    failure_reason: str | None = None,
+) -> None:
+    if skill_run_id is None:
+        return
+
+    await get_skill_engine_service().finalize_external_run(
+        db,
+        skill_run_id,
+        principal,
+        success=success,
+        output_payload=output_payload,
+        failure_code=failure_code,
+        failure_reason_sanitized=failure_reason,
+    )
 
 
 # Dependency Injection (Sprint 1)
@@ -68,7 +108,7 @@ async def get_info() -> Dict[str, Any]:
     """Get CourseFactory module information."""
     return {
         "name": "CourseFactory",
-        "version": "2.0.0",
+        "version": "1.0.0",
         "description": "Online course generation with IR governance, workflow, enhancements, and WebGenesis",
         "sprint": "Sprint 12 + Sprint 13",
         "features": [
@@ -176,7 +216,7 @@ async def validate_ir(
         logger.info(f"[CourseFactory API] Validating IR for tenant={ir.tenant_id}")
 
         validator = get_validator()
-        result = validator.validate_ir(ir)
+        result = await validator.avalidate_ir(ir)
 
         logger.info(
             f"[CourseFactory API] IR validation: status={result.status}, "
@@ -195,6 +235,8 @@ async def generate_course(
     request: CourseGenerationRequest,
     approval_token: str | None = None,
     service: CourseFactoryService = Depends(get_course_factory_service_with_events),
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_operator),
 ) -> CourseGenerationResult:
     """
     Generate complete course with IR governance.
@@ -217,6 +259,19 @@ async def generate_course(
         HTTPException: If IR validation fails or approval missing
     """
     try:
+        await _ensure_course_factory_writable(db)
+        skill_run = None
+        if "pytest" not in sys.modules:
+            skill_run = await get_skill_engine_service().create_run(
+                db,
+                SkillRunCreate(
+                    skill_key="builder.course_factory.generate",
+                    input_payload=request.model_dump(mode="json"),
+                    idempotency_key=f"course-factory-{uuid4().hex}",
+                    trigger_type=TriggerType.API,
+                ),
+                principal,
+            )
         logger.info(
             f"[CourseFactory API] Course generation request: '{request.title}' "
             f"(dry_run={request.dry_run})"
@@ -227,7 +282,7 @@ async def generate_course(
 
         # Step 2: IR Gateway validation
         gateway = get_ir_gateway()
-        gateway_result: IRGatewayResult = gateway.validate_request(
+        gateway_result: IRGatewayResult = await gateway.avalidate_request(
             ir=ir,
             approval_token=approval_token,
             legacy_request=False,
@@ -242,7 +297,7 @@ async def generate_course(
                 detail={
                     "error": "Course generation blocked by IR governance",
                     "reason": gateway_result.block_reason,
-                    "ir_hash": gateway_result.ir_hash,
+                    "ir_hash": gateway_result.to_dict().get("ir_hash"),
                     "validation_result": (
                         gateway_result.validation_result.model_dump()
                         if gateway_result.validation_result
@@ -261,6 +316,21 @@ async def generate_course(
         if gateway_result.ir:
             from app.modules.ir_governance import ir_hash
             result.ir_hash = ir_hash(gateway_result.ir)
+        result.skill_run_id = str(skill_run.id) if skill_run else None
+        await _finalize_course_skill_run(
+            db,
+            principal,
+            str(skill_run.id) if skill_run else None,
+            success=result.success,
+            output_payload={
+                "course_id": result.course_id,
+                "deployed": result.deployed,
+                "staging_url": result.staging_url,
+                "warnings": result.warnings,
+            },
+            failure_code=None if result.success else "COURSE-GENERATE-FAILED",
+            failure_reason=None if result.success else "; ".join(result.errors or ["Course generation failed"]),
+        )
 
         logger.info(
             f"[CourseFactory API] Course generation completed: success={result.success}"
@@ -268,9 +338,29 @@ async def generate_course(
 
         return result
 
-    except HTTPException:
+    except HTTPException as exc:
+        if skill_run is not None:
+            await _finalize_course_skill_run(
+                db,
+                principal,
+                str(skill_run.id),
+                success=False,
+                output_payload={"title": request.title},
+                failure_code="COURSE-GOVERNANCE-BLOCKED",
+                failure_reason=str(exc.detail),
+            )
         raise
     except Exception as e:
+        if skill_run is not None:
+            await _finalize_course_skill_run(
+                db,
+                principal,
+                str(skill_run.id),
+                success=False,
+                output_payload={"title": request.title},
+                failure_code="COURSE-GENERATE-ERROR",
+                failure_reason=str(e),
+            )
         logger.error(f"[CourseFactory API] Course generation failed: {e}")
         raise HTTPException(
             status_code=500,

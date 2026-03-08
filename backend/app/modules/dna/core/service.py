@@ -156,6 +156,8 @@ class DNAService:
             reason=payload.reason,
             source="manual",
             parent_snapshot_id=snapshots[-1].id if snapshots else None,
+            skill_run_id=payload.skill_run_id,
+            correlation_id=payload.correlation_id,
         )
 
         snapshot = AgentDNASnapshot(
@@ -214,6 +216,8 @@ class DNAService:
             reason=req.reason,
             source="mutation",
             parent_snapshot_id=latest.id,
+            skill_run_id=req.skill_run_id,
+            correlation_id=req.correlation_id,
         )
 
         snapshot = AgentDNASnapshot(

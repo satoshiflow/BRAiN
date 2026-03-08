@@ -91,6 +91,22 @@ class IRGateway:
         approval_token: Optional[str] = None,
         legacy_request: bool = False,
     ) -> IRGatewayResult:
+        return self._validate_request_sync(ir=ir, approval_token=approval_token, legacy_request=legacy_request)
+
+    async def avalidate_request(
+        self,
+        ir: Optional[IR] = None,
+        approval_token: Optional[str] = None,
+        legacy_request: bool = False,
+    ) -> IRGatewayResult:
+        return self._validate_request_sync(ir=ir, approval_token=approval_token, legacy_request=legacy_request)
+
+    def _validate_request_sync(
+        self,
+        ir: Optional[IR] = None,
+        approval_token: Optional[str] = None,
+        legacy_request: bool = False,
+    ) -> IRGatewayResult:
         """
         Validate incoming request against IR governance rules.
 

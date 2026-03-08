@@ -201,6 +201,9 @@ class ResolvedBusinessIntent(BaseModel):
 
 class ExecutionNodeType(str, Enum):
     """Type of execution node."""
+    WEBGENESIS = "webgenesis"      # Legacy WebGenesis node type
+    DNS = "dns"                    # Legacy DNS node type
+    ODOO_MODULE = "odoo_module"    # Legacy Odoo module node type
     VALIDATION = "validation"      # Pre-flight validation
     GENERATION = "generation"      # Content/code generation
     DEPLOYMENT = "deployment"      # Deployment operation
@@ -214,6 +217,7 @@ class ExecutionNodeStatus(str, Enum):
     RUNNING = "running"          # Currently executing
     COMPLETED = "completed"      # Successfully completed
     FAILED = "failed"            # Failed with error
+    PARTIAL = "partial"          # Partially completed graph
     SKIPPED = "skipped"          # Skipped due to conditions
     ROLLED_BACK = "rolled_back"  # Successfully rolled back
 
@@ -231,8 +235,8 @@ class ExecutionNodeSpec(BaseModel):
 
     node_id: str = Field(..., description="Unique node identifier")
     node_type: ExecutionNodeType = Field(..., description="Node type")
-    name: str = Field(..., description="Human-readable name")
-    description: str = Field(..., description="Node description")
+    name: str = Field(default="", description="Human-readable name")
+    description: str = Field(default="", description="Node description")
 
     # Dependencies
     depends_on: List[str] = Field(
@@ -328,12 +332,15 @@ class ExecutionGraphResult(BaseModel):
     """Result of executing a complete graph."""
 
     graph_id: str = Field(..., description="Graph identifier")
+    business_intent_id: Optional[str] = Field(None, description="Associated business intent")
 
     # Status
-    status: str = Field(..., description="Overall status (completed/failed/partial)")
-    started_at: datetime = Field(..., description="Execution start")
+    status: ExecutionNodeStatus = Field(..., description="Overall status (completed/failed/partial)")
+    started_at: datetime = Field(default_factory=datetime.utcnow, description="Execution start")
     completed_at: Optional[datetime] = Field(None, description="Execution completion")
     total_duration_seconds: Optional[float] = Field(None, description="Total duration")
+    duration_seconds: Optional[float] = Field(None, description="Legacy duration field")
+    success: Optional[bool] = Field(None, description="Legacy success flag")
 
     # Node Results
     node_results: List[ExecutionNodeResult] = Field(
@@ -342,16 +349,20 @@ class ExecutionGraphResult(BaseModel):
     )
 
     # Statistics
-    nodes_total: int = Field(..., description="Total nodes")
+    nodes_total: int = Field(default=0, description="Total nodes")
     nodes_completed: int = Field(default=0, description="Completed nodes")
     nodes_failed: int = Field(default=0, description="Failed nodes")
     nodes_skipped: int = Field(default=0, description="Skipped nodes")
+    completed_nodes: List[str] = Field(default_factory=list, description="Legacy completed node IDs")
+    failed_nodes: List[str] = Field(default_factory=list, description="Legacy failed node IDs")
+    execution_order: List[str] = Field(default_factory=list, description="Legacy execution order")
 
     # Artifacts
     artifacts_generated: List[str] = Field(
         default_factory=list,
         description="All generated artifacts"
     )
+    artifacts: List[str] = Field(default_factory=list, description="Legacy artifact list")
 
     # Rollback
     rollback_executed: bool = Field(default=False, description="Rollback was performed")
@@ -365,7 +376,10 @@ class ExecutionGraphResult(BaseModel):
         default_factory=list,
         description="Complete audit trail"
     )
+    audit_events: List[Dict[str, Any]] = Field(default_factory=list, description="Legacy audit events")
     evidence_pack_path: Optional[str] = Field(
         None,
         description="Path to evidence pack"
     )
+    was_dry_run: bool = Field(default=False, description="Legacy dry-run flag")
+    error: Optional[str] = Field(None, description="Legacy graph-level error")

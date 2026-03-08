@@ -68,6 +68,12 @@ class TaskModel(Base):
     # Payload & Configuration
     payload = Column(JSONB, nullable=False, default=dict)
     config = Column(JSONB, nullable=False, default=dict)
+
+    # Canonical runtime bridge
+    tenant_id = Column(String(64), nullable=True, index=True)
+    mission_id = Column(String(120), nullable=True, index=True)
+    skill_run_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+    correlation_id = Column(String(160), nullable=True, index=True)
     
     # Scheduling
     scheduled_at = Column(DateTime, nullable=True)  # For delayed execution
@@ -121,6 +127,10 @@ class TaskModel(Base):
             "priority": self.priority,
             "payload": self.payload,
             "config": self.config,
+            "tenant_id": self.tenant_id,
+            "mission_id": self.mission_id,
+            "skill_run_id": str(self.skill_run_id) if self.skill_run_id else None,
+            "correlation_id": self.correlation_id,
             "scheduled_at": self.scheduled_at.isoformat() if self.scheduled_at else None,
             "deadline_at": self.deadline_at.isoformat() if self.deadline_at else None,
             "claimed_by": self.claimed_by,

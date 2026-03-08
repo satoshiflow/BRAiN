@@ -14,6 +14,9 @@ from loguru import logger
 from sqlalchemy import select, func, and_, or_, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth_deps import Principal
+from app.modules.skill_engine.models import SkillRunModel
+
 from .models import TaskModel, TaskStatus, TaskPriority
 from .schemas import (
     TaskCreate, TaskUpdate, TaskClaim, TaskComplete, TaskFail,
@@ -108,6 +111,10 @@ class TaskQueueService:
             priority=task_data.priority.value,
             payload=task_data.payload,
             config=task_data.config,
+            tenant_id=task_data.tenant_id,
+            mission_id=task_data.mission_id,
+            skill_run_id=task_data.skill_run_id,
+            correlation_id=task_data.correlation_id,
             scheduled_at=task_data.scheduled_at,
             deadline_at=task_data.deadline_at,
             max_retries=task_data.max_retries,
@@ -130,6 +137,43 @@ class TaskQueueService:
             "scheduled": task_data.scheduled_at is not None
         })
         
+        return task
+
+    async def create_task_lease_for_skill_run(
+        self,
+        db: AsyncSession,
+        run: SkillRunModel,
+        principal: Principal,
+    ) -> TaskModel:
+        task = await self.create_task(
+            db,
+            TaskCreate(
+                name=f"SkillRun lease: {run.skill_key}",
+                description=f"Worker lease for SkillRun {run.id}",
+                task_type="skill_run_lease",
+                category="skill_engine",
+                tags=["skillrun", run.skill_key],
+                priority=TaskPriority.HIGH,
+                payload={
+                    "skill_key": run.skill_key,
+                    "skill_version": run.skill_version,
+                    "skill_run_id": str(run.id),
+                },
+                config={"lease_only": True},
+                tenant_id=run.tenant_id,
+                mission_id=run.mission_id,
+                skill_run_id=run.id,
+                correlation_id=run.correlation_id,
+                deadline_at=run.deadline_at,
+            ),
+            created_by=principal.principal_id,
+            created_by_type=principal.principal_type.value,
+        )
+        await self._publish_event(
+            "tasklease.created.v1",
+            task.task_id,
+            {"skill_run_id": str(run.id), "correlation_id": run.correlation_id},
+        )
         return task
     
     # ========================================================================
@@ -496,6 +540,35 @@ class TaskQueueService:
             select(TaskModel).where(TaskModel.task_id == task_id)
         )
         return result.scalar_one_or_none()
+
+    async def update_task(self, db: AsyncSession, task_id: str, update: TaskUpdate) -> Optional[TaskModel]:
+        """Update mutable task fields."""
+        task = await self.get_task(db, task_id)
+        if task is None:
+            return None
+
+        updates = update.model_dump(exclude_unset=True)
+        for field, value in updates.items():
+            if field == "priority" and value is not None:
+                setattr(task, field, value.value if hasattr(value, "value") else int(value))
+            elif field == "status" and value is not None:
+                setattr(task, field, value.value if hasattr(value, "value") else value)
+            else:
+                setattr(task, field, value)
+
+        await db.commit()
+        await db.refresh(task)
+        return task
+
+    async def delete_task(self, db: AsyncSession, task_id: str) -> bool:
+        """Delete a task by task_id."""
+        task = await self.get_task(db, task_id)
+        if task is None:
+            return False
+
+        await db.delete(task)
+        await db.commit()
+        return True
     
     async def get_stats(self, db: AsyncSession) -> TaskStats:
         """Get task statistics"""

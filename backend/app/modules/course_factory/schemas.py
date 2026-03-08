@@ -43,6 +43,7 @@ class CourseLesson(BaseModel):
     """Individual course lesson."""
 
     lesson_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    module_id: Optional[str] = Field(None, description="Parent module ID")
     title: str = Field(..., min_length=1, max_length=200)
     description: str = Field(..., min_length=1, max_length=1000)
     learning_objectives: List[str] = Field(default_factory=list, max_items=5)
@@ -133,6 +134,9 @@ class CourseQuiz(BaseModel):
 class CourseLandingPage(BaseModel):
     """Landing page content for the course."""
 
+    landing_page_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    sections: List[str] = Field(default_factory=list)
+
     # Hero section
     hero_title: str = Field(..., min_length=10, max_length=200)
     hero_subtitle: str = Field(..., min_length=10, max_length=500)
@@ -168,7 +172,7 @@ class CourseMetadata(BaseModel):
 
     # Basic info
     title: str = Field(..., min_length=10, max_length=200)
-    description: str = Field(..., min_length=50, max_length=2000)
+    description: str = Field(..., min_length=1, max_length=2000)
     language: CourseLanguage = Field(...)
     target_audiences: List[CourseTargetAudience] = Field(..., min_items=1)
 
@@ -246,7 +250,7 @@ class CourseGenerationRequest(BaseModel):
 
     # Course configuration
     title: str = Field(..., min_length=10, max_length=200)
-    description: str = Field(..., min_length=50, max_length=2000)
+    description: str = Field(..., min_length=1, max_length=2000)
     language: CourseLanguage = Field(...)
     target_audiences: List[CourseTargetAudience] = Field(..., min_items=1)
 
@@ -284,6 +288,7 @@ class CourseGenerationResult(BaseModel):
     # Evidence
     evidence_pack_path: Optional[str] = Field(None)
     ir_hash: Optional[str] = Field(None)
+    skill_run_id: Optional[str] = Field(None)
 
     # Summary
     total_modules: int = Field(..., ge=0)

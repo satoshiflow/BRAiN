@@ -247,7 +247,7 @@ class PipelineEvidenceGenerator:
             "failed_nodes": len(result.failed_nodes),
             "duration_seconds": result.duration_seconds,
             "success": result.success,
-            "status": result.status.value,
+            "status": result.status.value if hasattr(result.status, "value") else str(result.status),
             "was_dry_run": result.was_dry_run,
             "artifacts_count": len(result.artifacts),
             "audit_events_count": len(result.audit_events),

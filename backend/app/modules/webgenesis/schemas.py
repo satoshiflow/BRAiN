@@ -538,6 +538,7 @@ class GenerateResponse(BaseModel):
     site_id: str = Field(..., description="Site ID")
     source_path: str = Field(..., description="Path to generated source")
     files_created: int = Field(..., description="Number of files created")
+    skill_run_id: Optional[str] = Field(None, description="Canonical SkillRun backing this action")
     message: str = Field(..., description="Status message")
     errors: List[str] = Field(default_factory=list, description="Errors if any")
 
@@ -567,6 +568,7 @@ class BuildResponse(BaseModel):
     """Response after build"""
 
     result: BuildResult = Field(..., description="Build result details")
+    skill_run_id: Optional[str] = Field(None, description="Canonical SkillRun backing this action")
     message: str = Field(..., description="Status message")
 
     class Config:
@@ -591,6 +593,7 @@ class DeployResponse(BaseModel):
     """Response after deployment"""
 
     result: DeployResult = Field(..., description="Deployment result details")
+    skill_run_id: Optional[str] = Field(None, description="Canonical SkillRun backing this action")
     message: str = Field(..., description="Status message")
 
     class Config:
@@ -803,9 +806,18 @@ class RollbackRequest(BaseModel):
     release_id: Optional[str] = Field(
         None, description="Target release ID (if None: use previous release)"
     )
+    current_release_id: Optional[str] = Field(
+        None,
+        description="Currently deployed release ID (optional hint for previous-release resolution)",
+    )
 
     class Config:
-        json_schema_extra = {"example": {"release_id": "rel_1703001234_a3f5c8e9"}}
+        json_schema_extra = {
+            "example": {
+                "release_id": "rel_1703001234_a3f5c8e9",
+                "current_release_id": "rel_1703002000_b4c7d9e2",
+            }
+        }
 
 
 class RollbackResponse(BaseModel):
@@ -821,6 +833,7 @@ class RollbackResponse(BaseModel):
     health_status: HealthStatus = Field(
         ..., description="Health status after rollback"
     )
+    skill_run_id: Optional[str] = Field(None, description="Canonical SkillRun backing this action")
     message: str = Field(..., description="Status message")
     warnings: List[str] = Field(default_factory=list, description="Warnings if any")
 

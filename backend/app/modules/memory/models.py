@@ -53,6 +53,7 @@ class MemoryEntryORM(Base):
     agent_id = Column(String(100), nullable=True, index=True)
     session_id = Column(String(32), nullable=True, index=True)
     mission_id = Column(String(100), nullable=True, index=True)
+    skill_run_id = Column(String(64), nullable=True, index=True)
     tags = Column(ARRAY(String(50)), nullable=False, default=list)
     
     # Scoring
@@ -81,6 +82,7 @@ class MemoryEntryORM(Base):
         Index("idx_memory_entries_karma", "karma_score"),
         Index("idx_memory_entries_session", "session_id"),
         Index("idx_memory_entries_mission", "mission_id"),
+        Index("idx_memory_entries_skill_run", "skill_run_id"),
         Index("idx_memory_entries_expires", "expires_at"),
         # GIN index for tags array and metadata JSONB
         Index("idx_memory_entries_tags", "tags", postgresql_using="gin"),
@@ -98,6 +100,7 @@ class MemoryEntryORM(Base):
             "agent_id": self.agent_id,
             "session_id": self.session_id,
             "mission_id": self.mission_id,
+            "skill_run_id": self.skill_run_id,
             "tags": self.tags or [],
             "importance": self.importance,
             "karma_score": self.karma_score,
@@ -122,6 +125,7 @@ class MemoryEntryORM(Base):
             agent_id=data.get("agent_id"),
             session_id=data.get("session_id"),
             mission_id=data.get("mission_id"),
+            skill_run_id=data.get("skill_run_id"),
             tags=data.get("tags", []),
             importance=data.get("importance", 50.0),
             karma_score=data.get("karma_score", 50.0),
