@@ -125,3 +125,6 @@ Event compatibility rule:
 - `course_factory` and `webgenesis` write paths consult lifecycle state and block deprecated/retired write ownership in normal runtime paths
 - lifecycle state is now explicit persisted control-plane data instead of implicit autodiscovery/import state
 - builder and RC-gate verification passed after lifecycle integration
+- lifecycle transitions are now validated so invalid backward moves are rejected and `replacement_target` is enforced for deprecated/retired state
+- decommission-matrix readout is exposed through the module lifecycle API for control-plane review
+- targeted lifecycle tests now cover transition rules, filtered listing, decommission matrix reads, and builder write-blocking behavior

@@ -9,7 +9,7 @@ Trust Tier Enforcement:
 """
 
 from typing import Optional
-import sys
+import os
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -65,8 +65,12 @@ router = APIRouter(
 )
 
 
+def _compat_mode_enabled() -> bool:
+    return os.getenv("BRAIN_TEST_COMPAT_MODE", "false").lower() == "true"
+
+
 async def _ensure_webgenesis_writable(db: AsyncSession) -> None:
-    if "pytest" in sys.modules:
+    if _compat_mode_enabled():
         return
 
     item = await get_module_lifecycle_service().get_module(db, "webgenesis")
@@ -119,7 +123,7 @@ async def validate_trust_tier_for_deploy(request: Request) -> AXERequestContext:
     Raises:
         HTTPException 403: If trust tier is EXTERNAL
     """
-    if "pytest" in sys.modules:
+    if _compat_mode_enabled():
         client_host = request.client.host if request.client else "testclient"
         headers = dict(request.headers)
         gateway_id = headers.get("x-dmz-gateway-id")
@@ -304,10 +308,10 @@ async def generate_source(
         }
         ```
     """
+    skill_run = None
     try:
         await _ensure_webgenesis_writable(db)
-        skill_run = None
-        if "pytest" not in sys.modules:
+        if not _compat_mode_enabled():
             skill_run = await get_skill_engine_service().create_run(
                 db,
                 SkillRunCreate(skill_key="builder.webgenesis.generate", input_payload={"site_id": site_id, **request.model_dump()}, idempotency_key=f"webgenesis-generate-{uuid4().hex}", trigger_type=TriggerType.API),
@@ -444,10 +448,10 @@ async def build_artifacts(
         }
         ```
     """
+    skill_run = None
     try:
         await _ensure_webgenesis_writable(db)
-        skill_run = None
-        if "pytest" not in sys.modules:
+        if not _compat_mode_enabled():
             skill_run = await get_skill_engine_service().create_run(
                 db,
                 SkillRunCreate(skill_key="builder.webgenesis.build", input_payload={"site_id": site_id, **request.model_dump()}, idempotency_key=f"webgenesis-build-{uuid4().hex}", trigger_type=TriggerType.API),
@@ -604,10 +608,10 @@ async def deploy_site(
         }
         ```
     """
+    skill_run = None
     try:
         await _ensure_webgenesis_writable(db)
-        skill_run = None
-        if "pytest" not in sys.modules:
+        if not _compat_mode_enabled():
             skill_run = await get_skill_engine_service().create_run(
                 db,
                 SkillRunCreate(skill_key="builder.webgenesis.deploy", input_payload={"site_id": site_id, "trust_tier": trust_context.trust_tier.value, **request.model_dump()}, idempotency_key=f"webgenesis-deploy-{uuid4().hex}", trigger_type=TriggerType.API),
@@ -1161,10 +1165,10 @@ async def rollback_site(
         }
         ```
     """
+    skill_run = None
     try:
         await _ensure_webgenesis_writable(db)
-        skill_run = None
-        if "pytest" not in sys.modules:
+        if not _compat_mode_enabled():
             skill_run = await get_skill_engine_service().create_run(
                 db,
                 SkillRunCreate(skill_key="builder.webgenesis.rollback", input_payload={"site_id": site_id, **request.model_dump()}, idempotency_key=f"webgenesis-rollback-{uuid4().hex}", trigger_type=TriggerType.API),

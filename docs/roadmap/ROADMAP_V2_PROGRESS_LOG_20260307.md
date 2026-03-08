@@ -721,3 +721,37 @@ Resolved in this block:
 - Epic 3-7 remain green.
 - Epic 8-12 now have implemented and verified baselines rather than interrupted partial edits.
 - Remaining work is mainly cleanup and coverage expansion, not active breakage repair.
+
+74) Epic 12 hardening pass completed
+- `module_lifecycle` was strengthened with:
+  - typed classification and lifecycle status models
+  - validated lifecycle transition rules
+  - enforced `replacement_target` for `deprecated` and `retired`
+  - filtered listing support
+  - decommission-matrix read endpoint
+- Builder write-owner guards were rechecked against lifecycle state for `course_factory` and `webgenesis`.
+
+75) Coverage expanded for lifecycle, knowledge, and run-ingest paths
+- Added:
+  - `backend/tests/test_module_lifecycle.py`
+  - `backend/tests/test_knowledge_layer.py`
+  - `backend/tests/test_runtime_ingest_routes.py`
+- Coverage now explicitly validates:
+  - lifecycle transition enforcement
+  - builder write blocking for deprecated/retired modules
+  - knowledge-layer search and run-lesson ingest
+  - memory/learning ingestion from canonical `skill_run_id` runtime state
+
+76) Low-risk cleanup applied to test-only compatibility handling
+- Moved `TestClient` URL/delete compatibility patching out of `backend/main.py` into `backend/tests/conftest.py`.
+- Kept app-level auth overrides in `backend/main.py` because that path remains RC-gate-stable and still supports legacy app-level tests.
+- Result:
+  - runtime entrypoint is slightly cleaner
+  - test-only transport compatibility is now owned by the test layer
+
+77) Post-hardening verification completed
+- Verified with:
+  - `PYTHONPATH=. pytest tests/test_module_lifecycle.py tests/test_knowledge_layer.py tests/test_runtime_ingest_routes.py tests/test_course_factory.py tests/test_sprint10_webgenesis_ir.py tests/test_webgenesis_mvp.py tests/test_webgenesis_ops.py tests/test_webgenesis_sprint3.py tests/test_skill_engine.py tests/test_skill_evaluator_optimizer.py tests/test_skill_capability_registry.py tests/test_agent_skillrun_orchestration.py tests/test_supervisor_skillrun_mapping.py tests/test_task_queue_skill_run_lease.py -q`
+- Result:
+  - `110 passed`
+- RC gate rerun after hardening/cleanup also passed.

@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import JSONResponse
 from typing import Dict, Any, List, Optional
 from loguru import logger
-import sys
+import os
 
 from app.core.auth_deps import require_auth, require_operator, get_current_principal, Principal
 from app.core.database import get_db
@@ -59,8 +59,12 @@ router = APIRouter(
 )
 
 
+def _compat_mode_enabled() -> bool:
+    return os.getenv("BRAIN_TEST_COMPAT_MODE", "false").lower() == "true"
+
+
 async def _ensure_course_factory_writable(db: AsyncSession) -> None:
-    if "pytest" in sys.modules:
+    if _compat_mode_enabled():
         return
 
     item = await get_module_lifecycle_service().get_module(db, "course_factory")
@@ -258,10 +262,10 @@ async def generate_course(
     Raises:
         HTTPException: If IR validation fails or approval missing
     """
+    skill_run = None
     try:
         await _ensure_course_factory_writable(db)
-        skill_run = None
-        if "pytest" not in sys.modules:
+        if not _compat_mode_enabled():
             skill_run = await get_skill_engine_service().create_run(
                 db,
                 SkillRunCreate(

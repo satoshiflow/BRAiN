@@ -369,10 +369,10 @@ Parallelizable groups:
 
 Implementation should now continue with:
 
-1. expand coverage for `knowledge_layer` and memory/learning run-ingest flows
-2. review whether pytest-only compatibility shims should remain or be narrowed further
-3. do final wording cleanup across roadmap/spec docs if desired
-4. create a checkpoint commit for Epic 8-12 stabilization
+1. reduce remaining legacy/test shims, starting with app-level import compatibility once test migration cost is acceptable
+2. expand coverage further around builder lifecycle transitions and decommission/kill-switch semantics
+3. plan the next roadmap branch: deeper knowledge/evolution work vs. stronger builder/infra unification
+4. prepare the next checkpoint commit and PR narrative from the now-hardened baseline
 
 ---
 

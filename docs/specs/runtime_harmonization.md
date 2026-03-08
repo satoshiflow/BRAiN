@@ -141,3 +141,5 @@ Route precedence and cutover rule:
 - `POST /api/tasks/skill-runs/{run_id}/lease` now creates subordinate task leases from canonical `SkillRun` state
 - supervisor and agent-management orchestration paths now read canonical `SkillRun` state rather than mission-only placeholders
 - targeted orchestration tests and the RC staging gate passed after stabilization
+- memory and learning ingest routes are now covered with targeted tests that verify canonical `skill_run_id` propagation into downstream runtime stores
+- cleanup reduced some test-only compatibility logic in the runtime entrypoint by moving `TestClient` URL/delete normalization into test configuration

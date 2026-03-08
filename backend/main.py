@@ -32,7 +32,7 @@ from starlette.requests import Request
 
 # Rate Limiting (single source: app.core.rate_limit)
 from app.core.rate_limit import limiter as shared_limiter, rate_limit_exceeded_handler
-from app.core.auth_deps import Principal, PrincipalType, require_auth, require_operator
+from app.core.auth_deps import Principal, PrincipalType, get_current_principal, require_auth, require_operator
 
 # Core infrastructure
 from app.core.config import get_settings
@@ -317,9 +317,6 @@ def create_app() -> FastAPI:
     )
 
     if "pytest" in sys.modules:
-        from fastapi.testclient import TestClient
-        from urllib.parse import quote
-
         test_principal = Principal(
             principal_id="pytest-operator",
             principal_type=PrincipalType.HUMAN,
@@ -335,24 +332,7 @@ def create_app() -> FastAPI:
 
         app.dependency_overrides[require_auth] = _test_principal_override
         app.dependency_overrides[require_operator] = _test_principal_override
-
-        if not getattr(TestClient.request, "_brain_pytest_compat", False):
-            _orig_request = TestClient.request
-
-            def _compat_request(self, method, url, *args, **kwargs):
-                if isinstance(url, str) and url.startswith("/"):
-                    url = url.replace("..", "%2E%2E")
-                    url = quote(url, safe="/%?=&-%._~")
-                return _orig_request(self, method, url, *args, **kwargs)
-
-            _compat_request._brain_pytest_compat = True
-            TestClient.request = _compat_request
-
-            def _compat_delete(self, url, **kwargs):
-                return self.request("DELETE", url, **kwargs)
-
-            _compat_delete._brain_pytest_compat = True
-            TestClient.delete = _compat_delete
+        app.dependency_overrides[get_current_principal] = _test_principal_override
 
     # Rate Limiter Setup (single shared limiter from app.core.rate_limit)
     app.state.limiter = shared_limiter
