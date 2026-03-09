@@ -20,6 +20,8 @@ Execution status snapshot (2026-03-09):
   `docs/roadmap/IMPLEMENTATION_PROGRESS.md`.
 - roadmap remains canonical for invariants, verification matrix, and
   post-P7 operating cadence.
+- post-P7 recurring operation details are tracked in
+  `docs/roadmap/BRAIN_POST_P7_OPERATIONS_CADENCE.md`.
 
 ---
 

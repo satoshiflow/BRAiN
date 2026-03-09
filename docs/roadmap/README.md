@@ -4,6 +4,9 @@ Active canonical roadmaps:
 - `docs/roadmap/BRAIN_SKILL_FIRST_IMPLEMENTATION_ROADMAP.md`
 - `docs/roadmap/BRAIN_MISSION_DELIBERATION_INSIGHT_ROADMAP.md`
 
+Active operations cadence:
+- `docs/roadmap/BRAIN_POST_P7_OPERATIONS_CADENCE.md`
+
 Active companion specs:
 - `docs/specs/observer_core_mvp.md`
 - `docs/specs/discovery_observer_economy_sequencing.md`
@@ -12,6 +15,7 @@ Active companion specs:
 
 Execution log:
 - `docs/roadmap/IMPLEMENTATION_PROGRESS.md`
+- `docs/roadmap/monthly/` (governance package cadence)
 
 Archived roadmaps:
 - `docs/roadmap/archive/BRAIN_Master_ROADMAP.md`

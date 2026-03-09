@@ -275,6 +275,9 @@ Verification:
 
 Planned next: **Post-P7 Operations and Evolution Cadence**
 
+Execution spec:
+- `docs/roadmap/BRAIN_POST_P7_OPERATIONS_CADENCE.md`
+
 Focus:
 1. operate monthly contract/roadmap review cadence with governance evidence bundles.
 2. harden anti-gaming, explainability, and rollback thresholds for economy scoring.
