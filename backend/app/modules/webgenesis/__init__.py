@@ -73,34 +73,6 @@ from .schemas import (
     WebGenesisAuditEvent,
 )
 
-from .service import (
-    WebGenesisService,
-    get_webgenesis_service,
-)
-
-from .releases import (
-    ReleaseManager,
-    get_release_manager,
-)
-
-from .ops_service import (
-    WebGenesisOpsService,
-    get_ops_service,
-    site_lock,
-)
-
-from .health import (
-    HealthCheckService,
-    get_health_service,
-)
-
-from .rollback import (
-    RollbackService,
-    get_rollback_service,
-)
-
-from .router import router
-
 __all__ = [
     # Enums (Sprint I)
     "DeployTarget",
@@ -161,3 +133,47 @@ __all__ = [
 
 __version__ = "2.0.0"  # Sprint II
 __module_name__ = "brain.webgenesis"
+
+
+def __getattr__(name: str):
+    if name in {"WebGenesisService", "get_webgenesis_service"}:
+        from .service import WebGenesisService, get_webgenesis_service
+
+        return {
+            "WebGenesisService": WebGenesisService,
+            "get_webgenesis_service": get_webgenesis_service,
+        }[name]
+    if name in {"ReleaseManager", "get_release_manager"}:
+        from .releases import ReleaseManager, get_release_manager
+
+        return {
+            "ReleaseManager": ReleaseManager,
+            "get_release_manager": get_release_manager,
+        }[name]
+    if name in {"WebGenesisOpsService", "get_ops_service", "site_lock"}:
+        from .ops_service import WebGenesisOpsService, get_ops_service, site_lock
+
+        return {
+            "WebGenesisOpsService": WebGenesisOpsService,
+            "get_ops_service": get_ops_service,
+            "site_lock": site_lock,
+        }[name]
+    if name in {"HealthCheckService", "get_health_service"}:
+        from .health import HealthCheckService, get_health_service
+
+        return {
+            "HealthCheckService": HealthCheckService,
+            "get_health_service": get_health_service,
+        }[name]
+    if name in {"RollbackService", "get_rollback_service"}:
+        from .rollback import RollbackService, get_rollback_service
+
+        return {
+            "RollbackService": RollbackService,
+            "get_rollback_service": get_rollback_service,
+        }[name]
+    if name == "router":
+        from .router import router
+
+        return router
+    raise AttributeError(f"module 'app.modules.webgenesis' has no attribute {name!r}")

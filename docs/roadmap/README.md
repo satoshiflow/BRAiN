@@ -8,6 +8,9 @@ Active companion specs:
 - `docs/specs/observer_core_mvp.md`
 - `docs/specs/discovery_observer_economy_sequencing.md`
 
+Execution log:
+- `docs/roadmap/IMPLEMENTATION_PROGRESS.md`
+
 Archived roadmaps:
 - `docs/roadmap/archive/BRAIN_Master_ROADMAP.md`
 - `docs/roadmap/archive/BRAIN_ROADMAP_V2_EXECUTION.md`
