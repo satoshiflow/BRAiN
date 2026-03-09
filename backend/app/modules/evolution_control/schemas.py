@@ -29,5 +29,14 @@ class EvolutionProposalCreateResponse(BaseModel):
     proposal: EvolutionProposalResponse
 
 
+class EvolutionReviewQueueItem(BaseModel):
+    proposal: EvolutionProposalResponse
+    ranking_score: float
+
+
+class EvolutionReviewQueueResponse(BaseModel):
+    items: list[EvolutionReviewQueueItem]
+
+
 class EvolutionProposalTransitionRequest(BaseModel):
     status: str = Field(..., min_length=1, max_length=32)

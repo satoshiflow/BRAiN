@@ -1,6 +1,6 @@
 # Discovery, Observer, and Economy Sequencing Note
 
-Status: Active planning note
+Status: Active sequencing + execution note
 Date: 2026-03-09
 Purpose: Capture sequencing and guardrails for introducing Observer Core,
 Discovery Layer, and later Economy logic without destabilizing BRAiN Core.
@@ -40,10 +40,11 @@ Primary signal sources for Observer MVP:
 - `backend/app/modules/recovery_policy_engine/`
 - `backend/mission_control_core/core/event_stream.py`
 
-Planned new modules:
+Implemented/active modules:
 
-- `backend/app/modules/observer_core/` (next step)
-- `backend/app/modules/discovery_layer/` (later step)
+- `backend/app/modules/observer_core/`
+- `backend/app/modules/discovery_layer/`
+- `backend/app/modules/economy_layer/`
 
 ## 4) Safety Rules
 
@@ -64,14 +65,14 @@ Observer Core MVP:
 - EventStream consumer + idempotent ingestion
 - tenant isolation and audit/event ordering tests
 
-### Step B
+### Step B (implemented)
 
 Discovery Layer MVP:
 - `SkillGap`, `CapabilityGap`, `SkillProposal`, `ProposalEvidence`
 - consumes Knowledge + Consolidation + Observer signals
 - proposal queue only; no direct mutation
 
-### Step C (deferred)
+### Step C (implemented baseline)
 
 Economy/selection support:
 - start with minimal dimensions: confidence, frequency, impact, cost

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import desc, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth_deps import Principal
@@ -11,7 +13,14 @@ from app.modules.consolidation_layer.service import get_consolidation_layer_serv
 from .models import EvolutionProposalModel
 
 
-_ALLOWED_STATUSES = {"draft", "review", "approved", "rejected", "applied", "rolled_back"}
+_ALLOWED_STATUSES = {
+    "draft",
+    "review",
+    "approved",
+    "rejected",
+    "applied",
+    "rolled_back",
+}
 _ALLOWED_TRANSITIONS = {
     "draft": {"review", "rejected"},
     "review": {"approved", "rejected"},
@@ -23,7 +32,27 @@ _ALLOWED_TRANSITIONS = {
 
 
 class EvolutionControlService:
-    async def get_by_id(self, db: AsyncSession, proposal_id, tenant_id: str) -> EvolutionProposalModel | None:
+    @staticmethod
+    def _metadata(value: Any) -> dict[str, Any]:
+        if isinstance(value, dict):
+            return value
+        return {}
+
+    @staticmethod
+    def _queue_ranking_score(metadata: dict[str, Any]) -> float:
+        economy_score = float(metadata.get("economy_weighted_score", 0.0) or 0.0)
+        discovery_score = float(metadata.get("discovery_priority_score", 0.0) or 0.0)
+        pattern_confidence = float(metadata.get("pattern_confidence", 0.0) or 0.0)
+        return round(
+            (economy_score * 0.5)
+            + (discovery_score * 0.3)
+            + (pattern_confidence * 0.2),
+            3,
+        )
+
+    async def get_by_id(
+        self, db: AsyncSession, proposal_id, tenant_id: str
+    ) -> EvolutionProposalModel | None:
         query = select(EvolutionProposalModel).where(
             EvolutionProposalModel.id == proposal_id,
             EvolutionProposalModel.tenant_id == tenant_id,
@@ -31,15 +60,48 @@ class EvolutionControlService:
         result = await db.execute(query.limit(1))
         return result.scalar_one_or_none()
 
-    async def get_by_pattern_id(self, db: AsyncSession, pattern_id, tenant_id: str) -> EvolutionProposalModel | None:
+    async def get_by_pattern_id(
+        self, db: AsyncSession, pattern_id, tenant_id: str
+    ) -> EvolutionProposalModel | None:
         query = select(EvolutionProposalModel).where(
             EvolutionProposalModel.pattern_id == pattern_id,
             EvolutionProposalModel.tenant_id == tenant_id,
         )
-        result = await db.execute(query.order_by(EvolutionProposalModel.created_at.desc()).limit(1))
+        result = await db.execute(
+            query.order_by(EvolutionProposalModel.created_at.desc()).limit(1)
+        )
         return result.scalar_one_or_none()
 
-    async def create_from_pattern(self, db: AsyncSession, pattern_id, principal: Principal) -> EvolutionProposalModel:
+    async def list_review_queue(
+        self, db: AsyncSession, tenant_id: str, limit: int = 50
+    ) -> list[tuple[EvolutionProposalModel, float]]:
+        query = select(EvolutionProposalModel).where(
+            EvolutionProposalModel.tenant_id == tenant_id,
+            EvolutionProposalModel.status.in_(["draft", "review", "approved"]),
+        )
+        query = query.order_by(desc(EvolutionProposalModel.updated_at)).limit(limit)
+        result = await db.execute(query)
+        items = list(result.scalars().all())
+        scored = [
+            (
+                item,
+                self._queue_ranking_score(
+                    self._metadata(getattr(item, "proposal_metadata", {}))
+                ),
+            )
+            for item in items
+        ]
+        scored.sort(key=lambda pair: pair[1], reverse=True)
+        return scored
+
+    async def create_from_pattern(
+        self,
+        db: AsyncSession,
+        pattern_id,
+        principal: Principal,
+        *,
+        commit: bool = True,
+    ) -> EvolutionProposalModel:
         if not principal.tenant_id:
             raise ValueError("Tenant context required")
 
@@ -47,12 +109,18 @@ class EvolutionControlService:
         if existing is not None:
             return existing
 
-        pattern = await get_consolidation_layer_service().get_by_id(db, pattern_id, principal.tenant_id)
+        pattern = await get_consolidation_layer_service().get_by_id(
+            db, pattern_id, principal.tenant_id
+        )
         if pattern is None:
             raise ValueError("Pattern candidate not found")
 
         insight_evidence = pattern.evidence.get("insight_evidence", {})
-        signals = insight_evidence.get("signals", {}) if isinstance(insight_evidence, dict) else {}
+        signals = (
+            insight_evidence.get("signals", {})
+            if isinstance(insight_evidence, dict)
+            else {}
+        )
         skill_key = str(signals.get("skill_key", "unknown"))
 
         proposal = EvolutionProposalModel(
@@ -72,11 +140,25 @@ class EvolutionControlService:
             updated_at=datetime.now(timezone.utc),
         )
         db.add(proposal)
-        await db.commit()
+        try:
+            if commit:
+                await db.commit()
+            else:
+                await db.flush()
+        except IntegrityError:
+            await db.rollback()
+            existing_after_race = await self.get_by_pattern_id(
+                db, pattern_id, principal.tenant_id
+            )
+            if existing_after_race is not None:
+                return existing_after_race
+            raise
         await db.refresh(proposal)
         return proposal
 
-    async def transition_status(self, db: AsyncSession, proposal_id, principal: Principal, new_status: str) -> EvolutionProposalModel:
+    async def transition_status(
+        self, db: AsyncSession, proposal_id, principal: Principal, new_status: str
+    ) -> EvolutionProposalModel:
         if not principal.tenant_id:
             raise ValueError("Tenant context required")
         if new_status not in _ALLOWED_STATUSES:
@@ -89,7 +171,7 @@ class EvolutionControlService:
         if new_status not in _ALLOWED_TRANSITIONS.get(proposal.status, set()):
             raise ValueError("Invalid proposal transition")
 
-        metadata = dict(proposal.proposal_metadata or {})
+        metadata = self._metadata(getattr(proposal, "proposal_metadata", {}))
         if new_status == "applied":
             if proposal.governance_required == "true":
                 required_refs = {"approval_id", "policy_decision_id", "reviewer_id"}

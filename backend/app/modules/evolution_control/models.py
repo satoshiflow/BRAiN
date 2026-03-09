@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, Index, String, Text
+from sqlalchemy import Column, DateTime, Index, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import declarative_base
 
@@ -32,5 +32,8 @@ class EvolutionProposalModel(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
 
     __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "pattern_id", name="uq_evolution_proposals_tenant_pattern"
+        ),
         Index("ix_evolution_proposals_tenant_run", "tenant_id", "skill_run_id"),
     )

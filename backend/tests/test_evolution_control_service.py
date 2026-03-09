@@ -16,6 +16,18 @@ class FakeDb:
     async def refresh(self, item) -> None:
         return None
 
+    async def execute(self, query):
+        class _Result:
+            def scalars(self):
+                class _Scalars:
+                    @staticmethod
+                    def all():
+                        return []
+
+                return _Scalars()
+
+        return _Result()
+
 
 def _principal() -> Principal:
     return Principal(
@@ -40,7 +52,9 @@ async def test_transition_status_rejects_invalid_transition() -> None:
     service.get_by_id = _get_by_id  # type: ignore[method-assign]
 
     with pytest.raises(ValueError, match="Invalid proposal transition"):
-        await service.transition_status(db=None, proposal_id=uuid4(), principal=_principal(), new_status="applied")
+        await service.transition_status(
+            db=None, proposal_id=uuid4(), principal=_principal(), new_status="applied"
+        )
 
 
 @pytest.mark.asyncio
@@ -61,7 +75,9 @@ async def test_transition_to_applied_requires_governance_and_validation() -> Non
     service.get_by_id = _get_by_id  # type: ignore[method-assign]
 
     with pytest.raises(ValueError, match="Governance evidence required before apply"):
-        await service.transition_status(db=None, proposal_id=uuid4(), principal=_principal(), new_status="applied")
+        await service.transition_status(
+            db=None, proposal_id=uuid4(), principal=_principal(), new_status="applied"
+        )
 
 
 @pytest.mark.asyncio
@@ -84,7 +100,44 @@ async def test_transition_to_applied_records_transition_when_valid() -> None:
         return proposal
 
     service.get_by_id = _get_by_id  # type: ignore[method-assign]
-    updated = await service.transition_status(db=FakeDb(), proposal_id=uuid4(), principal=_principal(), new_status="applied")
+    updated = await service.transition_status(
+        db=FakeDb(), proposal_id=uuid4(), principal=_principal(), new_status="applied"
+    )
 
     assert updated.status == "applied"
     assert len(updated.proposal_metadata.get("transitions", [])) == 1
+
+
+@pytest.mark.asyncio
+async def test_list_review_queue_sorts_by_ranking_score(monkeypatch) -> None:
+    service = EvolutionControlService()
+    proposal_low = SimpleNamespace(
+        status="draft",
+        updated_at=None,
+        proposal_metadata={"pattern_confidence": 0.3},
+    )
+    proposal_high = SimpleNamespace(
+        status="review",
+        updated_at=None,
+        proposal_metadata={"economy_weighted_score": 0.9},
+    )
+
+    class FakeResult:
+        class _Scalars:
+            @staticmethod
+            def all():
+                return [proposal_low, proposal_high]
+
+        @staticmethod
+        def scalars():
+            return FakeResult._Scalars()
+
+    async def _execute(query):
+        return FakeResult()
+
+    fake_db = FakeDb()
+    fake_db.execute = _execute  # type: ignore[method-assign]
+
+    queue = await service.list_review_queue(fake_db, tenant_id="tenant-a", limit=20)
+    assert len(queue) == 2
+    assert queue[0][0] is proposal_high

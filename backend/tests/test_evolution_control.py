@@ -7,7 +7,12 @@ from uuid import uuid4
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.core.auth_deps import Principal, PrincipalType, get_current_principal, require_auth
+from app.core.auth_deps import (
+    Principal,
+    PrincipalType,
+    get_current_principal,
+    require_auth,
+)
 from app.core.database import get_db
 from app.modules.evolution_control.router import router as evolution_router
 
@@ -37,7 +42,9 @@ def test_evolution_create_get_transition(monkeypatch) -> None:
     app.dependency_overrides[get_current_principal] = lambda: principal
     client = TestClient(app)
 
-    route_module = __import__("app.modules.evolution_control.router", fromlist=["router"])
+    route_module = __import__(
+        "app.modules.evolution_control.router", fromlist=["router"]
+    )
     proposal_id = uuid4()
     pattern_id = uuid4()
     now = datetime.now(timezone.utc)
@@ -72,7 +79,14 @@ def test_evolution_create_get_transition(monkeypatch) -> None:
             assert status == "review"
             return proposal_review
 
-    monkeypatch.setattr(route_module, "get_evolution_control_service", lambda: FakeService())
+        async def list_review_queue(self, db, tenant_id, limit):
+            assert tenant_id == "tenant-a"
+            assert limit == 25
+            return [(proposal_review, 0.78)]
+
+    monkeypatch.setattr(
+        route_module, "get_evolution_control_service", lambda: FakeService()
+    )
 
     create_response = client.post(f"/api/evolution/proposals/patterns/{pattern_id}")
     assert create_response.status_code == 201
@@ -88,6 +102,10 @@ def test_evolution_create_get_transition(monkeypatch) -> None:
     assert transition_response.status_code == 200
     assert transition_response.json()["status"] == "review"
 
+    queue_response = client.get("/api/evolution/review-queue?limit=25")
+    assert queue_response.status_code == 200
+    assert queue_response.json()["items"][0]["ranking_score"] == 0.78
+
 
 def test_evolution_transition_invalid_returns_400(monkeypatch) -> None:
     app = FastAPI()
@@ -102,13 +120,17 @@ def test_evolution_transition_invalid_returns_400(monkeypatch) -> None:
     app.dependency_overrides[get_current_principal] = lambda: principal
     client = TestClient(app)
 
-    route_module = __import__("app.modules.evolution_control.router", fromlist=["router"])
+    route_module = __import__(
+        "app.modules.evolution_control.router", fromlist=["router"]
+    )
 
     class FakeService:
         async def transition_status(self, db, proposal_id, principal, status):
             raise ValueError("Invalid proposal transition")
 
-    monkeypatch.setattr(route_module, "get_evolution_control_service", lambda: FakeService())
+    monkeypatch.setattr(
+        route_module, "get_evolution_control_service", lambda: FakeService()
+    )
 
     response = client.post(
         f"/api/evolution/proposals/{uuid4()}/transition",

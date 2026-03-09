@@ -1,0 +1,113 @@
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from types import SimpleNamespace
+from uuid import uuid4
+
+import pytest
+
+from app.core.auth_deps import Principal, PrincipalType
+from app.modules.economy_layer.service import EconomyLayerService
+
+
+class FakeDb:
+    def __init__(self) -> None:
+        self.items = []
+
+    def add(self, item) -> None:
+        self.items.append(item)
+
+    async def execute(self, query):
+        raise RuntimeError("not used in this test")
+
+    async def flush(self) -> None:
+        return None
+
+    async def commit(self) -> None:
+        return None
+
+    async def rollback(self) -> None:
+        return None
+
+    async def refresh(self, item) -> None:
+        return None
+
+
+def _principal() -> Principal:
+    return Principal(
+        principal_id="admin-1",
+        principal_type=PrincipalType.HUMAN,
+        email="admin@example.com",
+        name="Admin",
+        roles=["admin"],
+        scopes=["read", "write"],
+        tenant_id="tenant-a",
+    )
+
+
+@pytest.mark.asyncio
+async def test_analyze_proposal_updates_priority_and_metadata(monkeypatch) -> None:
+    service = EconomyLayerService()
+    now = datetime.now(timezone.utc)
+    proposal = SimpleNamespace(
+        id=uuid4(),
+        tenant_id="tenant-a",
+        skill_run_id=uuid4(),
+        pattern_id=uuid4(),
+        proposal_evidence={"observer_signal_count": 3, "knowledge_item_count": 2},
+        evidence_score=0.8,
+        priority_score=0.6,
+        updated_at=now,
+    )
+    evolution_proposal = SimpleNamespace(
+        id=uuid4(), proposal_metadata={}, updated_at=now
+    )
+
+    module = __import__(
+        "app.modules.economy_layer.service", fromlist=["get_discovery_layer_service"]
+    )
+
+    class FakeDiscoveryService:
+        async def get_proposal_by_id(self, db, proposal_id, tenant_id):
+            return proposal
+
+    class FakeEvolutionService:
+        async def get_by_pattern_id(self, db, pattern_id, tenant_id):
+            return evolution_proposal
+
+    monkeypatch.setattr(
+        module, "get_discovery_layer_service", lambda: FakeDiscoveryService()
+    )
+    monkeypatch.setattr(
+        module, "get_evolution_control_service", lambda: FakeEvolutionService()
+    )
+
+    async def _no_existing(db, proposal_id, tenant_id):
+        return None
+
+    service.get_assessment_by_proposal_id = _no_existing  # type: ignore[method-assign]
+
+    assessment, updated_proposal = await service.analyze_proposal(
+        FakeDb(), proposal.id, _principal()
+    )
+
+    assert assessment.weighted_score > 0
+    assert updated_proposal.priority_score > 0.6
+    assert "economy_assessment_id" in updated_proposal.proposal_evidence
+    assert (
+        evolution_proposal.proposal_metadata.get("economy_weighted_score")
+        == assessment.weighted_score
+    )
+
+
+@pytest.mark.asyncio
+async def test_queue_for_review_requires_assessment(monkeypatch) -> None:
+    service = EconomyLayerService()
+
+    async def _missing(db, assessment_id, tenant_id):
+        return None
+
+    service.get_assessment_by_id = _missing  # type: ignore[method-assign]
+
+    with pytest.raises(ValueError, match="Economy assessment not found"):
+        await service.queue_for_review(FakeDb(), uuid4(), _principal())

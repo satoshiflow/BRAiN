@@ -220,11 +220,66 @@ Verification:
 - `./scripts/run_rc_staging_gate.sh`
 - reviewer pass (Claude-style): PASS for decommission ledger safety and lifecycle retirement constraints.
 
+## Phase P6 - Discovery Layer MVP (Proposal-Only)
+
+Completed: 2026-03-09
+
+Delivered:
+- finalized discovery contracts with explicit evidence/threshold response shape:
+  - `backend/app/modules/discovery_layer/schemas.py`
+- extended discovery persistence for deterministic dedup + prioritization:
+  - migration `backend/alembic/versions/031_finalize_discovery_contracts.py`
+  - `dedup_key`, `evidence_score`, `priority_score`
+- extended discovery service to consume and threshold-check multi-source inputs:
+  - consolidation pattern confidence/support
+  - observer signal counts
+  - knowledge evidence counts
+- added proposal list surface for review workflows:
+  - `GET /api/discovery/proposals`
+- preserved proposal-only behavior and mediated handoff:
+  - review queue still routes through `evolution_control`
+- updated tests:
+  - `backend/tests/test_discovery_layer.py`
+  - `backend/tests/test_discovery_layer_service.py`
+
+Verification:
+- `PYTHONPATH=. pytest tests/test_discovery_layer.py tests/test_discovery_layer_service.py tests/test_evolution_control.py tests/test_evolution_control_service.py -q`
+- lifecycle + auth/tenant behavior covered by route/service regression tests.
+
+## Phase P7 - Economy and Selection Support (Deferred -> MVP Baseline)
+
+Completed: 2026-03-09
+
+Delivered:
+- added new `economy_layer` module:
+  - `backend/app/modules/economy_layer/models.py`
+  - `backend/app/modules/economy_layer/schemas.py`
+  - `backend/app/modules/economy_layer/service.py`
+  - `backend/app/modules/economy_layer/router.py`
+- added economy API surfaces:
+  - `POST /api/economy/proposals/{proposal_id}/analyze`
+  - `GET /api/economy/assessments/{assessment_id}`
+  - `POST /api/economy/assessments/{assessment_id}/queue-review`
+- implemented minimal economy dimensions (`confidence`, `frequency`, `impact`, `cost`) and weighted score for prioritization.
+- integrated economy signals into discovery proposal prioritization metadata and evolution review ranking support.
+- added migration `backend/alembic/versions/032_add_economy_layer.py` for persistence and lifecycle seed.
+- wired economy router into backend app composition in `backend/main.py`.
+- added/updated tests:
+  - `backend/tests/test_economy_layer.py`
+  - `backend/tests/test_economy_layer_service.py`
+  - `backend/tests/test_evolution_control.py`
+  - `backend/tests/test_evolution_control_service.py`
+- updated RC gate suite in `scripts/run_rc_staging_gate.sh` to include discovery/evolution/economy checks.
+
+Verification:
+- `PYTHONPATH=. pytest tests/test_economy_layer.py tests/test_economy_layer_service.py tests/test_discovery_layer.py tests/test_discovery_layer_service.py tests/test_evolution_control.py tests/test_evolution_control_service.py -q`
+- `./scripts/run_rc_staging_gate.sh`
+
 ## Next Phase
 
-Planned next: **Phase P6 - Discovery Layer MVP (Proposal-Only)**
+Planned next: **Post-P7 Operations and Evolution Cadence**
 
 Focus:
-1. introduce `discovery_layer` contracts (`SkillGap`, `CapabilityGap`, `SkillProposal`, `ProposalEvidence`).
-2. consume inputs from knowledge + consolidation + observer layers only.
-3. keep discovery strictly proposal-only and gated by `evolution_control`.
+1. operate monthly contract/roadmap review cadence with governance evidence bundles.
+2. harden anti-gaming, explainability, and rollback thresholds for economy scoring.
+3. track production quality gates (tenant isolation, audit ordering, RC gate drift) as steady-state SLOs.

@@ -7,6 +7,8 @@ Active canonical roadmaps:
 Active companion specs:
 - `docs/specs/observer_core_mvp.md`
 - `docs/specs/discovery_observer_economy_sequencing.md`
+- `docs/specs/discovery_layer_mvp.md`
+- `docs/specs/economy_selection_support_mvp.md`
 
 Execution log:
 - `docs/roadmap/IMPLEMENTATION_PROGRESS.md`

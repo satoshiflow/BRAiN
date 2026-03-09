@@ -18,6 +18,16 @@ PYTHONPATH=. pytest tests/modules/test_recovery_policy_engine.py tests/test_enfo
 echo "[gate] DNA integrity + audit"
 PYTHONPATH=. pytest tests/test_dna_events.py tests/modules/test_genetic_integrity.py -q -x --disable-warnings
 
+echo "[gate] discovery + evolution + economy"
+PYTHONPATH=. pytest \
+  tests/test_discovery_layer.py \
+  tests/test_discovery_layer_service.py \
+  tests/test_evolution_control.py \
+  tests/test_evolution_control_service.py \
+  tests/test_economy_layer.py \
+  tests/test_economy_layer_service.py \
+  -q -x --disable-warnings
+
 cd "$ROOT"
 echo "[gate] guardrails"
 python3 scripts/check_no_legacy_event_bus.py
