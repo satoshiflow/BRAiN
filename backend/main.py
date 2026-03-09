@@ -125,6 +125,7 @@ from app.modules.memory.router import router as memory_router
 from app.modules.learning.router import router as learning_router
 from app.modules.webgenesis.router import router as webgenesis_router
 from app.modules.knowledge_layer.router import router as knowledge_layer_router
+from app.modules.experience_layer.router import router as experience_layer_router
 from app.modules.module_lifecycle.router import router as module_lifecycle_router
 from app.modules.immune_orchestrator.router import router as immune_orchestrator_router
 from app.modules.recovery_policy_engine.router import router as recovery_policy_router
@@ -444,6 +445,7 @@ def create_app() -> FastAPI:
     app.include_router(learning_router, tags=["learning"])
     app.include_router(webgenesis_router, tags=["webgenesis"])
     app.include_router(knowledge_layer_router, tags=["knowledge-layer"])
+    app.include_router(experience_layer_router, tags=["experience-layer"])
     app.include_router(module_lifecycle_router, tags=["module-lifecycle"])
     app.include_router(health_monitor_router, tags=["health"])  # NEW: Health Monitor (Core)
     app.include_router(config_management_router, tags=["config"])  # NEW: Config Management (Core)
