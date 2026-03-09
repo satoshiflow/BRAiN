@@ -7,6 +7,8 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { AxeConfig, AxeMode, AxeMessage, AxeFile } from '../types';
 
+type JsonObject = Record<string, unknown>;
+
 interface AxeStore {
   // ============================================================================
   // Configuration
@@ -55,8 +57,8 @@ interface AxeStore {
   // ============================================================================
   // Context
   // ============================================================================
-  extraContext: Record<string, any>;
-  updateContext: (context: Record<string, any>) => void;
+  extraContext: JsonObject;
+  updateContext: (context: JsonObject) => void;
 
   // ============================================================================
   // UI State

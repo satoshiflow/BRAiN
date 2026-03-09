@@ -25,9 +25,7 @@ import type { AxeCanvasProps, AxeMessage } from '../types';
 
 export function AxeCanvas({
   mode,
-  onModeChange,
   onClose,
-  locale
 }: AxeCanvasProps) {
   const [input, setInput] = useState('');
 
@@ -54,8 +52,7 @@ export function AxeCanvas({
     isConnected,
     sendChat,
     sendDiffApplied,
-    sendDiffRejected,
-    sendFileUpdate
+    sendDiffRejected
   } = useAxeWebSocket({
     backendUrl: process.env.NEXT_PUBLIC_BRAIN_API_BASE || 'http://localhost:8000',
     sessionId: sessionId,
@@ -67,7 +64,7 @@ export function AxeCanvas({
   // ============================================================================
   // Event Telemetry (Phase 3)
   // ============================================================================
-  const { trackMessage, trackClick, trackDiffAction } = useEventTelemetry({
+  const { trackMessage, trackDiffAction } = useEventTelemetry({
     backendUrl: process.env.NEXT_PUBLIC_BRAIN_API_BASE || 'http://localhost:8000',
     sessionId: sessionId,
     appId: config?.app_id || 'axe-canvas',
@@ -272,8 +269,8 @@ export function AxeCanvas({
                         🎨 Welcome to CANVAS mode!
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        Describe what you want to build, and I'll help you write
-                        the code.
+                         Describe what you want to build, and I&apos;ll help you write
+                         the code.
                       </p>
                     </div>
                   </div>

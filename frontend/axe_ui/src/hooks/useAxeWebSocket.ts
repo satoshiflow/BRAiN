@@ -10,11 +10,20 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useAxeStore } from '../store/axeStore';
 import { useDiffStore } from '../store/diffStore';
-import type { AxeMessage } from '../types';
+import type { AxeDiff, AxeMessage } from '../types';
+
+type JsonObject = Record<string, unknown>;
 
 interface WebSocketMessage {
   type: string;
-  payload: any;
+  payload: JsonObject;
+}
+
+function asJsonObject(value: unknown): JsonObject | undefined {
+  if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    return value as JsonObject;
+  }
+  return undefined;
 }
 
 interface UseAxeWebSocketOptions {
@@ -42,7 +51,7 @@ export function useAxeWebSocket({
   // Send Message Helper
   // ============================================================================
 
-  const sendMessage = useCallback((type: string, payload: any) => {
+  const sendMessage = useCallback((type: string, payload: JsonObject) => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify({ type, payload }));
       return true;
@@ -54,7 +63,7 @@ export function useAxeWebSocket({
   // Send Chat Message
   // ============================================================================
 
-  const sendChat = useCallback((message: string, metadata?: Record<string, any>) => {
+  const sendChat = useCallback((message: string, metadata?: JsonObject) => {
     return sendMessage('chat', { message, metadata });
   }, [sendMessage]);
 
@@ -116,9 +125,9 @@ export function useAxeWebSocket({
               const assistantMessage: AxeMessage = {
                 id: `msg-${Date.now()}`,
                 role: 'assistant',
-                content: message.payload.message,
+                content: String(message.payload.message || ''),
                 timestamp: new Date().toISOString(),
-                context: message.payload.metadata
+                context: asJsonObject(message.payload.metadata)
               };
               addMessage(assistantMessage);
               break;
@@ -126,15 +135,18 @@ export function useAxeWebSocket({
 
             // Code diff for Apply/Reject
             case 'diff': {
-              const diff = message.payload;
+              const diff = message.payload as unknown as AxeDiff;
               addDiff(diff);
               break;
             }
 
             // File content update
             case 'file_update': {
-              const { file_id, content } = message.payload;
-              useAxeStore.getState().updateFile(file_id, content);
+              const fileId = typeof message.payload.file_id === 'string' ? message.payload.file_id : null;
+              const content = typeof message.payload.content === 'string' ? message.payload.content : null;
+              if (fileId && content !== null) {
+                useAxeStore.getState().updateFile(fileId, content);
+              }
               break;
             }
 
@@ -152,8 +164,8 @@ export function useAxeWebSocket({
 
             // Error
             case 'error':
-              console.error('[AXE WebSocket] Error:', message.payload.message);
-              onError?.(new Error(message.payload.message));
+              console.error('[AXE WebSocket] Error:', String(message.payload.message || 'unknown'));
+              onError?.(new Error(String(message.payload.message || 'WebSocket error')));
               break;
 
             default:

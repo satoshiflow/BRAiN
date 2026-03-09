@@ -25,10 +25,8 @@ interface AxeExpandedProps {
 
 export function AxeExpanded({
   mode,
-  onModeChange,
   onMinimize,
   onOpenCanvas,
-  locale,
   theme
 }: AxeExpandedProps) {
   const [input, setInput] = useState('');
@@ -48,7 +46,7 @@ export function AxeExpanded({
   // ============================================================================
   // Event Telemetry (Phase 3)
   // ============================================================================
-  const { trackMessage, trackClick } = useEventTelemetry({
+  const { trackMessage } = useEventTelemetry({
     backendUrl: process.env.NEXT_PUBLIC_BRAIN_API_BASE || 'http://localhost:8000',
     sessionId: sessionId,
     appId: config?.app_id || 'axe-expanded',
@@ -159,7 +157,7 @@ export function AxeExpanded({
           <div className="h-full flex items-center justify-center text-center">
             <div>
               <p className="text-muted-foreground mb-2">
-                👋 Hi! I'm AXE, your AI assistant.
+                👋 Hi! I&apos;m AXE, your AI assistant.
               </p>
               <p className="text-sm text-muted-foreground">
                 How can I help you today?

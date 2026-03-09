@@ -13,7 +13,7 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Shield, Database, Download, Trash2, Info } from 'lucide-react';
 import { cn } from '../utils/cn';
 
@@ -68,6 +68,8 @@ export function PrivacySettings({
   theme = 'dark',
   onSettingsChange,
 }: PrivacySettingsProps) {
+  void appId;
+  void backendUrl;
   const [settings, setSettings] = useState<PrivacySettings>({
     anonymization_level: 'pseudonymized',
     telemetry_enabled: true,

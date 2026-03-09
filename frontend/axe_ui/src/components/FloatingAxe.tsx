@@ -24,6 +24,7 @@ export function FloatingAxe({
   extraContext = {},
   onEvent
 }: FloatingAxeProps) {
+  void onEvent;
   const [sessionId] = useState(providedSessionId || generateSessionId());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

@@ -15,9 +15,7 @@ import type { AxeWidgetProps } from '../types';
 
 export function AxeWidget({
   position,
-  defaultOpen,
   theme,
-  mode: initialMode,
   locale
 }: AxeWidgetProps) {
   const { widgetState, mode, setWidgetState, setMode } = useAxeStore();
