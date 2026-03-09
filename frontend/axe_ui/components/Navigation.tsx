@@ -26,7 +26,8 @@ export function Navigation() {
       {/* Mobile: Hamburger Menu Button (Fixed Position) */}
       <button
         onClick={() => setMobileMenuOpen(true)}
-        className="fixed top-4 left-4 z-50 lg:hidden bg-slate-800 hover:bg-slate-700 text-white p-3 rounded-lg border border-slate-700 transition-colors"
+        className="fixed left-4 z-50 rounded-xl border border-sky-400/30 bg-slate-900/80 p-3 text-white shadow-xl backdrop-blur-md transition-colors hover:bg-slate-800 lg:hidden"
+        style={{ top: "max(1rem, env(safe-area-inset-top))" }}
         aria-label="Open menu"
       >
         <Menu className="h-6 w-6" />
