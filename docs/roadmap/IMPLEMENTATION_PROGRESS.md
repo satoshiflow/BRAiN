@@ -64,8 +64,6 @@ Verification:
 - `PYTHONPATH=. pytest tests/test_experience_layer.py tests/test_knowledge_layer.py tests/test_module_lifecycle.py -q`
 - reviewer pass (Claude-style): PASS for tenant isolation, ingest race safety, and migration presence.
 
-## Next Phase
-
 ## Phase P1B - Observer Core MVP (Read-Only)
 
 Completed: 2026-03-09
@@ -92,11 +90,46 @@ Verification:
 - `PYTHONPATH=. pytest tests/test_observer_core.py tests/test_experience_layer.py tests/test_module_lifecycle.py -q`
 - reviewer pass (Claude-style): PASS for read-only surface, tenant isolation, and no mutation coupling.
 
+## Phase P2 - Insight Layer Baseline + Knowledge Input Normalization
+
+Completed: 2026-03-09
+
+Delivered:
+- added new `insight_layer` module:
+  - `backend/app/modules/insight_layer/models.py`
+  - `backend/app/modules/insight_layer/schemas.py`
+  - `backend/app/modules/insight_layer/service.py`
+  - `backend/app/modules/insight_layer/router.py`
+- added insight API surfaces:
+  - `POST /api/insights/skill-runs/{skill_run_id}/derive`
+  - `GET /api/insights/{insight_id}`
+  - `GET /api/insights/skill-runs/{skill_run_id}`
+- normalized knowledge ingest path to experience mediation:
+  - `knowledge_layer.ingest_run_lesson` now uses `experience_layer.ingest_skill_run`
+  - removed direct raw skill-run reads from knowledge ingest service path.
+- kept existing knowledge ingest API path stable (`POST /api/knowledge-items/run-lessons/{skill_run_id}`).
+- added deprecation metadata on the legacy-style knowledge ingest path:
+  - `Deprecation: true`
+  - `Sunset` header
+  - `Link` header to experience ingest successor path
+- tightened tenant isolation on knowledge reads/search and write paths (`403` without tenant context).
+- wired insight router into backend app composition in `backend/main.py`.
+- added migration `backend/alembic/versions/027_add_insight_layer.py` for table creation and lifecycle seeding.
+- added tests:
+  - `backend/tests/test_insight_layer.py`
+  - `backend/tests/test_knowledge_layer_service.py`
+  - updated `backend/tests/test_knowledge_layer.py` for deprecation header and tenant requirements.
+
+Verification:
+- `PYTHONPATH=. pytest tests/test_insight_layer.py tests/test_knowledge_layer.py tests/test_knowledge_layer_service.py tests/test_experience_layer.py tests/test_observer_core.py -q`
+- `PYTHONPATH=. pytest tests/test_module_lifecycle.py -q`
+- reviewer pass (Claude-style): PASS for tenant isolation, lifecycle guards, API compatibility, and knowledge ingest normalization.
+
 ## Next Phase
 
-Planned next: **Phase P2 - Insight Layer Baseline + Knowledge Input Normalization**
+Planned next: **Phase P3 - Consolidation Layer + Evolution Control Bootstrap**
 
 Focus:
-1. introduce `insight_layer` artifacts (`InsightCandidate`) derived from `ExperienceRecord`.
-2. preserve API compatibility while normalizing `knowledge_layer` ingest path away from raw `SkillRun` bypass.
-3. add deprecation signaling for direct bypass paths with adapter-first rollout.
+1. introduce `consolidation_layer` (`PatternCandidate`, promotion preconditions).
+2. add minimal `evolution_control` proposal lifecycle bound to existing governance.
+3. keep mutation policy-gated and rollback-safe from first slice.
