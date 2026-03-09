@@ -4,6 +4,10 @@ Active canonical roadmaps:
 - `docs/roadmap/BRAIN_SKILL_FIRST_IMPLEMENTATION_ROADMAP.md`
 - `docs/roadmap/BRAIN_MISSION_DELIBERATION_INSIGHT_ROADMAP.md`
 
+Active companion specs:
+- `docs/specs/observer_core_mvp.md`
+- `docs/specs/discovery_observer_economy_sequencing.md`
+
 Archived roadmaps:
 - `docs/roadmap/archive/BRAIN_Master_ROADMAP.md`
 - `docs/roadmap/archive/BRAIN_ROADMAP_V2_EXECUTION.md`

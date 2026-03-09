@@ -9,6 +9,10 @@ Consolidation, Knowledge, and Evolution Control in incremental slices.
 Companion roadmap:
 - `docs/roadmap/BRAIN_MISSION_DELIBERATION_INSIGHT_ROADMAP.md`
 
+Companion specifications:
+- `docs/specs/observer_core_mvp.md`
+- `docs/specs/discovery_observer_economy_sequencing.md`
+
 ---
 
 ## 1) Core Invariants (Hard Constraints)
@@ -45,7 +49,7 @@ Reviewer policy:
 
 ---
 
-## 3) Phase Plan (P0-P5)
+## 3) Phase Plan (P0-P7)
 
 ### Phase Entry/Exit Artifacts (Mandatory for Every Phase)
 
@@ -112,6 +116,30 @@ Tasks:
 Stop/Go:
 - Go if `SkillRun` remains sole execution truth and experience writes are idempotent.
 - Stop if phase scope expands to insight/pattern/evolution artifacts.
+
+---
+
+### Phase P1B - Observer Core MVP (Read-Only)
+
+Goal:
+- add a read-only observer side layer before Discovery to reduce integration risk.
+
+#### Sprint P1B.1 - Observer Contracts and Storage
+Tasks:
+1. implement `backend/app/modules/observer_core/` with `ObservationSignal` and `ObserverState`.
+2. define tenant-safe observer contracts and auth matrix for observer read endpoints.
+3. enforce immutable signal ledger and idempotent ingestion keys.
+
+#### Sprint P1B.2 - Observer Ingestion and Projection
+Tasks:
+1. consume read-only signals from `skill_engine`, `skill_evaluator`, `task_queue`, `runtime_auditor`, `system_health`, and `health_monitor`.
+2. add EventStream consumer with replay-safe dedup behavior.
+3. expose read APIs and operator-only replay/reconcile controls.
+4. explicitly block any direct mutation path from observer to skills, workflows, and policies.
+
+Stop/Go:
+- Go if observer is fully read-only, tenant-safe, and does not alter execution outcomes.
+- Stop if observer introduces control-path coupling or mutating side effects.
 
 ---
 
@@ -213,6 +241,52 @@ Stop/Go:
 
 ---
 
+### Phase P6 - Discovery Layer MVP (Proposal-Only)
+
+Goal:
+- introduce capability-gap detection and proposal generation after Knowledge and Observer baselines.
+
+#### Sprint P6.1 - Discovery Contracts
+Tasks:
+1. implement `backend/app/modules/discovery_layer/` with `SkillGap`, `CapabilityGap`, `SkillProposal`, and `ProposalEvidence`.
+2. define evidence thresholds sourced from Consolidation, Knowledge, and Observer signals.
+3. enforce proposal-only behavior with no direct runtime mutation.
+
+#### Sprint P6.2 - Evolution Control Handoff
+Tasks:
+1. integrate discovery output into governed review queues.
+2. ensure all proposal promotion remains mediated by `evolution_control` and governance checks.
+3. add de-dup and prioritization guards to prevent proposal inflation.
+
+Stop/Go:
+- Go if discovery proposals are reviewable, auditable, and mutation-free by design.
+- Stop if discovery can bypass evolution control.
+
+---
+
+### Phase P7 - Economy and Selection Support (Deferred)
+
+Goal:
+- add minimal selection economics only after prior cognition layers are stable.
+
+#### Sprint P7.1 - Economy Contract Baseline
+Tasks:
+1. define minimal scoring dimensions: confidence, frequency, impact, cost.
+2. keep credits, karma/reputation, reward, and promotion-weight as distinct signals.
+3. map where economy influences discovery prioritization and evolution review weighting.
+
+#### Sprint P7.2 - Guarded Adoption
+Tasks:
+1. apply economy scoring only to prioritization, not direct mutation.
+2. add anti-gaming and transparency rules for proposal ranking.
+3. run controlled rollout with rollback-safe thresholds.
+
+Stop/Go:
+- Go if economy improves selection quality without reducing governance safety.
+- Stop if economy collapses to opaque single-score control or reward hacking vectors.
+
+---
+
 ## 4) Verification Matrix (Every Phase)
 
 Mandatory checks:
@@ -233,6 +307,7 @@ Mandatory checks:
 3. No direct auto-promotion from raw runtime to evolution.
 4. No multi-layer object rollout in the Experience MVP phase.
 5. No deletion of compatibility paths without documented sunset criteria.
+6. No direct mutation from Observer, Discovery, or Economy layers into active skill execution.
 
 ---
 
@@ -240,7 +315,8 @@ Mandatory checks:
 
 Roadmap is done when:
 1. Core remains slim: execution, orchestration, governance only.
-2. Experience, Insight, Consolidation, Knowledge, and Evolution Control exist as distinct governed layers.
+2. Experience, Observer, Insight, Consolidation, Knowledge, Discovery, and Evolution Control exist as distinct governed layers.
 3. `SkillRun` remains canonical execution anchor.
 4. deprecated shadow paths are retired or adapter-bound under lifecycle governance.
-5. docs/specs/roadmaps are synchronized with verified runtime behavior.
+5. economy/selection support is introduced only after layer contracts and governance gates are stable.
+6. docs/specs/roadmaps are synchronized with verified runtime behavior.
