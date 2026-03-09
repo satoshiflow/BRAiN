@@ -1,18 +1,43 @@
-const API_BASE = process.env.NEXT_PUBLIC_BRAIN_API_BASE || "https://api.brain.falklabs.de";
+import { getApiBase } from "@/lib/config";
+import type {
+  ApiHealthResponse,
+  AxeChatRequest,
+  AxeChatResponse,
+} from "@/lib/contracts";
+
+async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const apiBase = getApiBase();
+  const response = await fetch(`${apiBase}${path}`, {
+    ...init,
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...(init?.headers || {}),
+    },
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`API error ${response.status}: ${text || response.statusText}`);
+  }
+
+  return response.json() as Promise<T>;
+}
 
 export async function fetchJson<T>(path: string): Promise<T> {
-    const res = await fetch(`${API_BASE}${path}`, {
-        headers: {
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-        },
-        cache: "no-store",
-    });
+  return apiRequest<T>(path);
+}
 
-    if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`API error ${res.status}: ${text}`);
-    }
+export async function postAxeChat(
+  payload: AxeChatRequest,
+): Promise<AxeChatResponse> {
+  return apiRequest<AxeChatResponse>("/api/axe/chat", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
 
-    return res.json() as Promise<T>;
+export async function getApiHealth(): Promise<ApiHealthResponse> {
+  return apiRequest<ApiHealthResponse>("/api/health");
 }

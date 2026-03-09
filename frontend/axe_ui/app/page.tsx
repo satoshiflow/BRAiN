@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { getApiBase } from "@/lib/config";
+import { getApiHealth } from "@/lib/api";
 
-const API_BASE = "https://api.brain.falklabs.de";
+const API_BASE = getApiBase();
 
 export default function HomePage() {
   const [status, setStatus] = useState("Loading...");
@@ -12,11 +14,7 @@ export default function HomePage() {
     setStatus("Testing...");
     setError(null);
     
-    fetch(`${API_BASE}/api/health`)
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-      })
+    getApiHealth()
       .then((data) => {
         if (data.status === "ok") {
           setStatus("Connected ✅ - BRAiN v" + data.version);

@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { getApiBase } from "@/lib/config";
 
 export default function SettingsPage() {
   const [apiBase, setApiBase] = useState(
-    process.env.NEXT_PUBLIC_BRAIN_API_BASE || "http://localhost:8000"
+    getApiBase()
   );
   const [refreshInterval, setRefreshInterval] = useState("10");
   const [theme, setTheme] = useState("dark");

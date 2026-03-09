@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { getApiHealth } from "@/lib/api";
 
 interface SystemStats {
   status: string;
@@ -8,8 +9,6 @@ interface SystemStats {
   missions: number;
   uptime: string;
 }
-
-const API_BASE = process.env.NEXT_PUBLIC_BRAIN_API_BASE || "http://localhost:8000";
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<SystemStats | null>(null);
@@ -24,8 +23,7 @@ export default function DashboardPage() {
 
   const fetchStats = async () => {
     try {
-      const response = await fetch(`${API_BASE}/api/health`);
-      const data = await response.json();
+      const data = await getApiHealth();
 
       // Mock stats for now - replace with actual API calls
       setStats({

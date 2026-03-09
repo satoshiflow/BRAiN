@@ -5,12 +5,17 @@ Endpoint: POST /api/axe/chat
 """
 
 import logging
+import os
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, Request, Header
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
-from app.core.auth_deps import require_auth, get_current_principal, Principal
+from app.modules.axe_governance import (
+    AXERequestContext,
+    TrustTier,
+    get_axe_trust_validator,
+)
 
 from .service import (
     get_axe_fusion_service,
@@ -24,8 +29,85 @@ logger = logging.getLogger(__name__)
 router = APIRouter(
     prefix="/axe",
     tags=["axe-fusion"],
-    dependencies=[Depends(require_auth)]
 )
+
+
+async def validate_axe_trust(
+    request: Request,
+    x_dmz_gateway_id: Optional[str] = Header(None),
+    x_dmz_gateway_token: Optional[str] = Header(None),
+) -> AXERequestContext:
+    """Allow only LOCAL/DMZ traffic for AXE chat endpoints (fail-closed)."""
+    allow_local_requests = (
+        os.getenv("AXE_FUSION_ALLOW_LOCAL_REQUESTS", "false").lower() == "true"
+    )
+    request_id = request.headers.get("x-request-id", "axe-fusion-request")
+    client_host = request.client.host if request.client else None
+    headers = dict(request.headers)
+
+    if x_dmz_gateway_id:
+        headers["x-dmz-gateway-id"] = x_dmz_gateway_id
+    if x_dmz_gateway_token:
+        headers["x-dmz-gateway-token"] = x_dmz_gateway_token
+
+    try:
+        validator = get_axe_trust_validator()
+        context = await validator.validate_request(
+            headers=headers,
+            client_host=client_host,
+            request_id=request_id,
+        )
+        if context.trust_tier == TrustTier.LOCAL and not allow_local_requests:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "error": "Forbidden",
+                    "message": "Local AXE access is disabled for this environment",
+                    "trust_tier": context.trust_tier.value,
+                    "request_id": context.request_id,
+                },
+            )
+        if not validator.is_request_allowed(context):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "error": "Forbidden",
+                    "message": "AXE endpoint is only accessible via DMZ gateways",
+                    "trust_tier": context.trust_tier.value,
+                    "request_id": context.request_id,
+                },
+            )
+        return context
+    except ValueError as exc:
+        allow_local_fallback = (
+            os.getenv("AXE_FUSION_ALLOW_LOCAL_FALLBACK", "false").lower() == "true"
+        )
+        if (
+            allow_local_requests
+            and allow_local_fallback
+            and client_host in {"127.0.0.1", "::1", "localhost"}
+        ):
+            logger.warning(
+                "BRAIN_DMZ_GATEWAY_SECRET not set; allowing localhost-only AXE chat traffic"
+            )
+            return AXERequestContext(
+                trust_tier=TrustTier.LOCAL,
+                source_service="localhost",
+                source_ip=client_host,
+                authenticated=True,
+                request_id=request_id,
+                user_agent=request.headers.get("user-agent"),
+                rate_limit_key=f"local:{client_host}",
+            )
+        logger.error("AXE governance unavailable: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error": "AXE governance unavailable",
+                "message": "AXE trust-tier validation is not configured",
+                "code": "AXE_GOVERNANCE_UNAVAILABLE",
+            },
+        )
 
 
 # === Schemas ===
@@ -97,7 +179,8 @@ class HealthResponse(BaseModel):
 )
 async def axe_chat(
     request: ChatRequest,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    context: AXERequestContext = Depends(validate_axe_trust),
 ) -> ChatResponse:
     """
     Chat Endpoint für AXEllm Integration.
@@ -120,6 +203,11 @@ async def axe_chat(
     service = get_axe_fusion_service(db=db)
     
     try:
+        logger.info(
+            "AXE chat request accepted (trust_tier=%s source=%s)",
+            context.trust_tier.value,
+            context.source_service,
+        )
         # Konvertiere Pydantic Model zu Dict für Service
         messages = [msg.model_dump() for msg in request.messages]
         
@@ -185,10 +273,17 @@ async def axe_chat(
     summary="AXEllm Health Check",
     description="Prüft ob AXEllm erreichbar ist."
 )
-async def axe_health() -> HealthResponse:
+async def axe_health(
+    context: AXERequestContext = Depends(validate_axe_trust),
+) -> HealthResponse:
     """
     Health Check für AXEllm Verbindung.
     """
+    logger.debug(
+        "AXE health request accepted (trust_tier=%s source=%s)",
+        context.trust_tier.value,
+        context.source_service,
+    )
     service = get_axe_fusion_service()
     result = await service.health_check()
     

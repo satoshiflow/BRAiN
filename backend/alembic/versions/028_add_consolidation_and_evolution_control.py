@@ -52,7 +52,8 @@ def upgrade() -> None:
             validation_state VARCHAR(32) NOT NULL DEFAULT 'required',
             metadata JSONB NOT NULL DEFAULT '{}',
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT uq_evolution_proposals_tenant_pattern UNIQUE (tenant_id, pattern_id)
         );
         """
     )

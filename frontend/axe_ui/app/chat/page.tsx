@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Send, Loader2 } from "lucide-react";
-import { getApiBase, getDefaultModel } from "@/lib/config";
+import { getDefaultModel } from "@/lib/config";
+import { postAxeChat } from "@/lib/api";
+import type { AxeChatRequest } from "@/lib/contracts";
 
 interface Message {
   id: number;
@@ -11,18 +13,6 @@ interface Message {
   timestamp: Date;
 }
 
-interface ChatRequest {
-  messages: Array<{ role: "user" | "assistant" | "system"; content: string }>;
-  model?: string;
-  temperature?: number;
-}
-
-interface ChatResponse {
-  text: string;
-  raw?: string;
-}
-
-const API_BASE = getApiBase();
 const DEFAULT_MODEL = getDefaultModel();
 
 // Format time safely (avoids hydration mismatch)
@@ -97,27 +87,13 @@ export default function ChatPage() {
           content: m.content
         }));
 
-      const requestBody: ChatRequest = {
+      const requestBody: AxeChatRequest = {
         messages: apiMessages,
         model: DEFAULT_MODEL,
         temperature: 0.7
       };
 
-      const response = await fetch(`${API_BASE}/api/axe/chat`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json"
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`API error ${response.status}: ${errorText || response.statusText}`);
-      }
-
-      const data: ChatResponse = await response.json();
+      const data = await postAxeChat(requestBody);
 
       if (!data.text) {
         throw new Error("Invalid response: missing 'text' field");
