@@ -127,9 +127,51 @@ Verification:
 
 ## Next Phase
 
-Planned next: **Phase P3 - Consolidation Layer + Evolution Control Bootstrap**
+## Phase P3 - Consolidation Layer + Evolution Control Bootstrap
+
+Completed: 2026-03-09
+
+Delivered:
+- added new `consolidation_layer` module:
+  - `backend/app/modules/consolidation_layer/models.py`
+  - `backend/app/modules/consolidation_layer/schemas.py`
+  - `backend/app/modules/consolidation_layer/service.py`
+  - `backend/app/modules/consolidation_layer/router.py`
+- added pattern API surfaces:
+  - `POST /api/consolidation/skill-runs/{skill_run_id}/derive`
+  - `GET /api/consolidation/{pattern_id}`
+  - `GET /api/consolidation/skill-runs/{skill_run_id}`
+- added new `evolution_control` module:
+  - `backend/app/modules/evolution_control/models.py`
+  - `backend/app/modules/evolution_control/schemas.py`
+  - `backend/app/modules/evolution_control/service.py`
+  - `backend/app/modules/evolution_control/router.py`
+- added evolution API surfaces:
+  - `POST /api/evolution/proposals/patterns/{pattern_id}`
+  - `GET /api/evolution/proposals/{proposal_id}`
+  - `POST /api/evolution/proposals/{proposal_id}/transition`
+- enforced lifecycle write guards for consolidation/evolution mutating endpoints.
+- enforced tenant-bound access (`403` without tenant context).
+- added governance-safe apply gate in proposal transitions:
+  - `approved -> applied` requires governance evidence (`approval_id`, `policy_decision_id`, `reviewer_id`)
+  - `validation_state` must be `validated`
+  - durable transition trail is recorded in proposal metadata.
+- added migration `backend/alembic/versions/028_add_consolidation_and_evolution_control.py` for persistence and lifecycle seeds.
+- wired routers into backend app composition in `backend/main.py`.
+- added tests:
+  - `backend/tests/test_consolidation_layer.py`
+  - `backend/tests/test_evolution_control.py`
+  - `backend/tests/test_evolution_control_service.py`
+
+Verification:
+- `PYTHONPATH=. pytest tests/test_consolidation_layer.py tests/test_evolution_control.py tests/test_evolution_control_service.py tests/test_insight_layer.py tests/test_knowledge_layer.py tests/test_module_lifecycle.py -q`
+- reviewer pass (Claude-style): PASS for tenant isolation, lifecycle guards, governance-safe proposal lifecycle, and no direct skill/policy mutation.
+
+## Next Phase
+
+Planned next: **Phase P4 - Deliberation Summary + Tension Artifacts**
 
 Focus:
-1. introduce `consolidation_layer` (`PatternCandidate`, promotion preconditions).
-2. add minimal `evolution_control` proposal lifecycle bound to existing governance.
-3. keep mutation policy-gated and rollback-safe from first slice.
+1. add bounded mission deliberation artifacts (`DeliberationSummary`, `MissionHypothesis`, `MissionPerspective`, `MissionTension`).
+2. keep deliberation data minimal and explicitly non-chain-of-thought.
+3. keep execution ownership unchanged (`SkillRun` remains canonical execution anchor).
