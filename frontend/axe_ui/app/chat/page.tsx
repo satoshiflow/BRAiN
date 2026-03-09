@@ -5,6 +5,8 @@ import { Send, Loader2 } from "lucide-react";
 import { getDefaultModel } from "@/lib/config";
 import { postAxeChat } from "@/lib/api";
 import type { AxeChatRequest } from "@/lib/contracts";
+import { pluginRegistry, initializePlugins, destroyPlugins, type PluginContext } from "../../src/plugins";
+import slashCommandsPlugin from "../../src/plugins/slashCommands";
 
 interface Message {
   id: number;
@@ -29,18 +31,50 @@ function isMobileDevice() {
   );
 }
 
+function generateSessionId(): string {
+  return `axe_session_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+}
+
+function ComposerActions({ context }: { context: PluginContext }) {
+  const renderers = pluginRegistry.renderUiSlot("composer.actions");
+  if (renderers.length === 0) return null;
+  return (
+    <div className="flex gap-2 mb-2">
+      {renderers.map((Renderer, idx) => (
+        <Renderer key={idx} context={context} />
+      ))}
+    </div>
+  );
+}
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isClient, setIsClient] = useState(false);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sessionId] = useState(() => generateSessionId());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [pluginContext, setPluginContext] = useState<PluginContext | null>(null);
+
+  useEffect(() => {
+    const ctx: PluginContext = {
+      appId: "axe-chat",
+      sessionId,
+      backendUrl: typeof window !== "undefined" ? window.location.origin : "",
+      locale: "de",
+    };
+    setPluginContext(ctx);
+    pluginRegistry.register(slashCommandsPlugin);
+    initializePlugins(ctx).catch((err) => console.error("Plugin init failed:", err));
+    return () => {
+      destroyPlugins().catch((err) => console.error("Plugin destroy failed:", err));
+    };
+  }, [sessionId]);
 
   useEffect(() => {
     setIsClient(true);
-    // Initialize first message on client only (avoids hydration mismatch)
     setMessages([
       {
         id: 1,
@@ -67,10 +101,13 @@ export default function ChatPage() {
   const handleSend = async () => {
     if (!input.trim() || loading) return;
 
+    const trimmedInput = input.trim();
+    const isSlashCommand = trimmedInput.startsWith("/");
+
     const userMessage: Message = {
       id: messages.length + 1,
       role: "user",
-      content: input.trim(),
+      content: trimmedInput,
       timestamp: new Date(),
     };
 
@@ -81,6 +118,22 @@ export default function ChatPage() {
     setError(null);
 
     try {
+      if (isSlashCommand && pluginContext) {
+        const command = trimmedInput.slice(1).split(" ")[0];
+        const result = await pluginRegistry.handleCommand(command, { args: trimmedInput });
+        if (result && typeof result === "string") {
+          const assistantMessage: Message = {
+            id: messages.length + 2,
+            role: "assistant",
+            content: result,
+            timestamp: new Date(),
+          };
+          setMessages((prev) => [...prev, assistantMessage]);
+          setLoading(false);
+          return;
+        }
+      }
+
       const apiMessages = updatedMessages
         .map(m => ({
           role: m.role as "user" | "assistant",
@@ -225,6 +278,7 @@ export default function ChatPage() {
 
         {/* Input - Mobile optimized */}
         <div className="border-t border-slate-800 p-3 sm:p-4 bg-slate-900">
+          {pluginContext && <ComposerActions context={pluginContext} />}
           <div className="flex gap-2 items-end">
             <textarea
               ref={textareaRef}
