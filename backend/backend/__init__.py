@@ -7,7 +7,6 @@ top-level modules.
 
 from __future__ import annotations
 
-import os
 import sys
 import types
 from pathlib import Path
@@ -33,6 +32,3 @@ _alias_namespace("app", "app")
 _alias_namespace("api", "api")
 _alias_namespace("modules", "modules")
 _alias_namespace("brain", "brain")
-
-if "pytest" in sys.modules:
-    os.environ.setdefault("BRAIN_EVENTSTREAM_MODE", "degraded")

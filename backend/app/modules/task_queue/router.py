@@ -108,7 +108,7 @@ async def create_skill_run_lease(
             detail=str(e),
         ) from e
 
-    return TaskLeaseCreateResponse(skill_run_id=run.id, task=task_to_response(task))
+    return TaskLeaseCreateResponse(skill_run_id=UUID(str(run.id)), task=task_to_response(task))
 
 
 @router.get("", response_model=TaskListResponse, dependencies=[Depends(require_auth)])

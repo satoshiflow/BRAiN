@@ -7,7 +7,6 @@ to keep working when callers import `backend.main` from the repo root.
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 import types
 from pathlib import Path
@@ -31,6 +30,3 @@ _alias_package("app", "backend.app")
 _alias_package("modules", "backend.modules")
 _alias_namespace("api", "api")
 _alias_namespace("brain", "brain")
-
-if "pytest" in sys.modules:
-    os.environ.setdefault("BRAIN_EVENTSTREAM_MODE", "degraded")

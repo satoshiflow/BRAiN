@@ -785,3 +785,19 @@ Resolved in this block:
 - Result:
   - `113 passed`
 - RC gate rerun also passed after A/B execution.
+
+82) Additional shim-reduction slice completed with low risk
+- Reduced package-level pytest side effects by removing `BRAIN_EVENTSTREAM_MODE` toggling from:
+  - `backend/__init__.py`
+  - `backend/backend/__init__.py`
+- Centralized test-side degraded mode ownership in `backend/tests/conftest.py`.
+- Stabilized task queue lease response typing for UUID conversion in `backend/app/modules/task_queue/router.py`.
+
+83) Verification after additional shim-reduction slice
+- Verified with:
+  - `PYTHONPATH=. pytest tests/test_course_factory.py tests/test_webgenesis_mvp.py tests/test_webgenesis_ops.py tests/test_webgenesis_sprint3.py tests/test_task_queue_skill_run_lease.py tests/test_knowledge_layer.py tests/test_runtime_ingest_routes.py -q`
+  - `PYTHONPATH=. pytest tests/test_course_factory.py tests/test_sprint10_webgenesis_ir.py tests/test_webgenesis_mvp.py tests/test_webgenesis_ops.py tests/test_webgenesis_sprint3.py tests/test_skill_engine.py tests/test_skill_evaluator_optimizer.py tests/test_skill_capability_registry.py tests/test_agent_skillrun_orchestration.py tests/test_supervisor_skillrun_mapping.py tests/test_task_queue_skill_run_lease.py tests/test_module_lifecycle.py tests/test_knowledge_layer.py tests/test_runtime_ingest_routes.py -q`
+- Result:
+  - targeted slice: all green
+  - wider slice: `113 passed`
+- RC gate rerun after this slice also passed.

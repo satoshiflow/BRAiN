@@ -7,19 +7,20 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from app.core.auth_deps import (
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+os.environ.setdefault("BRAIN_TEST_COMPAT_MODE", "true")
+os.environ.setdefault("BRAIN_EVENTSTREAM_MODE", "degraded")
+
+from app.core.auth_deps import (  # noqa: E402
     Principal,
     PrincipalType,
     get_current_principal,
     require_auth,
     require_operator,
 )
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-os.environ.setdefault("BRAIN_TEST_COMPAT_MODE", "true")
 
 
 def _build_test_principal() -> Principal:

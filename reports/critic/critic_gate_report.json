@@ -1,38 +1,11 @@
 {
   "changed_paths": [
-    "backend/app/modules/knowledge_layer/router.py",
-    "backend/app/modules/learning/router.py",
-    "backend/app/modules/memory/router.py",
+    "backend/__init__.py",
     "backend/app/modules/task_queue/router.py",
-    "backend/main.py",
-    "backend/tests/conftest.py",
-    "backend/tests/test_course_factory.py",
-    "backend/tests/test_knowledge_layer.py",
-    "backend/tests/test_runtime_ingest_routes.py",
-    "backend/tests/test_webgenesis_mvp.py",
-    "backend/tests/test_webgenesis_ops.py",
-    "backend/tests/test_webgenesis_sprint3.py",
-    "reports/critic/critic_gate_report.json"
+    "backend/backend/__init__.py",
+    "backend/tests/conftest.py"
   ],
   "matches": [
-    {
-      "path": "backend/app/modules/knowledge_layer/router.py",
-      "pattern": "backend/app/modules/*/router.py",
-      "tier": "medium_cost",
-      "critic_required": true
-    },
-    {
-      "path": "backend/app/modules/learning/router.py",
-      "pattern": "backend/app/modules/*/router.py",
-      "tier": "medium_cost",
-      "critic_required": true
-    },
-    {
-      "path": "backend/app/modules/memory/router.py",
-      "pattern": "backend/app/modules/*/router.py",
-      "tier": "medium_cost",
-      "critic_required": true
-    },
     {
       "path": "backend/app/modules/task_queue/router.py",
       "pattern": "backend/app/modules/*/router.py",
