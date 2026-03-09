@@ -1,389 +1,246 @@
-# BRAiN Skill-First Implementation Roadmap
+# BRAiN Final Layered Execution Roadmap
 
-Version: 1.0
-Status: Active Delivery Roadmap
-Purpose: Define the phased implementation plan from current repo state to the target BRAiN architecture.
+Version: 2.0
+Status: Active Canonical Delivery Roadmap
+Date: 2026-03-09
+Purpose: Keep BRAiN Core slim and stable while evolving toward Experience, Insight,
+Consolidation, Knowledge, and Evolution Control in incremental slices.
 
----
-
-## 1 Delivery Principles
-
-- implement in `backend/app/modules/*`
-- preserve compatibility through adapters where needed
-- use `SkillRun` as canonical execution record
-- keep EventStream canonical
-- keep docs, specs, and AGENTS guidance synchronized
-- apply `GROUNDING -> STRUCTURE -> CREATION -> EVALUATION -> FINALIZATION`
+Companion roadmap:
+- `docs/roadmap/BRAIN_MISSION_DELIBERATION_INSIGHT_ROADMAP.md`
 
 ---
 
-## 2 Program Structure
+## 1) Core Invariants (Hard Constraints)
 
-The work is split into 6 phases, 12 milestones, and 12 sprint groups aligned with the approved epics.
-
----
-
-## Phase 1 - Control Plane Foundation
-
-### Milestone M1 - Contract and Governance Baseline
-
-#### Sprint S1 - Epic 1
-
-Goal:
-- finalize runtime contracts for skills and capabilities
-
-Steps:
-1. lock `SkillDefinition`, `CapabilityDefinition`, `ProviderBinding`, `SkillRun`, `EvaluationResult`
-2. align naming, lifecycle, events, and error codes
-3. keep docs/specs authoritative
-
-Tasks:
-- review all Epic 1 spec files
-- identify implementation order for data models
-- map required DB tables and API surfaces
-- define compatibility notes for existing `skills` module
-
-Expected result:
-- implementation-ready contract baseline
-
-#### Sprint S2 - Epic 2
-
-Goal:
-- define and then implement the Constitution Gate baseline for `SkillRun`
-
-Steps:
-1. map current auth/policy/audit primitives
-2. implement one fail-closed gate service path
-3. bind approval/breakglass to exact run intent
-
-Tasks:
-- create `PolicyDecision` persistence plan
-- create `ApprovalGate` persistence plan
-- define transaction boundary for state/audit/outbox
-- add gate integration notes for `SkillRun`
-
-Expected result:
-- governed run authorization path ready for implementation
+1. `SkillRun` remains canonical execution truth.
+2. Event backbone remains `EventStream` (ADR-001).
+3. New runtime work lands in `backend/app/modules/*`.
+4. No expansion of legacy `backend/modules/*` runtime writes.
+5. Mutating paths require auth/role checks, audit durability, and lifecycle write guards.
+6. API compatibility is preserved unless explicitly versioned and documented.
+7. Every mutating contract declares an auth/role/scope matrix with deny-by-default behavior.
+8. Tenant isolation is mandatory at write and read boundaries (`tenant_id` binding on write, enforced filters on read/list/search).
+9. Ordering invariant for sensitive flows is durable state write -> durable audit record -> EventStream publish, with retry/outbox semantics.
+10. Phase entry requires rollback plan, dual-write risk assessment, and security+migration approval.
 
 ---
 
-## Phase 2 - Registry and Adapter Core
+## 2) Operating Model (Dev Agent Cluster)
 
-### Milestone M2 - Registry Source of Truth
+Execution roles for each phase:
+- `brain-orchestrator`: phase owner, gate decisions, sequencing.
+- `brain-runtime-engineer`: module/runtime contract changes.
+- `brain-schema-designer`: schema/event/error contracts.
+- `brain-migration-engineer`: migrations, compatibility and rollback path.
+- `brain-security-reviewer`: auth/tenant/audit review.
+- `brain-verification-engineer`: test matrix, RC gate evidence.
+- `brain-docs-scribe`: roadmap/spec synchronization.
+- `brain-review-critic`: final critical review before merge.
 
-#### Sprint S3 - Epic 3
-
-Goal:
-- build `SkillRegistry` and `CapabilityRegistry` as canonical control plane
-
-Steps:
-1. introduce registry modules and models
-2. migrate definitions away from implicit/in-memory truth
-3. preserve compatibility adapters for existing skill surfaces
-
-Tasks:
-- implement `backend/app/modules/skills_registry/`
-- implement `backend/app/modules/capabilities_registry/`
-- define seeding/bootstrap flow from built-ins without dual-write truth
-- add registry read/resolve endpoints
-
-Expected result:
-- PostgreSQL-backed registries with deterministic resolution
-
-### Milestone M3 - Provider Standardization
-
-#### Sprint S4 - Epic 4
-
-Goal:
-- standardize provider execution through a capability adapter layer
-
-Steps:
-1. define adapter core in `backend/app/core/capabilities/`
-2. wrap two initial capability domains
-3. freeze deterministic provider selection on runs
-
-Tasks:
-- create base adapter contracts
-- integrate with `llm_router` and one non-LLM integration path
-- normalize result/error schemas
-- add provider binding resolution plumbing
-
-Expected result:
-- reusable adapter layer with at least two working capability domains
+Reviewer policy:
+- Every phase closes with a strict externalized review pass (Claude-style critique
+  checklist: governance, migration risk, tenant isolation, event/audit ordering,
+  compatibility/deprecation, verification gates).
 
 ---
 
-## Phase 3 - Runtime Spine
+## 3) Phase Plan (P0-P5)
 
-### Milestone M4 - Skill Engine MVP
+### Phase Entry/Exit Artifacts (Mandatory for Every Phase)
 
-#### Sprint S5 - Epic 5
+Entry artifacts:
+1. contract diff (API/schema/events/errors).
+2. migration plan (forward, backward, and rollback command path).
+3. tenant isolation threat note for touched surfaces.
+4. compatibility impact inventory (consumers, adapters, sunset assumptions).
+5. endpoint-level auth/role/scope matrix for every mutating route in scope.
+6. contract depth pack for new runtime objects: field model, validation rules,
+   error codes, minimal API surface, event types, and durable-vs-ephemeral ownership.
 
-Goal:
-- create the first end-to-end Skill Engine path
+Exit artifacts:
+1. rollback rehearsal evidence.
+2. deprecation ledger update.
+3. RC gate evidence bundle.
+4. reviewer sign-offs from security, migration, verification, and docs.
+5. event/audit ordering conformance evidence for all new mutating surfaces.
 
-Steps:
-1. build `backend/app/modules/skill_engine/`
-2. connect registry resolution, Constitution Gate, planning, adapters, and terminalization
-3. make `SkillRun` canonical for execution
-
-Tasks:
-- implement selector/resolver runtime flow
-- integrate `planning` snapshots
-- integrate `task_queue` as subordinate dispatch only
-- wire terminal state transitions and events
-
-Expected result:
-- first working governed SkillRun execution path
-
-### Milestone M5 - Evaluation and Optimization Baseline
-
-#### Sprint S6 - Epic 6
+### Phase P0 - Guardrails and Baseline Freeze
 
 Goal:
-- make executions measurable and reviewable
+- close remaining guardrail gaps before adding new learning artifacts.
 
-Steps:
-1. add evaluator baseline
-2. add telemetry baseline
-3. add optimizer recommendation baseline
-
+#### Sprint P0.1 - Legacy Write Guard Closure
 Tasks:
-- implement `skill_evaluator`
-- implement `skill_optimizer`
-- define KPI projections
-- integrate `EvaluationResult` creation and persistence
+1. close lifecycle/decommission write-guard gaps on legacy edges (`api/routes/missions`, `app/modules/missions`, remaining mutating builder/ops routes).
+2. add/extend tests proving `409` on `deprecated`/`retired` status.
+3. record explicit write-owner transitions for touched routes.
 
-Expected result:
-- measured execution quality and advisory optimization loop
+#### Sprint P0.2 - Low-Risk Shim Reduction
+Tasks:
+1. remove only low-risk package/import side effects.
+2. keep compatibility shims where import stability is uncertain.
+3. validate repo-root and `backend/` test collection compatibility.
+
+Stop/Go:
+- Go if targeted tests + widened regression + RC gate pass.
+- Stop if import/runtime stability regresses or new dual-write path appears.
 
 ---
 
-## Phase 4 - Orchestration Consolidation
-
-### Milestone M6 - Agents as Skill Orchestrators
-
-#### Sprint S7 - Epic 7
+### Phase P1 - Experience Layer MVP
 
 Goal:
-- move agents from business-logic holders to orchestration actors
+- introduce one minimal durable bridge object: `ExperienceRecord`.
 
-Steps:
-1. map current agent behavior
-2. redirect agent actions to `SkillRun`
-3. reduce direct feature logic in agent surfaces
-
+#### Sprint P1.1 - Experience Contracts and Storage
 Tasks:
-- update `agent_management` integration points
-- update `supervisor` ownership semantics
-- define agent-to-skill invocation contracts
+1. add module `backend/app/modules/experience_layer/`.
+2. add durable storage (`experience_records`) with idempotency keys.
+3. define request/response/event contracts and sanitized error mapping.
+4. define tenant ownership model for `ExperienceRecord` (writer identity, tenant binding, and cross-tenant rejection semantics).
 
-Expected result:
-- agents become governed coordinators over skills
-
-### Milestone M7 - Runtime Harmonization
-
-#### Sprint S8 - Epic 8
-
-Status:
-- implemented baseline and stabilized on 2026-03-08
-
-Goal:
-- harmonize `Mission`, `SkillRun`, and queue execution paths
-
-Steps:
-1. make `SkillRun` canonical
-2. adapt mission paths to envelope/compat role
-3. narrow task queue to lease/dispatch role
-
+#### Sprint P1.2 - Runtime Ingestion and Retrieval
 Tasks:
-- define canonical write owner for runtime execution
-- adapt legacy mission bridge
-- add `skill_run_id` ownership to queue/compat layers
-- freeze route shadowing and dual-write surfaces
+1. implement `POST /api/experience/skill-runs/{run_id}/ingest`.
+2. implement read endpoints by `experience_id` and `skill_run_id`.
+3. enforce tenant-safe retrieval and lifecycle write guards.
+4. add negative tests for cross-tenant read/write attempts and unauthorized breakglass paths.
+5. define outbox/audit behavior for ingest partial failures (no orphan writes).
+6. deliver endpoint auth/role/scope matrix for all experience endpoints.
 
-Expected result:
-- one execution spine with compatibility adapters instead of parallel runtimes
+Stop/Go:
+- Go if `SkillRun` remains sole execution truth and experience writes are idempotent.
+- Stop if phase scope expands to insight/pattern/evolution artifacts.
 
 ---
 
-## Phase 5 - Knowledge and Evolution
-
-### Milestone M8 - Knowledge Layer
-
-#### Sprint S9 - Epic 9
-
-Status:
-- implemented baseline module and contracts on 2026-03-08; follow-on expansion remains optional
+### Phase P2 - Insight and Knowledge Decoupling
 
 Goal:
-- introduce durable knowledge as distinct from memory
+- derive bounded insight from experience and remove direct raw-run knowledge bypass.
 
-Steps:
-1. define knowledge objects and provenance
-2. implement governed knowledge writes
-3. integrate run-lesson ingestion
-
+#### Sprint P2.1 - Insight Layer Baseline
 Tasks:
-- create `backend/app/modules/knowledge_layer/`
-- bridge existing `knowledge_graph`
-- implement knowledge search/query baseline
+1. add `InsightCandidate` as first-class artifact with states (`proposed`, `provisional`, `validated`, `rejected`).
+2. define required evidence links to `ExperienceRecord`.
+3. add confidence/scope fields with deterministic validation rules.
 
-Expected result:
-- governed long-lived knowledge substrate
-
-### Milestone M9 - Memory and Evolution Consolidation
-
-#### Sprint S10 - Epic 10
-
-Status:
-- implemented baseline run anchoring for memory, learning, and DNA on 2026-03-08; deeper evolution cleanup remains incremental
-
-Goal:
-- anchor memory and evolution to canonical execution history
-
-Steps:
-1. define history anchor around `SkillRun`
-2. project memory views from run history
-3. constrain DNA/genesis/quarantine to durable state
-
+#### Sprint P2.2 - Knowledge Input Normalization
 Tasks:
-- normalize memory anchors
-- align DNA/genesis lineage references
-- remove target-state dependence on in-memory-only evolution state
+1. re-route `knowledge_layer` ingest from direct `SkillRun` path to Experience/Insight mediation.
+2. keep existing APIs stable using adapter path internally.
+3. define deprecation contract for bypass paths (header/metadata, replacement endpoint, sunset date, migration owner).
+4. set compatibility adapter SLO and rollback trigger if SLO is exceeded (`p95 latency <= 15% delta`, `5xx delta <= 0.5%`, `forced rollback if exceeded for 2 consecutive windows`).
+5. add consumer-by-consumer cutover checklist with explicit exit gates.
 
-Expected result:
-- coherent evolution substrate tied to canonical runs
+Stop/Go:
+- Go if existing clients are compatible and no direct raw execution to knowledge path remains active by default.
+- Stop if migration requires breaking endpoint contracts in this phase.
 
 ---
 
-## Phase 6 - Builders and Decommission
-
-### Milestone M10 - Builders as Skill Consumers
-
-#### Sprint S11 - Epic 11
-
-Status:
-- implemented baseline and stabilized on 2026-03-08
+### Phase P3 - Consolidation and Evolution Control MVP
 
 Goal:
-- make builders consume skills rather than run hidden runtimes
+- add governed pattern formation and controlled evolution proposals.
 
-Steps:
-1. pick two initial builders
-2. map domain actions to skills
-3. keep builder APIs but route execution to `SkillRun`
-
+#### Sprint P3.1 - Consolidation Layer
 Tasks:
-- migrate `course_factory`
-- migrate `webgenesis`
-- standardize deployment/DNS calls through governed skill paths
+1. introduce `PatternCandidate` with recurrence/support/failure-mode fields.
+2. add promotion preconditions and provenance guarantees.
+3. persist `KnowledgePromotionRecord` for auditable promotion/rollback linkage.
 
-Expected result:
-- at least two builder flows execute through the new architecture
+#### Sprint P3.2 - Evolution Control Bootstrap
+Tasks:
+1. introduce `EvolutionProposal` lifecycle (`draft`, `review`, `approved`, `rejected`, `applied`, `rolled_back`).
+2. bridge to existing `skills_registry` governance transitions.
+3. require validation runs before proposal application.
+4. define deterministic resolution/version invariants and ambiguity handling for proposal-to-skill activation.
+5. enforce outbox-backed audit/event publication contract for proposal state transitions.
 
-### Milestone M11 - Plugin and Module Lifecycle
+Stop/Go:
+- Go if evolution remains policy-gated, reversible, and auditable.
+- Stop if any unsupervised mutation path is introduced.
 
-#### Sprint S12 - Epic 12
+---
 
-Status:
-- implemented baseline and stabilized on 2026-03-08
+### Phase P4 - Deliberation and Tension Artifacts
 
 Goal:
-- establish formal lifecycle, decommission rules, and cutover governance
+- add bounded mission-level deliberation artifacts without chain-of-thought storage.
 
-Steps:
-1. create module lifecycle registry or equivalent control plane
-2. mark canonical write owners
-3. begin retirement plan for legacy runtime surfaces
-
+#### Sprint P4.1 - Deliberation Summary
 Tasks:
-- implement lifecycle metadata handling
-- add decommission matrix for key modules
-- add kill-switch and adapter-state tracking
-- lock down deprecated write paths
+1. define `DeliberationSummary` (alternatives, rationale, uncertainty, open tensions).
+2. link summaries to `ExperienceRecord` and mission context.
+3. enforce data minimization and no raw hidden reasoning dumps.
 
-Expected result:
-- explicit module lifecycle and controlled retirement path
+#### Sprint P4.2 - Tension Modeling
+Tasks:
+1. define `MissionHypothesis`, `MissionPerspective`, `MissionTension` contracts.
+2. allow unresolved tensions as valid outcomes.
+3. add governance constraints for escalation/approval surfaces.
+4. deliver endpoint auth/role/scope matrix for mutating deliberation endpoints.
 
-### Milestone M12 - Stabilization Gate
+Stop/Go:
+- Go if artifacts remain bounded and non-invasive to execution path.
+- Stop if deliberation artifacts alter canonical execution ownership.
+
+---
+
+### Phase P5 - Stabilization, Decommission, and Operational Cadence
 
 Goal:
-- verify the new architecture is internally coherent and migration-safe
+- lock the layered architecture and remove obsolete paths under governance.
 
+#### Sprint P5.1 - Decommission Matrix Execution
 Tasks:
-- run targeted tests and RC gate
-- verify docs/specs/roadmap consistency
-- verify no new shadow runtime paths were introduced
-- verify auth/audit/event guarantees remain intact
+1. execute staged retirement for deprecated direct-ingest and shadow runtime paths.
+2. enforce kill-switch and replacement-target metadata.
+3. execute decommission by ledger: consumer list, sunset approval, rollback command, and post-removal verification evidence.
 
-Expected result:
-- release-ready architecture baseline for further rollout
+#### Sprint P5.2 - Release Gate and Ongoing Cadence
+Tasks:
+1. run full verification matrix and RC gate.
+2. publish release-ready architecture report (contracts, risk, rollback).
+3. establish monthly roadmap/spec review cadence.
+4. publish compatibility and deprecation closure report with consumer migration evidence.
 
----
-
-## 3 Cross-Cutting Workstreams
-
-These run across all phases.
-
-### W1 - Documentation Discipline
-- update `docs/specs/*`
-- update `docs/roadmap/*`
-- update `AGENTS.md`
-- update `docs/core/*` when standards evolve
-
-### W2 - Security and Governance
-- no governed path without auth/policy/audit
-- tenant isolation remains explicit
-- breakglass and approval semantics remain documented and testable
-
-### W3 - Legacy Containment
-- no expansion of `backend/modules/*`
-- preserve adapters while reducing direct writes
-- explicitly document write-owner transitions
-
-### W4 - Verification
-- state-machine tests
-- API contract tests
-- migration regression tests
-- RC gate alignment
+Stop/Go:
+- Go if all critical contracts are stable and RC gate remains green.
+- Stop if any auth/audit/event ordering guarantee regresses.
 
 ---
 
-## 4 Execution Order
+## 4) Verification Matrix (Every Phase)
 
-Primary sequence:
-
-`1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10 -> 11 -> 12`
-
-Parallelizable groups:
-
-- within Phase 2: adapter prep can start while registry implementation is stabilizing
-- within Phase 3: evaluator/test planning can start before engine runtime is fully complete
-- within Phase 5: knowledge design and memory consolidation prep can overlap
-- within Phase 6: plugin lifecycle work can prepare while builder migrations are underway
+Mandatory checks:
+1. targeted module tests and API contract tests for touched surfaces.
+2. tenant isolation suite with cross-tenant negative tests for read/write/list/search paths.
+3. migration suite: forward/backward rehearsal, replay/backfill checks, idempotency proof.
+4. event/audit ordering tests under retry and broker failure scenarios.
+5. `./scripts/run_rc_staging_gate.sh`.
+6. quantitative gates: no Sev1 regressions, error-budget impact accepted, documented perf delta per phase.
+7. evidence bundle: test artifacts, rollback evidence, deprecation ledger diff, reviewer approvals.
 
 ---
 
-## 5 Immediate Next Actions
+## 5) Non-Goals (Scope Guardrails)
 
-Implementation should now continue with:
-
-1. complete the open B-depth slice: lifecycle/decommission guardrails on additional legacy edges (`api/routes/missions`, `app/modules/missions`, remaining write endpoints in builder/ops-adjacent modules)
-2. finish residual shim reduction with low-risk cuts only, keeping RC-gate stability as hard stop-go criterion
-3. implement the first Knowledge/Evolution runtime bridge as a minimal `experience_layer` (durable `ExperienceRecord` only)
-4. validate with widened regression slice plus RC gate and then prepare checkpoint commit/PR narrative
+1. No core rewrite of execution runtime.
+2. No broad mission-runtime refactor in one phase.
+3. No direct auto-promotion from raw runtime to evolution.
+4. No multi-layer object rollout in the Experience MVP phase.
+5. No deletion of compatibility paths without documented sunset criteria.
 
 ---
 
-## 6 Success Definition
+## 6) Done Criteria
 
-The roadmap is successful when:
-
-- `SkillRun` is the canonical execution record
-- skill and capability registries are the only durable source of truth for those objects
-- provider execution is standardized behind capability adapters
-- agents and builders orchestrate skills instead of embedding hidden runtimes
-- knowledge and memory are separated correctly
-- legacy runtime paths are adapter-bound or retired
-- docs and standards remain synchronized with implementation
+Roadmap is done when:
+1. Core remains slim: execution, orchestration, governance only.
+2. Experience, Insight, Consolidation, Knowledge, and Evolution Control exist as distinct governed layers.
+3. `SkillRun` remains canonical execution anchor.
+4. deprecated shadow paths are retired or adapter-bound under lifecycle governance.
+5. docs/specs/roadmaps are synchronized with verified runtime behavior.
