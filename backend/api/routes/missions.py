@@ -20,8 +20,11 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.database import get_db
+from app.modules.module_lifecycle.service import get_module_lifecycle_service
 from app.compat.legacy_missions import (
     get_mission_runtime,
     MissionInfoResponse,
@@ -41,6 +44,17 @@ router = APIRouter(
     prefix="/api/missions",
     tags=["missions"],
 )
+
+
+async def _ensure_missions_writable(db: AsyncSession) -> None:
+    if db is None:
+        return
+    item = await get_module_lifecycle_service().get_module(db, "missions")
+    if item and item.lifecycle_status in {"deprecated", "retired"}:
+        raise HTTPException(
+            status_code=409,
+            detail=f"missions is {item.lifecycle_status}; writes are blocked",
+        )
 
 
 @router.get("/info", response_model=MissionInfoResponse)
@@ -87,7 +101,10 @@ async def missions_health() -> MissionHealthResponse:
 
 
 @router.post("/enqueue", response_model=MissionEnqueueResponse)
-async def enqueue_mission(payload: MissionEnqueueRequest) -> MissionEnqueueResponse:
+async def enqueue_mission(
+    payload: MissionEnqueueRequest,
+    db: AsyncSession = Depends(get_db),
+) -> MissionEnqueueResponse:
     """
     Enqueue eines Missionsjobs.
 
@@ -96,6 +113,7 @@ async def enqueue_mission(payload: MissionEnqueueRequest) -> MissionEnqueueRespo
     - EventStream (TASK_CREATED-Event)
     """
     runtime = get_mission_runtime()
+    await _ensure_missions_writable(db)
 
     try:
         result = await runtime.enqueue_mission(

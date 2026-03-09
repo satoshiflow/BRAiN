@@ -19,6 +19,7 @@ from app.core.auth_deps import (
     Principal,
 )
 from app.core.rate_limit import limiter, RateLimits
+from app.modules.module_lifecycle.service import get_module_lifecycle_service
 
 from .schemas import (
     MissionTemplateCreate,
@@ -41,6 +42,17 @@ router = APIRouter(
 def get_service(db: AsyncSession = Depends(get_db)) -> MissionTemplateService:
     """Dependency to get the template service"""
     return get_template_service(db)
+
+
+async def _ensure_mission_templates_writable(db: AsyncSession) -> None:
+    if db is None:
+        return
+    item = await get_module_lifecycle_service().get_module(db, "missions")
+    if item and item.lifecycle_status in {"deprecated", "retired"}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"missions is {item.lifecycle_status}; writes are blocked",
+        )
 
 
 def _audit_log(
@@ -189,6 +201,7 @@ async def get_template(
 )
 async def create_template(
     data: MissionTemplateCreate,
+    db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(require_role(SystemRole.OPERATOR)),
     service: MissionTemplateService = Depends(get_service),
 ):
@@ -218,6 +231,7 @@ async def create_template(
     Returns:
         Created template
     """
+    await _ensure_mission_templates_writable(db)
     _audit_log(
         "create_template",
         principal,
@@ -261,6 +275,7 @@ async def create_template(
 async def update_template(
     template_id: str,
     data: MissionTemplateUpdate,
+    db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(require_auth),
     service: MissionTemplateService = Depends(get_service),
 ):
@@ -277,6 +292,7 @@ async def update_template(
     Returns:
         Updated template
     """
+    await _ensure_mission_templates_writable(db)
     _audit_log(
         "update_template_attempt",
         principal,
@@ -329,6 +345,7 @@ async def update_template(
 @router.delete("/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_template(
     template_id: str,
+    db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(require_auth),
     service: MissionTemplateService = Depends(get_service),
 ):
@@ -340,6 +357,7 @@ async def delete_template(
     Args:
         template_id: The template ID to delete
     """
+    await _ensure_mission_templates_writable(db)
     _audit_log("delete_template_attempt", principal, template_id=template_id)
     
     template = await service.get_template(template_id)
@@ -384,6 +402,7 @@ async def instantiate_template(
     request: Request,
     template_id: str,
     template_request: InstantiateTemplateRequest,
+    db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(require_auth),
     service: MissionTemplateService = Depends(get_service),
 ):
@@ -411,6 +430,7 @@ async def instantiate_template(
     Returns:
         Created mission details
     """
+    await _ensure_mission_templates_writable(db)
     _audit_log(
         "instantiate_template_attempt",
         principal,

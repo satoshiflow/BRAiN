@@ -369,10 +369,10 @@ Parallelizable groups:
 
 Implementation should now continue with:
 
-1. reduce remaining legacy/test shims, starting with app-level import compatibility once test migration cost is acceptable
-2. expand coverage further around builder lifecycle transitions and decommission/kill-switch semantics
-3. plan the next roadmap branch: deeper knowledge/evolution work vs. stronger builder/infra unification
-4. prepare the next checkpoint commit and PR narrative from the now-hardened baseline
+1. complete the open B-depth slice: lifecycle/decommission guardrails on additional legacy edges (`api/routes/missions`, `app/modules/missions`, remaining write endpoints in builder/ops-adjacent modules)
+2. finish residual shim reduction with low-risk cuts only, keeping RC-gate stability as hard stop-go criterion
+3. implement the first Knowledge/Evolution runtime bridge as a minimal `experience_layer` (durable `ExperienceRecord` only)
+4. validate with widened regression slice plus RC gate and then prepare checkpoint commit/PR narrative
 
 ---
 

@@ -1,13 +1,28 @@
 {
   "changed_paths": [
-    "backend/__init__.py",
-    "backend/app/modules/task_queue/router.py",
-    "backend/backend/__init__.py",
-    "backend/tests/conftest.py"
+    "backend/api/routes/missions.py",
+    "backend/app/modules/course_factory/router.py",
+    "backend/app/modules/missions/router.py",
+    "backend/app/modules/webgenesis/router.py",
+    "docs/roadmap/BRAIN_SKILL_FIRST_IMPLEMENTATION_ROADMAP.md",
+    "backend/tests/test_legacy_missions_lifecycle_guards.py",
+    "docs/roadmap/NEXT_IMPLEMENTATION_PLAN_20260309.md"
   ],
   "matches": [
     {
-      "path": "backend/app/modules/task_queue/router.py",
+      "path": "backend/app/modules/course_factory/router.py",
+      "pattern": "backend/app/modules/*/router.py",
+      "tier": "medium_cost",
+      "critic_required": true
+    },
+    {
+      "path": "backend/app/modules/missions/router.py",
+      "pattern": "backend/app/modules/*/router.py",
+      "tier": "medium_cost",
+      "critic_required": true
+    },
+    {
+      "path": "backend/app/modules/webgenesis/router.py",
       "pattern": "backend/app/modules/*/router.py",
       "tier": "medium_cost",
       "critic_required": true

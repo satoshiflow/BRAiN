@@ -807,6 +807,7 @@ async def get_site_status(site_id: str):
 async def start_site(
     site_id: str,
     trust_context: AXERequestContext = Depends(validate_trust_tier_for_deploy),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Start a stopped site container.
@@ -848,6 +849,7 @@ async def start_site(
         ```
     """
     try:
+        await _ensure_webgenesis_writable(db)
         ops_service = get_ops_service()
 
         logger.info(
@@ -884,6 +886,7 @@ async def start_site(
 async def stop_site(
     site_id: str,
     trust_context: AXERequestContext = Depends(validate_trust_tier_for_deploy),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Stop a running site container.
@@ -922,6 +925,7 @@ async def stop_site(
         ```
     """
     try:
+        await _ensure_webgenesis_writable(db)
         ops_service = get_ops_service()
 
         logger.info(
@@ -958,6 +962,7 @@ async def stop_site(
 async def restart_site(
     site_id: str,
     trust_context: AXERequestContext = Depends(validate_trust_tier_for_deploy),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Restart a site container.
@@ -996,6 +1001,7 @@ async def restart_site(
         ```
     """
     try:
+        await _ensure_webgenesis_writable(db)
         ops_service = get_ops_service()
 
         logger.info(
@@ -1033,6 +1039,7 @@ async def remove_site(
     site_id: str,
     request: RemoveRequest = RemoveRequest(),
     trust_context: AXERequestContext = Depends(validate_trust_tier_for_deploy),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Remove a site (delete container and optionally all data).
@@ -1078,6 +1085,7 @@ async def remove_site(
         ```
     """
     try:
+        await _ensure_webgenesis_writable(db)
         ops_service = get_ops_service()
 
         logger.info(

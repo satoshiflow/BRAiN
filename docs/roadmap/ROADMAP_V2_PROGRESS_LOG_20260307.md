@@ -811,3 +811,34 @@ Resolved in this block:
   - concrete use-case thought tests and resilience checks
   - missing first-class runtime artifacts (`ExperienceRecord`, `InsightCandidate`, `PatternCandidate`, `EvolutionProposal`)
   - a simple next implementation slice (`experience_layer`) to keep evolution architecture minimal and testable
+
+85) Roadmap extension and global execution plan added
+- Updated next-action sequencing in:
+  - `docs/roadmap/BRAIN_SKILL_FIRST_IMPLEMENTATION_ROADMAP.md`
+- Added a consolidated cross-phase plan:
+  - `docs/roadmap/NEXT_IMPLEMENTATION_PLAN_20260309.md`
+- Plan enforces order:
+  - finish open B-depth guardrail closure first
+  - then residual shim reduction
+  - then minimal `experience_layer` implementation
+
+86) B-depth legacy guardrail slice expanded
+- Added lifecycle write-guard coverage to further legacy edges:
+  - `backend/api/routes/missions.py` (`POST /api/missions/enqueue`)
+  - `backend/app/modules/missions/router.py` (template create/update/delete/instantiate)
+  - `backend/app/modules/webgenesis/router.py` (start/stop/restart/remove)
+  - `backend/app/modules/course_factory/router.py` (workflow transition/rollback)
+
+87) Coverage extended for legacy mission guardrails
+- Added:
+  - `backend/tests/test_legacy_missions_lifecycle_guards.py`
+- New tests verify write blocking for deprecated/retired lifecycle states on:
+  - legacy mission enqueue route
+  - mission-template creation route
+
+88) Post-extension verification
+- Verified with widened regression slice:
+  - `PYTHONPATH=. pytest tests/test_course_factory.py tests/test_sprint10_webgenesis_ir.py tests/test_webgenesis_mvp.py tests/test_webgenesis_ops.py tests/test_webgenesis_sprint3.py tests/test_skill_engine.py tests/test_skill_evaluator_optimizer.py tests/test_skill_capability_registry.py tests/test_agent_skillrun_orchestration.py tests/test_supervisor_skillrun_mapping.py tests/test_task_queue_skill_run_lease.py tests/test_module_lifecycle.py tests/test_knowledge_layer.py tests/test_runtime_ingest_routes.py tests/test_legacy_missions_lifecycle_guards.py -q`
+- Result:
+  - `115 passed`
+- RC gate rerun after the B-depth extension also passed.

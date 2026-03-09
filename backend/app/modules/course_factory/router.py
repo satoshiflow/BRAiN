@@ -432,6 +432,7 @@ async def transition_workflow(
     actor: str,
     reason: Optional[str] = None,
     hitl_approval: bool = False,
+    db: AsyncSession = Depends(get_db),
     service: CourseFactoryService = Depends(get_course_factory_service_with_events),
 ) -> WorkflowTransition:
     """
@@ -452,6 +453,7 @@ async def transition_workflow(
         HTTPException: If transition is invalid
     """
     try:
+        await _ensure_course_factory_writable(db)
         logger.info(
             f"[CourseFactory API] Workflow transition: {course_id} "
             f"{from_state.value} → {to_state.value}"
@@ -482,6 +484,7 @@ async def rollback_workflow(
     transition_id: str,
     actor: str,
     reason: str,
+    db: AsyncSession = Depends(get_db),
     service: CourseFactoryService = Depends(get_course_factory_service_with_events),
 ) -> WorkflowTransition:
     """
@@ -500,6 +503,7 @@ async def rollback_workflow(
         HTTPException: If rollback fails
     """
     try:
+        await _ensure_course_factory_writable(db)
         logger.info(
             f"[CourseFactory API] Workflow rollback: {course_id} "
             f"(transition={transition_id})"
