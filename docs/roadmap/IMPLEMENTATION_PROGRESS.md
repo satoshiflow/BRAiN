@@ -66,9 +66,37 @@ Verification:
 
 ## Next Phase
 
-Planned next: **Phase P1B - Observer Core MVP (Read-Only)**
+## Phase P1B - Observer Core MVP (Read-Only)
+
+Completed: 2026-03-09
+
+Delivered:
+- added new `observer_core` module:
+  - `backend/app/modules/observer_core/models.py`
+  - `backend/app/modules/observer_core/schemas.py`
+  - `backend/app/modules/observer_core/service.py`
+  - `backend/app/modules/observer_core/router.py`
+- added read-only API surfaces:
+  - `GET /api/observer/signals`
+  - `GET /api/observer/signals/{signal_id}`
+  - `GET /api/observer/state`
+  - `GET /api/observer/state/entities/{entity_type}/{entity_id}`
+  - `GET /api/observer/summary`
+- enforced tenant-bound access (`403` when tenant context is missing).
+- verified no mutating observer endpoint methods are exposed.
+- wired observer router into backend app composition in `backend/main.py`.
+- added migration `backend/alembic/versions/026_add_observer_core.py` for observer tables and lifecycle registration.
+- added router regression tests in `backend/tests/test_observer_core.py`.
+
+Verification:
+- `PYTHONPATH=. pytest tests/test_observer_core.py tests/test_experience_layer.py tests/test_module_lifecycle.py -q`
+- reviewer pass (Claude-style): PASS for read-only surface, tenant isolation, and no mutation coupling.
+
+## Next Phase
+
+Planned next: **Phase P2 - Insight Layer Baseline + Knowledge Input Normalization**
 
 Focus:
-1. introduce `observer_core` contracts and read-only signal ingestion.
-2. consume selected execution/evaluator/health signals without control-path coupling.
-3. expose observer read APIs and operator replay/reconcile controls.
+1. introduce `insight_layer` artifacts (`InsightCandidate`) derived from `ExperienceRecord`.
+2. preserve API compatibility while normalizing `knowledge_layer` ingest path away from raw `SkillRun` bypass.
+3. add deprecation signaling for direct bypass paths with adapter-first rollout.
