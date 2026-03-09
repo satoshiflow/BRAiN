@@ -130,6 +130,7 @@ from app.modules.observer_core.router import router as observer_core_router
 from app.modules.insight_layer.router import router as insight_layer_router
 from app.modules.consolidation_layer.router import router as consolidation_layer_router
 from app.modules.evolution_control.router import router as evolution_control_router
+from app.modules.deliberation_layer.router import router as deliberation_layer_router
 from app.modules.module_lifecycle.router import router as module_lifecycle_router
 from app.modules.immune_orchestrator.router import router as immune_orchestrator_router
 from app.modules.recovery_policy_engine.router import router as recovery_policy_router
@@ -454,6 +455,7 @@ def create_app() -> FastAPI:
     app.include_router(insight_layer_router, tags=["insight-layer"])
     app.include_router(consolidation_layer_router, tags=["consolidation-layer"])
     app.include_router(evolution_control_router, tags=["evolution-control"])
+    app.include_router(deliberation_layer_router, tags=["deliberation-layer"])
     app.include_router(module_lifecycle_router, tags=["module-lifecycle"])
     app.include_router(health_monitor_router, tags=["health"])  # NEW: Health Monitor (Core)
     app.include_router(config_management_router, tags=["config"])  # NEW: Config Management (Core)

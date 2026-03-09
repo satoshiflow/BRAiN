@@ -169,9 +169,62 @@ Verification:
 
 ## Next Phase
 
-Planned next: **Phase P4 - Deliberation Summary + Tension Artifacts**
+## Phase P4 - Deliberation Summary + Tension Artifacts
+
+Completed: 2026-03-09
+
+Delivered:
+- added new `deliberation_layer` module:
+  - `backend/app/modules/deliberation_layer/models.py`
+  - `backend/app/modules/deliberation_layer/schemas.py`
+  - `backend/app/modules/deliberation_layer/service.py`
+  - `backend/app/modules/deliberation_layer/router.py`
+- added deliberation API surfaces:
+  - `POST /api/deliberation/missions/{mission_id}/summaries`
+  - `GET /api/deliberation/missions/{mission_id}/summaries/latest`
+  - `POST /api/deliberation/missions/{mission_id}/tensions`
+  - `GET /api/deliberation/missions/{mission_id}/tensions`
+- enforced tenant-bound access (`403` without tenant context) and lifecycle write guards (`409`) on mutating endpoints.
+- enforced bounded non-chain-of-thought payload policy:
+  - top-level `extra` fields forbidden,
+  - `evidence` map limited in size and key length,
+  - only scalar evidence values allowed,
+  - forbidden reasoning keys rejected recursively.
+- added migration `backend/alembic/versions/029_add_deliberation_layer.py` for deliberation persistence and lifecycle seed.
+- wired deliberation router into backend app composition in `backend/main.py`.
+- added tests in `backend/tests/test_deliberation_layer.py`.
+
+Verification:
+- `PYTHONPATH=. pytest tests/test_deliberation_layer.py tests/test_module_lifecycle.py tests/test_consolidation_layer.py tests/test_evolution_control.py tests/test_evolution_control_service.py -q`
+- reviewer pass (Claude-style): PASS for bounded non-CoT policy, tenant isolation, and lifecycle guard coverage.
+
+## Phase P5 - Stabilization, Decommission, and Operational Cadence
+
+Completed: 2026-03-09
+
+Delivered:
+- strengthened lifecycle retirement safety in `module_lifecycle` service:
+  - `deprecated/retired` transitions require `replacement_target` and `sunset_phase`
+  - `retired` transitions require `kill_switch` to be present.
+- added decommission ledger contract and API:
+  - `GET /api/module-lifecycle/decommission/ledger` (admin/system-admin only)
+  - readiness + blockers projection per deprecated/retired module.
+- added ledger schemas and service projection:
+  - `ModuleDecommissionLedgerEntry`
+  - `ModuleDecommissionLedgerResponse`
+  - `list_decommission_ledger(...)`
+- added regression tests for ledger endpoint and retirement safety in `backend/tests/test_module_lifecycle.py`.
+
+Verification:
+- `PYTHONPATH=. pytest tests/test_deliberation_layer.py tests/test_module_lifecycle.py tests/test_consolidation_layer.py tests/test_evolution_control.py tests/test_evolution_control_service.py -q`
+- `./scripts/run_rc_staging_gate.sh`
+- reviewer pass (Claude-style): PASS for decommission ledger safety and lifecycle retirement constraints.
+
+## Next Phase
+
+Planned next: **Phase P6 - Discovery Layer MVP (Proposal-Only)**
 
 Focus:
-1. add bounded mission deliberation artifacts (`DeliberationSummary`, `MissionHypothesis`, `MissionPerspective`, `MissionTension`).
-2. keep deliberation data minimal and explicitly non-chain-of-thought.
-3. keep execution ownership unchanged (`SkillRun` remains canonical execution anchor).
+1. introduce `discovery_layer` contracts (`SkillGap`, `CapabilityGap`, `SkillProposal`, `ProposalEvidence`).
+2. consume inputs from knowledge + consolidation + observer layers only.
+3. keep discovery strictly proposal-only and gated by `evolution_control`.
