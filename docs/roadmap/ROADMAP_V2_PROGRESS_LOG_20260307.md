@@ -801,3 +801,13 @@ Resolved in this block:
   - targeted slice: all green
   - wider slice: `113 passed`
 - RC gate rerun after this slice also passed.
+
+84) Knowledge/Evolution architecture modeling deepened
+- Added operating-model spec:
+  - `docs/specs/knowledge_evolution_operating_model.md`
+- The spec documents:
+  - what exists today (`SkillRun`, memory, learning, knowledge_layer, lifecycle)
+  - the intended staged path (`Execution -> Experience -> Insight -> Knowledge -> Skill Evolution`)
+  - concrete use-case thought tests and resilience checks
+  - missing first-class runtime artifacts (`ExperienceRecord`, `InsightCandidate`, `PatternCandidate`, `EvolutionProposal`)
+  - a simple next implementation slice (`experience_layer`) to keep evolution architecture minimal and testable
