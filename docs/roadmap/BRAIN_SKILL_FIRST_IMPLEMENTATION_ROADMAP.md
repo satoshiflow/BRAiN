@@ -12,6 +12,14 @@ Companion roadmap:
 Companion specifications:
 - `docs/specs/observer_core_mvp.md`
 - `docs/specs/discovery_observer_economy_sequencing.md`
+- `docs/specs/discovery_layer_mvp.md`
+- `docs/specs/economy_selection_support_mvp.md`
+
+Execution status snapshot (2026-03-09):
+- phases `P0` through `P7` are completed and verified in
+  `docs/roadmap/IMPLEMENTATION_PROGRESS.md`.
+- roadmap remains canonical for invariants, verification matrix, and
+  post-P7 operating cadence.
 
 ---
 
@@ -264,7 +272,7 @@ Stop/Go:
 
 ---
 
-### Phase P7 - Economy and Selection Support (Deferred)
+### Phase P7 - Economy and Selection Support
 
 Goal:
 - add minimal selection economics only after prior cognition layers are stable.

@@ -65,14 +65,22 @@ Define one stable, implementation-ready communication path between AXE UI and BR
   - added trust-tier dependency (`validate_axe_trust`) for `/chat` and `/health`
   - retained fail-closed behavior for untrusted external traffic
 
-## Next implementation slice
+## Implementation status
 
-1. Add contract tests for AXE Fusion trust-tier behavior:
-   - LOCAL allowed
-   - EXTERNAL denied
-   - missing DMZ secret non-local denied with governance error
-2. Add frontend integration tests for API error mapping in chat flow.
-3. Decide if AXE web app traffic should always pass a DMZ gateway at ingress (recommended for production).
+Completed in this slice:
+
+1. AXE Fusion trust-tier contract tests are implemented in:
+   - `backend/tests/test_axe_fusion_routes.py`
+   - `backend/tests/test_axe_fusion_trust.py`
+2. Frontend API access is centralized through:
+   - `frontend/axe_ui/lib/api.ts`
+   - `frontend/axe_ui/lib/contracts.ts`
+3. Chat page now consumes centralized AXE API contracts and request helpers.
+
+## Follow-up items
+
+1. Add frontend integration tests for chat error-state mapping and retry behavior.
+2. Decide whether production AXE web app ingress is DMZ-only for all user-facing traffic.
 
 ## Verification commands
 
@@ -80,7 +88,7 @@ Define one stable, implementation-ready communication path between AXE UI and BR
   - `cd frontend/axe_ui && npm run typecheck`
 - Frontend lint:
   - `cd frontend/axe_ui && npm run lint`
-- Backend targeted tests (to add in next slice):
+- Backend targeted tests:
   - `cd backend && PYTHONPATH=. pytest tests/test_axe_fusion_* -q`
 
 ## Notes

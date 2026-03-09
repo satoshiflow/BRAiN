@@ -125,8 +125,6 @@ Verification:
 - `PYTHONPATH=. pytest tests/test_module_lifecycle.py -q`
 - reviewer pass (Claude-style): PASS for tenant isolation, lifecycle guards, API compatibility, and knowledge ingest normalization.
 
-## Next Phase
-
 ## Phase P3 - Consolidation Layer + Evolution Control Bootstrap
 
 Completed: 2026-03-09
@@ -166,8 +164,6 @@ Delivered:
 Verification:
 - `PYTHONPATH=. pytest tests/test_consolidation_layer.py tests/test_evolution_control.py tests/test_evolution_control_service.py tests/test_insight_layer.py tests/test_knowledge_layer.py tests/test_module_lifecycle.py -q`
 - reviewer pass (Claude-style): PASS for tenant isolation, lifecycle guards, governance-safe proposal lifecycle, and no direct skill/policy mutation.
-
-## Next Phase
 
 ## Phase P4 - Deliberation Summary + Tension Artifacts
 
