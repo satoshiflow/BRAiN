@@ -4,25 +4,12 @@ CourseFactory Tests - Sprint 12
 Tests for course generation with IR governance.
 """
 
-import sys
-import os
 from pathlib import Path
 
-# Add backend to path
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if ROOT not in sys.path:
-    sys.path.insert(0, ROOT)
-
 import pytest
-from fastapi.testclient import TestClient
-
-# Import main app (will be created)
-from backend.main import app
-
-client = TestClient(app)
 
 
-def test_course_factory_info():
+def test_course_factory_info(client):
     """Test CourseFactory info endpoint."""
     response = client.get("/api/course-factory/info")
     assert response.status_code == 200
@@ -33,7 +20,7 @@ def test_course_factory_info():
     assert "course.create" in data["ir_actions"]
 
 
-def test_course_factory_health():
+def test_course_factory_health(client):
     """Test health check endpoint."""
     response = client.get("/api/course-factory/health")
     assert response.status_code == 200
@@ -43,7 +30,7 @@ def test_course_factory_health():
     assert data["module"] == "course_factory"
 
 
-def test_generate_ir_banking_course():
+def test_generate_ir_banking_course(client):
     """Test IR generation for banking alternatives course."""
     payload = {
         "tenant_id": "test_tenant",
@@ -65,7 +52,7 @@ def test_generate_ir_banking_course():
     assert len(ir["steps"]) >= 3  # At least outline, lessons, quiz
 
 
-def test_validate_ir_banking_course():
+def test_validate_ir_banking_course(client):
     """Test IR validation for banking course."""
     # First generate IR
     payload = {
@@ -93,7 +80,7 @@ def test_validate_ir_banking_course():
     assert "risk_tier" in validation
 
 
-def test_dry_run_banking_course():
+def test_dry_run_banking_course(client):
     """Test dry-run course generation."""
     payload = {
         "tenant_id": "test_tenant",
@@ -118,7 +105,7 @@ def test_dry_run_banking_course():
 
 
 @pytest.mark.slow
-def test_generate_full_banking_course():
+def test_generate_full_banking_course(client):
     """
     Test full course generation (slow test).
 

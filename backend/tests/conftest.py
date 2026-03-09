@@ -1,24 +1,53 @@
 from __future__ import annotations
 
 import os
-from urllib.parse import quote
+import sys
+from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
+
+from app.core.auth_deps import (
+    Principal,
+    PrincipalType,
+    get_current_principal,
+    require_auth,
+    require_operator,
+)
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 os.environ.setdefault("BRAIN_TEST_COMPAT_MODE", "true")
 
 
-if not getattr(TestClient.request, "__name__", "") == "_brain_test_request":
-    _orig_request = TestClient.request
+def _build_test_principal() -> Principal:
+    return Principal(
+        principal_id="pytest-operator",
+        principal_type=PrincipalType.HUMAN,
+        email="pytest@example.com",
+        name="Pytest Operator",
+        roles=["operator", "admin"],
+        scopes=["read", "write"],
+        tenant_id="test-tenant",
+    )
 
-    def _brain_test_request(self, method, url, *args, **kwargs):
-        if isinstance(url, str) and url.startswith("/"):
-            url = url.replace("..", "%2E%2E")
-            url = quote(url, safe="/%?=&-%._~")
-        return _orig_request(self, method, url, *args, **kwargs)
 
-    def _brain_test_delete(self, url, **kwargs):
-        return self.request("DELETE", url, **kwargs)
+@pytest.fixture(scope="session")
+def test_app():
+    from backend.main import app
 
-    TestClient.request = _brain_test_request
-    TestClient.delete = _brain_test_delete
+    async def _test_principal_override() -> Principal:
+        return _build_test_principal()
+
+    app.dependency_overrides[require_auth] = _test_principal_override
+    app.dependency_overrides[require_operator] = _test_principal_override
+    app.dependency_overrides[get_current_principal] = _test_principal_override
+
+    return app
+
+
+@pytest.fixture(scope="session")
+def client(test_app):
+    return TestClient(test_app)

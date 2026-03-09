@@ -10,19 +10,14 @@ Coverage:
 - Rollback mechanisms
 """
 
-import sys
-import os
-from pathlib import Path
+import pytest
 
-# Path setup for imports
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if ROOT not in sys.path:
-    sys.path.insert(0, ROOT)
+client = None
 
-from fastapi.testclient import TestClient
-from backend.main import app
 
-client = TestClient(app)
+@pytest.fixture(autouse=True)
+def _inject_client(client):
+    globals()["client"] = client
 
 
 # ============================================================================
@@ -115,7 +110,8 @@ def test_remove_with_keep_data_flag():
 
     payload = {"keep_data": True}
 
-    response = client.delete(
+    response = client.request(
+        "DELETE",
         "/api/webgenesis/test-site",
         headers=headers,
         json=payload,

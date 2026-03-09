@@ -123,3 +123,57 @@ def test_learning_ingest_skill_run_route(monkeypatch) -> None:
         MetricType.SUCCESS_RATE.value,
         MetricType.COST.value,
     }
+
+
+def test_memory_ingest_blocked_when_module_retired(monkeypatch) -> None:
+    app = FastAPI()
+    app.include_router(memory_router)
+
+    fake_db = object()
+
+    async def _db_override():
+        yield fake_db
+
+    app.dependency_overrides[get_db] = _db_override
+    app.dependency_overrides[require_auth] = lambda: build_principal("operator", "admin")
+    client = TestClient(app)
+
+    router_module = __import__("app.modules.memory.router", fromlist=["router"])
+
+    class FakeLifecycleService:
+        async def get_module(self, db, module_id):
+            assert db is fake_db
+            assert module_id == "memory"
+            return SimpleNamespace(lifecycle_status="retired")
+
+    monkeypatch.setattr(router_module, "get_module_lifecycle_service", lambda: FakeLifecycleService())
+
+    response = client.post(f"/api/memory/skill-runs/{uuid4()}/ingest")
+    assert response.status_code == 409
+
+
+def test_learning_ingest_blocked_when_module_deprecated(monkeypatch) -> None:
+    app = FastAPI()
+    app.include_router(learning_router)
+
+    fake_db = object()
+
+    async def _db_override():
+        yield fake_db
+
+    app.dependency_overrides[get_db] = _db_override
+    app.dependency_overrides[require_auth] = lambda: build_principal("operator", "admin")
+    client = TestClient(app)
+
+    router_module = __import__("app.modules.learning.router", fromlist=["router"])
+
+    class FakeLifecycleService:
+        async def get_module(self, db, module_id):
+            assert db is fake_db
+            assert module_id == "learning"
+            return SimpleNamespace(lifecycle_status="deprecated")
+
+    monkeypatch.setattr(router_module, "get_module_lifecycle_service", lambda: FakeLifecycleService())
+
+    response = client.post(f"/api/learning/metrics/skill-runs/{uuid4()}/ingest")
+    assert response.status_code == 409

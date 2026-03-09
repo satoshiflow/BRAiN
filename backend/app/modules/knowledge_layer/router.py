@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth_deps import Principal, SystemRole, get_current_principal, require_auth, require_role
 from app.core.database import get_db
+from app.modules.module_lifecycle.service import get_module_lifecycle_service
 
 from .schemas import KnowledgeItemCreate, KnowledgeItemListResponse, KnowledgeItemResponse, KnowledgeSearchQuery, RunLessonIngestResponse
 from .service import get_knowledge_layer_service
@@ -15,12 +16,24 @@ from .service import get_knowledge_layer_service
 router = APIRouter(prefix="/api/knowledge-items", tags=["knowledge-layer"], dependencies=[Depends(require_auth)])
 
 
+async def _ensure_knowledge_layer_writable(db: AsyncSession) -> None:
+    if db is None:
+        return
+    item = await get_module_lifecycle_service().get_module(db, "knowledge_layer")
+    if item and item.lifecycle_status in {"deprecated", "retired"}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"knowledge_layer is {item.lifecycle_status}; writes are blocked",
+        )
+
+
 @router.post("", response_model=KnowledgeItemResponse, status_code=status.HTTP_201_CREATED)
 async def create_knowledge_item(
     payload: KnowledgeItemCreate,
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(require_role(SystemRole.OPERATOR, SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN)),
 ):
+    await _ensure_knowledge_layer_writable(db)
     item = await get_knowledge_layer_service().create_item(db, payload, principal)
     return KnowledgeItemResponse.model_validate(item)
 
@@ -56,6 +69,7 @@ async def ingest_run_lesson(
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(require_role(SystemRole.OPERATOR, SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN)),
 ):
+    await _ensure_knowledge_layer_writable(db)
     try:
         item = await get_knowledge_layer_service().ingest_run_lesson(db, skill_run_id, principal)
     except ValueError as exc:

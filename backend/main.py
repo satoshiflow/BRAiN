@@ -19,7 +19,6 @@ import importlib
 import pkgutil
 import logging
 import asyncio
-import sys
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, List
 
@@ -32,7 +31,6 @@ from starlette.requests import Request
 
 # Rate Limiting (single source: app.core.rate_limit)
 from app.core.rate_limit import limiter as shared_limiter, rate_limit_exceeded_handler
-from app.core.auth_deps import Principal, PrincipalType, get_current_principal, require_auth, require_operator
 
 # Core infrastructure
 from app.core.config import get_settings
@@ -315,24 +313,6 @@ def create_app() -> FastAPI:
         description="Business Reasoning and Intelligence Network - Unified Backend",
         lifespan=lifespan,
     )
-
-    if "pytest" in sys.modules:
-        test_principal = Principal(
-            principal_id="pytest-operator",
-            principal_type=PrincipalType.HUMAN,
-            email="pytest@example.com",
-            name="Pytest Operator",
-            roles=["operator", "admin"],
-            scopes=["read", "write"],
-            tenant_id="test-tenant",
-        )
-
-        async def _test_principal_override() -> Principal:
-            return test_principal
-
-        app.dependency_overrides[require_auth] = _test_principal_override
-        app.dependency_overrides[require_operator] = _test_principal_override
-        app.dependency_overrides[get_current_principal] = _test_principal_override
 
     # Rate Limiter Setup (single shared limiter from app.core.rate_limit)
     app.state.limiter = shared_limiter

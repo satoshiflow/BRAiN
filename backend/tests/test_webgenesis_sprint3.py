@@ -11,19 +11,14 @@ Sprint III: Control Center Integration
 - Error handling (fail-safe)
 """
 
-import sys
-import os
-from pathlib import Path
+import pytest
 
-# Path setup for imports
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if ROOT not in sys.path:
-    sys.path.insert(0, ROOT)
+client = None
 
-from fastapi.testclient import TestClient
-from backend.main import app
 
-client = TestClient(app)
+@pytest.fixture(autouse=True)
+def _inject_client(client):
+    globals()["client"] = client
 
 
 # ============================================================================
@@ -127,8 +122,8 @@ def test_site_audit_returns_valid_schema():
 
 def test_site_audit_with_invalid_site_id():
     """Test that audit endpoint handles invalid site_id gracefully."""
-    # Invalid site_id (contains special characters)
-    response = client.get("/api/webgenesis/../../../etc/passwd/audit")
+    # Invalid site_id (path traversal encoded)
+    response = client.get("/api/webgenesis/%2E%2E%2F%2E%2E%2F%2E%2E%2Fetc%2Fpasswd/audit")
 
     # Should return 200 with empty events (fail-safe)
     assert response.status_code == 200
@@ -232,8 +227,8 @@ def test_audit_endpoint_fail_safe():
     # Try with various invalid inputs
     test_cases = [
         "test-site",
-        "../../etc/passwd",
-        "site_with_special_!@#$",
+        "%2E%2E%2F%2E%2E%2Fetc%2Fpasswd",
+        "site_with_special_!@%23$",
         "a" * 1000,  # Very long site_id
     ]
 

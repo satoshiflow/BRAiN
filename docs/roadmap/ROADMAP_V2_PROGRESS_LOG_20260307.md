@@ -755,3 +755,33 @@ Resolved in this block:
 - Result:
   - `110 passed`
 - RC gate rerun after hardening/cleanup also passed.
+
+78) Paket A execution: shim-reduction and test-bootstrap centralization advanced
+- `backend/main.py` no longer carries pytest-driven auth override logic; test-principal bootstrap now lives in `backend/tests/conftest.py`.
+- Builder/runtime tests were further aligned to central test bootstrap usage:
+  - `backend/tests/test_course_factory.py`
+  - `backend/tests/test_webgenesis_mvp.py`
+  - `backend/tests/test_webgenesis_ops.py`
+  - `backend/tests/test_webgenesis_sprint3.py`
+- Remaining legacy-oriented tests (for example `test_foundation.py`, `test_policy_engine.py`, `test_mission_system.py`) intentionally remain unchanged in this cut to keep blast radius low.
+
+79) Paket B execution: lifecycle/legacy alignment deepened on runtime ingests
+- Added lifecycle write guards to additional mutating runtime surfaces:
+  - `backend/app/modules/knowledge_layer/router.py`
+  - `backend/app/modules/memory/router.py`
+  - `backend/app/modules/learning/router.py`
+  - `backend/app/modules/task_queue/router.py`
+- Guards now block mutating operations when module lifecycle is `deprecated` or `retired`, while keeping read paths unaffected.
+
+80) Coverage expanded for lifecycle-blocking behavior on non-builder runtime paths
+- Updated tests:
+  - `backend/tests/test_knowledge_layer.py`
+  - `backend/tests/test_runtime_ingest_routes.py`
+- Added explicit assertions that writes on retired/deprecated modules return `409` for knowledge, memory, and learning ingest routes.
+
+81) Post-A/B verification completed
+- Verified with:
+  - `PYTHONPATH=. pytest tests/test_course_factory.py tests/test_sprint10_webgenesis_ir.py tests/test_webgenesis_mvp.py tests/test_webgenesis_ops.py tests/test_webgenesis_sprint3.py tests/test_skill_engine.py tests/test_skill_evaluator_optimizer.py tests/test_skill_capability_registry.py tests/test_agent_skillrun_orchestration.py tests/test_supervisor_skillrun_mapping.py tests/test_task_queue_skill_run_lease.py tests/test_module_lifecycle.py tests/test_knowledge_layer.py tests/test_runtime_ingest_routes.py -q`
+- Result:
+  - `113 passed`
+- RC gate rerun also passed after A/B execution.

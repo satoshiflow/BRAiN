@@ -31,6 +31,7 @@ from .schemas import (
 from .service import get_memory_service
 from app.core.database import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.modules.module_lifecycle.service import get_module_lifecycle_service
 from app.modules.skill_engine.service import get_skill_engine_service
 from app.modules.skill_evaluator.service import get_skill_evaluator_service
 
@@ -55,6 +56,17 @@ async def verify_agent_ownership(principal: Principal, agent_id: str) -> bool:
     if principal.has_role("admin"):
         return True
     return principal.agent_id == agent_id
+
+
+async def _ensure_memory_writable(db: AsyncSession) -> None:
+    if db is None:
+        return
+    item = await get_module_lifecycle_service().get_module(db, "memory")
+    if item and item.lifecycle_status in {"deprecated", "retired"}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"memory is {item.lifecycle_status}; writes are blocked",
+        )
 
 
 # ============================================================================
@@ -84,9 +96,11 @@ async def memory_stats(principal: Principal = Depends(require_auth)):
 @router.post("/store", response_model=MemoryEntry, status_code=status.HTTP_201_CREATED)
 async def store_memory(
     request: MemoryStoreRequest,
+    db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(require_role(UserRole.OPERATOR)),
 ):
     """Store a new memory entry."""
+    await _ensure_memory_writable(db)
     svc = get_memory_service()
     memory = await svc.store_memory(request)
     logger.info(
@@ -371,6 +385,7 @@ async def ingest_skill_run_memory(
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(require_role(UserRole.OPERATOR)),
 ):
+    await _ensure_memory_writable(db)
     run = await get_skill_engine_service().get_run(db, skill_run_id, principal.tenant_id)
     if run is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Skill run not found")

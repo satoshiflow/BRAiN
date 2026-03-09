@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.auth_deps import require_auth, require_role, Principal, SystemRole as UserRole
+from app.modules.module_lifecycle.service import get_module_lifecycle_service
 
 from .schemas import (
     Experiment,
@@ -52,6 +53,17 @@ async def verify_learning_ownership(principal: Principal, agent_id: str) -> bool
     return principal.agent_id == agent_id
 
 
+async def _ensure_learning_writable(db: AsyncSession) -> None:
+    if db is None:
+        return
+    item = await get_module_lifecycle_service().get_module(db, "learning")
+    if item and item.lifecycle_status in {"deprecated", "retired"}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"learning is {item.lifecycle_status}; writes are blocked",
+        )
+
+
 # ============================================================================
 # Info & Stats
 # ============================================================================
@@ -81,6 +93,7 @@ async def record_metric(
     principal: Principal = Depends(require_role(UserRole.OPERATOR)),
     db: AsyncSession = Depends(get_db),
 ):
+    await _ensure_learning_writable(db)
     # Verify ownership if agent_id is specified
     if not await verify_learning_ownership(principal, entry.agent_id):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not authorized for this agent")
@@ -130,6 +143,7 @@ async def ingest_skill_run_metrics(
     principal: Principal = Depends(require_role(UserRole.OPERATOR)),
     db: AsyncSession = Depends(get_db),
 ):
+    await _ensure_learning_writable(db)
     run = await get_skill_engine_service().get_run(db, skill_run_id, principal.tenant_id)
     if run is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Skill run not found")

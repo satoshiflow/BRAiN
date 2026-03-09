@@ -17,6 +17,7 @@ from app.core.database import get_db
 from app.core.auth_deps import require_role, get_current_principal, Principal, require_auth, SystemRole as UserRole
 from app.core.rate_limit import limiter, RateLimits
 from app.modules.skill_engine.service import get_skill_engine_service
+from app.modules.module_lifecycle.service import get_module_lifecycle_service
 
 from .schemas import (
     TaskCreate, TaskUpdate, TaskClaim, TaskComplete, TaskFail,
@@ -41,6 +42,17 @@ def _to_model_status(status: Optional[TaskStatus]) -> Optional[TaskModelStatus]:
     return TaskModelStatus(status.value)
 
 
+async def _ensure_task_queue_writable(db: AsyncSession) -> None:
+    if db is None:
+        return
+    item = await get_module_lifecycle_service().get_module(db, "task_queue")
+    if item and item.lifecycle_status in {"deprecated", "retired"}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"task_queue is {item.lifecycle_status}; writes are blocked",
+        )
+
+
 # ============================================================================
 # Task CRUD
 # ============================================================================
@@ -57,6 +69,7 @@ async def create_task(
     Tasks can be scheduled for immediate or future execution.
     """
     service = get_task_queue_service()
+    await _ensure_task_queue_writable(db)
 
     try:
         task = await service.create_task(
@@ -79,6 +92,7 @@ async def create_skill_run_lease(
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(require_role(UserRole.OPERATOR, UserRole.ADMIN, UserRole.SERVICE)),
 ):
+    await _ensure_task_queue_writable(db)
     run = await get_skill_engine_service().get_run(db, run_id, principal.tenant_id)
     if run is None:
         raise HTTPException(
