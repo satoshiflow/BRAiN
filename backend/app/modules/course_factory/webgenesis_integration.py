@@ -4,6 +4,20 @@ WebGenesis Integration - Sprint 13
 Integrates CourseFactory with WebGenesis for theme binding, section building, SEO, and previews.
 """
 
+# ============================================================================
+# DEPRECATION NOTICE (Execution Consolidation Wave 1)
+# Module role will be reduced/replaced by OpenCode execution plane.
+#
+# Status: PLANNED_FOR_DEPRECATION
+# Owner: BRAiN Runtime / OpenCode Integration
+# Replacement Target: course_factory -> runtime job contract -> opencode
+# Sunset Phase: wave1-course-bridge
+# Rule: Do not add new features here. Only critical fixes allowed.
+# See: docs/specs/opencode_execution_consolidation_plan.md
+# ============================================================================
+
+
+
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 import json

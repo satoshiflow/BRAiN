@@ -8,6 +8,20 @@ Trust Tier Enforcement:
 - EXTERNAL requests blocked with HTTP 403
 """
 
+# ============================================================================
+# DEPRECATION NOTICE (Execution Consolidation Wave 1)
+# Module role will be reduced/replaced by OpenCode execution plane.
+#
+# Status: PLANNED_FOR_DEPRECATION
+# Owner: BRAiN Runtime / OpenCode Integration
+# Replacement Target: opencode worker (build/deploy/rollback)
+# Sunset Phase: wave1-webgenesis-exec
+# Rule: Do not add new features here. Only critical fixes allowed.
+# See: docs/specs/opencode_execution_consolidation_plan.md
+# ============================================================================
+
+
+
 from typing import Optional
 import os
 from uuid import uuid4
