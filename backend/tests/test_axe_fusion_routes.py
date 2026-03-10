@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import io
 import pytest
 
 from app.modules.axe_governance import AXERequestContext, TrustTier
@@ -132,3 +133,30 @@ def test_axe_fusion_route_returns_503_when_governance_unconfigured(
     assert response.status_code == 503
     detail = response.json()["detail"]
     assert detail["code"] == "AXE_GOVERNANCE_UNAVAILABLE"
+
+
+def test_axe_fusion_upload_accepts_supported_file(client, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(axe_fusion_router_module, "get_axe_trust_validator", lambda: _AllowDmzValidator())
+
+    response = client.post(
+        "/api/axe/upload",
+        files={"file": ("note.txt", io.BytesIO(b"hello axe"), "text/plain")},
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["attachment_id"].startswith("att_")
+    assert body["mime_type"] == "text/plain"
+
+
+def test_axe_fusion_upload_rejects_unsupported_mime(client, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(axe_fusion_router_module, "get_axe_trust_validator", lambda: _AllowDmzValidator())
+
+    response = client.post(
+        "/api/axe/upload",
+        files={"file": ("payload.exe", io.BytesIO(b"MZ..."), "application/octet-stream")},
+    )
+
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert detail["code"] == "UNSUPPORTED_ATTACHMENT_TYPE"

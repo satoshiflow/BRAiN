@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { X, Send, MessageCircle, Minimize2 } from "lucide-react";
+import { X, Send, MessageCircle, Minimize2, Paperclip, Camera, Maximize2 } from "lucide-react";
 import type { FloatingAxeConfig, FloatingAxeInstance, AXEWidgetEvent } from "@/lib/embedConfig";
 import type { PluginHook, PluginHookHandler } from "@/src/plugins/types";
 import {
@@ -19,15 +19,23 @@ import { BrandingSystem } from "@/src/branding/brandingSystem";
 import { AnalyticsMiddleware } from "@/src/analytics/analyticsMiddleware";
 import { WebhookSystem, createWebhookPayload } from "@/src/webhooks/webhookSystem";
 import { OfflineManager, registerOfflineSW, type StoredMessage, type SyncState } from "@/src/offline/offlineManager";
-import { postAxeChat } from "@/lib/api";
+import { postAxeChat, uploadAxeAttachment } from "@/lib/api";
 import type { AxeChatRequest } from "@/lib/contracts";
 import { getDefaultModel } from "@/lib/config";
+import { CodeEditor } from "@/src/components/CodeEditor";
 
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+}
+
+interface UploadedAttachment {
+  id: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
 }
 
 interface EventListener {
@@ -56,6 +64,10 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [isInitialized, setIsInitialized] = useState(false);
+    const [isCanvasOpen, setIsCanvasOpen] = useState(false);
+    const [editorValue, setEditorValue] = useState("// AXE Canvas\n// Paste or draft code here\n");
+    const [attachments, setAttachments] = useState<UploadedAttachment[]>([]);
+    const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
     const [syncState, setSyncState] = useState<SyncState>("synced");
     const [pendingSyncCount, setPendingSyncCount] = useState(0);
     const [sessionId] = useState(() => config.sessionId || generateSessionId());
@@ -70,6 +82,8 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
     const webhookRef = useRef<WebhookSystem | null>(null);
     const offlineRef = useRef<OfflineManager | null>(null);
     const brandingRef = useRef<BrandingSystem | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const cameraInputRef = useRef<HTMLInputElement>(null);
 
     // Debug logging
     const log = useCallback(
@@ -305,6 +319,43 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
       };
     }, [replayOfflineQueue, log]);
 
+    const handleFileSelection = useCallback(
+      async (file: File | null) => {
+        if (!file) {
+          return;
+        }
+        if (!(offlineRef.current?.isOnlineNow() ?? true)) {
+          setError("Attachments require an online connection.");
+          return;
+        }
+
+        try {
+          setIsUploadingAttachment(true);
+          setError(null);
+          const uploaded = await uploadAxeAttachment(file, {
+            "X-App-Id": config.appId,
+            "X-Session-Id": sessionId,
+          });
+          setAttachments((prev) => [
+            ...prev,
+            {
+              id: uploaded.attachment_id,
+              filename: uploaded.filename,
+              mimeType: uploaded.mime_type,
+              sizeBytes: uploaded.size_bytes,
+            },
+          ]);
+        } catch (uploadError) {
+          const uploadMessage = uploadError instanceof Error ? uploadError.message : "Attachment upload failed";
+          setError(uploadMessage);
+          log("error", uploadMessage, uploadError);
+        } finally {
+          setIsUploadingAttachment(false);
+        }
+      },
+      [config.appId, sessionId, log]
+    );
+
     // Handle sending messages
     const handleSendMessage = useCallback(
       async (content: string) => {
@@ -312,6 +363,7 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
 
         try {
           const online = offlineRef.current?.isOnlineNow() ?? true;
+          const currentAttachments = attachments;
           setError(null);
           const newMessage: Message = {
             id: `user_${Date.now()}`,
@@ -377,7 +429,14 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
                 content: m.content,
               })),
             temperature: 0.7,
+            attachments: currentAttachments.map((attachment) => attachment.id),
           };
+
+          if (currentAttachments.length > 0) {
+            request.messages[request.messages.length - 1].content = `${request.messages[request.messages.length - 1].content}\n\nAttachments:\n${currentAttachments
+              .map((attachment) => `- ${attachment.filename} (${attachment.mimeType}) [${attachment.id}]`)
+              .join("\n")}`;
+          }
 
           const response = await postAxeChat(request, {
             "X-App-Id": config.appId,
@@ -392,6 +451,7 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
           };
 
           setMessages((prev) => [...prev, assistantMessage]);
+          setAttachments([]);
           offlineRef.current?.saveMessage({
             id: assistantMessage.id,
             role: assistantMessage.role,
@@ -425,7 +485,7 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
           setLoading(false);
         }
       },
-      [loading, config.appId, sessionId, messages, log, emit]
+      [loading, config.appId, sessionId, messages, attachments, log, emit]
     );
 
     // Auto-scroll to bottom
@@ -563,6 +623,9 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
     const theme = config.theme || "light";
     const headerTitle = config.branding?.headerTitle || "AXE Chat";
     const logoUrl = config.branding?.logoUrl;
+    const uploadEnabled = config.features?.enableUpload === true;
+    const cameraEnabled = config.features?.enableCamera === true;
+    const canvasEnabled = config.features?.enableCanvas === true;
     const buttonStyle = config.branding?.primaryColor
       ? { background: `linear-gradient(135deg, ${config.branding.primaryColor}, ${config.branding.secondaryColor || config.branding.primaryColor})` }
       : undefined;
@@ -616,6 +679,18 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
                 </span>
               </div>
               <div className="flex gap-2">
+                {canvasEnabled && (
+                  <button
+                    onClick={() => setIsCanvasOpen((prev) => !prev)}
+                    className={`p-1 rounded hover:opacity-70 transition-opacity ${
+                      theme === "dark" ? "hover:bg-gray-700" : "hover:bg-blue-100"
+                    }`}
+                    aria-label="Toggle canvas"
+                    title="Toggle Canvas"
+                  >
+                    <Maximize2 size={16} />
+                  </button>
+                )}
                 <button
                   onClick={() => setIsOpen(false)}
                   className={`p-1 rounded hover:opacity-70 transition-opacity ${
@@ -684,6 +759,21 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
               <div ref={messagesEndRef} />
             </div>
 
+            {canvasEnabled && isCanvasOpen && (
+              <div
+                data-testid="axe-canvas-panel"
+                className={`h-56 border-t ${theme === "dark" ? "border-gray-700" : "border-gray-200"}`}
+              >
+                <CodeEditor
+                  language="typescript"
+                  value={editorValue}
+                  onChange={setEditorValue}
+                  theme={theme === "dark" ? "vs-dark" : "light"}
+                  height="100%"
+                />
+              </div>
+            )}
+
             {/* Error Message */}
             {error && (
               <div className="px-4 py-2 bg-red-50 border-t border-red-200 text-red-700 text-xs">
@@ -695,6 +785,58 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
             <div className={`flex gap-2 p-3 ${
               theme === "dark" ? "bg-gray-800 border-gray-700" : "bg-gray-50 border-gray-200"
             } border-t`}>
+              {(uploadEnabled || cameraEnabled) && (
+                <div className="flex flex-col gap-2">
+                  <div className="flex gap-1">
+                    {uploadEnabled && (
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploadingAttachment || loading}
+                        className="w-8 h-8 rounded bg-gray-200 text-gray-700 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                        aria-label="Attach file"
+                        title="Attach file"
+                      >
+                        <Paperclip size={14} />
+                      </button>
+                    )}
+                    {cameraEnabled && (
+                      <button
+                        onClick={() => cameraInputRef.current?.click()}
+                        disabled={isUploadingAttachment || loading}
+                        className="w-8 h-8 rounded bg-gray-200 text-gray-700 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                        aria-label="Take photo"
+                        title="Take photo"
+                      >
+                        <Camera size={14} />
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="hidden"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0] || null;
+                      handleFileSelection(file).finally(() => {
+                        event.target.value = "";
+                      });
+                    }}
+                  />
+                  <input
+                    ref={cameraInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0] || null;
+                      handleFileSelection(file).finally(() => {
+                        event.target.value = "";
+                      });
+                    }}
+                  />
+                </div>
+              )}
               <textarea
                 ref={textareaRef}
                 value={input}
@@ -716,13 +858,29 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
               />
               <button
                 onClick={() => handleSendMessage(input)}
-                disabled={loading || !input.trim()}
+                disabled={loading || !input.trim() || isUploadingAttachment}
                 className="w-8 h-8 rounded bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
                 aria-label="Send message"
               >
                 <Send size={16} />
               </button>
             </div>
+            {attachments.length > 0 && (
+              <div className={`px-3 pb-3 ${theme === "dark" ? "bg-gray-800" : "bg-gray-50"}`}>
+                <div className="flex flex-wrap gap-1">
+                  {attachments.map((attachment) => (
+                    <button
+                      key={attachment.id}
+                      onClick={() => setAttachments((prev) => prev.filter((item) => item.id !== attachment.id))}
+                      className="rounded-full px-2 py-1 text-[11px] bg-blue-100 text-blue-700 hover:bg-blue-200"
+                      title="Remove attachment"
+                    >
+                      {attachment.filename}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

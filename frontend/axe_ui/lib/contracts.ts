@@ -9,6 +9,7 @@ export interface AxeChatRequest {
   model: string;
   messages: AxeChatMessage[];
   temperature?: number;
+  attachments?: string[];
 }
 
 export interface AxeChatResponse {
@@ -19,4 +20,12 @@ export interface AxeChatResponse {
 export interface ApiHealthResponse {
   status?: string;
   version?: string;
+}
+
+export interface AxeAttachmentUploadResponse {
+  attachment_id: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  expires_at: string;
 }

@@ -21,6 +21,12 @@ export interface WidgetAnalyticsConfig {
   batchInterval?: number;
 }
 
+export interface WidgetFeatureFlags {
+  enableUpload?: boolean;
+  enableCamera?: boolean;
+  enableCanvas?: boolean;
+}
+
 export type AXEEmbeddingErrorCode =
   | "ORIGIN_MISMATCH"
   | "CONFIG_INVALID"
@@ -106,6 +112,9 @@ export interface FloatingAxeConfigOptional {
 
   /** Optional shared secret for HMAC-SHA256 webhook signatures */
   webhookSecret?: string;
+
+  /** Optional feature flags for advanced UI capabilities */
+  features?: WidgetFeatureFlags;
 
   /** Callback when widget initializes successfully */
   onReady?: (widget: FloatingAxeInstance) => void;

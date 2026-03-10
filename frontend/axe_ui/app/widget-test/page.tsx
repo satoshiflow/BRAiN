@@ -43,8 +43,8 @@ export default function WidgetTestPage() {
               <li>Look for the floating AXE button in <strong>bottom-right corner</strong></li>
               <li>Click the button to <strong>expand</strong> the chat panel</li>
               <li>Type a message and press <strong>Enter</strong></li>
-              <li>You&apos;ll get a mock response (no real AI backend yet)</li>
-              <li>Click the <strong>maximize icon</strong> to open CANVAS mode (placeholder)</li>
+              <li>Use the <strong>paperclip / camera</strong> buttons to add attachments (online only)</li>
+              <li>Click the <strong>maximize icon</strong> to toggle CANVAS editor</li>
               <li>Click <strong>minimize</strong> to collapse back to button</li>
             </ol>
           </div>
@@ -132,6 +132,11 @@ export default function WidgetTestPage() {
         originAllowlist={typeof window !== 'undefined' ? window.location.origin : 'http://127.0.0.1:3002'}
         theme="dark"
         position="bottom-right"
+        features={{
+          enableUpload: true,
+          enableCamera: true,
+          enableCanvas: true,
+        }}
         debug
       />
     </div>

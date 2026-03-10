@@ -6,8 +6,12 @@ Endpoint: POST /api/axe/chat
 
 import logging
 import os
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, status, Depends, Request, Header
+from uuid import uuid4
+
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
@@ -25,6 +29,16 @@ from .service import (
 )
 
 logger = logging.getLogger(__name__)
+
+UPLOAD_BASE_DIR = Path(os.getenv("AXE_UPLOAD_DIR", "/tmp/axe_uploads"))
+UPLOAD_MAX_BYTES = int(os.getenv("AXE_UPLOAD_MAX_BYTES", str(10 * 1024 * 1024)))
+UPLOAD_ALLOWED_MIME_TYPES = {
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "application/pdf",
+    "text/plain",
+}
 
 router = APIRouter(
     prefix="/axe",
@@ -131,6 +145,7 @@ class ChatRequest(BaseModel):
     model: str = Field(..., description="Modell-Name (z.B. 'gpt-4', 'claude-3')")
     messages: List[ChatMessage] = Field(..., description="Liste der Chat-Nachrichten")
     temperature: Optional[float] = Field(0.7, ge=0.0, le=2.0, description="Sampling Temperatur")
+    attachments: Optional[List[str]] = Field(None, description="Optionale Attachment-Referenzen")
     
     class Config:
         json_schema_extra = {
@@ -166,6 +181,14 @@ class HealthResponse(BaseModel):
     status: str
     axellm: str
     error: Optional[str] = None
+
+
+class UploadResponse(BaseModel):
+    attachment_id: str
+    filename: str
+    mime_type: str
+    size_bytes: int
+    expires_at: str
 
 
 # === Endpoints ===
@@ -291,4 +314,73 @@ async def axe_health(
         status=result["status"],
         axellm=result["axellm"],
         error=result.get("error")
+    )
+
+
+@router.post(
+    "/upload",
+    response_model=UploadResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Upload AXE Attachment",
+    description="Speichert ein erlaubtes Attachment und gibt eine Referenz-ID für Chat Requests zurück.",
+)
+async def axe_upload(
+    file: UploadFile = File(...),
+    context: AXERequestContext = Depends(validate_axe_trust),
+) -> UploadResponse:
+    if file.content_type not in UPLOAD_ALLOWED_MIME_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "Unsupported file type",
+                "message": f"Unsupported content type: {file.content_type}",
+                "code": "UNSUPPORTED_ATTACHMENT_TYPE",
+            },
+        )
+
+    payload = await file.read()
+    size_bytes = len(payload)
+
+    if size_bytes == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "Empty file",
+                "message": "Attachment must not be empty",
+                "code": "EMPTY_ATTACHMENT",
+            },
+        )
+
+    if size_bytes > UPLOAD_MAX_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail={
+                "error": "File too large",
+                "message": f"Attachment exceeds max size of {UPLOAD_MAX_BYTES} bytes",
+                "code": "ATTACHMENT_TOO_LARGE",
+            },
+        )
+
+    attachment_id = f"att_{uuid4().hex}"
+    UPLOAD_BASE_DIR.mkdir(parents=True, exist_ok=True)
+
+    suffix = Path(file.filename or "upload").suffix
+    target_path = UPLOAD_BASE_DIR / f"{attachment_id}{suffix}"
+    target_path.write_bytes(payload)
+
+    logger.info(
+        "AXE attachment uploaded (id=%s, trust_tier=%s, source=%s, size=%s)",
+        attachment_id,
+        context.trust_tier.value,
+        context.source_service,
+        size_bytes,
+    )
+
+    expires_at = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+    return UploadResponse(
+        attachment_id=attachment_id,
+        filename=file.filename or "upload",
+        mime_type=file.content_type or "application/octet-stream",
+        size_bytes=size_bytes,
+        expires_at=expires_at,
     )
