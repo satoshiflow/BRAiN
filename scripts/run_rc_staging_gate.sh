@@ -44,4 +44,7 @@ python3 scripts/check_no_utcnow_auth.py
 python3 scripts/check_no_utcnow_planning.py
 python3 scripts/critic_gate.py
 
+echo "[gate] runtime preflight"
+python3 scripts/preflight_runtime.py
+
 echo "[gate] RC staging verification complete"
