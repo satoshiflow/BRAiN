@@ -654,7 +654,7 @@ async def sign_bundle_endpoint(bundle_id: str, principal: Principal = Depends(ge
     from app.modules.sovereign_mode.system_key import get_system_signing_key
     from datetime import datetime
 
-    service = get_sovereign_mode_service()
+    service = get_sovereign_service()
 
     try:
         # Get bundle
@@ -712,7 +712,7 @@ async def verify_bundle_endpoint(bundle_id: str, principal: Principal = Depends(
 
     **Returns**: ValidationResult with signature verification status
     """
-    service = get_sovereign_mode_service()
+    service = get_sovereign_service()
 
     try:
         # Get bundle

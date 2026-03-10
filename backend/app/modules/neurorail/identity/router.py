@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, status, Depends
 from typing import Optional
 from datetime import datetime
 
+from app.core.auth_deps import require_auth, Principal
 from app.modules.neurorail.identity.service import (
     IdentityService,
     get_identity_service,
@@ -41,7 +42,8 @@ router = APIRouter(prefix="/api/neurorail/v1/identity", tags=["NeuroRail Identit
 @router.post("/mission", response_model=MissionIdentity, status_code=status.HTTP_201_CREATED)
 async def create_mission(
     request: CreateMissionRequest,
-    service: IdentityService = Depends(get_identity_service)
+    service: IdentityService = Depends(get_identity_service),
+    principal: Principal = Depends(require_auth)
 ) -> MissionIdentity:
     """
     Create a new mission identity.
@@ -61,7 +63,8 @@ async def create_mission(
 @router.get("/mission/{mission_id}", response_model=MissionIdentity)
 async def get_mission(
     mission_id: str,
-    service: IdentityService = Depends(get_identity_service)
+    service: IdentityService = Depends(get_identity_service),
+    principal: Principal = Depends(require_auth)
 ) -> MissionIdentity:
     """
     Get mission identity by ID.
@@ -91,7 +94,8 @@ async def get_mission(
 @router.post("/plan", response_model=PlanIdentity, status_code=status.HTTP_201_CREATED)
 async def create_plan(
     request: CreatePlanRequest,
-    service: IdentityService = Depends(get_identity_service)
+    service: IdentityService = Depends(get_identity_service),
+    principal: Principal = Depends(require_auth)
 ) -> PlanIdentity:
     """
     Create a new plan identity.
@@ -119,7 +123,8 @@ async def create_plan(
 @router.get("/plan/{plan_id}", response_model=PlanIdentity)
 async def get_plan(
     plan_id: str,
-    service: IdentityService = Depends(get_identity_service)
+    service: IdentityService = Depends(get_identity_service),
+    principal: Principal = Depends(require_auth)
 ) -> PlanIdentity:
     """
     Get plan identity by ID.
@@ -149,7 +154,8 @@ async def get_plan(
 @router.post("/job", response_model=JobIdentity, status_code=status.HTTP_201_CREATED)
 async def create_job(
     request: CreateJobRequest,
-    service: IdentityService = Depends(get_identity_service)
+    service: IdentityService = Depends(get_identity_service),
+    principal: Principal = Depends(require_auth)
 ) -> JobIdentity:
     """
     Create a new job identity.
@@ -177,7 +183,8 @@ async def create_job(
 @router.get("/job/{job_id}", response_model=JobIdentity)
 async def get_job(
     job_id: str,
-    service: IdentityService = Depends(get_identity_service)
+    service: IdentityService = Depends(get_identity_service),
+    principal: Principal = Depends(require_auth)
 ) -> JobIdentity:
     """
     Get job identity by ID.
@@ -207,7 +214,8 @@ async def get_job(
 @router.post("/attempt", response_model=AttemptIdentity, status_code=status.HTTP_201_CREATED)
 async def create_attempt(
     request: CreateAttemptRequest,
-    service: IdentityService = Depends(get_identity_service)
+    service: IdentityService = Depends(get_identity_service),
+    principal: Principal = Depends(require_auth)
 ) -> AttemptIdentity:
     """
     Create a new attempt identity.
@@ -235,7 +243,8 @@ async def create_attempt(
 @router.get("/attempt/{attempt_id}", response_model=AttemptIdentity)
 async def get_attempt(
     attempt_id: str,
-    service: IdentityService = Depends(get_identity_service)
+    service: IdentityService = Depends(get_identity_service),
+    principal: Principal = Depends(require_auth)
 ) -> AttemptIdentity:
     """
     Get attempt identity by ID.
@@ -265,7 +274,8 @@ async def get_attempt(
 @router.post("/resource", response_model=ResourceIdentity, status_code=status.HTTP_201_CREATED)
 async def create_resource(
     request: CreateResourceRequest,
-    service: IdentityService = Depends(get_identity_service)
+    service: IdentityService = Depends(get_identity_service),
+    principal: Principal = Depends(require_auth)
 ) -> ResourceIdentity:
     """
     Create a new resource identity.
@@ -293,7 +303,8 @@ async def create_resource(
 @router.get("/resource/{resource_uuid}", response_model=ResourceIdentity)
 async def get_resource(
     resource_uuid: str,
-    service: IdentityService = Depends(get_identity_service)
+    service: IdentityService = Depends(get_identity_service),
+    principal: Principal = Depends(require_auth)
 ) -> ResourceIdentity:
     """
     Get resource identity by UUID.
@@ -324,7 +335,8 @@ async def get_resource(
 async def get_trace_chain(
     entity_type: str,
     entity_id: str,
-    service: IdentityService = Depends(get_identity_service)
+    service: IdentityService = Depends(get_identity_service),
+    principal: Principal = Depends(require_auth)
 ) -> TraceChainResponse:
     """
     Get complete trace chain for any entity.

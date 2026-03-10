@@ -309,12 +309,12 @@ class ExecutionStep(BaseModel):
         description="Unique step identifier"
     )
     sequence: int = Field(..., description="Step sequence number (1-based)")
-    name: str = Field(..., description="Human-readable step name")
-    description: str = Field(..., description="What this step does")
+    name: str = Field(..., max_length=255, description="Human-readable step name")
+    description: str = Field(..., max_length=2000, description="What this step does")
 
     # Execution
     executor: ExecutorType = Field(..., description="Which executor handles this step")
-    template_id: Optional[str] = Field(None, description="Template to use (if applicable)")
+    template_id: Optional[str] = Field(None, max_length=100, description="Template to use (if applicable)")
     parameters: Dict[str, Any] = Field(
         default_factory=dict,
         description="Execution parameters"
@@ -337,13 +337,13 @@ class ExecutionStep(BaseModel):
         None,
         description="Execution result data"
     )
-    error: Optional[str] = Field(None, description="Error message if failed")
+    error: Optional[str] = Field(None, max_length=2000, description="Error message if failed")
     error_details: Optional[Dict[str, Any]] = Field(
         None,
         description="Detailed error information"
     )
     evidence_path: Optional[str] = Field(
-        None,
+        None, max_length=1000,
         description="Path to evidence files"
     )
 
@@ -389,11 +389,11 @@ class Risk(BaseModel):
         default_factory=lambda: f"risk_{uuid.uuid4().hex[:8]}",
         description="Unique risk identifier"
     )
-    description: str = Field(..., description="Risk description")
+    description: str = Field(..., max_length=2000, description="Risk description")
     severity: RiskLevel = Field(..., description="Risk severity")
     probability: RiskLevel = Field(..., description="Likelihood of occurrence")
-    impact: str = Field(..., description="Potential impact if risk occurs")
-    mitigation: str = Field(..., description="Mitigation strategy")
+    impact: str = Field(..., max_length=2000, description="Potential impact if risk occurs")
+    mitigation: str = Field(..., max_length=2000, description="Mitigation strategy")
     related_steps: List[str] = Field(
         default_factory=list,
         description="Step IDs affected by this risk"
@@ -423,11 +423,11 @@ class RiskAssessment(BaseModel):
     # Recommendations
     recommendations: List[str] = Field(
         default_factory=list,
-        description="Recommended actions before execution"
+        description="Recommended actions before execution (max 50 items, each max 500 chars)"
     )
     warnings: List[str] = Field(
         default_factory=list,
-        description="Warnings to user"
+        description="Warnings to user (max 50 items, each max 500 chars)"
     )
 
 
@@ -549,8 +549,8 @@ class PreflightResult(BaseModel):
         default_factory=list,
         description="Individual check results"
     )
-    errors: List[str] = Field(default_factory=list)
-    warnings: List[str] = Field(default_factory=list)
+    errors: List[str] = Field(default_factory=list, description="Preflight errors (max 100 items, each max 1000 chars)")
+    warnings: List[str] = Field(default_factory=list, description="Preflight warnings (max 100 items, each max 1000 chars)")
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -559,7 +559,7 @@ class StepResult(BaseModel):
     step_id: str
     success: bool
     data: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
+    error: Optional[str] = Field(None, max_length=2000)
     evidence_files: List[str] = Field(default_factory=list)
     duration_seconds: float
 
@@ -569,11 +569,11 @@ class ExecutionResult(BaseModel):
     plan_id: str
     status: PlanStatus
     success: bool
-    message: str
+    message: str = Field(..., max_length=2000)
     steps_executed: int
     steps_succeeded: int
     steps_failed: int
-    evidence_pack_url: Optional[str] = None
+    evidence_pack_url: Optional[str] = Field(None, max_length=2048)
     final_urls: Dict[str, str] = Field(default_factory=dict)
     execution_time_seconds: float
     timestamp: datetime = Field(default_factory=datetime.utcnow)
@@ -584,5 +584,5 @@ class RollbackResult(BaseModel):
     plan_id: str
     success: bool
     steps_rolled_back: int
-    errors: List[str] = Field(default_factory=list)
+    errors: List[str] = Field(default_factory=list, description="Rollback errors (max 100 items, each max 1000 chars)")
     timestamp: datetime = Field(default_factory=datetime.utcnow)
