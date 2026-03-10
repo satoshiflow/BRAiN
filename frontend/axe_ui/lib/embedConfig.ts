@@ -7,6 +7,19 @@
 
 import type { PluginManifest } from "@/src/plugins/types";
 
+export interface WidgetBranding {
+  logoUrl?: string;
+  headerTitle?: string;
+  primaryColor?: string;
+  secondaryColor?: string;
+}
+
+export interface WidgetAnalyticsConfig {
+  webhookUrl?: string;
+  batchSize?: number;
+  batchInterval?: number;
+}
+
 export type AXEEmbeddingErrorCode =
   | "ORIGIN_MISMATCH"
   | "CONFIG_INVALID"
@@ -71,6 +84,15 @@ export interface FloatingAxeConfigOptional {
 
   /** CSS custom properties override */
   customCss?: Record<string, string>;
+
+  /** Optional branding settings for embedded widgets */
+  branding?: WidgetBranding;
+
+  /** Optional analytics settings */
+  analytics?: WidgetAnalyticsConfig;
+
+  /** Optional webhook endpoint for widget events */
+  webhookUrl?: string;
 
   /** Callback when widget initializes successfully */
   onReady?: (widget: FloatingAxeInstance) => void;

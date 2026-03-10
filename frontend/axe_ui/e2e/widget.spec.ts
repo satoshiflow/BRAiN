@@ -9,7 +9,7 @@
 import { test, expect, Page } from "@playwright/test";
 
 // Base URL for widget demo
-const DEMO_URL = "http://localhost:3000/embed-demo.html";
+const DEMO_URL = "http://localhost:3002/embed-demo.html";
 const API_BASE = "http://localhost:8000";
 
 test.describe("FloatingAxe Widget - Embedding Contract", () => {

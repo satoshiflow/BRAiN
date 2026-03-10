@@ -12,6 +12,11 @@ import {
 } from "@/lib/embedConfig";
 import { pluginRegistry, initializePlugins, destroyPlugins, type PluginContext } from "@/src/plugins";
 import slashCommandsPlugin from "@/src/plugins/slashCommands";
+import { registerDynamicPlugin, unregisterDynamicPlugin } from "@/src/plugins/dynamicRegistry";
+import { BrandingSystem } from "@/src/branding/brandingSystem";
+import { AnalyticsMiddleware } from "@/src/analytics/analyticsMiddleware";
+import { WebhookSystem, createWebhookPayload } from "@/src/webhooks/webhookSystem";
+import { OfflineManager, registerOfflineSW } from "@/src/offline/offlineManager";
 import { postAxeChat } from "@/lib/api";
 import type { AxeChatRequest } from "@/lib/contracts";
 import { getDefaultModel } from "@/lib/config";
@@ -57,6 +62,10 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
     const eventListenersRef = useRef<EventListener[]>([]);
     const pluginContextRef = useRef<PluginContext | null>(null);
     const widgetRef = useRef<FloatingAxeInstance | null>(null);
+    const analyticsRef = useRef<AnalyticsMiddleware | null>(null);
+    const webhookRef = useRef<WebhookSystem | null>(null);
+    const offlineRef = useRef<OfflineManager | null>(null);
+    const brandingRef = useRef<BrandingSystem | null>(null);
 
     // Debug logging
     const log = useCallback(
@@ -116,13 +125,50 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
           };
           pluginContextRef.current = pluginCtx;
 
+          brandingRef.current = new BrandingSystem({
+            appId: config.appId,
+            theme: {
+              primaryColor: config.branding?.primaryColor,
+              secondaryColor: config.branding?.secondaryColor,
+            },
+            assets: {
+              logo: config.branding?.logoUrl,
+            },
+            text: {
+              headerTitle: config.branding?.headerTitle,
+            },
+          });
+          brandingRef.current.applyToDOM();
+
+          analyticsRef.current = new AnalyticsMiddleware({
+            webhookUrl: config.analytics?.webhookUrl,
+            batchSize: config.analytics?.batchSize,
+            batchInterval: config.analytics?.batchInterval,
+            debug: config.debug,
+          });
+
+          if (config.webhookUrl) {
+            webhookRef.current = new WebhookSystem({
+              url: config.webhookUrl,
+              debug: config.debug,
+            });
+          }
+
+          offlineRef.current = new OfflineManager(sessionId);
+          await registerOfflineSW();
+
           // Register built-in plugin
           pluginRegistry.register(slashCommandsPlugin);
 
           // Register user-provided plugins
           if (config.plugins && config.plugins.length > 0) {
             log("debug", `Registering ${config.plugins.length} user plugins`);
-            // Plugin registration will be enhanced in Phase 2
+            for (const manifest of config.plugins) {
+              await registerDynamicPlugin({
+                manifest,
+                hooks: {},
+              });
+            }
           }
 
           // Initialize all plugins
@@ -130,6 +176,17 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
 
           setIsInitialized(true);
           emit("ready");
+          analyticsRef.current?.track({
+            eventName: "widget.ready",
+            appId: config.appId,
+            sessionId,
+            timestamp: new Date().toISOString(),
+          });
+          webhookRef.current?.send(
+            createWebhookPayload("widget.ready", config.appId, sessionId, {
+              backendUrl: config.backendUrl,
+            })
+          );
           config.onReady?.(widgetRef.current!);
 
           log("info", "FloatingAxe widget initialized successfully");
@@ -153,6 +210,9 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
       // Cleanup on unmount
       return () => {
         destroyPlugins().catch((err) => log("error", "Plugin cleanup failed", err));
+        analyticsRef.current?.destroy().catch((err) => log("error", "Analytics cleanup failed", err));
+        webhookRef.current?.destroy();
+        offlineRef.current?.destroy();
       };
     }, [config, sessionId, log, emit]);
 
@@ -172,6 +232,25 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
 
           setMessages((prev) => [...prev, newMessage]);
           setInput("");
+          offlineRef.current?.saveMessage({
+            id: newMessage.id,
+            role: newMessage.role,
+            content: newMessage.content,
+            timestamp: newMessage.timestamp.getTime(),
+            synced: false,
+          });
+          analyticsRef.current?.track({
+            eventName: "message.sent",
+            appId: config.appId,
+            sessionId,
+            timestamp: new Date().toISOString(),
+            data: { contentLength: content.length },
+          });
+          webhookRef.current?.send(
+            createWebhookPayload("message.sent", config.appId, sessionId, {
+              content,
+            })
+          );
 
           // Check for slash commands
           if (content.startsWith("/")) {
@@ -206,11 +285,35 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
           };
 
           setMessages((prev) => [...prev, assistantMessage]);
+          offlineRef.current?.saveMessage({
+            id: assistantMessage.id,
+            role: assistantMessage.role,
+            content: assistantMessage.content,
+            timestamp: assistantMessage.timestamp.getTime(),
+            synced: true,
+          });
+          analyticsRef.current?.track({
+            eventName: "message.received",
+            appId: config.appId,
+            sessionId,
+            timestamp: new Date().toISOString(),
+            data: { contentLength: response.text.length },
+          });
+          webhookRef.current?.send(
+            createWebhookPayload("message.received", config.appId, sessionId, {
+              contentLength: response.text.length,
+            })
+          );
           emit("message-received", assistantMessage);
         } catch (err) {
           const errorMessage = err instanceof Error ? err.message : "Failed to send message";
           log("error", errorMessage);
           setError(errorMessage);
+          webhookRef.current?.send(
+            createWebhookPayload("error.occurred", config.appId, sessionId, {
+              message: errorMessage,
+            })
+          );
         } finally {
           setLoading(false);
         }
@@ -222,6 +325,15 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
     useEffect(() => {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);
+
+    useEffect(() => {
+      if (!isInitialized) return;
+      if (isOpen) {
+        emit("open");
+      } else {
+        emit("close");
+      }
+    }, [isOpen, isInitialized, emit]);
 
     // Auto-resize textarea
     useEffect(() => {
@@ -247,25 +359,58 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
         open: () => {
           setIsOpen(true);
           emit("open");
+          analyticsRef.current?.track({
+            eventName: "widget.opened",
+            appId: config.appId,
+            sessionId,
+            timestamp: new Date().toISOString(),
+          });
+          webhookRef.current?.send(createWebhookPayload("widget.opened", config.appId, sessionId));
         },
 
         close: () => {
           setIsOpen(false);
           emit("close");
+          analyticsRef.current?.track({
+            eventName: "widget.closed",
+            appId: config.appId,
+            sessionId,
+            timestamp: new Date().toISOString(),
+          });
+          webhookRef.current?.send(createWebhookPayload("widget.closed", config.appId, sessionId));
         },
 
         isOpen: () => isOpen,
 
         registerPlugin: async (manifest) => {
           log("debug", "registerPlugin() called", { pluginId: manifest.id });
-          // Plugin registration will be implemented in Phase 2
+          const result = await registerDynamicPlugin({
+            manifest,
+            hooks: {},
+          });
+          if (!result.success) {
+            throw new Error(result.error || `Failed to register plugin ${manifest.id}`);
+          }
           emit("plugin-registered", manifest.id);
+          webhookRef.current?.send(
+            createWebhookPayload("plugin.registered", config.appId, sessionId, {
+              pluginId: manifest.id,
+            })
+          );
         },
 
         unregisterPlugin: (pluginId) => {
           log("debug", "unregisterPlugin() called", { pluginId });
-          pluginRegistry.unregister(pluginId);
+          const result = unregisterDynamicPlugin(pluginId);
+          if (!result.success) {
+            log("warn", `Plugin unregistration failed: ${result.error}`);
+          }
           emit("plugin-unregistered", pluginId);
+          webhookRef.current?.send(
+            createWebhookPayload("plugin.unregistered", config.appId, sessionId, {
+              pluginId,
+            })
+          );
         },
 
         sendMessage: async (content) => {
@@ -294,7 +439,7 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
           forwardedRef.current = instance;
         }
       }
-    }, [isOpen, log, on, emit, sessionId, handleSendMessage, forwardedRef]);
+    }, [isOpen, log, on, emit, sessionId, handleSendMessage, forwardedRef, config.appId]);
 
     if (!isInitialized) {
       return null; // Widget not ready yet
@@ -309,6 +454,11 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
 
     const position = config.position || "bottom-right";
     const theme = config.theme || "light";
+    const headerTitle = config.branding?.headerTitle || "AXE Chat";
+    const logoUrl = config.branding?.logoUrl;
+    const buttonStyle = config.branding?.primaryColor
+      ? { background: `linear-gradient(135deg, ${config.branding.primaryColor}, ${config.branding.secondaryColor || config.branding.primaryColor})` }
+      : undefined;
 
     return (
       <div className={`fixed ${positionClasses[position]} z-50 font-sans`}>
@@ -317,10 +467,19 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
           <button
             onClick={() => setIsOpen(true)}
             className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg hover:shadow-xl transition-shadow flex items-center justify-center"
+            style={buttonStyle}
             aria-label="Open AXE chat"
             title="Chat with AXE"
           >
-            <MessageCircle size={24} />
+            {logoUrl ? (
+              <span
+                aria-label="AXE"
+                className="h-6 w-6 rounded-full bg-cover bg-center"
+                style={{ backgroundImage: `url(${logoUrl})` }}
+              />
+            ) : (
+              <MessageCircle size={24} />
+            )}
           </button>
         )}
 
@@ -335,7 +494,7 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
             <div className={`flex items-center justify-between p-4 ${
               theme === "dark" ? "bg-gray-800 border-gray-700" : "bg-blue-50 border-blue-100"
             } border-b`}>
-              <h2 className="font-semibold text-sm">AXE Chat</h2>
+              <h2 className="font-semibold text-sm">{headerTitle}</h2>
               <div className="flex gap-2">
                 <button
                   onClick={() => setIsOpen(false)}

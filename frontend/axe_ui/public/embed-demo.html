@@ -244,7 +244,7 @@
 
         <div class="code-block">
 &lt;script
-  src="http://localhost:3000/embed.js"
+  src="http://localhost:3002/embed.js"
   data-app-id="demo-embed-test"
   data-backend-url="http://localhost:8000"
   data-origin-allowlist="localhost"
@@ -302,7 +302,7 @@ console.log(window.AXEWidget.config);
           <ol style="margin-left: 20px; margin-top: 8px;">
             <li>Start backend: <code>cd backend && python -m uvicorn main:app --reload</code></li>
             <li>Start frontend: <code>cd frontend/axe_ui && npm run dev</code></li>
-            <li>Open this page: <a href="http://localhost:3000/embed-demo.html" target="_blank">http://localhost:3000/embed-demo.html</a></li>
+            <li>Open this page: <a href="http://localhost:3002/embed-demo.html" target="_blank">http://localhost:3002/embed-demo.html</a></li>
             <li>Open DevTools (F12) → Console to see debug logs</li>
           </ol>
         </div>
@@ -310,7 +310,7 @@ console.log(window.AXEWidget.config);
         <p><strong>Environment Variables:</strong></p>
         <ul class="checklist">
           <li>Backend must allow local requests: <code>AXE_FUSION_ALLOW_LOCAL_REQUESTS=true</code></li>
-          <li>Frontend embed script base URL: <code>http://localhost:3000</code></li>
+          <li>Frontend embed script base URL: <code>http://localhost:3002</code></li>
         </ul>
       </div>
 
@@ -365,7 +365,7 @@ console.log(window.AXEWidget.config);
 
   <!-- Load the embed script -->
   <script
-    src="http://localhost:3000/embed.js"
+    src="http://localhost:3002/embed.js"
     data-app-id="demo-embed-test"
     data-backend-url="http://localhost:8000"
     data-origin-allowlist="localhost"
