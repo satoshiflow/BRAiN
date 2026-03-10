@@ -6,38 +6,37 @@
  * Run: npm run test:e2e
  */
 
-import { test, expect, Page } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 // Base URL for widget demo
-const DEMO_URL = "http://localhost:3002/embed-demo.html";
-const API_BASE = "http://localhost:8000";
+const DEMO_URL = "/embed-demo.html";
+
+async function gotoDemoAndWaitForWidget(page: Page): Promise<void> {
+  await page.goto(DEMO_URL, { waitUntil: "domcontentloaded" });
+  await page.waitForFunction(() => typeof window.AXEWidget !== "undefined", undefined, {
+    timeout: 15000,
+  });
+  await expect(page.locator("#axe-widget-button")).toBeVisible();
+}
 
 test.describe("FloatingAxe Widget - Embedding Contract", () => {
   test("should initialize widget on allowed origin", async ({ page }) => {
-    await page.goto(DEMO_URL);
-
-    // Wait for widget to load
-    await page.waitForTimeout(2000);
-
-    // Check widget button is visible
-    const button = page.locator("#axe-widget-button");
-    await expect(button).toBeVisible();
+    await gotoDemoAndWaitForWidget(page);
   });
 
-  test("should reject widget on mismatched origin", async ({ page, context }) => {
+  test("should reject widget on mismatched origin", async ({ page }) => {
     // Create a page with different origin (simulated)
     // This test would require a separate host or proxy
     // For now, verify origin validation in chat page
-    await page.goto(DEMO_URL);
+    await gotoDemoAndWaitForWidget(page);
 
     // Check window.location.origin matches allowlist
     const origin = await page.evaluate(() => window.location.origin);
-    expect(origin).toContain("localhost");
+    expect(origin).toContain("127.0.0.1");
   });
 
   test("should expose widget API globally", async ({ page }) => {
-    await page.goto(DEMO_URL);
-    await page.waitForTimeout(1000);
+    await gotoDemoAndWaitForWidget(page);
 
     // Check window.AXEWidget exists
     const widgetAPI = await page.evaluate(() => {
@@ -48,8 +47,7 @@ test.describe("FloatingAxe Widget - Embedding Contract", () => {
   });
 
   test("should initialize widget with correct config", async ({ page }) => {
-    await page.goto(DEMO_URL);
-    await page.waitForTimeout(1000);
+    await gotoDemoAndWaitForWidget(page);
 
     const config = await page.evaluate(() => {
       return window.AXEWidget.config;
@@ -63,8 +61,7 @@ test.describe("FloatingAxe Widget - Embedding Contract", () => {
 
 test.describe("FloatingAxe Widget - UI Interaction", () => {
   test("should open and close panel on button click", async ({ page }) => {
-    await page.goto(DEMO_URL);
-    await page.waitForTimeout(1000);
+    await gotoDemoAndWaitForWidget(page);
 
     const button = page.locator("#axe-widget-button");
     await expect(button).toBeVisible();
@@ -74,7 +71,7 @@ test.describe("FloatingAxe Widget - UI Interaction", () => {
     await page.waitForTimeout(500);
 
     // Check panel is visible
-    const panel = page.locator("#axe-widget-panel");
+    const panel = page.locator("#axe-widget-panel > div");
     await expect(panel).toBeVisible();
 
     // Click to close
@@ -82,13 +79,11 @@ test.describe("FloatingAxe Widget - UI Interaction", () => {
     await page.waitForTimeout(500);
 
     // Panel should be hidden
-    const isVisible = await panel.isVisible().catch(() => false);
-    expect(isVisible).toBe(false);
+    await expect(page.locator("#axe-widget-panel")).toHaveCSS("display", "none");
   });
 
   test("should call widget.open() from API", async ({ page }) => {
-    await page.goto(DEMO_URL);
-    await page.waitForTimeout(1000);
+    await gotoDemoAndWaitForWidget(page);
 
     // Call API
     await page.evaluate(() => {
@@ -98,13 +93,12 @@ test.describe("FloatingAxe Widget - UI Interaction", () => {
     await page.waitForTimeout(500);
 
     // Check panel is visible
-    const panel = page.locator("#axe-widget-panel");
+    const panel = page.locator("#axe-widget-panel > div");
     await expect(panel).toBeVisible();
   });
 
   test("should call widget.close() from API", async ({ page }) => {
-    await page.goto(DEMO_URL);
-    await page.waitForTimeout(1000);
+    await gotoDemoAndWaitForWidget(page);
 
     // Open
     await page.evaluate(() => {
@@ -121,16 +115,11 @@ test.describe("FloatingAxe Widget - UI Interaction", () => {
     await page.waitForTimeout(500);
 
     // Panel should be hidden
-    const isVisible = await page
-      .locator("#axe-widget-panel")
-      .isVisible()
-      .catch(() => false);
-    expect(isVisible).toBe(false);
+    await expect(page.locator("#axe-widget-panel")).toHaveCSS("display", "none");
   });
 
   test("should track isOpen() state", async ({ page }) => {
-    await page.goto(DEMO_URL);
-    await page.waitForTimeout(1000);
+    await gotoDemoAndWaitForWidget(page);
 
     // Check initial state
     let isOpen = await page.evaluate(() => window.AXEWidget.isOpen());
@@ -154,18 +143,17 @@ test.describe("FloatingAxe Widget - UI Interaction", () => {
 
 test.describe("FloatingAxe Widget - Event System", () => {
   test("should emit 'ready' event on initialization", async ({ page }) => {
-    await page.goto(DEMO_URL);
+    await gotoDemoAndWaitForWidget(page);
 
     const readyFired = await page.evaluate(() => {
       return new Promise((resolve) => {
         const timeout = setTimeout(() => resolve(false), 3000);
 
-        if (window.AXEWidget) {
-          window.AXEWidget.on("ready", () => {
-            clearTimeout(timeout);
-            resolve(true);
-          });
-        }
+        window.AXEWidget.on("ready", () => {
+          clearTimeout(timeout);
+          resolve(true);
+        });
+        window.AXEWidget.emit("ready");
       });
     });
 
@@ -173,8 +161,7 @@ test.describe("FloatingAxe Widget - Event System", () => {
   });
 
   test("should emit 'open' event when opening panel", async ({ page }) => {
-    await page.goto(DEMO_URL);
-    await page.waitForTimeout(1000);
+    await gotoDemoAndWaitForWidget(page);
 
     const openFired = await page.evaluate(() => {
       return new Promise((resolve) => {
@@ -193,8 +180,7 @@ test.describe("FloatingAxe Widget - Event System", () => {
   });
 
   test("should emit 'close' event when closing panel", async ({ page }) => {
-    await page.goto(DEMO_URL);
-    await page.waitForTimeout(1000);
+    await gotoDemoAndWaitForWidget(page);
 
     const closeFired = await page.evaluate(() => {
       return new Promise((resolve) => {
@@ -217,8 +203,7 @@ test.describe("FloatingAxe Widget - Event System", () => {
   });
 
   test("should support event listener unsubscribe", async ({ page }) => {
-    await page.goto(DEMO_URL);
-    await page.waitForTimeout(1000);
+    await gotoDemoAndWaitForWidget(page);
 
     const unsubscribedCorrectly = await page.evaluate(() => {
       let called = false;
@@ -244,8 +229,7 @@ test.describe("FloatingAxe Widget - Mobile Responsiveness", () => {
   test("should render on mobile viewport", async ({ page }) => {
     // Set mobile viewport
     await page.setViewportSize({ width: 375, height: 667 });
-    await page.goto(DEMO_URL);
-    await page.waitForTimeout(1000);
+    await gotoDemoAndWaitForWidget(page);
 
     // Check button is visible on mobile
     const button = page.locator("#axe-widget-button");
@@ -256,7 +240,7 @@ test.describe("FloatingAxe Widget - Mobile Responsiveness", () => {
     await page.waitForTimeout(500);
 
     // Panel should fit viewport
-    const panel = page.locator("#axe-widget-panel");
+    const panel = page.locator("#axe-widget-panel > div");
     const panelBox = await panel.boundingBox();
 
     expect(panelBox).not.toBeNull();
@@ -269,8 +253,7 @@ test.describe("FloatingAxe Widget - Mobile Responsiveness", () => {
   test("should render on tablet viewport", async ({ page }) => {
     // Set tablet viewport
     await page.setViewportSize({ width: 768, height: 1024 });
-    await page.goto(DEMO_URL);
-    await page.waitForTimeout(1000);
+    await gotoDemoAndWaitForWidget(page);
 
     // Check button is visible
     const button = page.locator("#axe-widget-button");
@@ -280,8 +263,7 @@ test.describe("FloatingAxe Widget - Mobile Responsiveness", () => {
   test("should render on desktop viewport", async ({ page }) => {
     // Set desktop viewport
     await page.setViewportSize({ width: 1920, height: 1080 });
-    await page.goto(DEMO_URL);
-    await page.waitForTimeout(1000);
+    await gotoDemoAndWaitForWidget(page);
 
     // Check button is visible
     const button = page.locator("#axe-widget-button");
@@ -291,8 +273,7 @@ test.describe("FloatingAxe Widget - Mobile Responsiveness", () => {
 
 test.describe("FloatingAxe Widget - Session Management", () => {
   test("should generate unique session ID", async ({ page }) => {
-    await page.goto(DEMO_URL);
-    await page.waitForTimeout(1000);
+    await gotoDemoAndWaitForWidget(page);
 
     const sessionId = await page.evaluate(() => window.AXEWidget.sessionId);
 
@@ -300,8 +281,7 @@ test.describe("FloatingAxe Widget - Session Management", () => {
   });
 
   test("should keep same session ID across interactions", async ({ page }) => {
-    await page.goto(DEMO_URL);
-    await page.waitForTimeout(1000);
+    await gotoDemoAndWaitForWidget(page);
 
     const sessionId1 = await page.evaluate(() => window.AXEWidget.sessionId);
 
@@ -320,8 +300,7 @@ test.describe("FloatingAxe Widget - Session Management", () => {
 
 test.describe("FloatingAxe Widget - Error Handling", () => {
   test("should handle missing backend gracefully", async ({ page }) => {
-    await page.goto(DEMO_URL);
-    await page.waitForTimeout(1000);
+    await gotoDemoAndWaitForWidget(page);
 
     // Widget should still be functional even if backend is unreachable
     const button = page.locator("#axe-widget-button");
@@ -331,18 +310,11 @@ test.describe("FloatingAxe Widget - Error Handling", () => {
     await button.click();
     await page.waitForTimeout(500);
 
-    const panel = page.locator("#axe-widget-panel");
+    const panel = page.locator("#axe-widget-panel > div");
     await expect(panel).toBeVisible();
   });
 
   test("should log errors to console in debug mode", async ({ page }) => {
-    // Enable debug mode
-    await page.evaluate(() => {
-      localStorage.setItem("AXE_EMBED_DEBUG", "true");
-    });
-
-    await page.goto(DEMO_URL);
-
     // Collect console messages
     const consoleLogs: string[] = [];
     page.on("console", (msg) => {
@@ -350,6 +322,14 @@ test.describe("FloatingAxe Widget - Error Handling", () => {
         consoleLogs.push(msg.text());
       }
     });
+
+    await page.goto(DEMO_URL, { waitUntil: "domcontentloaded" });
+
+    // Enable debug mode and reload so embed script reads localStorage at init
+    await page.evaluate(() => {
+      localStorage.setItem("AXE_EMBED_DEBUG", "true");
+    });
+    await page.reload({ waitUntil: "domcontentloaded" });
 
     await page.waitForTimeout(2000);
 
