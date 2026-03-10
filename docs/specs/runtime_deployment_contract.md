@@ -8,6 +8,11 @@
 
 This contract defines the **unified environment detection and configuration strategy** for BRAiN across all deployment modes: local laptop development, remote Coolify staging, and production.
 
+### AXEllm Source-of-Truth
+
+- For remote/staging/production, AXE chat runtime depends on the remote AXEllm service deployment (container image family: `ghcr.io/satoshiflow/brain/axellm`).
+- Frontend and backend configuration in this contract must preserve connectivity to that remote AXEllm path; local defaults are for developer ergonomics only.
+
 ## Goals
 
 1. **Single source of truth** for runtime mode detection

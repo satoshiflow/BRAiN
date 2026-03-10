@@ -64,6 +64,13 @@ AXE_FUSION_ALLOW_LOCAL_FALLBACK=true
   - Keep local fallback disabled.
   - Keep fail-closed behavior enabled.
 
+### AXEllm Runtime Source (Operational Assumption)
+
+- AXE chat in remote environments uses the **remote AXEllm runtime service**.
+- The runtime image is managed in GHCR under `ghcr.io/satoshiflow/brain/axellm` and deployed on the remote server.
+- AXE UI and `/api/axe/chat` should be treated as clients of that remote AXEllm service; local laptop setups do not need a local AXEllm image unless explicitly testing local inference.
+- If chat quality/latency regresses in remote, validate AXEllm service health/version first before changing widget/frontend settings.
+
 ## Widget Embed Configuration
 
 Minimal script embed:
