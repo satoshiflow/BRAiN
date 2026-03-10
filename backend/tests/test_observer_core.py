@@ -175,3 +175,87 @@ def test_observer_router_is_read_only() -> None:
                 unsafe_methods.add(method)
 
     assert unsafe_methods == set()
+
+
+def test_incident_timeline_api(monkeypatch) -> None:
+    """Test incident timeline API for operator diagnostics (Sprint C)."""
+    app = FastAPI()
+    app.include_router(observer_core_router)
+
+    async def _db_override():
+        yield None
+
+    principal = build_principal("operator")
+    app.dependency_overrides[get_db] = _db_override
+    app.dependency_overrides[require_auth] = lambda: principal
+    app.dependency_overrides[get_current_principal] = lambda: principal
+    client = TestClient(app)
+
+    route_module = __import__("app.modules.observer_core.router", fromlist=["router"])
+    now = datetime.now(timezone.utc)
+    signal1 = SimpleNamespace(
+        id=uuid4(),
+        tenant_id="tenant-a",
+        source_module="skill_engine",
+        source_event_type="skill.run.started.v1",
+        source_event_id="evt-1",
+        correlation_id="corr_abc123",
+        entity_type="skill_run",
+        entity_id="run_xyz",
+        signal_class="state_change",
+        severity="info",
+        occurred_at=now,
+        ingested_at=now,
+        payload={"state": "running"},
+        payload_hash="hash1",
+        ordering_key="run_xyz:1",
+    )
+    signal2 = SimpleNamespace(
+        id=uuid4(),
+        tenant_id="tenant-a",
+        source_module="skill_engine",
+        source_event_type="skill.run.failed.v1",
+        source_event_id="evt-2",
+        correlation_id="corr_abc123",
+        entity_type="skill_run",
+        entity_id="run_xyz",
+        signal_class="failure",
+        severity="error",
+        occurred_at=now,
+        ingested_at=now,
+        payload={"error": "timeout"},
+        payload_hash="hash2",
+        ordering_key="run_xyz:2",
+    )
+
+    class FakeService:
+        async def get_incident_timeline(self, **kwargs):
+            assert kwargs["tenant_id"] == "tenant-a"
+            return {
+                "signals": [signal1, signal2],
+                "correlation_groups": {"corr_abc123": 2},
+                "severity_distribution": {"info": 1, "error": 1},
+                "timeline_start": now,
+                "timeline_end": now,
+                "total_signals": 2,
+            }
+
+    monkeypatch.setattr(route_module, "get_observer_core_service", lambda: FakeService())
+
+    # Test with correlation_id filter
+    response = client.get("/api/observer/incidents/timeline?correlation_id=corr_abc123")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total_signals"] == 2
+    assert len(data["signals"]) == 2
+    assert data["correlation_groups"]["corr_abc123"] == 2
+    assert data["severity_distribution"]["info"] == 1
+    assert data["severity_distribution"]["error"] == 1
+
+    # Test with skill_run_id filter
+    response = client.get("/api/observer/incidents/timeline?skill_run_id=run_xyz")
+    assert response.status_code == 200
+
+    # Test with time_window_minutes parameter
+    response = client.get("/api/observer/incidents/timeline?time_window_minutes=120")
+    assert response.status_code == 200

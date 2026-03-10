@@ -34,6 +34,9 @@ PYTHONPATH=. pytest tests/test_health_system.py -q -x --disable-warnings
 echo "[gate] diagnostics suite (Sprint C)"
 PYTHONPATH=. pytest tests/test_diagnostics.py -q -x --disable-warnings
 
+echo "[gate] immune system (Sprint D)"
+PYTHONPATH=. pytest tests/test_immune_system.py -q -x --disable-warnings
+
 cd "$ROOT"
 echo "[gate] guardrails"
 python3 scripts/check_no_legacy_event_bus.py

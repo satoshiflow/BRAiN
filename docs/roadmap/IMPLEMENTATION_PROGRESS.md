@@ -271,14 +271,117 @@ Verification:
 - `PYTHONPATH=. pytest tests/test_economy_layer.py tests/test_economy_layer_service.py tests/test_discovery_layer.py tests/test_discovery_layer_service.py tests/test_evolution_control.py tests/test_evolution_control_service.py -q`
 - `./scripts/run_rc_staging_gate.sh`
 
+## Hardening Sprints (Post-P7)
+
+### Sprint A - Backend Grounding Audit
+
+Completed: 2026-03-10
+
+Delivered:
+- comprehensive backend system mapping:
+  - `docs/architecture/backend_system_map.md` (83 modules, 486 async methods, 290+ endpoints)
+  - `docs/architecture/failure_surface_inventory.md` (failure classifications across 7 categories)
+  - `docs/architecture/silent_fail_risks.md` (23 critical silent-fail patterns documented)
+- identified critical gaps:
+  - health system fragmentation (3 conflicting endpoint families)
+  - false-green health patterns in legacy routes
+  - runtime auditor not wired to startup
+  - 84% of modules lacking complete audit/event coverage
+
+Verification:
+- audit artifacts reviewed for completeness
+- documented findings inform Sprint B-E execution
+
+### Sprint B - Health System Hardening
+
+Completed: 2026-03-10
+
+Delivered:
+- fixed legacy `/api/health` false-green pattern (backend/app/api/routes/health.py:54)
+- implemented real health checks for DB, Redis, HTTP dependencies
+- wired `runtime_auditor` into startup with immune_orchestrator integration (backend/main.py)
+- fixed `system_health` fallback-to-ok patterns
+- created canonical health model spec (`docs/specs/canonical_health_model.md`)
+- added comprehensive health system test suite (`backend/tests/test_health_system.py`, 23 tests)
+- updated RC gate to include health suite (`scripts/run_rc_staging_gate.sh`)
+
+Verification:
+- `PYTHONPATH=. pytest tests/test_health_system.py -q`
+- `./scripts/run_rc_staging_gate.sh` (health gate passing)
+
+### Sprint C - Runtime Diagnostics & Error Framework
+
+Completed: 2026-03-10
+
+Delivered:
+- created comprehensive diagnostics framework:
+  - `backend/app/core/diagnostics.py` (421 lines, FailureRecord class, 6 failure taxonomies)
+  - correlation ID propagation utilities
+  - provenance linking for failure chains
+- implemented failure taxonomy spec (`docs/specs/failure_taxonomy.md`, 394 lines)
+- added incident timeline API to observer_core:
+  - `GET /api/observer/timeline` (correlation-based incident reconstruction)
+  - service logic with timeline assembly (backend/app/modules/observer_core/service.py)
+- added comprehensive diagnostics test suite (`backend/tests/test_diagnostics.py`, 44 tests)
+- updated RC gate to include diagnostics suite
+
+Verification:
+- `PYTHONPATH=. pytest tests/test_diagnostics.py -q`
+- `./scripts/run_rc_staging_gate.sh` (diagnostics gate passing)
+
+### Sprint D - Immune System Hardening
+
+Completed: 2026-03-10
+
+Delivered:
+- created immune control plane architecture spec (`docs/specs/immune_control_plane.md`)
+- documented adapter coverage matrix (`docs/architecture/immune_adapter_coverage.md`):
+  - 30% immediate coverage (health_monitor, runtime_auditor, observer_core)
+  - 97.5% planned coverage across all 83 modules
+- added comprehensive immune system test suite (`backend/tests/test_immune_system.py`, 32 tests):
+  - core decision logic tests (6 tests)
+  - governance routing tests (6 tests)
+  - audit chain completeness tests (4 tests)
+  - event stream integration tests (3 tests)
+  - adapter coverage pattern tests (4 tests)
+  - end-to-end healing flow test
+- updated RC gate to include immune suite
+
+Verification:
+- `PYTHONPATH=. pytest tests/test_immune_system.py -q` (32 tests passing)
+- `./scripts/run_rc_staging_gate.sh` (immune gate passing)
+
+### Sprint E - Self-Healing Foundation (MVP Stub)
+
+Completed: 2026-03-10
+
+Delivered:
+- created self-healing control loop spec (`docs/specs/self_healing_control_loop.md`):
+  - OODA loop architecture (Observe → Orient → Decide → Act → Verify)
+  - 5 healing action types defined (RestartService, ClearCache, ResetCircuitBreaker, FlushQueue, NoOp)
+  - safety rails specification (cooldown, blast radius, concurrent action limits)
+  - verification & effectiveness scoring model
+- implemented MVP foundation stubs:
+  - `backend/app/modules/self_healing/schemas.py` (HealingAction classes, ExecutionContext, ActionResult, VerificationResult)
+  - `backend/app/modules/self_healing/executor.py` (SelfHealingExecutor stub with logging)
+- established integration points with immune_orchestrator and recovery_policy_engine
+
+Note: Sprint E delivers **specification + foundation stubs** for future implementation. Full healing action execution planned for post-hardening sprint.
+
+Verification:
+- spec artifacts reviewed for architectural completeness
+- schemas validate and import cleanly
+
 ## Next Phase
 
 Planned next: **Post-P7 Operations and Evolution Cadence**
 
 Execution spec:
 - `docs/roadmap/BRAIN_POST_P7_OPERATIONS_CADENCE.md`
+- `docs/roadmap/BRAIN_HARDENING_ROADMAP.md` (Sprints A-E completed)
 
 Focus:
 1. operate monthly contract/roadmap review cadence with governance evidence bundles.
 2. harden anti-gaming, explainability, and rollback thresholds for economy scoring.
 3. track production quality gates (tenant isolation, audit ordering, RC gate drift) as steady-state SLOs.
+4. expand self-healing action implementation based on Sprint E foundation.
