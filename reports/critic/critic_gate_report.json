@@ -1,53 +1,36 @@
 {
   "changed_paths": [
-    "backend/alembic/versions/028_add_consolidation_and_evolution_control.py",
-    "backend/app/modules/axe_fusion/router.py",
-    "backend/app/modules/evolution_control/models.py",
-    "backend/app/modules/evolution_control/router.py",
-    "backend/app/modules/evolution_control/schemas.py",
-    "backend/app/modules/evolution_control/service.py",
+    "backend/app/api/routes/health.py",
+    "backend/app/modules/health_monitor/service.py",
+    "backend/app/modules/observer_core/router.py",
+    "backend/app/modules/observer_core/schemas.py",
+    "backend/app/modules/observer_core/service.py",
+    "backend/app/modules/runtime_auditor/service.py",
+    "backend/app/modules/system_health/service.py",
     "backend/main.py",
-    "backend/tests/test_evolution_control.py",
-    "backend/tests/test_evolution_control_service.py",
-    "docs/roadmap/IMPLEMENTATION_PROGRESS.md",
-    "docs/roadmap/README.md",
-    "docs/specs/discovery_observer_economy_sequencing.md",
-    "frontend/axe_ui/app/agents/page.tsx",
-    "frontend/axe_ui/app/chat/page.tsx",
-    "frontend/axe_ui/app/dashboard/page.tsx",
-    "frontend/axe_ui/app/page.tsx",
-    "frontend/axe_ui/app/settings/page.tsx",
     "frontend/axe_ui/lib/api.ts",
     "reports/critic/critic_gate_report.json",
     "scripts/run_rc_staging_gate.sh",
-    ".opencode/README.md",
-    ".opencode/commands/",
-    ".opencode/policies/",
-    ".opencode/state/",
-    "backend/alembic/versions/030_add_discovery_layer.py",
-    "backend/alembic/versions/031_finalize_discovery_contracts.py",
-    "backend/alembic/versions/032_add_economy_layer.py",
-    "backend/app/modules/discovery_layer/",
-    "backend/app/modules/economy_layer/",
-    "backend/tests/test_axe_fusion_trust.py",
-    "backend/tests/test_discovery_layer.py",
-    "backend/tests/test_discovery_layer_service.py",
-    "backend/tests/test_economy_layer.py",
-    "backend/tests/test_economy_layer_service.py",
-    "docs/frontend/AXE_UI_BACKEND_COMMUNICATION_CONTRACT_V1_20260309.md",
-    "docs/specs/discovery_layer_mvp.md",
-    "docs/specs/economy_selection_support_mvp.md",
-    "frontend/axe_ui/lib/contracts.ts"
+    "backend/app/core/diagnostics.py",
+    "backend/tests/test_diagnostics.py",
+    "backend/tests/test_health_system.py",
+    "docs/architecture/backend_system_map.md",
+    "docs/architecture/failure_surface_inventory.md",
+    "docs/architecture/silent_fail_risks.md",
+    "docs/roadmap/BRAIN_HARDENING_ROADMAP.md",
+    "docs/specs/axe_widget_embedding_contract_v1.md",
+    "docs/specs/canonical_health_model.md",
+    "docs/specs/failure_taxonomy.md",
+    "frontend/axe_ui/components/FloatingAxe.tsx",
+    "frontend/axe_ui/lib/embedConfig.ts",
+    "frontend/axe_ui/public/embed-demo.html",
+    "frontend/axe_ui/public/embed.js",
+    "frontend/axe_ui/src/hooks/useFloatingAxeInit.ts",
+    "session-ses_32ba.md"
   ],
   "matches": [
     {
-      "path": "backend/app/modules/axe_fusion/router.py",
-      "pattern": "backend/app/modules/*/router.py",
-      "tier": "medium_cost",
-      "critic_required": true
-    },
-    {
-      "path": "backend/app/modules/evolution_control/router.py",
+      "path": "backend/app/modules/observer_core/router.py",
       "pattern": "backend/app/modules/*/router.py",
       "tier": "medium_cost",
       "critic_required": true
@@ -57,8 +40,14 @@
       "pattern": "scripts/",
       "tier": "medium_cost",
       "critic_required": true
+    },
+    {
+      "path": "backend/app/core/diagnostics.py",
+      "pattern": "backend/app/core/",
+      "tier": "high_quality",
+      "critic_required": true
     }
   ],
   "critic_required": true,
-  "recommended_tier": "medium_cost"
+  "recommended_tier": "high_quality"
 }

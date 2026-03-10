@@ -61,3 +61,19 @@ class ObserverSummaryResponse(BaseModel):
     execution_summary: dict[str, Any] = Field(default_factory=dict)
     queue_summary: dict[str, Any] = Field(default_factory=dict)
     updated_at: datetime
+
+
+class IncidentTimelineResponse(BaseModel):
+    """Incident timeline for operator diagnostics.
+
+    Provides chronological signal sequence with correlation analysis.
+    """
+
+    signals: list[ObserverSignalResponse] = Field(default_factory=list)
+    correlation_groups: dict[str, int] = Field(
+        default_factory=dict, description="Correlation ID -> signal count mapping"
+    )
+    severity_distribution: dict[str, int] = Field(default_factory=dict, description="Severity -> count mapping")
+    timeline_start: datetime | None = Field(None, description="Earliest signal timestamp")
+    timeline_end: datetime | None = Field(None, description="Latest signal timestamp")
+    total_signals: int = Field(0, description="Total signal count in timeline")

@@ -268,6 +268,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         autoscaler_task = asyncio.create_task(start_autoscaler(check_interval=60))
         logger.info("✅ Autoscaler worker started (interval: 60s)")
 
+    # Start runtime auditor (Health System hardening - Sprint B)
+    runtime_auditor = None
+    if _feature_enabled("ENABLE_RUNTIME_AUDITOR", "true") and event_stream:
+        try:
+            from app.modules.runtime_auditor.service import get_runtime_auditor_service
+            immune_orchestrator = get_immune_orchestrator_service()
+            runtime_auditor = get_runtime_auditor_service(immune_orchestrator=immune_orchestrator)
+            await runtime_auditor.start()
+            logger.info("✅ Runtime auditor started (continuous monitoring active)")
+        except Exception as e:
+            logger.warning(f"⚠️ Runtime auditor not started: {e}")
+
     # Seed built-in skills (optional in local profiles)
     if _feature_enabled("ENABLE_BUILTIN_SKILL_SEED", "true"):
         try:
@@ -298,6 +310,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if autoscaler_task:
         stop_autoscaler()
         logger.info("🛑 Autoscaler worker stopped")
+
+    if runtime_auditor:
+        await runtime_auditor.stop()
+        logger.info("🛑 Runtime auditor stopped")
 
     if redis:
         await redis.close()

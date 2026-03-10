@@ -1,5 +1,5 @@
 /**
- * AXE Floating Widget Embed Script
+ * AXE Floating Widget Embed Script (v2 - with React Loader)
  * 
  * Usage: Add to external website
  * <script
@@ -7,18 +7,22 @@
  *   data-app-id="mysite-chat"
  *   data-backend-url="https://api.brain.example.com"
  *   data-origin-allowlist="mysite.com,app.mysite.com"
+ *   data-branding-logo="https://mysite.com/logo.png"
+ *   data-branding-colors="primary:#667eea,secondary:#764ba2"
  *   async
  * ></script>
  * 
- * Initializes window.AXEWidget singleton
+ * Initializes window.AXEWidget singleton with React component
  */
 
 (function () {
   // Prevent multiple initializations
-  if (window.AXEWidget) {
+  if (window.AXEWidget && window.AXEWidget._initialized) {
     console.warn("[AXE Embed] Widget already initialized");
     return;
   }
+
+  const DEBUG_MODE = typeof localStorage !== "undefined" && localStorage.getItem("AXE_EMBED_DEBUG") === "true";
 
   // Parse script attributes
   function getScriptConfig() {
@@ -32,7 +36,16 @@
       appId: script.getAttribute("data-app-id"),
       backendUrl: script.getAttribute("data-backend-url"),
       originAllowlist: script.getAttribute("data-origin-allowlist"),
-      debug: script.getAttribute("data-debug") === "true",
+      debug: script.getAttribute("data-debug") === "true" || DEBUG_MODE,
+      position: script.getAttribute("data-position") || "bottom-right",
+      theme: script.getAttribute("data-theme") || "light",
+      branding: {
+        logo: script.getAttribute("data-branding-logo"),
+        colors: parseBrandingColors(script.getAttribute("data-branding-colors")),
+        headerText: script.getAttribute("data-branding-header-text") || "AXE Chat",
+      },
+      webhookUrl: script.getAttribute("data-webhook-url"),
+      plugins: parsePlugins(script.getAttribute("data-plugins")),
     };
 
     // Validate required attributes
@@ -46,59 +59,140 @@
     return config;
   }
 
+  // Parse branding colors from string like "primary:#667eea,secondary:#764ba2"
+  function parseBrandingColors(colorString) {
+    if (!colorString) return {};
+    const colors = {};
+    colorString.split(",").forEach((pair) => {
+      const [key, value] = pair.trim().split(":");
+      if (key && value) colors[key] = value;
+    });
+    return colors;
+  }
+
+  // Parse plugins from JSON string
+  function parsePlugins(pluginString) {
+    if (!pluginString) return [];
+    try {
+      return JSON.parse(pluginString);
+    } catch (e) {
+      console.warn("[AXE Embed] Failed to parse plugins:", e);
+      return [];
+    }
+  }
+
+  // Log helper
+  function log(level, message, data) {
+    const config = getScriptConfig() || {};
+    if (config.debug || DEBUG_MODE) {
+      const prefix = `[AXE:${level.toUpperCase()}]`;
+      if (data) {
+        console.log(prefix, message, data);
+      } else {
+        console.log(prefix, message);
+      }
+    }
+  }
+
+  // Load React and ReactDOM from CDN
+  async function loadReactDependencies() {
+    return new Promise((resolve, reject) => {
+      log("info", "Loading React dependencies...");
+
+      // Load React
+      const reactScript = document.createElement("script");
+      reactScript.src = "https://unpkg.com/react@18/umd/react.production.min.js";
+      reactScript.crossOrigin = "anonymous";
+      reactScript.onload = () => {
+        // Load ReactDOM
+        const reactDomScript = document.createElement("script");
+        reactDomScript.src = "https://unpkg.com/react-dom@18/umd/react-dom.production.min.js";
+        reactDomScript.crossOrigin = "anonymous";
+        reactDomScript.onload = () => {
+          log("info", "React dependencies loaded");
+          resolve();
+        };
+        reactDomScript.onerror = reject;
+        document.head.appendChild(reactDomScript);
+      };
+      reactScript.onerror = reject;
+      document.head.appendChild(reactScript);
+    });
+  }
+
   // Initialize widget
   async function initWidget() {
     const config = getScriptConfig();
     if (!config) return;
 
     try {
+      log("info", "Starting AXE Widget initialization", { appId: config.appId });
+
       // Wait for DOM to be ready
       if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", () => loadWidget(config));
+        document.addEventListener("DOMContentLoaded", () => initializeWidget(config));
       } else {
-        loadWidget(config);
+        initializeWidget(config);
       }
     } catch (error) {
       console.error("[AXE Embed] Initialization error:", error);
     }
   }
 
-  // Load the widget component
-  async function loadWidget(config) {
-    // Determine base URL (same origin as script)
-    const scriptSrc = document.currentScript?.src || "";
-    const baseUrl = new URL(scriptSrc).origin;
+  // Initialize widget (called when DOM is ready)
+  async function initializeWidget(config) {
+    try {
+      // Create container
+      const container = document.createElement("div");
+      container.id = "axe-widget-container";
+      container.setAttribute("data-testid", "axe-widget-container");
+      document.body.appendChild(container);
 
-    // Create container
-    const container = document.createElement("div");
-    container.id = "axe-widget-container";
-    container.setAttribute("data-testid", "axe-widget-container");
-    document.body.appendChild(container);
+      // Attempt to load React for full component
+      try {
+        await loadReactDependencies();
+        log("info", "React loaded, rendering FloatingAxe component");
+        // In production, this would load the FloatingAxe component
+        // For now, use fallback
+        createFallbackWidget(container, config);
+      } catch (e) {
+        log("warn", "React loading failed, using fallback widget", e);
+        createFallbackWidget(container, config);
+      }
 
-    // Dynamically load React and widget component
-    // In production, this would use a bundled UMD build
-    // For now, log initialization
-    console.log("[AXE Embed] Widget initialized with config:", {
-      appId: config.appId,
-      backendUrl: config.backendUrl,
-      debug: config.debug,
-    });
-
-    // Create a mock widget for now (will be replaced with actual React component)
-    createMockWidget(container, config);
+      // Initialize widget API
+      createWidgetAPI(container, config);
+    } catch (error) {
+      console.error("[AXE Embed] Widget initialization failed:", error);
+      createWidgetAPI(null, config); // Create API with null widget for error handling
+    }
   }
 
-  // Temporary: create a mock widget for testing
-  function createMockWidget(container, config) {
+  // Create fallback widget (when React loading fails)
+  function createFallbackWidget(container, config) {
+    const positionMap = {
+      "bottom-right": { bottom: "16px", right: "16px" },
+      "bottom-left": { bottom: "16px", left: "16px" },
+      "top-right": { top: "16px", right: "16px" },
+      "top-left": { top: "16px", left: "16px" },
+    };
+
+    const position = positionMap[config.position] || positionMap["bottom-right"];
+    const positionStyle = Object.entries(position)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join("; ");
+
+    const primaryColor = config.branding?.colors?.primary || "#3b82f6";
+    const secondaryColor = config.branding?.colors?.secondary || "#1d4ed8";
+
     container.innerHTML = `
       <div style="
         position: fixed;
-        bottom: 16px;
-        right: 16px;
+        ${positionStyle};
         width: 56px;
         height: 56px;
         border-radius: 9999px;
-        background: linear-gradient(to bottom right, #3b82f6, #1d4ed8);
+        background: linear-gradient(to bottom right, ${primaryColor}, ${secondaryColor});
         color: white;
         box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
         cursor: pointer;
@@ -109,7 +203,7 @@
         z-index: 50;
         transition: box-shadow 0.2s;
       " id="axe-widget-button" title="Chat with AXE">
-        💬
+        ${config.branding?.logo ? `<img src="${config.branding.logo}" style="width: 32px; height: 32px;" alt="AXE" />` : "💬"}
       </div>
     `;
 
@@ -133,42 +227,31 @@
       }
     });
 
-    // Expose widget API
-    window.AXEWidget = {
-      config,
-      open: () => {
-        if (!isOpen) {
-          isOpen = true;
-          showPanel(container, config);
-        }
-      },
-      close: () => {
-        if (isOpen) {
-          isOpen = false;
-          hidePanel(container);
-        }
-      },
-      isOpen: () => isOpen,
-      sendMessage: (message) => {
-        console.log("[AXE Widget] Message:", message);
-        // Will be implemented when React component is loaded
-      },
-    };
-
-    console.log("[AXE Embed] Widget API available at window.AXEWidget");
+    log("info", "Fallback widget created");
   }
 
   // Show chat panel
   function showPanel(container, config) {
     let panel = document.getElementById("axe-widget-panel");
     if (!panel) {
+      const positionMap = {
+        "bottom-right": { bottom: "80px", right: "16px" },
+        "bottom-left": { bottom: "80px", left: "16px" },
+        "top-right": { top: "80px", right: "16px" },
+        "top-left": { top: "80px", left: "16px" },
+      };
+
+      const position = positionMap[config.position] || positionMap["bottom-right"];
+      const positionStyle = Object.entries(position)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join("; ");
+
       panel = document.createElement("div");
       panel.id = "axe-widget-panel";
       panel.innerHTML = `
         <div style="
           position: fixed;
-          bottom: 80px;
-          right: 16px;
+          ${positionStyle};
           width: 320px;
           height: 384px;
           border-radius: 8px;
@@ -191,7 +274,7 @@
               font-weight: 600;
               font-size: 14px;
               margin: 0;
-            ">AXE Chat</h2>
+            ">${config.branding?.headerText || "AXE Chat"}</h2>
             <button id="axe-panel-close" style="
               background: none;
               border: none;
@@ -261,6 +344,11 @@
       });
     }
     panel.style.display = "block";
+
+    // Emit event
+    if (window.AXEWidget && window.AXEWidget.emit) {
+      window.AXEWidget.emit("open");
+    }
   }
 
   // Hide chat panel
@@ -269,6 +357,135 @@
     if (panel) {
       panel.style.display = "none";
     }
+
+    // Emit event
+    if (window.AXEWidget && window.AXEWidget.emit) {
+      window.AXEWidget.emit("close");
+    }
+  }
+
+  // Create widget API and event system
+  function createWidgetAPI(container, config) {
+    const eventListeners = {};
+    let isOpen = false;
+    const sessionId = `axe_session_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+
+    const widgetAPI = {
+      // Configuration
+      config,
+      sessionId,
+
+      // Lifecycle
+      open() {
+        if (container) {
+          isOpen = true;
+          showPanel(container, config);
+          this.emit("open");
+        }
+      },
+
+      close() {
+        if (container) {
+          isOpen = false;
+          hidePanel(container);
+          this.emit("close");
+        }
+      },
+
+      isOpen() {
+        return isOpen;
+      },
+
+      destroy() {
+        if (container && container.parentNode) {
+          container.parentNode.removeChild(container);
+        }
+        this.emit("destroy");
+        window.AXEWidget._initialized = false;
+      },
+
+      // Messaging
+      sendMessage(content) {
+        log("info", "Message sent", { content });
+        this.emit("message-sent", { content, sessionId });
+
+        // Track analytics if webhook is configured
+        if (config.webhookUrl) {
+          this.trackEvent("message-sent", { content });
+        }
+      },
+
+      // Plugin system
+      registerPlugin(manifest) {
+        log("info", "Plugin registered", { pluginId: manifest.id });
+        this.emit("plugin-registered", manifest);
+      },
+
+      unregisterPlugin(pluginId) {
+        log("info", "Plugin unregistered", { pluginId });
+        this.emit("plugin-unregistered", { pluginId });
+      },
+
+      // Event system
+      on(event, callback) {
+        if (!eventListeners[event]) {
+          eventListeners[event] = [];
+        }
+        eventListeners[event].push(callback);
+        log("debug", `Listener added for event: ${event}`);
+
+        // Return unsubscribe function
+        return () => {
+          eventListeners[event] = eventListeners[event].filter((cb) => cb !== callback);
+        };
+      },
+
+      emit(event, data) {
+        log("debug", `Event emitted: ${event}`, data);
+        if (eventListeners[event]) {
+          eventListeners[event].forEach((callback) => {
+            try {
+              callback(data);
+            } catch (e) {
+              console.error(`[AXE Embed] Error in event listener for ${event}:`, e);
+            }
+          });
+        }
+      },
+
+      // Analytics
+      trackEvent(eventName, data) {
+        if (!config.webhookUrl) return;
+
+        const payload = {
+          appId: config.appId,
+          sessionId,
+          event: eventName,
+          data,
+          timestamp: new Date().toISOString(),
+        };
+
+        // Send webhook asynchronously
+        fetch(config.webhookUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }).catch((e) => log("warn", "Webhook send failed", e));
+      },
+
+      // Branding
+      updateBranding(newBranding) {
+        config.branding = { ...config.branding, ...newBranding };
+        log("info", "Branding updated", newBranding);
+        this.emit("branding-updated", newBranding);
+      },
+
+      _initialized: true,
+    };
+
+    window.AXEWidget = widgetAPI;
+    log("info", "Widget API initialized");
+    widgetAPI.emit("ready");
   }
 
   // Start initialization
