@@ -162,6 +162,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Startup
     configure_logging()
     logger.info(f"🧠 BRAiN Core v0.3.0 starting (env: {settings.environment})")
+    logger.info(f"🔧 Runtime mode: {settings.runtime_mode}")
+
+    # Runtime Mode Validation (Remote requires secrets)
+    if settings.runtime_mode == "remote":
+        required_remote_vars = ["DATABASE_URL", "REDIS_URL"]
+        missing = [var for var in required_remote_vars if not os.getenv(var)]
+        if missing:
+            raise RuntimeError(
+                f"Remote mode requires environment variables: {', '.join(missing)}. "
+                f"Set BRAIN_RUNTIME_MODE=local for local development or provide required secrets."
+            )
+        logger.info("✅ Remote mode validation passed")
 
     startup_profile = os.getenv("BRAIN_STARTUP_PROFILE", "full").lower()
     logger.info("🚀 Startup profile: %s", startup_profile)

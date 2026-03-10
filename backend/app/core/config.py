@@ -70,11 +70,25 @@ class Settings(BaseSettings):
         description="Redis connection URL (local default or required remote)",
     )
 
-    # Qdrant (NEW - separate Coolify service)
-    qdrant_url: str = "http://localhost:6333"
+    # Qdrant - mode-aware defaults
+    qdrant_url: str = Field(
+        default_factory=lambda: (
+            "http://localhost:6334"
+            if detect_runtime_mode() == "local"
+            else "http://qdrant:6333"  # Coolify service name
+        ),
+        description="Qdrant vector DB URL (mode-aware)",
+    )
 
-    # Ollama (NEW - separate Coolify service)
-    ollama_host: str = "http://localhost:11434"
+    # Ollama - mode-aware defaults
+    ollama_host: str = Field(
+        default_factory=lambda: (
+            "http://localhost:11434"
+            if detect_runtime_mode() == "local"
+            else "http://ollama:11434"  # Coolify service name
+        ),
+        description="Ollama LLM host (mode-aware)",
+    )
 
     # JWT Configuration (NEW - BRAiN Auth Foundation)
     jwt_issuer: str = "https://brain.falklabs.de"

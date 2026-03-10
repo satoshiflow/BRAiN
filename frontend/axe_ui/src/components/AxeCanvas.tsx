@@ -21,6 +21,7 @@ import { useAxeWebSocket } from '../hooks/useAxeWebSocket';
 import { useEventTelemetry } from '../hooks/useEventTelemetry';
 import { generateMessageId, generateFileId } from '../utils/id';
 import { cn } from '../utils/cn';
+import { getApiBase } from '../../lib/config';
 import type { AxeCanvasProps, AxeMessage } from '../types';
 
 export function AxeCanvas({
@@ -54,7 +55,7 @@ export function AxeCanvas({
     sendDiffApplied,
     sendDiffRejected
   } = useAxeWebSocket({
-    backendUrl: process.env.NEXT_PUBLIC_BRAIN_API_BASE || 'http://localhost:8000',
+    backendUrl: getApiBase(),
     sessionId: sessionId,
     onConnected: () => console.log('[AxeCanvas] WebSocket connected'),
     onDisconnected: () => console.log('[AxeCanvas] WebSocket disconnected'),
@@ -65,7 +66,7 @@ export function AxeCanvas({
   // Event Telemetry (Phase 3)
   // ============================================================================
   const { trackMessage, trackDiffAction } = useEventTelemetry({
-    backendUrl: process.env.NEXT_PUBLIC_BRAIN_API_BASE || 'http://localhost:8000',
+    backendUrl: getApiBase(),
     sessionId: sessionId,
     appId: config?.app_id || 'axe-canvas',
     anonymizationLevel: config?.telemetry?.anonymization_level || 'pseudonymized',

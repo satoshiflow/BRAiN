@@ -12,6 +12,7 @@ import { useAxeWebSocket } from '../hooks/useAxeWebSocket';
 import { useEventTelemetry } from '../hooks/useEventTelemetry';
 import { generateMessageId } from '../utils/id';
 import { cn } from '../utils/cn';
+import { getApiBase } from '../../lib/config';
 import type { AxeMode, AxeMessage } from '../types';
 
 interface AxeExpandedProps {
@@ -36,7 +37,7 @@ export function AxeExpanded({
   // WebSocket Connection
   // ============================================================================
   const { isConnected, sendChat } = useAxeWebSocket({
-    backendUrl: process.env.NEXT_PUBLIC_BRAIN_API_BASE || 'http://localhost:8000',
+    backendUrl: getApiBase(),
     sessionId: sessionId,
     onConnected: () => console.log('[AxeExpanded] WebSocket connected'),
     onDisconnected: () => console.log('[AxeExpanded] WebSocket disconnected'),
@@ -47,7 +48,7 @@ export function AxeExpanded({
   // Event Telemetry (Phase 3)
   // ============================================================================
   const { trackMessage } = useEventTelemetry({
-    backendUrl: process.env.NEXT_PUBLIC_BRAIN_API_BASE || 'http://localhost:8000',
+    backendUrl: getApiBase(),
     sessionId: sessionId,
     appId: config?.app_id || 'axe-expanded',
     anonymizationLevel: config?.telemetry?.anonymization_level || 'pseudonymized',
