@@ -31,10 +31,12 @@ export async function fetchJson<T>(path: string): Promise<T> {
 
 export async function postAxeChat(
   payload: AxeChatRequest,
+  customHeaders?: Record<string, string>,
 ): Promise<AxeChatResponse> {
   return apiRequest<AxeChatResponse>("/api/axe/chat", {
     method: "POST",
     body: JSON.stringify(payload),
+    headers: customHeaders,
   });
 }
 

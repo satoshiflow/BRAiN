@@ -1,0 +1,456 @@
+"use client";
+
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { X, Send, MessageCircle, Minimize2 } from "lucide-react";
+import type { FloatingAxeConfig, FloatingAxeInstance, AXEWidgetEvent } from "@/lib/embedConfig";
+import {
+  validateConfig,
+  validateOrigin,
+  normalizeOriginAllowlist,
+  generateSessionId,
+  createEmbeddingError,
+} from "@/lib/embedConfig";
+import { pluginRegistry, initializePlugins, destroyPlugins, type PluginContext } from "@/src/plugins";
+import slashCommandsPlugin from "@/src/plugins/slashCommands";
+import { postAxeChat } from "@/lib/api";
+import type { AxeChatRequest } from "@/lib/contracts";
+import { getDefaultModel } from "@/lib/config";
+
+interface Message {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: Date;
+}
+
+interface EventListener {
+  event: AXEWidgetEvent;
+  callback: (...args: unknown[]) => void;
+}
+
+const DEFAULT_MODEL = getDefaultModel();
+
+/**
+ * FloatingAxe Widget Component
+ * 
+ * A mobile-first, floating chat interface that can be embedded on external websites.
+ * Provides:
+ * - Chat interface with plugin support
+ * - Origin validation for security
+ * - Event bus for plugin communication
+ * - Session management
+ */
+export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConfig>(
+  (config, forwardedRef) => {
+    // State management
+    const [isOpen, setIsOpen] = useState(false);
+    const [messages, setMessages] = useState<Message[]>([]);
+    const [input, setInput] = useState("");
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [isInitialized, setIsInitialized] = useState(false);
+    const [sessionId] = useState(() => config.sessionId || generateSessionId());
+
+    // Refs
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const eventListenersRef = useRef<EventListener[]>([]);
+    const pluginContextRef = useRef<PluginContext | null>(null);
+    const widgetRef = useRef<FloatingAxeInstance | null>(null);
+
+    // Debug logging
+    const log = useCallback(
+      (level: string, message: string, data?: unknown) => {
+        if (config.debug) {
+          console.log(`[FloatingAxe:${level}]`, message, data || "");
+        }
+      },
+      [config.debug]
+    );
+
+    // Event emission
+    const emit = useCallback((event: AXEWidgetEvent | string, ...args: unknown[]) => {
+      log("debug", `Emitting event: ${event}`, args);
+      eventListenersRef.current.forEach((listener) => {
+        if (listener.event === event) {
+          listener.callback(...args);
+        }
+      });
+    }, [log]);
+
+    // Event subscription
+    const on = useCallback((event: AXEWidgetEvent, callback: (...args: unknown[]) => void) => {
+      const listener: EventListener = { event, callback };
+      eventListenersRef.current.push(listener);
+      // Return unsubscribe function
+      return () => {
+        eventListenersRef.current = eventListenersRef.current.filter((l) => l !== listener);
+      };
+    }, []);
+
+    // Initialize widget
+    useEffect(() => {
+      const initializeWidget = async () => {
+        try {
+          log("info", "Initializing FloatingAxe widget");
+
+          // Validate config
+          const configValidation = validateConfig(config);
+          if (!configValidation.valid) {
+            throw createEmbeddingError("CONFIG_INVALID", configValidation.error || "Invalid config");
+          }
+
+          // Validate origin
+          const allowlist = normalizeOriginAllowlist(config.originAllowlist);
+          const originValidation = validateOrigin(allowlist);
+          if (!originValidation.valid) {
+            throw createEmbeddingError("ORIGIN_MISMATCH", originValidation.error || "Origin not allowed");
+          }
+
+          // Set up plugin context
+          const pluginCtx: PluginContext = {
+            appId: config.appId,
+            sessionId,
+            backendUrl: config.backendUrl,
+            locale: typeof navigator !== "undefined" ? navigator.language : "en",
+          };
+          pluginContextRef.current = pluginCtx;
+
+          // Register built-in plugin
+          pluginRegistry.register(slashCommandsPlugin);
+
+          // Register user-provided plugins
+          if (config.plugins && config.plugins.length > 0) {
+            log("debug", `Registering ${config.plugins.length} user plugins`);
+            // Plugin registration will be enhanced in Phase 2
+          }
+
+          // Initialize all plugins
+          await initializePlugins(pluginCtx);
+
+          setIsInitialized(true);
+          emit("ready");
+          config.onReady?.(widgetRef.current!);
+
+          log("info", "FloatingAxe widget initialized successfully");
+        } catch (err) {
+          const embedError =
+            err instanceof Error
+              ? createEmbeddingError(
+                  err.message.includes("Origin") ? "ORIGIN_MISMATCH" : "CONFIG_INVALID",
+                  err.message
+                )
+              : createEmbeddingError("UNKNOWN", "Initialization failed");
+
+          log("error", embedError.message, embedError.details);
+          emit("error", embedError);
+          config.onError?.(embedError);
+        }
+      };
+
+      initializeWidget();
+
+      // Cleanup on unmount
+      return () => {
+        destroyPlugins().catch((err) => log("error", "Plugin cleanup failed", err));
+      };
+    }, [config, sessionId, log, emit]);
+
+    // Handle sending messages
+    const handleSendMessage = useCallback(
+      async (content: string) => {
+        if (!content.trim() || loading) return;
+
+        try {
+          setError(null);
+          const newMessage: Message = {
+            id: `user_${Date.now()}`,
+            role: "user",
+            content,
+            timestamp: new Date(),
+          };
+
+          setMessages((prev) => [...prev, newMessage]);
+          setInput("");
+
+          // Check for slash commands
+          if (content.startsWith("/")) {
+            const [cmd, ...args] = content.slice(1).split(" ");
+            log("debug", "Handling slash command", { cmd, args });
+            // Command routing handled by plugin registry
+            return;
+          }
+
+          setLoading(true);
+          const request: AxeChatRequest = {
+            model: DEFAULT_MODEL,
+            messages: messages
+              .concat(newMessage)
+              .map((m) => ({
+                role: m.role,
+                content: m.content,
+              })),
+            temperature: 0.7,
+          };
+
+          const response = await postAxeChat(request, {
+            "X-App-Id": config.appId,
+            "X-Session-Id": sessionId,
+          });
+
+          const assistantMessage: Message = {
+            id: `assistant_${Date.now()}`,
+            role: "assistant",
+            content: response.text,
+            timestamp: new Date(),
+          };
+
+          setMessages((prev) => [...prev, assistantMessage]);
+          emit("message-received", assistantMessage);
+        } catch (err) {
+          const errorMessage = err instanceof Error ? err.message : "Failed to send message";
+          log("error", errorMessage);
+          setError(errorMessage);
+        } finally {
+          setLoading(false);
+        }
+      },
+      [loading, config.appId, sessionId, messages, log, emit]
+    );
+
+    // Auto-scroll to bottom
+    useEffect(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [messages]);
+
+    // Auto-resize textarea
+    useEffect(() => {
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "auto";
+        textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
+      }
+    }, [input]);
+
+    // Create widget instance for ref
+    useEffect(() => {
+      const instance: FloatingAxeInstance = {
+        initialize: async () => {
+          log("info", "Widget.initialize() called");
+        },
+
+        destroy: async () => {
+          log("info", "Widget.destroy() called");
+          setIsOpen(false);
+          await destroyPlugins();
+        },
+
+        open: () => {
+          setIsOpen(true);
+          emit("open");
+        },
+
+        close: () => {
+          setIsOpen(false);
+          emit("close");
+        },
+
+        isOpen: () => isOpen,
+
+        registerPlugin: async (manifest) => {
+          log("debug", "registerPlugin() called", { pluginId: manifest.id });
+          // Plugin registration will be implemented in Phase 2
+          emit("plugin-registered", manifest.id);
+        },
+
+        unregisterPlugin: (pluginId) => {
+          log("debug", "unregisterPlugin() called", { pluginId });
+          pluginRegistry.unregister(pluginId);
+          emit("plugin-unregistered", pluginId);
+        },
+
+        sendMessage: async (content) => {
+          await handleSendMessage(content);
+          emit("message-sent", content);
+        },
+
+        clearChat: () => {
+          setMessages([]);
+          log("debug", "Chat cleared");
+        },
+
+        getSessionId: () => sessionId,
+
+        on,
+
+        emit,
+      };
+
+      widgetRef.current = instance;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      if (forwardedRef) {
+        if (typeof forwardedRef === "function") {
+          forwardedRef(instance);
+        } else {
+          forwardedRef.current = instance;
+        }
+      }
+    }, [isOpen, log, on, emit, sessionId, handleSendMessage, forwardedRef]);
+
+    if (!isInitialized) {
+      return null; // Widget not ready yet
+    }
+
+    const positionClasses = {
+      "bottom-right": "bottom-4 right-4",
+      "bottom-left": "bottom-4 left-4",
+      "top-right": "top-4 right-4",
+      "top-left": "top-4 left-4",
+    };
+
+    const position = config.position || "bottom-right";
+    const theme = config.theme || "light";
+
+    return (
+      <div className={`fixed ${positionClasses[position]} z-50 font-sans`}>
+        {/* Floating Button */}
+        {!isOpen && (
+          <button
+            onClick={() => setIsOpen(true)}
+            className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg hover:shadow-xl transition-shadow flex items-center justify-center"
+            aria-label="Open AXE chat"
+            title="Chat with AXE"
+          >
+            <MessageCircle size={24} />
+          </button>
+        )}
+
+        {/* Chat Panel */}
+        {isOpen && (
+          <div
+            className={`flex flex-col w-80 h-96 rounded-lg shadow-2xl overflow-hidden ${
+              theme === "dark" ? "bg-gray-900 text-white" : "bg-white text-gray-900"
+            }`}
+          >
+            {/* Header */}
+            <div className={`flex items-center justify-between p-4 ${
+              theme === "dark" ? "bg-gray-800 border-gray-700" : "bg-blue-50 border-blue-100"
+            } border-b`}>
+              <h2 className="font-semibold text-sm">AXE Chat</h2>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setIsOpen(false)}
+                  className={`p-1 rounded hover:opacity-70 transition-opacity ${
+                    theme === "dark" ? "hover:bg-gray-700" : "hover:bg-blue-100"
+                  }`}
+                  aria-label="Minimize chat"
+                >
+                  <Minimize2 size={16} />
+                </button>
+                <button
+                  onClick={() => setIsOpen(false)}
+                  className={`p-1 rounded hover:opacity-70 transition-opacity ${
+                    theme === "dark" ? "hover:bg-gray-700" : "hover:bg-blue-100"
+                  }`}
+                  aria-label="Close chat"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* Messages Container */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {messages.length === 0 && (
+                <div className={`text-center text-sm ${theme === "dark" ? "text-gray-400" : "text-gray-500"}`}>
+                  <p>Start a conversation with AXE</p>
+                </div>
+              )}
+              {messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                >
+                  <div
+                    className={`max-w-xs px-3 py-2 rounded-lg text-sm ${
+                      msg.role === "user"
+                        ? `${
+                            theme === "dark"
+                              ? "bg-blue-600 text-white"
+                              : "bg-blue-500 text-white"
+                          }`
+                        : `${
+                            theme === "dark"
+                              ? "bg-gray-700 text-gray-100"
+                              : "bg-gray-100 text-gray-900"
+                          }`
+                    }`}
+                  >
+                    {msg.content}
+                  </div>
+                </div>
+              ))}
+              {loading && (
+                <div className="flex justify-start">
+                  <div className={`px-3 py-2 rounded-lg text-sm ${
+                    theme === "dark" ? "bg-gray-700 text-gray-100" : "bg-gray-100 text-gray-900"
+                  }`}>
+                    <div className="flex gap-1">
+                      <div className="w-2 h-2 rounded-full bg-current animate-bounce" style={{ animationDelay: "0ms" }} />
+                      <div className="w-2 h-2 rounded-full bg-current animate-bounce" style={{ animationDelay: "150ms" }} />
+                      <div className="w-2 h-2 rounded-full bg-current animate-bounce" style={{ animationDelay: "300ms" }} />
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Error Message */}
+            {error && (
+              <div className="px-4 py-2 bg-red-50 border-t border-red-200 text-red-700 text-xs">
+                {error}
+              </div>
+            )}
+
+            {/* Input Area */}
+            <div className={`flex gap-2 p-3 ${
+              theme === "dark" ? "bg-gray-800 border-gray-700" : "bg-gray-50 border-gray-200"
+            } border-t`}>
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage(input);
+                  }
+                }}
+                placeholder="Type a message..."
+                disabled={loading}
+                rows={1}
+                className={`flex-1 px-3 py-2 rounded border text-sm outline-none resize-none ${
+                  theme === "dark"
+                    ? "bg-gray-700 border-gray-600 text-white placeholder-gray-400"
+                    : "bg-white border-gray-300 text-gray-900 placeholder-gray-500"
+                } disabled:opacity-50`}
+              />
+              <button
+                onClick={() => handleSendMessage(input)}
+                disabled={loading || !input.trim()}
+                className="w-8 h-8 rounded bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
+                aria-label="Send message"
+              >
+                <Send size={16} />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+);
+
+FloatingAxe.displayName = "FloatingAxe";
+
+export default FloatingAxe;
