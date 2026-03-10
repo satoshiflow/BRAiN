@@ -220,3 +220,15 @@ All commands below are from repo root unless noted.
   - implementation, tests, iterative coding -> primary coding model
   - repo exploration, summaries, inventories -> lower-cost model
 - Many agents may analyze in parallel, but one writer owns a given implementation surface at a time.
+
+## 12) GitHub specialist agent (`giti`) guidance
+
+- `giti` is the preferred specialist for Git/GitHub workflows (branch hygiene, PR create/edit, PR metadata updates).
+- Follow `docs/core/giti_playbook.md` for mandatory preflight checks and PR decision flow.
+- Before any PR action, ensure:
+  - `gh` is installed and available in PATH
+  - `gh auth status` is authenticated for the intended account
+  - existing PR state is checked to avoid duplicate PR creation
+- Prefer `gh pr edit` when a PR already exists for the branch.
+- Use `--body-file` for PR body updates to avoid shell quoting/substitution issues.
+- For long-lived branches, summarize the intended incremental delta, not the full historical diff.
