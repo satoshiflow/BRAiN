@@ -1,9 +1,42 @@
 // AXE UI Configuration
 // These can be overridden via environment variables
 
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+
+function inferApiBase(): string {
+  const explicitBase = process.env.NEXT_PUBLIC_BRAIN_API_BASE;
+  if (explicitBase) {
+    return explicitBase;
+  }
+
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (LOCAL_HOSTS.has(host)) {
+      return "http://127.0.0.1:8000";
+    }
+  }
+
+  return "https://api.brain.falklabs.de";
+}
+
+function inferAppEnv(): "local" | "production" {
+  const explicitEnv = process.env.NEXT_PUBLIC_APP_ENV;
+  if (explicitEnv === "local" || explicitEnv === "production") {
+    return explicitEnv;
+  }
+
+  if (typeof window !== "undefined") {
+    return LOCAL_HOSTS.has(window.location.hostname) ? "local" : "production";
+  }
+
+  return "production";
+}
+
 export const config = {
+  appEnv: inferAppEnv(),
+
   api: {
-    base: process.env.NEXT_PUBLIC_BRAIN_API_BASE || "https://api.brain.falklabs.de",
+    base: inferApiBase(),
   },
 
   // LLM Model Configuration
