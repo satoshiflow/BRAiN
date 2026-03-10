@@ -5,7 +5,7 @@
  * See: docs/specs/axe_widget_embedding_contract_v1.md
  */
 
-import type { PluginManifest } from "@/src/plugins/types";
+import type { PluginHook, PluginHookHandler, PluginManifest } from "@/src/plugins/types";
 
 export interface WidgetBranding {
   logoUrl?: string;
@@ -16,6 +16,7 @@ export interface WidgetBranding {
 
 export interface WidgetAnalyticsConfig {
   webhookUrl?: string;
+  webhookSecret?: string;
   batchSize?: number;
   batchInterval?: number;
 }
@@ -44,6 +45,15 @@ export function createEmbeddingError(
   error.code = code;
   error.details = details;
   return error;
+}
+
+export function isEmbeddingError(error: unknown): error is AXEEmbeddingError {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const candidate = error as Partial<AXEEmbeddingError>;
+  return typeof candidate.code === "string";
 }
 
 export type WidgetPosition = "bottom-right" | "bottom-left" | "top-right" | "top-left";
@@ -94,6 +104,9 @@ export interface FloatingAxeConfigOptional {
   /** Optional webhook endpoint for widget events */
   webhookUrl?: string;
 
+  /** Optional shared secret for HMAC-SHA256 webhook signatures */
+  webhookSecret?: string;
+
   /** Callback when widget initializes successfully */
   onReady?: (widget: FloatingAxeInstance) => void;
 
@@ -126,7 +139,10 @@ export interface FloatingAxeInstance {
   isOpen(): boolean;
 
   /** Register a plugin dynamically */
-  registerPlugin(manifest: PluginManifest): Promise<void>;
+  registerPlugin(
+    manifest: PluginManifest,
+    hooks?: Partial<Record<PluginHook, PluginHookHandler<unknown, unknown>>>
+  ): Promise<void>;
 
   /** Unregister a plugin */
   unregisterPlugin(pluginId: string): void;
@@ -194,17 +210,58 @@ export function validateOrigin(allowlist: string[]): { valid: boolean; error?: s
   if (typeof window === "undefined") {
     return { valid: false, error: "window is not defined (SSR context)" };
   }
-  const currentOrigin = window.location.origin;
+
+  let currentUrl: URL;
+  try {
+    currentUrl = new URL(window.location.origin);
+  } catch {
+    return { valid: false, error: `Invalid current origin: ${window.location.origin}` };
+  }
+
   const isAllowed = allowlist.some((allowed) => {
-    // Exact match or FQDN contains current origin
-    return allowed === currentOrigin || currentOrigin.includes(allowed);
+    const value = allowed.trim();
+    if (!value) {
+      return false;
+    }
+
+    if (value.startsWith("http://") || value.startsWith("https://")) {
+      try {
+        const url = new URL(value);
+        if (url.pathname !== "/" || url.search || url.hash) {
+          return false;
+        }
+        return url.origin === currentUrl.origin;
+      } catch {
+        return false;
+      }
+    }
+
+    if (value.includes("/") || value.includes("?") || value.includes("#") || value.includes("*")) {
+      return false;
+    }
+
+    try {
+      const hostUrl = new URL(`https://${value}`);
+      const normalizedHost = hostUrl.port ? `${hostUrl.hostname}:${hostUrl.port}` : hostUrl.hostname;
+      if (normalizedHost.toLowerCase() !== value.toLowerCase()) {
+        return false;
+      }
+
+      const hostnameMatches = hostUrl.hostname.toLowerCase() === currentUrl.hostname.toLowerCase();
+      const portMatches = hostUrl.port ? hostUrl.port === currentUrl.port : true;
+      return hostnameMatches && portMatches;
+    } catch {
+      return false;
+    }
   });
+
   if (!isAllowed) {
     return {
       valid: false,
-      error: `Origin ${currentOrigin} not in allowlist: ${allowlist.join(", ")}`,
+      error: `Origin ${currentUrl.origin} not in allowlist: ${allowlist.join(", ")}`,
     };
   }
+
   return { valid: true };
 }
 

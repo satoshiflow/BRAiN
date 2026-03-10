@@ -16,6 +16,7 @@ import {
   normalizeOriginAllowlist,
   generateSessionId,
   createEmbeddingError,
+  isEmbeddingError,
 } from "@/lib/embedConfig";
 
 interface UseFloatingAxeInitOptions {
@@ -95,12 +96,11 @@ export function useFloatingAxeInit({ config, debug }: UseFloatingAxeInitOptions)
       // Call onReady callback if provided
       // Widget instance will be passed once component creates it
     } catch (err) {
-      const embedError = err instanceof Error
-        ? createEmbeddingError(
-            err.message.includes("Origin") ? "ORIGIN_MISMATCH" : "CONFIG_INVALID",
-            err.message
-          )
-        : createEmbeddingError("UNKNOWN", "An unknown error occurred during initialization");
+      const embedError = isEmbeddingError(err)
+        ? err
+        : err instanceof Error
+          ? createEmbeddingError("UNKNOWN", err.message)
+          : createEmbeddingError("UNKNOWN", "An unknown error occurred during initialization");
 
       handleError(embedError);
     } finally {

@@ -234,7 +234,7 @@
           </div>
           <div class="config-item">
             <strong>originAllowlist</strong>
-            <code>localhost</code>
+            <code>http://127.0.0.1:3002</code>
           </div>
           <div class="config-item">
             <strong>position</strong>
@@ -247,7 +247,7 @@
   src="http://localhost:3002/embed.js"
   data-app-id="demo-embed-test"
   data-backend-url="http://localhost:8000"
-  data-origin-allowlist="localhost"
+  data-origin-allowlist="http://127.0.0.1:3002"
   data-debug="true"
   async
 &gt;&lt;/script&gt;
@@ -322,7 +322,7 @@ console.log(window.AXEWidget.config);
           <strong>Widget not appearing?</strong>
           <ol style="margin-left: 20px; margin-top: 8px;">
             <li>Check browser console (F12) for errors</li>
-            <li>Verify origin is in allowlist (currently: <code>localhost</code>)</li>
+            <li>Verify origin is in allowlist (currently: <code>http://127.0.0.1:3002</code>)</li>
             <li>Ensure backend is running on <code>http://localhost:8000</code></li>
             <li>Check network tab for failed requests to <code>/api/axe/*</code></li>
           </ol>
@@ -368,7 +368,7 @@ console.log(window.AXEWidget.config);
     src="http://localhost:3002/embed.js"
     data-app-id="demo-embed-test"
     data-backend-url="http://localhost:8000"
-    data-origin-allowlist="localhost"
+    data-origin-allowlist="http://127.0.0.1:3002"
     data-debug="true"
     async
   ></script>

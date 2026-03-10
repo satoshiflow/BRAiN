@@ -1,22 +1,37 @@
-import type { Plugin, PluginContext, UiSlot, UiSlotRenderer } from "./types";
+import type { Plugin, PluginContext, PluginHook, PluginPermission, UiSlot, UiSlotRenderer } from "./types";
+import { validatePluginContract } from "./contract";
 
 const PLUGIN_TIMEOUT_MS = 5000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timeoutId: NodeJS.Timeout | null = null;
+
   return Promise.race([
     promise,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error(`Plugin operation timed out after ${ms}ms`)), ms),
-    ),
-  ]);
+    new Promise<T>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error(`Plugin operation timed out after ${ms}ms`)), ms);
+    }),
+  ]).finally(() => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  });
 }
 
 export class PluginRegistry {
   private plugins: Map<string, Plugin> = new Map();
   private uiSlots: Map<UiSlot, Set<UiSlotRenderer>> = new Map();
+  private disabledPlugins: Set<string> = new Set();
   private context: PluginContext | null = null;
 
   register(plugin: Plugin): void {
+    const validation = validatePluginContract(plugin.manifest, plugin.hooks);
+    if (!validation.valid) {
+      throw new Error(
+        `[PluginRegistry] Invalid plugin contract for ${plugin.manifest.id}: ${validation.errors.join("; ")}`
+      );
+    }
+
     if (this.plugins.has(plugin.manifest.id)) {
       console.warn(`[PluginRegistry] Plugin ${plugin.manifest.id} already registered, skipping.`);
       return;
@@ -38,6 +53,7 @@ export class PluginRegistry {
     const plugin = this.plugins.get(pluginId);
     if (!plugin) return;
     this.plugins.delete(pluginId);
+    this.disabledPlugins.delete(pluginId);
     console.log(`[PluginRegistry] Unregistered plugin: ${pluginId}`);
   }
 
@@ -46,11 +62,19 @@ export class PluginRegistry {
   }
 
   getAll(): Plugin[] {
-    return Array.from(this.plugins.values());
+    return Array.from(this.plugins.values()).filter((plugin) => !this.disabledPlugins.has(plugin.manifest.id));
   }
 
-  getByPermission(permission: string): Plugin[] {
-    return this.getAll().filter((p) => p.manifest.permissions.includes(permission as never));
+  getByPermission(permission: PluginPermission): Plugin[] {
+    return this.getAll().filter((p) => p.manifest.permissions.includes(permission));
+  }
+
+  async initializePlugin(pluginId: string): Promise<void> {
+    const plugin = this.plugins.get(pluginId);
+    if (!plugin) {
+      throw new Error(`[PluginRegistry] Plugin not found: ${pluginId}`);
+    }
+    await this.executeHook(plugin, "onMount", {});
   }
 
   setContext(context: PluginContext): void {
@@ -66,16 +90,7 @@ export class PluginRegistry {
       throw new Error("[PluginRegistry] Context not set");
     }
     const initPromises = Array.from(this.plugins.values()).map(async (plugin) => {
-      if (plugin.hooks.onMount) {
-        try {
-          const result = plugin.hooks.onMount({}, this.context!);
-          if (result) {
-            await withTimeout(Promise.resolve(result) as Promise<unknown>, PLUGIN_TIMEOUT_MS);
-          }
-        } catch (err) {
-          console.error(`[PluginRegistry] ${plugin.manifest.id} onMount failed:`, err);
-        }
-      }
+      await this.executeHook(plugin, "onMount", {});
     });
     await Promise.all(initPromises);
   }
@@ -83,19 +98,11 @@ export class PluginRegistry {
   async destroy(): Promise<void> {
     if (!this.context) return;
     const destroyPromises = Array.from(this.plugins.values()).map(async (plugin) => {
-      if (plugin.hooks.onUnmount) {
-        try {
-          const result = plugin.hooks.onUnmount({}, this.context!);
-          if (result) {
-            await withTimeout(Promise.resolve(result) as Promise<unknown>, PLUGIN_TIMEOUT_MS);
-          }
-        } catch (err) {
-          console.error(`[PluginRegistry] ${plugin.manifest.id} onUnmount failed:`, err);
-        }
-      }
+      await this.executeHook(plugin, "onUnmount", {});
     });
     await Promise.all(destroyPromises);
     this.plugins.clear();
+    this.disabledPlugins.clear();
     this.uiSlots.clear();
   }
 
@@ -109,13 +116,12 @@ export class PluginRegistry {
     for (const plugin of commandPlugins) {
       if (plugin.hooks.onCommand) {
         try {
-          const result = plugin.hooks.onCommand({ command, args }, this.context);
-          if (result) {
-            const awaited = await withTimeout(Promise.resolve(result), PLUGIN_TIMEOUT_MS);
-            if (awaited !== undefined) return awaited;
+          const awaited = await this.executeHook(plugin, "onCommand", { command, args });
+          if (awaited !== undefined && awaited !== null) {
+            return awaited;
           }
         } catch (err) {
-          console.error(`[PluginRegistry] ${plugin.manifest.id} onCommand failed:`, err);
+          console.error(`[PluginRegistry] ${plugin.manifest.id} onCommand execution failed:`, err);
         }
       }
     }
@@ -131,6 +137,47 @@ export class PluginRegistry {
 
   renderUiSlot(slot: UiSlot): UiSlotRenderer[] {
     return Array.from(this.uiSlots.get(slot) || []);
+  }
+
+  private async executeHook(plugin: Plugin, hook: PluginHook, data: unknown): Promise<unknown> {
+    if (!this.context || this.disabledPlugins.has(plugin.manifest.id)) {
+      return undefined;
+    }
+
+    const handler = plugin.hooks[hook];
+    if (!handler) {
+      return undefined;
+    }
+
+    try {
+      const result = handler(data, this.context);
+      return await withTimeout(Promise.resolve(result), PLUGIN_TIMEOUT_MS);
+    } catch (err) {
+      this.disabledPlugins.add(plugin.manifest.id);
+      console.error(`[PluginRegistry] Disabled plugin ${plugin.manifest.id} after ${hook} failure:`, err);
+
+      const onError = plugin.hooks.onError;
+      if (onError && hook !== "onError") {
+        try {
+          await withTimeout(
+            Promise.resolve(
+              onError(
+                {
+                  hook,
+                  error: err instanceof Error ? err.message : String(err),
+                },
+                this.context,
+              ),
+            ),
+            PLUGIN_TIMEOUT_MS,
+          );
+        } catch (onErrorErr) {
+          console.error(`[PluginRegistry] ${plugin.manifest.id} onError handler failed:`, onErrorErr);
+        }
+      }
+
+      return undefined;
+    }
   }
 }
 

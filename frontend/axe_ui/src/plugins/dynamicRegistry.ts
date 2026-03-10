@@ -5,12 +5,13 @@
  * Plugins are validated and loaded into the widget's plugin registry.
  */
 
-import type { Plugin, PluginManifest, PluginHookHandler } from "./types";
+import type { Plugin, PluginManifest, PluginHook, PluginHookHandler, PluginPermission } from "./types";
 import { pluginRegistry } from "./registry";
+import { validatePluginContract } from "./contract";
 
 export interface DynamicPluginOptions {
   manifest: PluginManifest;
-  hooks: Record<string, PluginHookHandler>;
+  hooks: Partial<Record<PluginHook, PluginHookHandler<unknown, unknown>>>;
   timeout?: number;
 }
 
@@ -32,6 +33,9 @@ export function validatePluginManifest(manifest: PluginManifest): { valid: boole
   if (!Array.isArray(manifest.permissions)) {
     return { valid: false, error: "Plugin manifest must have permissions array" };
   }
+  if (!Array.isArray(manifest.uiSlots)) {
+    return { valid: false, error: "Plugin manifest must have uiSlots array" };
+  }
   return { valid: true };
 }
 
@@ -51,16 +55,26 @@ export async function registerDynamicPlugin(options: DynamicPluginOptions): Prom
       return { success: false, error: `Plugin ${options.manifest.id} already registered` };
     }
 
+    const hooks = options.hooks || {};
+    const contractValidation = validatePluginContract(options.manifest, hooks);
+    if (!contractValidation.valid) {
+      return {
+        success: false,
+        error: `Plugin contract validation failed: ${contractValidation.errors.join("; ")}`,
+      };
+    }
+
     // Check timeout
     const timeout = options.timeout || PLUGIN_LOAD_TIMEOUT_MS;
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("Plugin load timeout")), timeout)
-    );
+    let timeoutId: NodeJS.Timeout | null = null;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error("Plugin load timeout")), timeout);
+    });
 
     // Create plugin object
     const plugin: Plugin = {
       manifest: options.manifest,
-      hooks: options.hooks,
+      hooks,
     };
 
     // Register with timeout protection
@@ -69,7 +83,15 @@ export async function registerDynamicPlugin(options: DynamicPluginOptions): Prom
         pluginRegistry.register(plugin);
       }),
       timeoutPromise,
-    ]);
+    ]).finally(() => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    });
+
+    if (pluginRegistry.getContext()) {
+      await pluginRegistry.initializePlugin(options.manifest.id);
+    }
 
     return { success: true };
   } catch (error) {
@@ -105,6 +127,6 @@ export function getRegisteredPlugins(): PluginManifest[] {
 /**
  * List plugins by permission
  */
-export function getPluginsByPermission(permission: string): PluginManifest[] {
+export function getPluginsByPermission(permission: PluginPermission): PluginManifest[] {
   return pluginRegistry.getByPermission(permission).map((p) => p.manifest);
 }

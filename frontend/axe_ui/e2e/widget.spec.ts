@@ -11,6 +11,22 @@ import { test, expect, type Page } from "@playwright/test";
 // Base URL for widget demo
 const DEMO_URL = "/embed-demo.html";
 
+async function setupTelemetryCapture(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    (window as unknown as { __axeTelemetryEvents?: Array<{ event: string; data?: Record<string, unknown> }> }).__axeTelemetryEvents = [];
+    window.addEventListener("axe:embed-telemetry", (rawEvent: Event) => {
+      const event = rawEvent as CustomEvent<{ event: string; data?: Record<string, unknown> }>;
+      (window as unknown as { __axeTelemetryEvents: Array<{ event: string; data?: Record<string, unknown> }> }).__axeTelemetryEvents.push(event.detail);
+    });
+  });
+}
+
+async function getTelemetryEvents(page: Page): Promise<Array<{ event: string; data?: Record<string, unknown> }>> {
+  return page.evaluate(() => {
+    return (window as unknown as { __axeTelemetryEvents?: Array<{ event: string; data?: Record<string, unknown> }> }).__axeTelemetryEvents || [];
+  });
+}
+
 async function gotoDemoAndWaitForWidget(page: Page): Promise<void> {
   await page.goto(DEMO_URL, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => typeof window.AXEWidget !== "undefined", undefined, {
@@ -21,18 +37,87 @@ async function gotoDemoAndWaitForWidget(page: Page): Promise<void> {
 
 test.describe("FloatingAxe Widget - Embedding Contract", () => {
   test("should initialize widget on allowed origin", async ({ page }) => {
+    await setupTelemetryCapture(page);
     await gotoDemoAndWaitForWidget(page);
+
+    const telemetry = await getTelemetryEvents(page);
+    const hasRuntimeMountSuccess = telemetry.some((event) => event.event === "runtime_mount_success");
+    const runtimeReadyEvent = telemetry.find((event) => event.event === "widget_api_ready");
+
+    expect(hasRuntimeMountSuccess).toBe(true);
+    expect(runtimeReadyEvent?.data?.runtime).toBe("real-runtime");
+  });
+
+  test("should activate fallback when runtime bundle fails to load", async ({ page }) => {
+    await setupTelemetryCapture(page);
+    await page.route("**/widget-runtime.js", (route) => route.abort());
+
+    await gotoDemoAndWaitForWidget(page);
+
+    const telemetry = await getTelemetryEvents(page);
+    const hasFallback = telemetry.some((event) => event.event === "runtime_mount_fallback");
+    const runtimeReadyEvent = telemetry.find((event) => event.event === "widget_api_ready");
+
+    expect(hasFallback).toBe(true);
+    expect(runtimeReadyEvent?.data?.runtime).toBe("fallback");
   });
 
   test("should reject widget on mismatched origin", async ({ page }) => {
-    // Create a page with different origin (simulated)
-    // This test would require a separate host or proxy
-    // For now, verify origin validation in chat page
+    await setupTelemetryCapture(page);
     await gotoDemoAndWaitForWidget(page);
 
-    // Check window.location.origin matches allowlist
-    const origin = await page.evaluate(() => window.location.origin);
-    expect(origin).toContain("127.0.0.1");
+    await page.evaluate(() => {
+      if (window.AXEWidget) {
+        window.AXEWidget.destroy();
+      }
+      delete (window as unknown as { AXEWidget?: unknown }).AXEWidget;
+
+      const script = document.createElement("script");
+      script.src = `${window.location.origin}/embed.js`;
+      script.setAttribute("data-app-id", "demo-embed-test");
+      script.setAttribute("data-backend-url", "http://localhost:8000");
+      script.setAttribute("data-origin-allowlist", "attacker.example.com");
+      script.setAttribute("data-debug", "true");
+      document.body.appendChild(script);
+    });
+
+    await page.waitForTimeout(400);
+
+    const widgetExists = await page.evaluate(() => typeof window.AXEWidget !== "undefined");
+    const telemetry = await getTelemetryEvents(page);
+    const blockedEvent = telemetry.find((event) => event.event === "embed_init_blocked");
+
+    expect(widgetExists).toBe(false);
+    expect(blockedEvent?.data?.code).toBe("ORIGIN_MISMATCH");
+  });
+
+  test("should reject malformed allowlist as config invalid", async ({ page }) => {
+    await setupTelemetryCapture(page);
+    await gotoDemoAndWaitForWidget(page);
+
+    await page.evaluate(() => {
+      if (window.AXEWidget) {
+        window.AXEWidget.destroy();
+      }
+      delete (window as unknown as { AXEWidget?: unknown }).AXEWidget;
+
+      const script = document.createElement("script");
+      script.src = `${window.location.origin}/embed.js`;
+      script.setAttribute("data-app-id", "demo-embed-test");
+      script.setAttribute("data-backend-url", "http://localhost:8000");
+      script.setAttribute("data-origin-allowlist", "http://127.0.0.1:3002/path");
+      script.setAttribute("data-debug", "true");
+      document.body.appendChild(script);
+    });
+
+    await page.waitForTimeout(400);
+
+    const widgetExists = await page.evaluate(() => typeof window.AXEWidget !== "undefined");
+    const telemetry = await getTelemetryEvents(page);
+    const blockedEvent = telemetry.find((event) => event.event === "embed_init_blocked");
+
+    expect(widgetExists).toBe(false);
+    expect(blockedEvent?.data?.code).toBe("CONFIG_INVALID");
   });
 
   test("should expose widget API globally", async ({ page }) => {
@@ -56,6 +141,68 @@ test.describe("FloatingAxe Widget - Embedding Contract", () => {
     expect(config).toHaveProperty("appId", "demo-embed-test");
     expect(config).toHaveProperty("backendUrl");
     expect(config).toHaveProperty("originAllowlist");
+  });
+
+  test("should infer local backend URL when data-backend-url is omitted", async ({ page }) => {
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+
+    await page.evaluate(() => {
+      const script = document.createElement("script");
+      script.src = `${window.location.origin}/embed.js`;
+      script.setAttribute("data-app-id", "demo-embed-test");
+      script.setAttribute("data-origin-allowlist", window.location.origin);
+      script.setAttribute("data-debug", "true");
+      document.body.appendChild(script);
+    });
+
+    await page.waitForFunction(() => typeof window.AXEWidget !== "undefined", undefined, {
+      timeout: 15000,
+    });
+
+    const backendUrl = await page.evaluate(() => window.AXEWidget.config.backendUrl);
+    expect(backendUrl).toBe("http://127.0.0.1:8000");
+  });
+
+  test("should canonicalize staging backend URL to origin", async ({ page }) => {
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+
+    await page.evaluate(() => {
+      const script = document.createElement("script");
+      script.src = `${window.location.origin}/embed.js`;
+      script.setAttribute("data-app-id", "demo-embed-test");
+      script.setAttribute("data-backend-url", "https://staging-api.brain.falklabs.de/v1/chat?foo=bar#x");
+      script.setAttribute("data-origin-allowlist", window.location.origin);
+      script.setAttribute("data-debug", "true");
+      document.body.appendChild(script);
+    });
+
+    await page.waitForFunction(() => typeof window.AXEWidget !== "undefined", undefined, {
+      timeout: 15000,
+    });
+
+    const backendUrl = await page.evaluate(() => window.AXEWidget.config.backendUrl);
+    expect(backendUrl).toBe("https://staging-api.brain.falklabs.de");
+  });
+
+  test("should canonicalize production backend URL to origin", async ({ page }) => {
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+
+    await page.evaluate(() => {
+      const script = document.createElement("script");
+      script.src = `${window.location.origin}/embed.js`;
+      script.setAttribute("data-app-id", "demo-embed-test");
+      script.setAttribute("data-backend-url", "https://api.brain.falklabs.de/");
+      script.setAttribute("data-origin-allowlist", window.location.origin);
+      script.setAttribute("data-debug", "true");
+      document.body.appendChild(script);
+    });
+
+    await page.waitForFunction(() => typeof window.AXEWidget !== "undefined", undefined, {
+      timeout: 15000,
+    });
+
+    const backendUrl = await page.evaluate(() => window.AXEWidget.config.backendUrl);
+    expect(backendUrl).toBe("https://api.brain.falklabs.de");
   });
 });
 

@@ -5,6 +5,12 @@
  * Supports batching, retries, and offline queue.
  */
 
+import {
+  buildSignatureInput,
+  createHmacSha256Signature,
+  isTimestampInReplayWindow,
+} from "@/src/webhooks/security";
+
 export interface AnalyticsEvent {
   eventName: string;
   appId: string;
@@ -21,6 +27,8 @@ export interface AnalyticsEvent {
 
 export interface AnalyticsConfig {
   webhookUrl?: string;
+  webhookSecret?: string;
+  replayWindowMs?: number;
   batchSize?: number;
   batchInterval?: number;
   maxQueueSize?: number;
@@ -38,6 +46,8 @@ export class AnalyticsMiddleware {
   constructor(config: AnalyticsConfig = {}) {
     this.config = {
       webhookUrl: config.webhookUrl || "",
+      webhookSecret: config.webhookSecret || "",
+      replayWindowMs: config.replayWindowMs || 5 * 60 * 1000,
       batchSize: config.batchSize || 10,
       batchInterval: config.batchInterval || 5000, // 5 seconds
       maxQueueSize: config.maxQueueSize || 1000,
@@ -127,29 +137,52 @@ export class AnalyticsMiddleware {
   /**
    * Send a batch of events to webhook
    */
-  private   async sendBatch(events: AnalyticsEvent[], attempt = 1): Promise<void> {
+  private async sendBatch(events: AnalyticsEvent[], attempt = 1): Promise<void> {
     if (!this.config.webhookUrl) return;
 
     try {
+      const validEvents = events.filter((event) =>
+        isTimestampInReplayWindow(event.timestamp, this.config.replayWindowMs)
+      );
+      if (validEvents.length === 0) {
+        if (this.config.debug) {
+          console.warn("[Analytics] Dropping stale batch outside replay window");
+        }
+        return;
+      }
+
+      const requestId = `analytics_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+      const timestamp = new Date().toISOString();
+      const body = JSON.stringify({
+        events: validEvents,
+        batchSize: validEvents.length,
+        sentAt: timestamp,
+      });
+      const signature = this.config.webhookSecret
+        ? await createHmacSha256Signature(
+            this.config.webhookSecret,
+            buildSignatureInput(timestamp, requestId, body)
+          )
+        : "";
+
       const response = await fetch(this.config.webhookUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "X-AXE-Request-Id": requestId,
+          "X-AXE-Timestamp": timestamp,
+          "X-AXE-Signature": signature ? `v1=${signature}` : "",
         },
-        body: JSON.stringify({
-          events,
-          batchSize: events.length,
-          sentAt: new Date().toISOString(),
-        }),
+        body,
       });
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      if (this.config.debug) {
-        console.log("[Analytics] Batch sent successfully", { batchSize: events.length });
-      }
+        if (this.config.debug) {
+          console.log("[Analytics] Batch sent successfully", { batchSize: validEvents.length });
+        }
     } catch (err) {
       if (attempt < this.config.retryAttempts) {
         if (this.config.debug) {

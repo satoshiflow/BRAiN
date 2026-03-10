@@ -16,7 +16,7 @@
  * widget.initialize();
  */
 
-export { FloatingAxe as default } from "@/components/FloatingAxe";
+export { FloatingAxe as default, FloatingAxe } from "@/components/FloatingAxe";
 export type {
   FloatingAxeConfig,
   FloatingAxeConfigRequired,

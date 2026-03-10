@@ -4,6 +4,12 @@
  * Sends events to external sites with retry logic, backoff, and queue persistence.
  */
 
+import {
+  buildSignatureInput,
+  createHmacSha256Signature,
+  isTimestampInReplayWindow,
+} from "@/src/webhooks/security";
+
 export type WebhookEventType =
   | "widget.opened"
   | "widget.closed"
@@ -25,6 +31,7 @@ export interface WebhookPayload {
 export interface WebhookConfig {
   url: string;
   secret?: string; // For HMAC signature verification
+  replayWindowMs?: number;
   timeout?: number;
   maxRetries?: number;
   backoffMultiplier?: number;
@@ -34,6 +41,7 @@ export interface WebhookConfig {
 export interface WebhookRequest {
   id: string;
   payload: WebhookPayload;
+  timestamp: string;
   attempt: number;
   nextRetryAt?: number;
 }
@@ -44,6 +52,7 @@ export interface WebhookRequest {
 export class WebhookSystem {
   private config: Required<WebhookConfig>;
   private queue: Map<string, WebhookRequest> = new Map();
+  private seenRequestIds: Map<string, number> = new Map();
   private processing = false;
   private processInterval: NodeJS.Timeout | null = null;
 
@@ -51,6 +60,7 @@ export class WebhookSystem {
     this.config = {
       url: config.url,
       secret: config.secret || "",
+      replayWindowMs: config.replayWindowMs || 5 * 60 * 1000,
       timeout: config.timeout || 10000,
       maxRetries: config.maxRetries || 3,
       backoffMultiplier: config.backoffMultiplier || 2,
@@ -69,6 +79,7 @@ export class WebhookSystem {
       const request: WebhookRequest = {
         id: `webhook_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
         payload,
+        timestamp: new Date().toISOString(),
         attempt: 0,
       };
 
@@ -96,6 +107,11 @@ export class WebhookSystem {
       const requests = Array.from(this.queue.values());
 
       for (const request of requests) {
+        if (!this.shouldProcessRequest(request)) {
+          this.queue.delete(request.id);
+          continue;
+        }
+
         // Check if should retry
         if (request.nextRetryAt && request.nextRetryAt > Date.now()) {
           continue;
@@ -112,6 +128,7 @@ export class WebhookSystem {
 
         try {
           await this.sendRequest(request);
+          this.seenRequestIds.set(request.id, Date.now());
           this.queue.delete(request.id);
           this.log("info", "Webhook sent successfully", {
             requestId: request.id,
@@ -142,17 +159,24 @@ export class WebhookSystem {
     const timeout = setTimeout(() => controller.abort(), this.config.timeout);
 
     try {
-      const signature = this.config.secret ? this.signPayload(JSON.stringify(request.payload)) : undefined;
+      const payloadJson = JSON.stringify(request.payload);
+      const signature = this.config.secret
+        ? await createHmacSha256Signature(
+            this.config.secret,
+            buildSignatureInput(request.timestamp, request.id, payloadJson)
+          )
+        : "";
 
       const response = await fetch(this.config.url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-AXE-Signature": signature || "",
-          "X-AXE-Request-ID": request.id,
+          "X-AXE-Signature": signature ? `v1=${signature}` : "",
+          "X-AXE-Request-Id": request.id,
+          "X-AXE-Timestamp": request.timestamp,
           "X-AXE-Retry-Attempt": String(request.attempt),
         },
-        body: JSON.stringify(request.payload),
+        body: payloadJson,
         signal: controller.signal,
       });
 
@@ -164,22 +188,34 @@ export class WebhookSystem {
     }
   }
 
-  /**
-   * Create HMAC signature for payload
-   */
-  private signPayload(payload: string): string {
-    if (!this.config.secret) return "";
+  private shouldProcessRequest(request: WebhookRequest): boolean {
+    this.pruneReplayCache();
 
-    // Simple signature (in production, use proper HMAC-SHA256)
-    // This is a placeholder implementation
-    const encoder = new TextEncoder();
-    const data = encoder.encode(this.config.secret + payload);
-    let hash = 0;
-    for (let i = 0; i < data.length; i++) {
-      hash = (hash << 5) - hash + data[i];
-      hash = hash & hash; // Convert to 32bit integer
+    if (!isTimestampInReplayWindow(request.timestamp, this.config.replayWindowMs)) {
+      this.log("warn", "Dropping webhook outside replay window", {
+        requestId: request.id,
+        timestamp: request.timestamp,
+      });
+      return false;
     }
-    return Math.abs(hash).toString(16);
+
+    if (this.seenRequestIds.has(request.id)) {
+      this.log("warn", "Dropping replayed webhook request id", {
+        requestId: request.id,
+      });
+      return false;
+    }
+
+    return true;
+  }
+
+  private pruneReplayCache(): void {
+    const cutoff = Date.now() - this.config.replayWindowMs;
+    for (const [requestId, seenAt] of this.seenRequestIds.entries()) {
+      if (seenAt < cutoff) {
+        this.seenRequestIds.delete(requestId);
+      }
+    }
   }
 
   /**
@@ -225,6 +261,7 @@ export class WebhookSystem {
    */
   clear(): void {
     this.queue.clear();
+    this.seenRequestIds.clear();
   }
 
   /**
@@ -235,6 +272,7 @@ export class WebhookSystem {
       clearInterval(this.processInterval);
     }
     this.queue.clear();
+    this.seenRequestIds.clear();
   }
 
   /**

@@ -3,12 +3,14 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { X, Send, MessageCircle, Minimize2 } from "lucide-react";
 import type { FloatingAxeConfig, FloatingAxeInstance, AXEWidgetEvent } from "@/lib/embedConfig";
+import type { PluginHook, PluginHookHandler } from "@/src/plugins/types";
 import {
   validateConfig,
   validateOrigin,
   normalizeOriginAllowlist,
   generateSessionId,
   createEmbeddingError,
+  isEmbeddingError,
 } from "@/lib/embedConfig";
 import { pluginRegistry, initializePlugins, destroyPlugins, type PluginContext } from "@/src/plugins";
 import slashCommandsPlugin from "@/src/plugins/slashCommands";
@@ -16,7 +18,7 @@ import { registerDynamicPlugin, unregisterDynamicPlugin } from "@/src/plugins/dy
 import { BrandingSystem } from "@/src/branding/brandingSystem";
 import { AnalyticsMiddleware } from "@/src/analytics/analyticsMiddleware";
 import { WebhookSystem, createWebhookPayload } from "@/src/webhooks/webhookSystem";
-import { OfflineManager, registerOfflineSW } from "@/src/offline/offlineManager";
+import { OfflineManager, registerOfflineSW, type StoredMessage, type SyncState } from "@/src/offline/offlineManager";
 import { postAxeChat } from "@/lib/api";
 import type { AxeChatRequest } from "@/lib/contracts";
 import { getDefaultModel } from "@/lib/config";
@@ -54,6 +56,8 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [isInitialized, setIsInitialized] = useState(false);
+    const [syncState, setSyncState] = useState<SyncState>("synced");
+    const [pendingSyncCount, setPendingSyncCount] = useState(0);
     const [sessionId] = useState(() => config.sessionId || generateSessionId());
 
     // Refs
@@ -99,6 +103,15 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
 
     // Initialize widget
     useEffect(() => {
+      const handleSyncState = (event: Event) => {
+        const customEvent = event as CustomEvent<{ sessionId: string; state: SyncState; pending: number }>;
+        if (customEvent.detail?.sessionId !== sessionId) {
+          return;
+        }
+        setSyncState(customEvent.detail.state);
+        setPendingSyncCount(customEvent.detail.pending);
+      };
+
       const initializeWidget = async () => {
         try {
           log("info", "Initializing FloatingAxe widget");
@@ -142,6 +155,7 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
 
           analyticsRef.current = new AnalyticsMiddleware({
             webhookUrl: config.analytics?.webhookUrl,
+            webhookSecret: config.analytics?.webhookSecret || config.webhookSecret,
             batchSize: config.analytics?.batchSize,
             batchInterval: config.analytics?.batchInterval,
             debug: config.debug,
@@ -150,24 +164,48 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
           if (config.webhookUrl) {
             webhookRef.current = new WebhookSystem({
               url: config.webhookUrl,
+              secret: config.webhookSecret,
               debug: config.debug,
             });
           }
 
           offlineRef.current = new OfflineManager(sessionId);
+          setSyncState(offlineRef.current.getSyncState());
+          setPendingSyncCount(offlineRef.current.getPendingSyncCount());
           await registerOfflineSW();
 
           // Register built-in plugin
-          pluginRegistry.register(slashCommandsPlugin);
+          try {
+            pluginRegistry.register(slashCommandsPlugin);
+          } catch (pluginErr) {
+            log("error", "Built-in plugin registration failed", pluginErr);
+            emit(
+              "error",
+              createEmbeddingError("PLUGIN_LOAD_FAILED", "Built-in plugin registration failed", {
+                pluginId: slashCommandsPlugin.manifest.id,
+              })
+            );
+          }
 
           // Register user-provided plugins
           if (config.plugins && config.plugins.length > 0) {
             log("debug", `Registering ${config.plugins.length} user plugins`);
             for (const manifest of config.plugins) {
-              await registerDynamicPlugin({
+              const registration = await registerDynamicPlugin({
                 manifest,
                 hooks: {},
               });
+              if (!registration.success) {
+                log("warn", `Plugin registration failed: ${manifest.id}`, registration.error);
+                emit(
+                  "error",
+                  createEmbeddingError(
+                    "PLUGIN_LOAD_FAILED",
+                    registration.error || `Plugin registration failed for ${manifest.id}`,
+                    { pluginId: manifest.id }
+                  )
+                );
+              }
             }
           }
 
@@ -191,12 +229,10 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
 
           log("info", "FloatingAxe widget initialized successfully");
         } catch (err) {
-          const embedError =
-            err instanceof Error
-              ? createEmbeddingError(
-                  err.message.includes("Origin") ? "ORIGIN_MISMATCH" : "CONFIG_INVALID",
-                  err.message
-                )
+          const embedError = isEmbeddingError(err)
+            ? err
+            : err instanceof Error
+              ? createEmbeddingError("UNKNOWN", err.message)
               : createEmbeddingError("UNKNOWN", "Initialization failed");
 
           log("error", embedError.message, embedError.details);
@@ -207,8 +243,15 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
 
       initializeWidget();
 
+      if (typeof window !== "undefined") {
+        window.addEventListener("axe-sync-state", handleSyncState);
+      }
+
       // Cleanup on unmount
       return () => {
+        if (typeof window !== "undefined") {
+          window.removeEventListener("axe-sync-state", handleSyncState);
+        }
         destroyPlugins().catch((err) => log("error", "Plugin cleanup failed", err));
         analyticsRef.current?.destroy().catch((err) => log("error", "Analytics cleanup failed", err));
         webhookRef.current?.destroy();
@@ -216,12 +259,59 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
       };
     }, [config, sessionId, log, emit]);
 
+    const replayOfflineQueue = useCallback(async () => {
+      if (!offlineRef.current || !offlineRef.current.isOnlineNow()) {
+        return;
+      }
+
+      await offlineRef.current.replayQueue(async (storedMessage: StoredMessage) => {
+        if (storedMessage.role !== "user") {
+          return;
+        }
+
+        const replayRequest: AxeChatRequest = {
+          model: DEFAULT_MODEL,
+          messages: [
+            {
+              role: "user",
+              content: storedMessage.content,
+            },
+          ],
+          temperature: 0.7,
+        };
+
+        await postAxeChat(replayRequest, {
+          "X-App-Id": config.appId,
+          "X-Session-Id": sessionId,
+        });
+      });
+    }, [config.appId, sessionId]);
+
+    useEffect(() => {
+      const handleReplayTrigger = () => {
+        replayOfflineQueue().catch((syncError) => {
+          log("warn", "Offline replay failed", syncError);
+        });
+      };
+
+      if (typeof window !== "undefined") {
+        window.addEventListener("axe-sync", handleReplayTrigger);
+      }
+
+      return () => {
+        if (typeof window !== "undefined") {
+          window.removeEventListener("axe-sync", handleReplayTrigger);
+        }
+      };
+    }, [replayOfflineQueue, log]);
+
     // Handle sending messages
     const handleSendMessage = useCallback(
       async (content: string) => {
         if (!content.trim() || loading) return;
 
         try {
+          const online = offlineRef.current?.isOnlineNow() ?? true;
           setError(null);
           const newMessage: Message = {
             id: `user_${Date.now()}`,
@@ -237,7 +327,7 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
             role: newMessage.role,
             content: newMessage.content,
             timestamp: newMessage.timestamp.getTime(),
-            synced: false,
+            synced: online,
           });
           analyticsRef.current?.track({
             eventName: "message.sent",
@@ -256,7 +346,24 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
           if (content.startsWith("/")) {
             const [cmd, ...args] = content.slice(1).split(" ");
             log("debug", "Handling slash command", { cmd, args });
-            // Command routing handled by plugin registry
+
+            const commandResult = await pluginRegistry.handleCommand(cmd, args);
+            if (typeof commandResult === "string") {
+              const commandMessage: Message = {
+                id: `assistant_cmd_${Date.now()}`,
+                role: "assistant",
+                content: commandResult,
+                timestamp: new Date(),
+              };
+              setMessages((prev) => [...prev, commandMessage]);
+            }
+
+            return;
+          }
+
+          if (!online) {
+            setError("Offline: message queued and will sync automatically when connection is restored.");
+            emit("message-sent", newMessage);
             return;
           }
 
@@ -382,11 +489,11 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
 
         isOpen: () => isOpen,
 
-        registerPlugin: async (manifest) => {
+        registerPlugin: async (manifest, hooks: Partial<Record<PluginHook, PluginHookHandler<unknown, unknown>>> = {}) => {
           log("debug", "registerPlugin() called", { pluginId: manifest.id });
           const result = await registerDynamicPlugin({
             manifest,
-            hooks: {},
+            hooks,
           });
           if (!result.success) {
             throw new Error(result.error || `Failed to register plugin ${manifest.id}`);
@@ -459,6 +566,14 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
     const buttonStyle = config.branding?.primaryColor
       ? { background: `linear-gradient(135deg, ${config.branding.primaryColor}, ${config.branding.secondaryColor || config.branding.primaryColor})` }
       : undefined;
+    const syncBadge = {
+      offline: { label: "offline", className: "bg-amber-100 text-amber-700" },
+      retrying: {
+        label: `retrying${pendingSyncCount > 0 ? ` (${pendingSyncCount})` : ""}`,
+        className: "bg-blue-100 text-blue-700",
+      },
+      synced: { label: "synced", className: "bg-emerald-100 text-emerald-700" },
+    }[syncState];
 
     return (
       <div className={`fixed ${positionClasses[position]} z-50 font-sans`}>
@@ -494,7 +609,12 @@ export const FloatingAxe = React.forwardRef<FloatingAxeInstance, FloatingAxeConf
             <div className={`flex items-center justify-between p-4 ${
               theme === "dark" ? "bg-gray-800 border-gray-700" : "bg-blue-50 border-blue-100"
             } border-b`}>
-              <h2 className="font-semibold text-sm">{headerTitle}</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="font-semibold text-sm">{headerTitle}</h2>
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${syncBadge.className}`}>
+                  {syncBadge.label}
+                </span>
+              </div>
               <div className="flex gap-2">
                 <button
                   onClick={() => setIsOpen(false)}

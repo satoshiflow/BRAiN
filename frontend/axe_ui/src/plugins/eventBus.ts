@@ -2,6 +2,23 @@ import type { PluginContext } from "./types";
 
 type EventCallback<T = unknown> = (data: T, context: PluginContext) => void | Promise<void>;
 
+const EVENT_HANDLER_TIMEOUT_MS = 3000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timeoutId: NodeJS.Timeout | null = null;
+
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error(`Plugin event handler timed out after ${ms}ms`)), ms);
+    }),
+  ]).finally(() => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  });
+}
+
 export interface AxeEventMap {
   "message.received": { role: "user" | "assistant"; content: string; id: string };
   "message.sent": { role: "user" | "assistant"; content: string; id: string };
@@ -39,11 +56,11 @@ class PluginEventBus {
     const callbacks = this.listeners.get(event);
     if (!callbacks) return;
     const promises = Array.from(callbacks).map((cb) =>
-      Promise.resolve(cb(data, context)).catch((err) =>
+      withTimeout(Promise.resolve(cb(data, context)), EVENT_HANDLER_TIMEOUT_MS).catch((err) =>
         console.error(`[PluginEventBus] ${event} handler error:`, err),
-      ),
+      )
     );
-    await Promise.all(promises);
+    await Promise.allSettled(promises);
   }
 }
 

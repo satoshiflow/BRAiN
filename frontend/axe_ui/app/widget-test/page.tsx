@@ -6,7 +6,7 @@
 'use client';
 
 import React from 'react';
-import { FloatingAxe } from '../../src/components/FloatingAxe';
+import FloatingAxe from '@/src/widget';
 
 export default function WidgetTestPage() {
   return (
@@ -128,20 +128,11 @@ export default function WidgetTestPage() {
       {/* FloatingAxe Widget */}
       <FloatingAxe
         appId="widget-test"
-        backendUrl={process.env.NEXT_PUBLIC_BRAIN_API_BASE || 'http://localhost:8000'}
-        mode="assistant"
+        backendUrl={process.env.NEXT_PUBLIC_BRAIN_API_BASE || 'http://127.0.0.1:8000'}
+        originAllowlist={typeof window !== 'undefined' ? window.location.origin : 'http://127.0.0.1:3002'}
         theme="dark"
-        position={{ bottom: 20, right: 20 }}
-        defaultOpen={false}
-        locale="de"
-        extraContext={{
-          page: 'widget-test',
-          demo: true,
-          phase: 1
-        }}
-        onEvent={(event) => {
-          console.log('AXE Event:', event);
-        }}
+        position="bottom-right"
+        debug
       />
     </div>
   );

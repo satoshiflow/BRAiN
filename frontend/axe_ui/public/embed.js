@@ -16,6 +16,28 @@
  */
 
 (function () {
+  const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+
+  function inferDefaultBackendUrl() {
+    if (typeof window !== "undefined" && LOCAL_HOSTS.has(window.location.hostname)) {
+      return "http://127.0.0.1:8000";
+    }
+
+    return "https://api.brain.falklabs.de";
+  }
+
+  function resolveBackendUrl(rawBackendUrl) {
+    const candidate = (rawBackendUrl || "").trim();
+    const source = candidate || inferDefaultBackendUrl();
+
+    try {
+      const parsed = new URL(source);
+      return parsed.origin;
+    } catch {
+      return null;
+    }
+  }
+
   // Prevent multiple initializations
   if (window.AXEWidget && window.AXEWidget._initialized) {
     console.warn("[AXE Embed] Widget already initialized");
@@ -34,7 +56,7 @@
 
     const config = {
       appId: script.getAttribute("data-app-id"),
-      backendUrl: script.getAttribute("data-backend-url"),
+      backendUrl: resolveBackendUrl(script.getAttribute("data-backend-url")),
       originAllowlist: script.getAttribute("data-origin-allowlist"),
       debug: script.getAttribute("data-debug") === "true" || DEBUG_MODE,
       position: script.getAttribute("data-position") || "bottom-right",
@@ -45,14 +67,20 @@
         headerText: script.getAttribute("data-branding-header-text") || "AXE Chat",
       },
       webhookUrl: script.getAttribute("data-webhook-url"),
+      webhookSecret: script.getAttribute("data-webhook-secret") || "",
       plugins: parsePlugins(script.getAttribute("data-plugins")),
     };
 
     // Validate required attributes
-    if (!config.appId || !config.backendUrl || !config.originAllowlist) {
+    if (!config.appId || !config.originAllowlist) {
       console.error(
-        "[AXE Embed] Missing required attributes: data-app-id, data-backend-url, data-origin-allowlist"
+        "[AXE Embed] Missing required attributes: data-app-id, data-origin-allowlist"
       );
+      return null;
+    }
+
+    if (!config.backendUrl) {
+      console.error("[AXE Embed] Invalid backend URL; expected absolute URL");
       return null;
     }
 
@@ -81,6 +109,102 @@
     }
   }
 
+  function parseOriginAllowlistEntries(value) {
+    return String(value || "")
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+  }
+
+  function parseAllowlistEntry(entry) {
+    if (entry.startsWith("http://") || entry.startsWith("https://")) {
+      const url = new URL(entry);
+      if (url.pathname !== "/" || url.search || url.hash) {
+        return { valid: false, reason: `Allowlist URL must be origin-only: ${entry}` };
+      }
+      return { valid: true, type: "origin", origin: url.origin };
+    }
+
+    if (entry.includes("/") || entry.includes("?") || entry.includes("#") || entry.includes("*")) {
+      return { valid: false, reason: `Invalid allowlist host entry: ${entry}` };
+    }
+
+    const url = new URL(`https://${entry}`);
+    const normalizedHost = url.port ? `${url.hostname}:${url.port}` : url.hostname;
+    if (normalizedHost.toLowerCase() !== entry.toLowerCase()) {
+      return { valid: false, reason: `Invalid allowlist host entry: ${entry}` };
+    }
+
+    return {
+      valid: true,
+      type: "host",
+      hostname: url.hostname.toLowerCase(),
+      port: url.port || null,
+    };
+  }
+
+  function validateCurrentOrigin(originAllowlistRaw) {
+    let currentUrl;
+
+    try {
+      currentUrl = new URL(window.location.origin);
+    } catch {
+      return {
+        valid: false,
+        code: "CONFIG_INVALID",
+        reason: `Invalid current origin: ${window.location.origin}`,
+      };
+    }
+
+    const entries = parseOriginAllowlistEntries(originAllowlistRaw);
+    if (entries.length === 0) {
+      return {
+        valid: false,
+        code: "CONFIG_INVALID",
+        reason: "originAllowlist has no valid entries",
+      };
+    }
+
+    for (const entry of entries) {
+      let parsed;
+      try {
+        parsed = parseAllowlistEntry(entry);
+      } catch {
+        return {
+          valid: false,
+          code: "CONFIG_INVALID",
+          reason: `Malformed allowlist entry: ${entry}`,
+        };
+      }
+
+      if (!parsed.valid) {
+        return {
+          valid: false,
+          code: "CONFIG_INVALID",
+          reason: parsed.reason,
+        };
+      }
+
+      if (parsed.type === "origin" && parsed.origin === currentUrl.origin) {
+        return { valid: true };
+      }
+
+      if (
+        parsed.type === "host" &&
+        parsed.hostname === currentUrl.hostname.toLowerCase() &&
+        (!parsed.port || parsed.port === currentUrl.port)
+      ) {
+        return { valid: true };
+      }
+    }
+
+    return {
+      valid: false,
+      code: "ORIGIN_MISMATCH",
+      reason: `Origin ${currentUrl.origin} not in allowlist`,
+    };
+  }
+
   // Log helper
   function log(level, message, data) {
     const config = getScriptConfig() || {};
@@ -94,29 +218,80 @@
     }
   }
 
-  // Load React and ReactDOM from CDN
-  async function loadReactDependencies() {
-    return new Promise((resolve, reject) => {
-      log("info", "Loading React dependencies...");
+  function buildWebhookSignatureInput(timestamp, requestId, payloadJson) {
+    return `${timestamp}.${requestId}.${payloadJson}`;
+  }
 
-      // Load React
-      const reactScript = document.createElement("script");
-      reactScript.src = "https://unpkg.com/react@18/umd/react.production.min.js";
-      reactScript.crossOrigin = "anonymous";
-      reactScript.onload = () => {
-        // Load ReactDOM
-        const reactDomScript = document.createElement("script");
-        reactDomScript.src = "https://unpkg.com/react-dom@18/umd/react-dom.production.min.js";
-        reactDomScript.crossOrigin = "anonymous";
-        reactDomScript.onload = () => {
-          log("info", "React dependencies loaded");
+  function toHex(buffer) {
+    const bytes = new Uint8Array(buffer);
+    return Array.from(bytes)
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  async function createWebhookSignature(secret, message) {
+    if (!secret || !window.crypto || !window.crypto.subtle) {
+      return "";
+    }
+
+    const encoder = new TextEncoder();
+    const key = await window.crypto.subtle.importKey(
+      "raw",
+      encoder.encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    const signatureBuffer = await window.crypto.subtle.sign("HMAC", key, encoder.encode(message));
+    return toHex(signatureBuffer);
+  }
+
+  function emitTelemetry(event, data) {
+    const payload = {
+      event,
+      timestamp: new Date().toISOString(),
+      data: data || {},
+    };
+
+    log("info", `Telemetry: ${event}`, payload.data);
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent("axe:embed-telemetry", {
+          detail: payload,
+        })
+      );
+    } catch (error) {
+      log("warn", "Telemetry event dispatch failed", { event, error: String(error) });
+    }
+  }
+
+  // Load real widget runtime bundle
+  async function loadWidgetRuntimeBundle() {
+    return new Promise((resolve, reject) => {
+      if (window.AXEWidgetRuntime && typeof window.AXEWidgetRuntime.mount === "function") {
+        resolve();
+        return;
+      }
+
+      const runtimeScript = document.createElement("script");
+      const script = document.currentScript || document.scripts[document.scripts.length - 1];
+      const scriptSrc = script && script.src ? script.src : "";
+      const runtimeSrc = scriptSrc ? scriptSrc.replace(/embed\.js(?:\?.*)?$/, "widget-runtime.js") : "/widget-runtime.js";
+
+      runtimeScript.src = runtimeSrc;
+      runtimeScript.async = true;
+      runtimeScript.onload = () => {
+        if (window.AXEWidgetRuntime && typeof window.AXEWidgetRuntime.mount === "function") {
+          log("info", "Loaded real widget runtime bundle", { runtimeSrc });
           resolve();
-        };
-        reactDomScript.onerror = reject;
-        document.head.appendChild(reactDomScript);
+          return;
+        }
+
+        reject(new Error("Runtime loaded without mount() API"));
       };
-      reactScript.onerror = reject;
-      document.head.appendChild(reactScript);
+      runtimeScript.onerror = (error) => reject(error);
+      document.head.appendChild(runtimeScript);
     });
   }
 
@@ -125,8 +300,22 @@
     const config = getScriptConfig();
     if (!config) return;
 
+    const originValidation = validateCurrentOrigin(config.originAllowlist);
+    if (!originValidation.valid) {
+      emitTelemetry("embed_init_blocked", {
+        appId: config.appId,
+        code: originValidation.code,
+        reason: originValidation.reason,
+      });
+      console.error(`[AXE Embed] ${originValidation.code}: ${originValidation.reason}`);
+      return;
+    }
+
     try {
       log("info", "Starting AXE Widget initialization", { appId: config.appId });
+      emitTelemetry("embed_init_start", {
+        appId: config.appId,
+      });
 
       // Wait for DOM to be ready
       if (document.readyState === "loading") {
@@ -148,23 +337,42 @@
       container.setAttribute("data-testid", "axe-widget-container");
       document.body.appendChild(container);
 
-      // Attempt to load React for full component
+      let runtimeInstance = null;
+
+      // Attempt to load and mount real widget runtime first
       try {
-        await loadReactDependencies();
-        log("info", "React loaded, rendering FloatingAxe component");
-        // In production, this would load the FloatingAxe component
-        // For now, use fallback
-        createFallbackWidget(container, config);
+        await loadWidgetRuntimeBundle();
+        runtimeInstance = window.AXEWidgetRuntime.mount(container, config, {
+          emit: (event, data) => {
+            if (window.AXEWidget && window.AXEWidget.emit) {
+              window.AXEWidget.emit(event, data);
+            }
+          },
+          log,
+        });
+        log("info", "Real widget runtime mounted");
+        emitTelemetry("runtime_mount_success", {
+          appId: config.appId,
+          mode: "real-runtime",
+        });
       } catch (e) {
-        log("warn", "React loading failed, using fallback widget", e);
+        log("warn", "Real widget runtime unavailable, using fallback widget", e);
+        emitTelemetry("runtime_mount_fallback", {
+          appId: config.appId,
+          reason: e instanceof Error ? e.message : String(e),
+        });
         createFallbackWidget(container, config);
       }
 
       // Initialize widget API
-      createWidgetAPI(container, config);
+      createWidgetAPI(container, config, runtimeInstance);
     } catch (error) {
       console.error("[AXE Embed] Widget initialization failed:", error);
-      createWidgetAPI(null, config); // Create API with null widget for error handling
+      emitTelemetry("embed_init_failed", {
+        appId: config.appId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      createWidgetAPI(null, config, null); // Create API with null widget for error handling
     }
   }
 
@@ -365,7 +573,7 @@
   }
 
   // Create widget API and event system
-  function createWidgetAPI(container, config) {
+  function createWidgetAPI(container, config, runtimeInstance) {
     const eventListeners = {};
     let isOpen = false;
     const sessionId = `axe_session_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
@@ -377,26 +585,44 @@
 
       // Lifecycle
       open() {
+        if (runtimeInstance && typeof runtimeInstance.open === "function") {
+          runtimeInstance.open();
+          isOpen = runtimeInstance.isOpen ? runtimeInstance.isOpen() : true;
+          return;
+        }
+
         if (container) {
           isOpen = true;
           showPanel(container, config);
-          this.emit("open");
         }
       },
 
       close() {
+        if (runtimeInstance && typeof runtimeInstance.close === "function") {
+          runtimeInstance.close();
+          isOpen = runtimeInstance.isOpen ? runtimeInstance.isOpen() : false;
+          return;
+        }
+
         if (container) {
           isOpen = false;
           hidePanel(container);
-          this.emit("close");
         }
       },
 
       isOpen() {
+        if (runtimeInstance && typeof runtimeInstance.isOpen === "function") {
+          return runtimeInstance.isOpen();
+        }
+
         return isOpen;
       },
 
       destroy() {
+        if (runtimeInstance && typeof runtimeInstance.destroy === "function") {
+          runtimeInstance.destroy();
+        }
+
         if (container && container.parentNode) {
           container.parentNode.removeChild(container);
         }
@@ -406,6 +632,11 @@
 
       // Messaging
       sendMessage(content) {
+        if (runtimeInstance && typeof runtimeInstance.sendMessage === "function") {
+          runtimeInstance.sendMessage(content);
+          return;
+        }
+
         log("info", "Message sent", { content });
         this.emit("message-sent", { content, sessionId });
 
@@ -457,20 +688,35 @@
       trackEvent(eventName, data) {
         if (!config.webhookUrl) return;
 
+        const requestId = `embed_webhook_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+        const timestamp = new Date().toISOString();
         const payload = {
           appId: config.appId,
           sessionId,
           event: eventName,
           data,
-          timestamp: new Date().toISOString(),
+          timestamp,
         };
 
-        // Send webhook asynchronously
-        fetch(config.webhookUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        }).catch((e) => log("warn", "Webhook send failed", e));
+        const payloadJson = JSON.stringify(payload);
+
+        createWebhookSignature(
+          config.webhookSecret,
+          buildWebhookSignatureInput(timestamp, requestId, payloadJson)
+        )
+          .then((signature) => {
+            return fetch(config.webhookUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-AXE-Request-Id": requestId,
+                "X-AXE-Timestamp": timestamp,
+                "X-AXE-Signature": signature ? `v1=${signature}` : "",
+              },
+              body: payloadJson,
+            });
+          })
+          .catch((e) => log("warn", "Webhook send failed", e));
       },
 
       // Branding
@@ -485,6 +731,10 @@
 
     window.AXEWidget = widgetAPI;
     log("info", "Widget API initialized");
+    emitTelemetry("widget_api_ready", {
+      appId: config.appId,
+      runtime: runtimeInstance ? "real-runtime" : "fallback",
+    });
     widgetAPI.emit("ready");
   }
 

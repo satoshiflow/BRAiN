@@ -21,6 +21,13 @@ export interface OfflineSession {
   lastModifiedAt: number;
 }
 
+export type SyncState = "offline" | "retrying" | "synced";
+
+export interface ReplayResult {
+  replayed: number;
+  failed: number;
+}
+
 const STORAGE_PREFIX = "axe_offline_";
 const MESSAGE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
@@ -31,15 +38,20 @@ export class OfflineManager {
   private sessionId: string;
   private isOnline = typeof navigator !== "undefined" ? navigator.onLine : true;
   private syncQueue: StoredMessage[] = [];
+  private replayInProgress = false;
+  private onlineHandler = () => this.handleOnline();
+  private offlineHandler = () => this.handleOffline();
 
   constructor(sessionId: string) {
     this.sessionId = sessionId;
 
     // Monitor online/offline status
     if (typeof window !== "undefined") {
-      window.addEventListener("online", () => this.handleOnline());
-      window.addEventListener("offline", () => this.handleOffline());
+      window.addEventListener("online", this.onlineHandler);
+      window.addEventListener("offline", this.offlineHandler);
     }
+
+    this.syncQueue = this.getUnsyncedMessages();
   }
 
   /**
@@ -52,8 +64,17 @@ export class OfflineManager {
       }
 
       const session = this.getSession() || this.createSession();
-      session.messages.push(message);
+      const existingIndex = session.messages.findIndex((stored) => stored.id === message.id);
+      if (existingIndex >= 0) {
+        session.messages[existingIndex] = message;
+      } else {
+        session.messages.push(message);
+      }
       session.lastModifiedAt = Date.now();
+
+      if (!message.synced) {
+        this.enqueueForSync(message);
+      }
 
       localStorage.setItem(this.getSessionKey(), JSON.stringify(session));
       return true;
@@ -102,6 +123,8 @@ export class OfflineManager {
       message.synced = true;
       session.lastModifiedAt = Date.now();
       localStorage.setItem(this.getSessionKey(), JSON.stringify(session));
+      this.syncQueue = this.syncQueue.filter((m) => m.id !== messageId);
+      this.emitSyncState(this.isOnline ? "synced" : "offline");
 
       return true;
     } catch (error) {
@@ -170,6 +193,7 @@ export class OfflineManager {
   private handleOnline(): void {
     this.isOnline = true;
     console.log("[OfflineManager] Online detected");
+    this.emitSyncState("retrying");
 
     // Trigger sync event
     if (typeof window !== "undefined") {
@@ -183,6 +207,7 @@ export class OfflineManager {
   private handleOffline(): void {
     this.isOnline = false;
     console.log("[OfflineManager] Offline detected");
+    this.emitSyncState("offline");
 
     // Trigger offline event
     if (typeof window !== "undefined") {
@@ -228,6 +253,80 @@ export class OfflineManager {
     return `${STORAGE_PREFIX}${this.sessionId}`;
   }
 
+  private enqueueForSync(message: StoredMessage): void {
+    if (!this.syncQueue.some((queued) => queued.id === message.id)) {
+      this.syncQueue.push(message);
+    }
+    this.emitSyncState(this.isOnline ? "retrying" : "offline");
+  }
+
+  private emitSyncState(state: SyncState): void {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("axe-sync-state", {
+          detail: {
+            sessionId: this.sessionId,
+            state,
+            pending: this.syncQueue.length,
+          },
+        })
+      );
+    }
+  }
+
+  getSyncState(): SyncState {
+    if (!this.isOnline) {
+      return "offline";
+    }
+    if (this.replayInProgress || this.syncQueue.length > 0) {
+      return "retrying";
+    }
+    return "synced";
+  }
+
+  getPendingSyncCount(): number {
+    return this.syncQueue.length;
+  }
+
+  async replayQueue(
+    replayHandler: (message: StoredMessage) => Promise<void>,
+    options?: { perMessageTimeoutMs?: number }
+  ): Promise<ReplayResult> {
+    if (!this.isOnline || this.replayInProgress) {
+      return { replayed: 0, failed: 0 };
+    }
+
+    this.replayInProgress = true;
+    this.emitSyncState("retrying");
+
+    const timeoutMs = options?.perMessageTimeoutMs ?? 10000;
+    let replayed = 0;
+    let failed = 0;
+
+    try {
+      const queueSnapshot = [...this.syncQueue];
+      for (const message of queueSnapshot) {
+        try {
+          await Promise.race([
+            replayHandler(message),
+            new Promise<never>((_, reject) => {
+              setTimeout(() => reject(new Error("Replay timeout")), timeoutMs);
+            }),
+          ]);
+          this.markAsSynced(message.id);
+          replayed += 1;
+        } catch (error) {
+          failed += 1;
+          console.warn("[OfflineManager] Replay failed for message", message.id, error);
+        }
+      }
+      return { replayed, failed };
+    } finally {
+      this.replayInProgress = false;
+      this.emitSyncState(this.getSyncState());
+    }
+  }
+
   /**
    * Export session data
    */
@@ -258,8 +357,8 @@ export class OfflineManager {
   destroy(): void {
     // Cleanup event listeners
     if (typeof window !== "undefined") {
-      window.removeEventListener("online", () => this.handleOnline());
-      window.removeEventListener("offline", () => this.handleOffline());
+      window.removeEventListener("online", this.onlineHandler);
+      window.removeEventListener("offline", this.offlineHandler);
     }
   }
 }
