@@ -25,9 +25,16 @@ fi
 echo "✅ Docker available"
 echo ""
 
+COMPOSE_CMD=""
+if command -v docker-compose &> /dev/null; then
+    COMPOSE_CMD="docker-compose"
+else
+    COMPOSE_CMD="docker compose"
+fi
+
 # Start infrastructure services
 echo "🚀 Starting infrastructure services (postgres, redis, qdrant)..."
-docker-compose -f docker-compose.dev.yml up -d postgres redis qdrant
+$COMPOSE_CMD -f docker-compose.dev.yml up -d postgres redis qdrant
 
 # Wait for services to be healthy
 echo "⏳ Waiting for services to become healthy..."
@@ -50,14 +57,14 @@ done
 
 if [ $elapsed -ge $max_wait ]; then
     echo "⚠️  Warning: Services did not become healthy within ${max_wait}s"
-    echo "   Check status: docker-compose -f docker-compose.dev.yml ps"
+    echo "   Check status: $COMPOSE_CMD -f docker-compose.dev.yml ps"
 fi
 
 echo ""
 echo "📦 Infrastructure Services Running:"
-echo "   - PostgreSQL: localhost:5433"
-echo "   - Redis: localhost:6380"
-echo "   - Qdrant: localhost:6334"
+echo "   - PostgreSQL: localhost:${POSTGRES_PORT_HOST:-5432}"
+echo "   - Redis: localhost:${REDIS_PORT_HOST:-6379}"
+echo "   - Qdrant: localhost:${QDRANT_HTTP_PORT_HOST:-6334}"
 echo ""
 echo "🎯 Next Steps:"
 echo ""
@@ -75,6 +82,6 @@ echo "   - Backend Docs: http://127.0.0.1:8000/docs"
 echo "   - AXE UI: http://127.0.0.1:3002"
 echo ""
 echo "   To stop services:"
-echo "   $ docker-compose -f docker-compose.dev.yml down"
+echo "   $ $COMPOSE_CMD -f docker-compose.dev.yml down"
 echo ""
 echo "✅ Infrastructure ready for local development"

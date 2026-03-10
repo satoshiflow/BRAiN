@@ -39,6 +39,7 @@ PYTHONPATH=. pytest tests/test_immune_system.py -q -x --disable-warnings
 
 cd "$ROOT"
 echo "[gate] guardrails"
+python3 scripts/check_no_changes_deprecated_modules.py
 python3 scripts/check_no_legacy_event_bus.py
 python3 scripts/check_no_utcnow_auth.py
 python3 scripts/check_no_utcnow_planning.py

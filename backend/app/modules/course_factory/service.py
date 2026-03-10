@@ -52,6 +52,14 @@ from app.modules.ir_governance import (
     IRAction,
     IRProvider,
 )
+from app.modules.opencode_repair.schemas import (
+    OpenCodeJobConstraints,
+    OpenCodeJobContext,
+    OpenCodeJobContractCreateRequest,
+    OpenCodeJobMode,
+    OpenCodeJobScope,
+)
+from app.modules.opencode_repair.service import get_opencode_repair_service
 
 # EventStream Integration (Sprint 1)
 from mission_control_core.core.event_stream import EventStream, Event, EventType
@@ -91,6 +99,7 @@ class CourseFactoryService:
 
         # EventStream (Sprint 1 Migration)
         self.event_stream = event_stream
+        self.opencode_dispatcher = get_opencode_repair_service(event_stream=event_stream)
 
     async def generate_course(
         self, request: CourseGenerationRequest
@@ -459,12 +468,39 @@ class CourseFactoryService:
             f"[CourseFactory] Deploying course to staging: {request.staging_domain}"
         )
 
-        # For MVP: Return simulated URL
-        # Future: Integrate with WebGenesis deployment
-        staging_url = f"https://{request.staging_domain}"
+        staging_domain = request.staging_domain or "course-factory.staging"
+        staging_url = f"https://{staging_domain}"
+
+        contract = OpenCodeJobContractCreateRequest(
+            correlation_id=f"cf-{uuid.uuid4().hex[:16]}",
+            mode=OpenCodeJobMode.BUILD,
+            scope=OpenCodeJobScope(
+                module="course_factory",
+                entity_id=outline.metadata.course_id,
+                tenant_id=request.tenant_id,
+            ),
+            constraints=OpenCodeJobConstraints(
+                timeout_seconds=900,
+                max_iterations=1,
+                risk_level="low",
+                approval_required=False,
+                blast_radius_limit=1,
+            ),
+            context=OpenCodeJobContext(
+                trigger_event="course.deploy.staging.requested",
+                original_request={
+                    "course_id": outline.metadata.course_id,
+                    "staging_domain": staging_domain,
+                    "has_landing_page": landing_page is not None,
+                },
+            ),
+            created_by="course_factory_service",
+        )
+        job = await self.opencode_dispatcher.dispatch_job_contract(contract, db=None)
 
         logger.warning(
-            "[CourseFactory] Staging deployment simulated (WebGenesis integration pending)"
+            "[CourseFactory] Staging deployment queued via OpenCode job contract "
+            f"(job_id={job.job_id})"
         )
 
         return staging_url
