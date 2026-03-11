@@ -53,6 +53,7 @@ limiter = Limiter(key_func=get_remote_address)
 
 # AXE-specific rate limits
 AXE_CHAT_RATE_LIMIT = os.getenv("AXE_CHAT_RATE_LIMIT", "30/minute")  # 30 requests per minute
+AXE_ADMIN_RATE_LIMIT = os.getenv("AXE_ADMIN_RATE_LIMIT", "10/minute")
 
 # Security Constants
 MAX_MESSAGE_LENGTH = 10000
@@ -436,6 +437,7 @@ async def _emit_axe_admin_audit(
     resource_id: str,
     details: dict,
 ) -> None:
+    audit_required = os.getenv("AXE_ADMIN_AUDIT_REQUIRED", "false").lower() == "true"
     try:
         await write_unified_audit(
             event_type="axe.admin",
@@ -451,6 +453,15 @@ async def _emit_axe_admin_audit(
             db=db,
         )
     except Exception as exc:
+        if audit_required:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "error": "Audit unavailable",
+                    "message": "Admin action blocked because audit logging is required",
+                    "code": "AUDIT_UNAVAILABLE",
+                },
+            )
         logger.warning("AXE admin audit emit failed: %s", exc)
 
 
@@ -644,6 +655,7 @@ async def axe_provider_runtime(
     summary="Update active AXE LLM provider runtime",
     description="Updates LOCAL_LLM_MODE and optional FORCE_SANITIZATION_LEVEL without restart.",
 )
+@limiter.limit(AXE_ADMIN_RATE_LIMIT)
 async def axe_update_provider_runtime(
     payload: ProviderRuntimeUpdateRequest,
     request: Request,
@@ -753,6 +765,7 @@ async def axe_admin_sanitization_insights(
     response_model=CandidateDecisionResponse,
     summary="Approve AXE sanitization learning candidate",
 )
+@limiter.limit(AXE_ADMIN_RATE_LIMIT)
 async def axe_admin_approve_insight(
     candidate_id: str,
     request: Request,
@@ -794,6 +807,7 @@ async def axe_admin_approve_insight(
     response_model=CandidateDecisionResponse,
     summary="Reject AXE sanitization learning candidate",
 )
+@limiter.limit(AXE_ADMIN_RATE_LIMIT)
 async def axe_admin_reject_insight(
     candidate_id: str,
     request: Request,
@@ -835,6 +849,7 @@ async def axe_admin_reject_insight(
     response_model=RetentionRunResponse,
     summary="Run AXE retention cleanup",
 )
+@limiter.limit(AXE_ADMIN_RATE_LIMIT)
 async def axe_admin_retention_run(
     request: Request,
     db: AsyncSession = Depends(get_db),
@@ -868,6 +883,7 @@ async def axe_admin_retention_run(
     response_model=LearningGenerationResponse,
     summary="Generate AXE sanitization learning candidates",
 )
+@limiter.limit(AXE_ADMIN_RATE_LIMIT)
 async def axe_admin_generate_insights(
     request: Request,
     window_days: int = Query(7, ge=1, le=30),

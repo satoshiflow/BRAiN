@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional
@@ -40,9 +41,47 @@ class MappingEntryRecord:
 class AXEMappingRepository:
     """Stores privacy-safe mapping metadata and deanonymization outcomes."""
 
+    _ENTITY_TYPE_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
+    _ENTITY_TYPE_ALLOWLIST = {
+        "email",
+        "phone",
+        "ip",
+        "card",
+        "path",
+        "secret",
+    }
+
     def __init__(self) -> None:
         self._hash_key = os.getenv("AXE_MAPPING_HASH_KEY", "dev-axe-mapping-key")
         self._hash_key_version = int(os.getenv("AXE_MAPPING_HASH_KEY_VERSION", "1"))
+        self._hash_keys_by_version = self._load_hash_key_registry()
+
+    def _load_hash_key_registry(self) -> Dict[int, str]:
+        registry: Dict[int, str] = {}
+        csv_map = os.getenv("AXE_MAPPING_HASH_KEYS", "").strip()
+        if csv_map:
+            for item in csv_map.split(","):
+                if ":" not in item:
+                    continue
+                version_raw, key = item.split(":", 1)
+                try:
+                    version = int(version_raw.strip())
+                except ValueError:
+                    continue
+                cleaned_key = key.strip()
+                if cleaned_key:
+                    registry[version] = cleaned_key
+
+        current_key = self._hash_key.strip()
+        if current_key:
+            registry.setdefault(self._hash_key_version, current_key)
+        return registry
+
+    def _hash_key_for_version(self, key_version: int) -> str:
+        key = self._hash_keys_by_version.get(key_version)
+        if key:
+            return key
+        return self._hash_key
 
     def fingerprint_messages(self, messages: List[Dict[str, Any]]) -> str:
         payload = _json_dumps(messages).encode("utf-8")
@@ -51,14 +90,24 @@ class AXEMappingRepository:
     def fingerprint_text(self, value: str) -> str:
         return hashlib.sha256((value or "").encode("utf-8")).hexdigest()
 
-    def hash_value(self, value: str) -> str:
+    def hash_value(self, value: str, *, key_version: Optional[int] = None) -> str:
         normalized = (value or "").strip()
+        resolved_key_version = key_version if key_version is not None else self._hash_key_version
+        hash_key = self._hash_key_for_version(resolved_key_version)
         digest = hmac.new(
-            self._hash_key.encode("utf-8"),
+            hash_key.encode("utf-8"),
             normalized.encode("utf-8"),
             hashlib.sha256,
         )
         return digest.hexdigest()
+
+    def _sanitize_entity_type(self, entity_type: str) -> str:
+        normalized = (entity_type or "").strip().lower()
+        if normalized in self._ENTITY_TYPE_ALLOWLIST:
+            return normalized
+        if self._ENTITY_TYPE_PATTERN.match(normalized):
+            return normalized
+        return "unknown"
 
     def redact_preview(self, value: str, cap: int = 24) -> str:
         if not value:
@@ -72,12 +121,12 @@ class AXEMappingRepository:
         entries: List[MappingEntryRecord] = []
         for ordinal, placeholder in enumerate(sorted(replacements.keys())):
             original = replacements[placeholder]
-            entity_type = placeholder.strip("[]").split("_", 1)[0].lower()
+            entity_type = self._sanitize_entity_type(placeholder.strip("[]").split("_", 1)[0].lower())
             entries.append(
                 MappingEntryRecord(
                     placeholder=placeholder,
                     entity_type=entity_type,
-                    original_hash=self.hash_value(original),
+                    original_hash=self.hash_value(original, key_version=self._hash_key_version),
                     hash_key_version=self._hash_key_version,
                     preview_redacted=self.redact_preview(original),
                     ordinal=ordinal,
@@ -101,7 +150,7 @@ class AXEMappingRepository:
         principal_hash = self.hash_value(principal_id) if principal_id else None
         created_at = _utc_now()
         expires_at = created_at + timedelta(days=90)
-        await db.execute(
+        inserted = await db.execute(
             text(
                 """
                 INSERT INTO axe_mapping_sets (
@@ -112,7 +161,7 @@ class AXEMappingRepository:
                     :principal_hash, :message_fingerprint, :mapping_count, :created_at, :expires_at
                 )
                 ON CONFLICT (request_id, provider, message_fingerprint)
-                DO UPDATE SET mapping_count = EXCLUDED.mapping_count
+                DO NOTHING
                 RETURNING id
                 """
             ),
@@ -129,6 +178,10 @@ class AXEMappingRepository:
                 "expires_at": expires_at,
             },
         )
+        inserted_row = inserted.first()
+        if inserted_row:
+            inserted_mapping = dict(inserted_row._mapping)
+            return str(inserted_mapping.get("id", mapping_set_id))
         row = (await db.execute(
             text(
                 """
@@ -233,6 +286,34 @@ class AXEMappingRepository:
                 "created_at": _utc_now(),
             },
         )
+
+    async def get_next_attempt_no(
+        self,
+        db: AsyncSession,
+        *,
+        request_id: str,
+        mapping_set_id: str,
+    ) -> int:
+        row = (
+            await db.execute(
+                text(
+                    """
+                    SELECT COALESCE(MAX(attempt_no), 0) + 1 AS next_attempt
+                    FROM axe_deanonymization_attempts
+                    WHERE request_id = :request_id
+                      AND mapping_set_id = CAST(:mapping_set_id AS uuid)
+                    """
+                ),
+                {
+                    "request_id": request_id,
+                    "mapping_set_id": mapping_set_id,
+                },
+            )
+        ).first()
+        if row is None:
+            return 1
+        data = dict(row._mapping)
+        return int(data.get("next_attempt", 1))
 
     async def list_deanonymization_outcomes(
         self,

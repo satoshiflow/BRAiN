@@ -18,8 +18,12 @@ Operational guide for enabling and monitoring the AXE persistent-mapping learnin
 - `AXE_LEARNING_INTERVAL_SECONDS` (default `3600`)
 - `AXE_LEARNING_WINDOW_DAYS` (default `7`)
 - `AXE_LEARNING_MIN_SAMPLE_SIZE` (default `50`)
+- `AXE_LEARNING_LOCK_KEY` (default `742113908`, PostgreSQL advisory lock key)
 - `AXE_MAPPING_HASH_KEY` (required in production; rotate via key-versioning)
 - `AXE_MAPPING_HASH_KEY_VERSION` (default `1`)
+- `AXE_MAPPING_HASH_KEYS` (optional map, e.g. `1:key-v1,2:key-v2`)
+- `AXE_ADMIN_RATE_LIMIT` (default `10/minute` for mutating admin routes)
+- `AXE_ADMIN_AUDIT_REQUIRED` (`true|false`, block admin mutation when audit sink is down)
 
 ## Activation
 

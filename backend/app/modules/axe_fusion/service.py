@@ -431,19 +431,24 @@ class AXEFusionService:
         mapping_set_id: Optional[str] = None
         if self.db and mapping and mapping.replacements and request_id:
             try:
-                message_fingerprint = self.mapping_repo.fingerprint_messages(outbound_messages)
-                mapping_set_id = await self.mapping_repo.record_mapping_set(
-                    self.db,
-                    request_id=request_id,
-                    provider=provider_config.provider.value,
-                    provider_model=effective_model,
-                    sanitization_level=sanitization_level.value,
-                    message_fingerprint=message_fingerprint,
-                    mapping_count=len(mapping.replacements),
-                    principal_id=principal_id,
-                )
-                entries = self.mapping_repo.mapping_entries_from_replacements(mapping.replacements)
-                await self.mapping_repo.record_mapping_entries(self.db, mapping_set_id=mapping_set_id, entries=entries)
+                async with self.db.begin_nested():
+                    message_fingerprint = self.mapping_repo.fingerprint_messages(outbound_messages)
+                    mapping_set_id = await self.mapping_repo.record_mapping_set(
+                        self.db,
+                        request_id=request_id,
+                        provider=provider_config.provider.value,
+                        provider_model=effective_model,
+                        sanitization_level=sanitization_level.value,
+                        message_fingerprint=message_fingerprint,
+                        mapping_count=len(mapping.replacements),
+                        principal_id=principal_id,
+                    )
+                    entries = self.mapping_repo.mapping_entries_from_replacements(mapping.replacements)
+                    await self.mapping_repo.record_mapping_entries(
+                        self.db,
+                        mapping_set_id=mapping_set_id,
+                        entries=entries,
+                    )
                 await self.db.commit()
             except Exception as exc:
                 logger.warning("Failed persisting AXE mapping metadata: %s", exc)
@@ -454,11 +459,16 @@ class AXEFusionService:
         except Exception:
             if self.db and mapping_set_id and request_id:
                 try:
+                    attempt_no = await self.mapping_repo.get_next_attempt_no(
+                        self.db,
+                        request_id=request_id,
+                        mapping_set_id=mapping_set_id,
+                    )
                     await self.mapping_repo.record_deanonymization_attempt(
                         self.db,
                         request_id=request_id,
                         mapping_set_id=mapping_set_id,
-                        attempt_no=1,
+                        attempt_no=attempt_no,
                         status="failed",
                         reason_code="UPSTREAM_CALL_FAILED",
                         placeholder_count=len(mapping.replacements) if mapping else 0,
@@ -491,6 +501,11 @@ class AXEFusionService:
 
         if self.db and mapping_set_id and request_id:
             try:
+                attempt_no = await self.mapping_repo.get_next_attempt_no(
+                    self.db,
+                    request_id=request_id,
+                    mapping_set_id=mapping_set_id,
+                )
                 response_text = result.get("text") or ""
                 for placeholder in (mapping.replacements.keys() if mapping else []):
                     if placeholder in response_text:
@@ -500,7 +515,7 @@ class AXEFusionService:
                     self.db,
                     request_id=request_id,
                     mapping_set_id=mapping_set_id,
-                    attempt_no=1,
+                    attempt_no=attempt_no,
                     status=status,
                     reason_code=None if status == "success" else "PLACEHOLDER_UNRESOLVED",
                     placeholder_count=len(mapping.replacements) if mapping else 0,
