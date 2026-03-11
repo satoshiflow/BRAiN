@@ -338,3 +338,24 @@ def test_axe_admin_actions_emit_audit(client, monkeypatch: pytest.MonkeyPatch):
     assert calls
     assert calls[0]["event_type"] == "axe.admin"
     assert calls[0]["action"] == "provider_runtime_update"
+
+
+def test_axe_admin_audit_required_blocks_mutation_on_audit_failure(client, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(axe_fusion_router_module, "get_axe_trust_validator", lambda: _AllowDmzValidator())
+    monkeypatch.setattr(axe_fusion_router_module, "get_axe_fusion_service", lambda db=None: _FusionServiceStub())
+    monkeypatch.setenv("AXE_ADMIN_AUDIT_REQUIRED", "true")
+
+    async def _failing_audit(**kwargs):  # noqa: ANN003
+        raise RuntimeError("audit down")
+
+    monkeypatch.setattr(axe_fusion_router_module, "write_unified_audit", _failing_audit)
+
+    response = client.put(
+        "/api/axe/provider/runtime",
+        json={"provider": "groq", "force_sanitization_level": "moderate"},
+        headers={"x-request-id": "req-audit-2"},
+    )
+
+    assert response.status_code == 503
+    detail = response.json()["detail"]
+    assert detail["code"] == "AUDIT_UNAVAILABLE"

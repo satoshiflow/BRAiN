@@ -23,6 +23,7 @@ Operational guide for enabling and monitoring the AXE persistent-mapping learnin
 - `AXE_MAPPING_HASH_KEY_VERSION` (default `1`)
 - `AXE_MAPPING_HASH_KEYS` (optional map, e.g. `1:key-v1,2:key-v2`)
 - `AXE_ADMIN_RATE_LIMIT` (default `10/minute` for mutating admin routes)
+- `AXE_ADMIN_READ_RATE_LIMIT` (default `60/minute` for read-only admin routes)
 - `AXE_ADMIN_AUDIT_REQUIRED` (`true|false`, block admin mutation when audit sink is down)
 
 ## Activation
@@ -32,6 +33,18 @@ Operational guide for enabling and monitoring the AXE persistent-mapping learnin
 3. Enable scheduler with `ENABLE_AXE_LEARNING_SCHEDULER=true`.
 4. Restart backend process.
 5. Validate logs for startup line: `AXE learning scheduler started`.
+
+## Hash Key Rotation
+
+Use staged rotation to preserve historical hash lookup compatibility:
+
+1. Add both keys to `AXE_MAPPING_HASH_KEYS` (example: `1:old-key,2:new-key`).
+2. Keep `AXE_MAPPING_HASH_KEY_VERSION=1` for one release cycle.
+3. Flip to `AXE_MAPPING_HASH_KEY_VERSION=2` in next rollout.
+4. Keep old key in registry until retention window passes.
+5. Remove old key only after old mappings are expired/deleted.
+
+Never rotate by replacing only `AXE_MAPPING_HASH_KEY` without registry overlap.
 
 ## Manual Operations
 
@@ -63,8 +76,20 @@ Recommended alerts:
 - Candidate generation creates zero entries for > 3 consecutive cycles
 - Sudden spike in `failed|partial` deanonymization outcomes
 
+## Governance Policy Template
+
+Recommended audit policy per environment:
+
+- Development: `AXE_ADMIN_AUDIT_REQUIRED=false`
+- Staging: `AXE_ADMIN_AUDIT_REQUIRED=true` for soak tests
+- Production (regulated/compliance): `AXE_ADMIN_AUDIT_REQUIRED=true`
+- Production (non-regulated): `false` only if alerting is in place for audit failures
+
+If set to `true`, mutating admin requests fail with `503 AUDIT_UNAVAILABLE` when audit sink is down.
+
 ## Safety Notes
 
 - Never persist raw sensitive values; only hashes/previews are stored.
 - Keep scheduler disabled in ephemeral test runs unless validating analytics behavior.
 - Approval endpoints are governance-sensitive; require operator/admin/system_admin roles.
+- Choose a deployment-unique `AXE_LEARNING_LOCK_KEY` to avoid lock collisions with other applications sharing the same database.

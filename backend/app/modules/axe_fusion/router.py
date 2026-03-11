@@ -54,6 +54,7 @@ limiter = Limiter(key_func=get_remote_address)
 # AXE-specific rate limits
 AXE_CHAT_RATE_LIMIT = os.getenv("AXE_CHAT_RATE_LIMIT", "30/minute")  # 30 requests per minute
 AXE_ADMIN_RATE_LIMIT = os.getenv("AXE_ADMIN_RATE_LIMIT", "10/minute")
+AXE_ADMIN_READ_RATE_LIMIT = os.getenv("AXE_ADMIN_READ_RATE_LIMIT", "60/minute")
 
 # Security Constants
 MAX_MESSAGE_LENGTH = 10000
@@ -625,11 +626,14 @@ async def axe_health(
     summary="Get active AXE LLM provider runtime",
     description="Returns active provider, model, endpoint and effective sanitization level.",
 )
+@limiter.limit(AXE_ADMIN_READ_RATE_LIMIT)
 async def axe_provider_runtime(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     context: AXERequestContext = Depends(validate_axe_trust),
     principal: Principal = Depends(require_role(SystemRole.OPERATOR, SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN)),
 ) -> ProviderRuntimeResponse:
+    _ = request
     logger.info(
         "AXE provider runtime read (trust_tier=%s source=%s user=%s)",
         context.trust_tier.value,
@@ -704,7 +708,9 @@ async def axe_update_provider_runtime(
     response_model=List[DeanonymizationOutcomeResponse],
     summary="List AXE deanonymization outcomes",
 )
+@limiter.limit(AXE_ADMIN_READ_RATE_LIMIT)
 async def axe_admin_deanonymization_outcomes(
+    request: Request,
     request_id: Optional[str] = None,
     status_filter: Optional[str] = Query(None, alias="status"),
     limit: int = Query(100, ge=1, le=500),
@@ -712,6 +718,7 @@ async def axe_admin_deanonymization_outcomes(
     context: AXERequestContext = Depends(validate_axe_trust),
     principal: Principal = Depends(require_role(SystemRole.OPERATOR, SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN)),
 ) -> List[DeanonymizationOutcomeResponse]:
+    _ = request
     logger.info(
         "AXE outcomes query (trust_tier=%s source=%s user=%s request_id=%s status=%s limit=%s)",
         context.trust_tier.value,
@@ -735,7 +742,9 @@ async def axe_admin_deanonymization_outcomes(
     response_model=List[LearningCandidateResponse],
     summary="List AXE sanitization learning candidates",
 )
+@limiter.limit(AXE_ADMIN_READ_RATE_LIMIT)
 async def axe_admin_sanitization_insights(
+    request: Request,
     provider: Optional[str] = None,
     gate_state: Optional[str] = None,
     limit: int = Query(100, ge=1, le=500),
@@ -743,6 +752,7 @@ async def axe_admin_sanitization_insights(
     context: AXERequestContext = Depends(validate_axe_trust),
     principal: Principal = Depends(require_role(SystemRole.OPERATOR, SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN)),
 ) -> List[LearningCandidateResponse]:
+    _ = request
     logger.info(
         "AXE insights query (trust_tier=%s source=%s user=%s provider=%s gate_state=%s)",
         context.trust_tier.value,
