@@ -160,3 +160,30 @@ def test_axe_fusion_upload_rejects_unsupported_mime(client, monkeypatch: pytest.
     assert response.status_code == 400
     detail = response.json()["detail"]
     assert detail["code"] == "UNSUPPORTED_ATTACHMENT_TYPE"
+
+
+def test_axe_provider_runtime_read(client, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(axe_fusion_router_module, "get_axe_trust_validator", lambda: _AllowDmzValidator())
+    monkeypatch.setenv("LOCAL_LLM_MODE", "mock")
+
+    response = client.get("/api/axe/provider/runtime")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["provider"] == "mock"
+    assert payload["sanitization_level"] == "none"
+
+
+def test_axe_provider_runtime_update(client, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(axe_fusion_router_module, "get_axe_trust_validator", lambda: _AllowDmzValidator())
+    monkeypatch.setenv("LOCAL_LLM_MODE", "mock")
+
+    response = client.put(
+        "/api/axe/provider/runtime",
+        json={"provider": "groq", "force_sanitization_level": "moderate"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["provider"] == "groq"
+    assert payload["sanitization_level"] == "moderate"

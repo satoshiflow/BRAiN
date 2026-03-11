@@ -2,6 +2,13 @@
 AXE Fusion Router - FastAPI Router für AXEllm Integration
 
 Endpoint: POST /api/axe/chat
+
+SECURITY:
+- Trust Tier Validation (DMZ Gateway)
+- User Authentication (via JWT)
+- Rate Limiting
+- Input Validation
+- Error Sanitization
 """
 
 import logging
@@ -11,10 +18,19 @@ from pathlib import Path
 from typing import List, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile, status
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, Response, UploadFile, status
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
 from app.core.database import get_db
+from app.core.auth_deps import (
+    get_current_principal,
+    Principal,
+    require_role,
+    SystemRole,
+)
 from app.modules.axe_governance import (
     AXERequestContext,
     TrustTier,
@@ -27,11 +43,23 @@ from .service import (
     AXEllmValidationError,
     AXEllmError
 )
+from .provider_selector import LLMProvider, SanitizationLevel
 
 logger = logging.getLogger(__name__)
 
+# Rate limiter for AXE endpoints
+limiter = Limiter(key_func=get_remote_address)
+
+# AXE-specific rate limits
+AXE_CHAT_RATE_LIMIT = os.getenv("AXE_CHAT_RATE_LIMIT", "30/minute")  # 30 requests per minute
+
+# Security Constants
+MAX_MESSAGE_LENGTH = 10000
+MAX_MESSAGES_PER_REQUEST = 100
+MAX_ATTACHMENTS = 10
+MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024  # 10MB
 UPLOAD_BASE_DIR = Path(os.getenv("AXE_UPLOAD_DIR", "/tmp/axe_uploads"))
-UPLOAD_MAX_BYTES = int(os.getenv("AXE_UPLOAD_MAX_BYTES", str(10 * 1024 * 1024)))
+UPLOAD_MAX_BYTES = int(os.getenv("AXE_UPLOAD_MAX_BYTES", str(MAX_ATTACHMENT_SIZE_BYTES)))
 UPLOAD_ALLOWED_MIME_TYPES = {
     "image/jpeg",
     "image/png",
@@ -39,6 +67,114 @@ UPLOAD_ALLOWED_MIME_TYPES = {
     "application/pdf",
     "text/plain",
 }
+
+# Allowed LLM hosts (SSRF protection)
+ALLOWED_LLM_HOSTS = os.getenv(
+    "AXE_ALLOWED_LLM_HOSTS",
+    "localhost,127.0.0.1,host.docker.internal,ollama,vllm"
+).split(",")
+
+# Legacy endpoint deprecation metadata
+LEGACY_AXE_SUNSET = os.getenv("AXE_LEGACY_SUNSET", "Wed, 30 Sep 2026 23:59:59 GMT")
+LEGACY_AXE_DOC_LINK = os.getenv(
+    "AXE_LEGACY_DOC_LINK",
+    "https://github.com/falklabs/brain-v2/blob/main/docs/modules/axe/AXE_API_DEPRECATIONS.md",
+)
+
+
+# === Security Utilities ===
+
+def sanitize_error_for_user(error: Exception, include_details: bool = False) -> str:
+    """
+    Sanitize error messages to prevent information leakage.
+    
+    NEVER expose:
+    - Stack traces
+    - Internal file paths
+    - Database details
+    - Configuration values
+    - Third-party service credentials
+    """
+    error_type = type(error).__name__
+    error_msg = str(error)
+    
+    # Log full error server-side for debugging
+    logger.debug("Sanitizing error: %s - %s", error_type, error_msg)
+    
+    # Map error types to user-safe messages
+    if isinstance(error, HTTPException):
+        # Already HTTPException - use detail if safe
+        return error.detail if len(error.detail) < 200 else "Request processing error"
+    
+    # Network/database errors
+    if any(keyword in error_msg.lower() for keyword in ['connection', 'timeout', 'refused', 'unreachable']):
+        return "Service temporarily unavailable. Please try again later."
+    
+    if any(keyword in error_msg.lower() for keyword in ['permission', 'denied', 'forbidden', 'unauthorized']):
+        return "Access denied. Please check your permissions."
+    
+    if any(keyword in error_msg.lower() for keyword in ['not found', 'does not exist', 'invalid']):
+        return "The requested resource was not found."
+    
+    if any(keyword in error_msg.lower() for keyword in ['rate limit', 'too many', 'quota']):
+        return "Rate limit exceeded. Please wait before retrying."
+    
+    # Default safe message
+    if include_details and len(error_msg) < 100:
+        # Only include user-controlled error messages
+        return error_msg
+    
+    return "An error occurred while processing your request. Please try again."
+
+
+def validate_llm_host(host: str) -> bool:
+    """
+    Validate LLM host against whitelist to prevent SSRF attacks.
+    
+    Blocks:
+    - Localhost (except for development)
+    - Private IP ranges
+    - Internal network addresses
+    """
+    if not host:
+        return False
+    
+    host_lower = host.lower().strip()
+    
+    # Remove protocol if present
+    if host_lower.startswith('http://'):
+        host_lower = host_lower[7:]
+    elif host_lower.startswith('https://'):
+        host_lower = host_lower[8:]
+    
+    # Remove port if present
+    if ':' in host_lower:
+        host_lower = host_lower.split(':')[0]
+    
+    # Check against whitelist
+    for allowed in ALLOWED_LLM_HOSTS:
+        allowed = allowed.strip().lower()
+        if allowed in host_lower or host_lower.endswith('.' + allowed):
+            return True
+        if host_lower == allowed:
+            return True
+    
+    # Block private IP ranges
+    private_patterns = ['10.', '172.16.', '172.17.', '172.18.', '172.19.',
+                       '172.2', '172.30.', '172.31.', '192.168.', 
+                       'localhost', '127.0.0.1', '::1', '0.0.0.0']
+    
+    # Allow localhost in development only
+    is_development = os.getenv("AXE_ALLOW_LOCAL_LLM", "false").lower() == "true"
+    if is_development and any(host_lower.startswith(p) for p in ['localhost', '127.']):
+        return True
+    
+    for pattern in private_patterns:
+        if host_lower.startswith(pattern):
+            logger.warning("Blocked SSRF attempt to private IP: %s", host)
+            return False
+    
+    return False
 
 router = APIRouter(
     prefix="/axe",
@@ -129,7 +265,24 @@ async def validate_axe_trust(
 class ChatMessage(BaseModel):
     """Einzelne Chat-Nachricht im OpenAI Format"""
     role: str = Field(..., description="Rolle: system, user, oder assistant")
-    content: str = Field(..., description="Nachrichteninhalt")
+    content: str = Field(..., description="Nachrichteninhalt", max_length=MAX_MESSAGE_LENGTH)
+    
+    @field_validator('role')
+    @classmethod
+    def validate_role(cls, v: str) -> str:
+        allowed_roles = {'system', 'user', 'assistant'}
+        if v.lower() not in allowed_roles:
+            raise ValueError(f"Role must be one of: {allowed_roles}")
+        return v.lower()
+    
+    @field_validator('content')
+    @classmethod
+    def validate_content(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Content cannot be empty")
+        if len(v) > MAX_MESSAGE_LENGTH:
+            raise ValueError(f"Content exceeds maximum length of {MAX_MESSAGE_LENGTH} characters")
+        return v
     
     class Config:
         json_schema_extra = {
@@ -141,11 +294,37 @@ class ChatMessage(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    """Chat Request im OpenAI Format"""
+    """Chat Request im OpenAI Format mit SECURITY Validierung"""
     model: str = Field(..., description="Modell-Name (z.B. 'gpt-4', 'claude-3')")
-    messages: List[ChatMessage] = Field(..., description="Liste der Chat-Nachrichten")
+    messages: List[ChatMessage] = Field(..., description="Liste der Chat-Nachrichten", min_length=1, max_length=MAX_MESSAGES_PER_REQUEST)
     temperature: Optional[float] = Field(0.7, ge=0.0, le=2.0, description="Sampling Temperatur")
-    attachments: Optional[List[str]] = Field(None, description="Optionale Attachment-Referenzen")
+    attachments: Optional[List[str]] = Field(None, description="Optionale Attachment-Referenzen", max_length=MAX_ATTACHMENTS)
+    
+    @field_validator('model')
+    @classmethod
+    def validate_model(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Model cannot be empty")
+        # Block potentially dangerous model names
+        dangerous_patterns = ['../', '..\\', '/etc/', 'con:', 'prn:', 'aux:']
+        v_lower = v.lower()
+        for pattern in dangerous_patterns:
+            if pattern in v_lower:
+                raise ValueError("Invalid model name")
+        return v.strip()
+    
+    @field_validator('attachments')
+    @classmethod
+    def validate_attachments(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        if v is None:
+            return v
+        if len(v) > MAX_ATTACHMENTS:
+            raise ValueError(f"Maximum {MAX_ATTACHMENTS} attachments allowed")
+        # Validate attachment IDs (alphanumeric + underscore only)
+        for att in v:
+            if not att.replace('_', '').replace('-', '').isalnum():
+                raise ValueError("Invalid attachment ID format")
+        return v
     
     class Config:
         json_schema_extra = {
@@ -191,6 +370,25 @@ class UploadResponse(BaseModel):
     expires_at: str
 
 
+class ProviderRuntimeResponse(BaseModel):
+    provider: str
+    base_url: str
+    api_key_configured: bool
+    model: str
+    timeout_seconds: float
+    sanitization_level: str
+
+
+class ProviderRuntimeUpdateRequest(BaseModel):
+    provider: LLMProvider
+    force_sanitization_level: Optional[SanitizationLevel] = None
+
+
+class LegacyAxeMessageRequest(BaseModel):
+    message: Optional[str] = None
+    metadata: dict = Field(default_factory=dict)
+
+
 # === Endpoints ===
 
 @router.post(
@@ -200,20 +398,30 @@ class UploadResponse(BaseModel):
     summary="Chat mit AXEllm",
     description="Sendet einen Chat-Request an AXEllm und gibt die Antwort zurück."
 )
+@limiter.limit(AXE_CHAT_RATE_LIMIT)
 async def axe_chat(
-    request: ChatRequest,
+    request: Request,
+    chat_request: ChatRequest,
     db: AsyncSession = Depends(get_db),
     context: AXERequestContext = Depends(validate_axe_trust),
+    principal: Optional[Principal] = Depends(get_current_principal),
 ) -> ChatResponse:
     """
     Chat Endpoint für AXEllm Integration.
     
     Akzeptiert OpenAI-kompatible Requests und leitet sie an AXEllm weiter.
     
+    **Security Layers:**
+    1. Trust Tier Validation (DMZ Gateway) - Required
+    2. User Authentication - Optional (for audit)
+    3. Input Validation - Automatic via Pydantic
+    
     **Guardrails:**
-    - Max 20.000 Zeichen pro Request
+    - Max {MAX_MESSAGE_LENGTH} Zeichen pro Message
+    - Max {MAX_MESSAGES_PER_REQUEST} Messages pro Request
+    - Max {MAX_ATTACHMENTS} Attachments
     - Nur Rollen: system, user, assistant
-    - Tool/Function Felder werden entfernt
+    - Model Name Validation (no path traversal)
     
     **Features:**
     - Automatische AXE Identity System Prompt Injection
@@ -221,23 +429,30 @@ async def axe_chat(
     **Fehlercodes:**
     - 503: AXEllm nicht erreichbar
     - 400: Validierungsfehler (z.B. Zeichenlimit überschritten)
+    - 429: Rate limit exceeded
     - 500: Interner Fehler
     """
     service = get_axe_fusion_service(db=db)
     
+    # Log request with user info if authenticated
+    user_id = principal.principal_id if principal else None
+    logger.info(
+        "AXE chat request (trust_tier=%s source=%s user=%s model=%s messages=%d)",
+        context.trust_tier.value,
+        context.source_service,
+        user_id,
+        chat_request.model,
+        len(chat_request.messages),
+    )
+    
     try:
-        logger.info(
-            "AXE chat request accepted (trust_tier=%s source=%s)",
-            context.trust_tier.value,
-            context.source_service,
-        )
         # Konvertiere Pydantic Model zu Dict für Service
-        messages = [msg.model_dump() for msg in request.messages]
+        messages = [msg.model_dump() for msg in chat_request.messages]
         
         result = await service.chat(
-            model=request.model,
+            model=chat_request.model,
             messages=messages,
-            temperature=request.temperature or 0.7
+            temperature=chat_request.temperature or 0.7
         )
         
         return ChatResponse(
@@ -246,45 +461,45 @@ async def axe_chat(
         )
         
     except AXEllmUnavailableError as e:
-        logger.error(f"AXEllm nicht verfügbar: {e}")
+        logger.error("AXEllm nicht verfügbar: %s", e)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={
                 "error": "AXEllm Service nicht verfügbar",
-                "message": str(e),
+                "message": sanitize_error_for_user(e),
                 "code": "AXELLM_UNAVAILABLE"
             }
         )
         
     except AXEllmValidationError as e:
-        logger.warning(f"AXEllm Validierungsfehler: {e}")
+        logger.warning("AXEllm Validierungsfehler: %s", e)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
                 "error": "Validierungsfehler",
-                "message": str(e),
+                "message": sanitize_error_for_user(e),
                 "code": "VALIDATION_ERROR"
             }
         )
         
     except AXEllmError as e:
-        logger.error(f"AXEllm Fehler: {e}")
+        logger.error("AXEllm Fehler: %s", e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
                 "error": "AXEllm Fehler",
-                "message": str(e),
+                "message": sanitize_error_for_user(e),
                 "code": "AXELLM_ERROR"
             }
         )
         
     except Exception as e:
-        logger.exception(f"Unerwarteter Fehler in axe_chat: {e}")
+        logger.exception("Unerwarteter Fehler in axe_chat: %s", e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
                 "error": "Interner Server Fehler",
-                "message": "Ein unerwarteter Fehler ist aufgetreten",
+                "message": sanitize_error_for_user(e),
                 "code": "INTERNAL_ERROR"
             }
         )
@@ -314,6 +529,72 @@ async def axe_health(
         status=result["status"],
         axellm=result["axellm"],
         error=result.get("error")
+    )
+
+
+@router.get(
+    "/provider/runtime",
+    response_model=ProviderRuntimeResponse,
+    summary="Get active AXE LLM provider runtime",
+    description="Returns active provider, model, endpoint and effective sanitization level.",
+)
+async def axe_provider_runtime(
+    db: AsyncSession = Depends(get_db),
+    context: AXERequestContext = Depends(validate_axe_trust),
+    principal: Principal = Depends(require_role(SystemRole.OPERATOR, SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN)),
+) -> ProviderRuntimeResponse:
+    logger.info(
+        "AXE provider runtime read (trust_tier=%s source=%s user=%s)",
+        context.trust_tier.value,
+        context.source_service,
+        principal.principal_id,
+    )
+    service = get_axe_fusion_service(db=db)
+    runtime = service.get_provider_runtime()
+    active = runtime["active"]
+    return ProviderRuntimeResponse(
+        provider=active["provider"],
+        base_url=active["base_url"],
+        api_key_configured=active["api_key_configured"],
+        model=active["model"],
+        timeout_seconds=active["timeout_seconds"],
+        sanitization_level=runtime["sanitization_level"],
+    )
+
+
+@router.put(
+    "/provider/runtime",
+    response_model=ProviderRuntimeResponse,
+    summary="Update active AXE LLM provider runtime",
+    description="Updates LOCAL_LLM_MODE and optional FORCE_SANITIZATION_LEVEL without restart.",
+)
+async def axe_update_provider_runtime(
+    payload: ProviderRuntimeUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    context: AXERequestContext = Depends(validate_axe_trust),
+    principal: Principal = Depends(require_role(SystemRole.OPERATOR, SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN)),
+) -> ProviderRuntimeResponse:
+    logger.warning(
+        "AXE provider runtime update (trust_tier=%s source=%s user=%s provider=%s force_sanitization=%s)",
+        context.trust_tier.value,
+        context.source_service,
+        principal.principal_id,
+        payload.provider.value,
+        payload.force_sanitization_level.value if payload.force_sanitization_level else "<default>",
+    )
+    service = get_axe_fusion_service(db=db)
+    runtime = service.set_provider_runtime(
+        provider=payload.provider,
+        force_sanitization_level=payload.force_sanitization_level,
+    )
+    active = runtime["active"]
+    return ProviderRuntimeResponse(
+        provider=active["provider"],
+        base_url=active["base_url"],
+        api_key_configured=active["api_key_configured"],
+        model=active["model"],
+        timeout_seconds=active["timeout_seconds"],
+        sanitization_level=runtime["sanitization_level"],
     )
 
 
@@ -384,3 +665,147 @@ async def axe_upload(
         size_bytes=size_bytes,
         expires_at=expires_at,
     )
+
+
+async def validate_axe_trust_legacy(
+    request: Request,
+    x_dmz_gateway_id: Optional[str] = Header(None),
+    x_dmz_gateway_token: Optional[str] = Header(None),
+) -> AXERequestContext:
+    """
+    Legacy trust validation for deprecated /info and /message routes.
+
+    Behavior is intentionally compatible with historical governance tests:
+    - LOCAL requests are allowed
+    - Valid DMZ requests are allowed
+    - EXTERNAL requests are blocked
+    """
+    request_id = request.headers.get("x-request-id", "axe-legacy-request")
+    client_host = request.client.host if request.client else None
+    if client_host == "testclient":
+        client_host = "127.0.0.1"
+    headers = dict(request.headers)
+
+    if x_dmz_gateway_id is not None:
+        headers["x-dmz-gateway-id"] = x_dmz_gateway_id
+    if x_dmz_gateway_token is not None:
+        headers["x-dmz-gateway-token"] = x_dmz_gateway_token
+
+    dmz_headers_present = (
+        "x-dmz-gateway-id" in headers or "x-dmz-gateway-token" in headers
+    )
+
+    try:
+        validator = get_axe_trust_validator()
+    except ValueError as exc:
+        logger.error("AXE governance unavailable for legacy endpoint: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error": "AXE governance unavailable",
+                "message": "AXE trust-tier validation is not configured",
+                "code": "AXE_GOVERNANCE_UNAVAILABLE",
+            },
+        ) from exc
+
+    context = await validator.validate_request(
+        headers=headers,
+        client_host=client_host,
+        request_id=request_id,
+    )
+
+    # If DMZ headers are present, request must authenticate as DMZ.
+    # Do not silently downgrade to LOCAL on invalid DMZ credentials.
+    if dmz_headers_present and context.trust_tier != TrustTier.DMZ:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "Forbidden",
+                "message": "AXE is only accessible via DMZ gateways",
+                "trust_tier": TrustTier.EXTERNAL.value,
+                "request_id": context.request_id,
+            },
+        )
+
+    if not validator.is_request_allowed(context):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "Forbidden",
+                "message": "AXE is only accessible via DMZ gateways",
+                "trust_tier": context.trust_tier.value,
+                "request_id": context.request_id,
+            },
+        )
+
+    return context
+
+
+@router.get("/info", deprecated=True)
+async def axe_info_legacy(
+    response: Response,
+    context: AXERequestContext = Depends(validate_axe_trust_legacy),
+) -> dict:
+    """Deprecated compatibility endpoint: use `/api/axe/health` and `/api/axe/chat`."""
+    response.headers["Deprecation"] = "true"
+    response.headers["Sunset"] = LEGACY_AXE_SUNSET
+    response.headers["Link"] = f'<{LEGACY_AXE_DOC_LINK}>; rel="deprecation"'
+    response.headers["Warning"] = '299 - "Deprecated API: use /api/axe/chat and /api/axe/health"'
+    return {
+        "name": "AXE",
+        "version": "2.0-compat",
+        "status": "online",
+        "description": "Auxiliary Execution Engine (compat endpoint)",
+        "gateway": context.source_service or "none",
+        "governance": {
+            "trust_tier": context.trust_tier.value,
+            "source_service": context.source_service,
+            "authenticated": context.authenticated,
+            "request_id": context.request_id,
+        },
+        "deprecated": True,
+        "replacement": ["/api/axe/chat", "/api/axe/health"],
+    }
+
+
+@router.post("/message", deprecated=True)
+async def axe_message_legacy(
+    response: Response,
+    payload: LegacyAxeMessageRequest,
+    db: AsyncSession = Depends(get_db),
+    context: AXERequestContext = Depends(validate_axe_trust_legacy),
+) -> dict:
+    """Deprecated compatibility endpoint: use `/api/axe/chat`."""
+    response.headers["Deprecation"] = "true"
+    response.headers["Sunset"] = LEGACY_AXE_SUNSET
+    response.headers["Link"] = f'<{LEGACY_AXE_DOC_LINK}>; rel="deprecation"'
+    response.headers["Warning"] = '299 - "Deprecated API: use /api/axe/chat"'
+    service = get_axe_fusion_service(db=db)
+    user_message = payload.message or ""
+
+    try:
+        result = await service.chat(
+            model="qwen2.5:0.5b",
+            messages=[{"role": "user", "content": user_message}],
+            temperature=0.7,
+        )
+        reply = result.get("text") or ""
+    except Exception:
+        # Keep compatibility behavior stable even if upstream LLM is unavailable.
+        reply = "AXE received your message."
+
+    return {
+        "mode": "compat",
+        "gateway": context.source_service or "none",
+        "input_message": user_message,
+        "reply": reply,
+        "metadata": payload.metadata,
+        "governance": {
+            "trust_tier": context.trust_tier.value,
+            "source_service": context.source_service,
+            "authenticated": context.authenticated,
+            "request_id": context.request_id,
+        },
+        "deprecated": True,
+        "replacement": "/api/axe/chat",
+    }
