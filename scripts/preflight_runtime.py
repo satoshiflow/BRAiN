@@ -16,8 +16,9 @@ Exit codes:
 
 import os
 import sys
-from typing import List, Tuple
+from typing import List
 from urllib.parse import urlparse
+from pathlib import Path
 
 
 class ValidationError:
@@ -25,6 +26,30 @@ class ValidationError:
     def __init__(self, severity: str, message: str):
         self.severity = severity  # "error" or "warning"
         self.message = message
+
+
+def load_env_defaults() -> None:
+    """Load local env files as defaults without overriding shell env."""
+    root = Path(__file__).resolve().parent.parent
+    candidates = [
+        root / "backend" / ".env.local",
+        root / "backend" / ".env",
+        root / ".env.local",
+        root / ".env",
+    ]
+
+    for env_path in candidates:
+        if not env_path.exists():
+            continue
+        for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            if not key or key in os.environ:
+                continue
+            os.environ[key] = value.strip().strip('"').strip("'")
 
 
 def detect_runtime_mode() -> str:
@@ -140,6 +165,7 @@ def validate_node_env() -> List[ValidationError]:
 
 def main():
     """Run all preflight validations."""
+    load_env_defaults()
     strict_mode = "--strict" in sys.argv
     
     print("🔍 BRAiN Runtime Preflight Validator")
@@ -153,7 +179,7 @@ def main():
     if explicit_mode != "auto":
         print(f"  (explicitly set: BRAIN_RUNTIME_MODE={explicit_mode})")
     else:
-        print(f"  (auto-detected)")
+        print("  (auto-detected)")
     
     print()
     

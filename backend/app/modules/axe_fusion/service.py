@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import httpx
 
 from .data_sanitizer import DataSanitizer
+from .mapping_repository import AXEMappingRepository
 from .provider_selector import (
     LLMProvider,
     ProviderConfig,
@@ -278,6 +279,7 @@ class AXEFusionService:
         self.db = db
         self.selector = ProviderSelector()
         self.sanitizer = DataSanitizer()
+        self.mapping_repo = AXEMappingRepository()
         self._clients: Dict[Tuple[str, str, str], AXEllmClient] = {}
 
     def _get_or_create_client(self, config: ProviderConfig) -> AXEllmClient:
@@ -311,13 +313,92 @@ class AXEFusionService:
         self.selector.set_runtime_mode(provider)
         self.selector.set_force_sanitization_level(force_sanitization_level)
         return self.get_provider_runtime()
+
+    async def get_deanonymization_outcomes(
+        self,
+        *,
+        request_id: Optional[str] = None,
+        status: Optional[str] = None,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        if not self.db:
+            return []
+        return await self.mapping_repo.list_deanonymization_outcomes(
+            self.db,
+            request_id=request_id,
+            status=status,
+            limit=limit,
+        )
+
+    async def get_learning_candidates(
+        self,
+        *,
+        provider: Optional[str] = None,
+        gate_state: Optional[str] = None,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        if not self.db:
+            return []
+        return await self.mapping_repo.list_learning_candidates(
+            self.db,
+            provider=provider,
+            gate_state=gate_state,
+            limit=limit,
+        )
+
+    async def update_learning_candidate_state(
+        self,
+        *,
+        candidate_id: str,
+        new_state: str,
+        approved_by: Optional[str],
+    ) -> bool:
+        if not self.db:
+            return False
+        updated = await self.mapping_repo.set_learning_candidate_state(
+            self.db,
+            candidate_id=candidate_id,
+            new_state=new_state,
+            approved_by=approved_by,
+        )
+        await self.db.commit()
+        return updated
+
+    async def run_retention_cleanup(self) -> Dict[str, int]:
+        if not self.db:
+            return {
+                "deleted_mapping_sets": 0,
+                "deleted_attempts": 0,
+                "deleted_candidates": 0,
+            }
+        result = await self.mapping_repo.run_retention_cleanup(self.db)
+        await self.db.commit()
+        return result
+
+    async def generate_learning_candidates(
+        self,
+        *,
+        window_days: int = 7,
+        min_sample_size: int = 50,
+    ) -> Dict[str, int]:
+        if not self.db:
+            return {"created_candidates": 0}
+        created = await self.mapping_repo.generate_learning_candidates(
+            self.db,
+            window_days=window_days,
+            min_sample_size=min_sample_size,
+        )
+        await self.db.commit()
+        return {"created_candidates": created}
     
     async def chat(
         self,
         model: str,
         messages: List[Dict[str, Any]],
         temperature: float = 0.7,
-        inject_identity: bool = True
+        inject_identity: bool = True,
+        request_id: Optional[str] = None,
+        principal_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Haupt-Chat Methode
@@ -347,9 +428,55 @@ class AXEFusionService:
         else:
             outbound_messages, mapping = messages, None
 
-        result = await client.chat(effective_model, outbound_messages, temperature)
+        mapping_set_id: Optional[str] = None
+        if self.db and mapping and mapping.replacements and request_id:
+            try:
+                message_fingerprint = self.mapping_repo.fingerprint_messages(outbound_messages)
+                mapping_set_id = await self.mapping_repo.record_mapping_set(
+                    self.db,
+                    request_id=request_id,
+                    provider=provider_config.provider.value,
+                    provider_model=effective_model,
+                    sanitization_level=sanitization_level.value,
+                    message_fingerprint=message_fingerprint,
+                    mapping_count=len(mapping.replacements),
+                    principal_id=principal_id,
+                )
+                entries = self.mapping_repo.mapping_entries_from_replacements(mapping.replacements)
+                await self.mapping_repo.record_mapping_entries(self.db, mapping_set_id=mapping_set_id, entries=entries)
+                await self.db.commit()
+            except Exception as exc:
+                logger.warning("Failed persisting AXE mapping metadata: %s", exc)
+                await self.db.rollback()
 
+        try:
+            result = await client.chat(effective_model, outbound_messages, temperature)
+        except Exception:
+            if self.db and mapping_set_id and request_id:
+                try:
+                    await self.mapping_repo.record_deanonymization_attempt(
+                        self.db,
+                        request_id=request_id,
+                        mapping_set_id=mapping_set_id,
+                        attempt_no=1,
+                        status="failed",
+                        reason_code="UPSTREAM_CALL_FAILED",
+                        placeholder_count=len(mapping.replacements) if mapping else 0,
+                        restored_count=0,
+                        unresolved_placeholders=list(mapping.replacements.keys()) if mapping else [],
+                        response_fingerprint=self.mapping_repo.fingerprint_text(""),
+                    )
+                    await self.db.commit()
+                except Exception as exc:
+                    logger.warning("Failed persisting AXE failure telemetry: %s", exc)
+                    await self.db.rollback()
+            raise
+
+        restored_count = 0
+        unresolved_placeholders: List[str] = []
         if mapping and result.get("text"):
+            raw_text = result["text"]
+            restored_count = sum(1 for p in mapping.replacements if p in raw_text)
             result["text"] = self.sanitizer.deanonymize_text(result["text"], mapping)
             try:
                 choices = result["raw"].get("choices", [])
@@ -361,6 +488,30 @@ class AXEFusionService:
                     )
             except Exception:
                 logger.debug("Skipping raw response deanonymization")
+
+        if self.db and mapping_set_id and request_id:
+            try:
+                response_text = result.get("text") or ""
+                for placeholder in (mapping.replacements.keys() if mapping else []):
+                    if placeholder in response_text:
+                        unresolved_placeholders.append(placeholder)
+                status = "success" if not unresolved_placeholders else "partial"
+                await self.mapping_repo.record_deanonymization_attempt(
+                    self.db,
+                    request_id=request_id,
+                    mapping_set_id=mapping_set_id,
+                    attempt_no=1,
+                    status=status,
+                    reason_code=None if status == "success" else "PLACEHOLDER_UNRESOLVED",
+                    placeholder_count=len(mapping.replacements) if mapping else 0,
+                    restored_count=restored_count,
+                    unresolved_placeholders=unresolved_placeholders,
+                    response_fingerprint=self.mapping_repo.fingerprint_text(result.get("text", "")),
+                )
+                await self.db.commit()
+            except Exception as exc:
+                logger.warning("Failed persisting AXE deanonymization telemetry: %s", exc)
+                await self.db.rollback()
 
         return result
     

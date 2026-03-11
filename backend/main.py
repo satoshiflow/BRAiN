@@ -43,6 +43,10 @@ from app.workers.autoscaler import start_autoscaler, stop_autoscaler
 
 # Metrics collector (Cluster System metrics collection)
 from app.workers.metrics_collector import start_metrics_collector, stop_metrics_collector
+from app.workers.axe_learning_scheduler import (
+    start_axe_learning_scheduler,
+    stop_axe_learning_scheduler,
+)
 
 # Event Stream (ADR-001: REQUIRED core infrastructure)
 try:
@@ -292,6 +296,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         except Exception as e:
             logger.warning(f"⚠️ Runtime auditor not started: {e}")
 
+    # Start AXE learning scheduler worker (retention + candidate generation)
+    axe_learning_scheduler_task = None
+    if _feature_enabled("ENABLE_AXE_LEARNING_SCHEDULER", "false"):
+        interval_seconds = int(os.getenv("AXE_LEARNING_INTERVAL_SECONDS", "3600"))
+        axe_learning_scheduler_task = asyncio.create_task(
+            start_axe_learning_scheduler(interval_seconds=interval_seconds)
+        )
+        logger.info("✅ AXE learning scheduler started (interval: %ss)", interval_seconds)
+
     # Seed built-in skills (optional in local profiles)
     if _feature_enabled("ENABLE_BUILTIN_SKILL_SEED", "true"):
         try:
@@ -326,6 +339,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if runtime_auditor:
         await runtime_auditor.stop()
         logger.info("🛑 Runtime auditor stopped")
+
+    if axe_learning_scheduler_task:
+        stop_axe_learning_scheduler()
+        logger.info("🛑 AXE learning scheduler stopped")
 
     if redis:
         await redis.close()

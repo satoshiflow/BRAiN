@@ -1,10 +1,12 @@
 """
 Alembic Environment Configuration
 """
+import asyncio
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from alembic import context
 
@@ -24,10 +26,7 @@ target_metadata = None
 def get_url():
     """Get database URL from environment or config"""
     url = os.getenv("DATABASE_URL", config.get_main_option("sqlalchemy.url"))
-    # Convert asyncpg URL to psycopg2 for Alembic (sync migrations)
-    if url and "asyncpg" in url:
-        url = url.replace("postgresql+asyncpg", "postgresql+psycopg2")
-    elif url and url.startswith("postgresql://"):
+    if url and url.startswith("postgresql://"):
         url = url.replace("postgresql://", "postgresql+psycopg2://")
     return url
 
@@ -48,8 +47,16 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
-    configuration = config.get_section(config.config_ini_section)
-    configuration["sqlalchemy.url"] = get_url()
+    url = get_url()
+
+    if url and "+asyncpg" in url:
+        asyncio.run(run_migrations_online_async(url))
+        return
+
+    configuration = config.get_section(config.config_ini_section) or {}
+    if not url:
+        raise RuntimeError("DATABASE_URL is not configured for Alembic migrations")
+    configuration["sqlalchemy.url"] = url
 
     connectable = engine_from_config(
         configuration,
@@ -64,6 +71,19 @@ def run_migrations_online() -> None:
 
         with context.begin_transaction():
             context.run_migrations()
+
+
+def do_run_migrations(connection) -> None:
+    context.configure(connection=connection, target_metadata=target_metadata)
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+async def run_migrations_online_async(url: str) -> None:
+    connectable = create_async_engine(url, poolclass=pool.NullPool)
+    async with connectable.connect() as connection:
+        await connection.run_sync(do_run_migrations)
+    await connectable.dispose()
 
 
 if context.is_offline_mode():

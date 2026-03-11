@@ -46,7 +46,7 @@ class _DenyExternalValidator:
 
 
 class _FusionServiceStub:
-    async def chat(self, model, messages, temperature=0.7):  # noqa: ANN001
+    async def chat(self, model, messages, temperature=0.7, **kwargs):  # noqa: ANN001
         return {
             "text": "stubbed response",
             "raw": {
@@ -61,6 +61,65 @@ class _FusionServiceStub:
             "status": "healthy",
             "axellm": "reachable",
         }
+
+    def set_provider_runtime(self, provider, force_sanitization_level=None):  # noqa: ANN001
+        level = force_sanitization_level.value if force_sanitization_level else "none"
+        return {
+            "active": {
+                "provider": provider.value,
+                "base_url": "http://example.local",
+                "api_key_configured": False,
+                "model": "mock-local",
+                "timeout_seconds": 60.0,
+            },
+            "sanitization_level": level,
+        }
+
+    async def get_deanonymization_outcomes(self, **kwargs):  # noqa: ANN001
+        return [
+            {
+                "request_id": "req-1",
+                "provider": "groq",
+                "provider_model": "llama-3.2-90b-vision-preview",
+                "status": "success",
+                "reason_code": None,
+                "placeholder_count": 2,
+                "restored_count": 2,
+                "unresolved_placeholders": [],
+                "created_at": "2026-03-11T10:00:00Z",
+            }
+        ]
+
+    async def get_learning_candidates(self, **kwargs):  # noqa: ANN001
+        return [
+            {
+                "id": "11111111-1111-1111-1111-111111111111",
+                "provider": "groq",
+                "pattern_name": "path",
+                "sample_size": 1000,
+                "failure_rate": 0.05,
+                "confidence_score": 0.93,
+                "risk_score": 0.1,
+                "proposed_change": {"action": "tighten_regex"},
+                "gate_state": "pending_auto_gate",
+                "approved_by": None,
+                "approved_at": None,
+                "created_at": "2026-03-11T10:00:00Z",
+            }
+        ]
+
+    async def update_learning_candidate_state(self, **kwargs):  # noqa: ANN001
+        return True
+
+    async def run_retention_cleanup(self):
+        return {
+            "deleted_mapping_sets": 3,
+            "deleted_attempts": 5,
+            "deleted_candidates": 1,
+        }
+
+    async def generate_learning_candidates(self, **kwargs):  # noqa: ANN001
+        return {"created_candidates": 2}
 
 
 def test_axe_fusion_chat_route_allows_dmz(client, monkeypatch: pytest.MonkeyPatch):
@@ -80,6 +139,7 @@ def test_axe_fusion_chat_route_allows_dmz(client, monkeypatch: pytest.MonkeyPatc
     body = response.json()
     assert body["text"] == "stubbed response"
     assert "raw" in body
+    assert "x-axe-request-id" in response.headers
 
 
 def test_axe_fusion_chat_route_denies_external(client, monkeypatch: pytest.MonkeyPatch):
@@ -187,3 +247,94 @@ def test_axe_provider_runtime_update(client, monkeypatch: pytest.MonkeyPatch):
     payload = response.json()
     assert payload["provider"] == "groq"
     assert payload["sanitization_level"] == "moderate"
+
+
+def test_axe_admin_outcomes_endpoint(client, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(axe_fusion_router_module, "get_axe_trust_validator", lambda: _AllowDmzValidator())
+    monkeypatch.setattr(axe_fusion_router_module, "get_axe_fusion_service", lambda db=None: _FusionServiceStub())
+
+    response = client.get("/api/axe/admin/deanonymization/outcomes")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 1
+    assert payload[0]["status"] == "success"
+
+
+def test_axe_admin_insights_endpoint(client, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(axe_fusion_router_module, "get_axe_trust_validator", lambda: _AllowDmzValidator())
+    monkeypatch.setattr(axe_fusion_router_module, "get_axe_fusion_service", lambda db=None: _FusionServiceStub())
+
+    response = client.get("/api/axe/admin/sanitization/insights")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 1
+    assert payload[0]["provider"] == "groq"
+
+
+def test_axe_admin_retention_run_endpoint(client, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(axe_fusion_router_module, "get_axe_trust_validator", lambda: _AllowDmzValidator())
+    monkeypatch.setattr(axe_fusion_router_module, "get_axe_fusion_service", lambda db=None: _FusionServiceStub())
+
+    response = client.post("/api/axe/admin/retention/run")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["deleted_mapping_sets"] == 3
+
+
+def test_axe_admin_insight_approve_endpoint(client, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(axe_fusion_router_module, "get_axe_trust_validator", lambda: _AllowDmzValidator())
+    monkeypatch.setattr(axe_fusion_router_module, "get_axe_fusion_service", lambda db=None: _FusionServiceStub())
+
+    response = client.post("/api/axe/admin/sanitization/insights/11111111-1111-1111-1111-111111111111/approve")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["gate_state"] == "approved"
+
+
+def test_axe_admin_insight_reject_endpoint(client, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(axe_fusion_router_module, "get_axe_trust_validator", lambda: _AllowDmzValidator())
+    monkeypatch.setattr(axe_fusion_router_module, "get_axe_fusion_service", lambda db=None: _FusionServiceStub())
+
+    response = client.post("/api/axe/admin/sanitization/insights/11111111-1111-1111-1111-111111111111/reject")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["gate_state"] == "rejected"
+
+
+def test_axe_admin_generate_insights_endpoint(client, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(axe_fusion_router_module, "get_axe_trust_validator", lambda: _AllowDmzValidator())
+    monkeypatch.setattr(axe_fusion_router_module, "get_axe_fusion_service", lambda db=None: _FusionServiceStub())
+
+    response = client.post("/api/axe/admin/sanitization/insights/generate?window_days=7&min_sample_size=50")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["created_candidates"] == 2
+
+
+def test_axe_admin_actions_emit_audit(client, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(axe_fusion_router_module, "get_axe_trust_validator", lambda: _AllowDmzValidator())
+    monkeypatch.setattr(axe_fusion_router_module, "get_axe_fusion_service", lambda db=None: _FusionServiceStub())
+
+    calls = []
+
+    async def _fake_audit(**kwargs):  # noqa: ANN003
+        calls.append(kwargs)
+
+    monkeypatch.setattr(axe_fusion_router_module, "write_unified_audit", _fake_audit)
+
+    response = client.put(
+        "/api/axe/provider/runtime",
+        json={"provider": "groq", "force_sanitization_level": "moderate"},
+        headers={"x-request-id": "req-audit-1"},
+    )
+
+    assert response.status_code == 200
+    assert calls
+    assert calls[0]["event_type"] == "axe.admin"
+    assert calls[0]["action"] == "provider_runtime_update"

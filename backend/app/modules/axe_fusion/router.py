@@ -15,16 +15,17 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, List, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Request, Response, UploadFile, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app.core.database import get_db
+from app.core.audit_bridge import write_unified_audit
 from app.core.auth_deps import (
     get_current_principal,
     Principal,
@@ -384,6 +385,75 @@ class ProviderRuntimeUpdateRequest(BaseModel):
     force_sanitization_level: Optional[SanitizationLevel] = None
 
 
+class DeanonymizationOutcomeResponse(BaseModel):
+    request_id: str
+    provider: str
+    provider_model: str
+    status: str
+    reason_code: Optional[str] = None
+    placeholder_count: int
+    restored_count: int
+    unresolved_placeholders: list
+    created_at: datetime
+
+
+class LearningCandidateResponse(BaseModel):
+    id: str
+    provider: str
+    pattern_name: str
+    sample_size: int
+    failure_rate: float
+    confidence_score: float
+    risk_score: float
+    proposed_change: Any
+    gate_state: str
+    approved_by: Optional[str] = None
+    approved_at: Optional[datetime] = None
+    created_at: datetime
+
+
+class CandidateDecisionResponse(BaseModel):
+    candidate_id: str
+    updated: bool
+    gate_state: str
+
+
+class RetentionRunResponse(BaseModel):
+    deleted_mapping_sets: int
+    deleted_attempts: int
+    deleted_candidates: int
+
+
+class LearningGenerationResponse(BaseModel):
+    created_candidates: int
+
+
+async def _emit_axe_admin_audit(
+    *,
+    db: AsyncSession,
+    action: str,
+    actor: str,
+    resource_id: str,
+    details: dict,
+) -> None:
+    try:
+        await write_unified_audit(
+            event_type="axe.admin",
+            action=action,
+            actor=actor,
+            actor_type="operator",
+            resource_type="axe_fusion",
+            resource_id=resource_id,
+            severity="info",
+            message=f"AXE admin action: {action}",
+            correlation_id=details.get("request_id"),
+            details=details,
+            db=db,
+        )
+    except Exception as exc:
+        logger.warning("AXE admin audit emit failed: %s", exc)
+
+
 class LegacyAxeMessageRequest(BaseModel):
     message: Optional[str] = None
     metadata: dict = Field(default_factory=dict)
@@ -401,6 +471,7 @@ class LegacyAxeMessageRequest(BaseModel):
 @limiter.limit(AXE_CHAT_RATE_LIMIT)
 async def axe_chat(
     request: Request,
+    response: Response,
     chat_request: ChatRequest,
     db: AsyncSession = Depends(get_db),
     context: AXERequestContext = Depends(validate_axe_trust),
@@ -446,13 +517,18 @@ async def axe_chat(
     )
     
     try:
+        request_id = request.headers.get("x-request-id", f"axe-{uuid4().hex}")
+        response.headers["x-axe-request-id"] = request_id
+
         # Konvertiere Pydantic Model zu Dict für Service
         messages = [msg.model_dump() for msg in chat_request.messages]
         
         result = await service.chat(
             model=chat_request.model,
             messages=messages,
-            temperature=chat_request.temperature or 0.7
+            temperature=chat_request.temperature or 0.7,
+            request_id=request_id,
+            principal_id=user_id,
         )
         
         return ChatResponse(
@@ -570,6 +646,7 @@ async def axe_provider_runtime(
 )
 async def axe_update_provider_runtime(
     payload: ProviderRuntimeUpdateRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     context: AXERequestContext = Depends(validate_axe_trust),
     principal: Principal = Depends(require_role(SystemRole.OPERATOR, SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN)),
@@ -587,6 +664,18 @@ async def axe_update_provider_runtime(
         provider=payload.provider,
         force_sanitization_level=payload.force_sanitization_level,
     )
+    await _emit_axe_admin_audit(
+        db=db,
+        action="provider_runtime_update",
+        actor=principal.principal_id,
+        resource_id="provider_runtime",
+        details={
+            "provider": payload.provider.value,
+            "force_sanitization_level": payload.force_sanitization_level.value if payload.force_sanitization_level else None,
+            "source_service": context.source_service,
+            "request_id": request.headers.get("x-request-id"),
+        },
+    )
     active = runtime["active"]
     return ProviderRuntimeResponse(
         provider=active["provider"],
@@ -596,6 +685,224 @@ async def axe_update_provider_runtime(
         timeout_seconds=active["timeout_seconds"],
         sanitization_level=runtime["sanitization_level"],
     )
+
+
+@router.get(
+    "/admin/deanonymization/outcomes",
+    response_model=List[DeanonymizationOutcomeResponse],
+    summary="List AXE deanonymization outcomes",
+)
+async def axe_admin_deanonymization_outcomes(
+    request_id: Optional[str] = None,
+    status_filter: Optional[str] = Query(None, alias="status"),
+    limit: int = Query(100, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+    context: AXERequestContext = Depends(validate_axe_trust),
+    principal: Principal = Depends(require_role(SystemRole.OPERATOR, SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN)),
+) -> List[DeanonymizationOutcomeResponse]:
+    logger.info(
+        "AXE outcomes query (trust_tier=%s source=%s user=%s request_id=%s status=%s limit=%s)",
+        context.trust_tier.value,
+        context.source_service,
+        principal.principal_id,
+        request_id,
+        status_filter,
+        limit,
+    )
+    service = get_axe_fusion_service(db=db)
+    rows = await service.get_deanonymization_outcomes(
+        request_id=request_id,
+        status=status_filter,
+        limit=limit,
+    )
+    return [DeanonymizationOutcomeResponse(**row) for row in rows]
+
+
+@router.get(
+    "/admin/sanitization/insights",
+    response_model=List[LearningCandidateResponse],
+    summary="List AXE sanitization learning candidates",
+)
+async def axe_admin_sanitization_insights(
+    provider: Optional[str] = None,
+    gate_state: Optional[str] = None,
+    limit: int = Query(100, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+    context: AXERequestContext = Depends(validate_axe_trust),
+    principal: Principal = Depends(require_role(SystemRole.OPERATOR, SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN)),
+) -> List[LearningCandidateResponse]:
+    logger.info(
+        "AXE insights query (trust_tier=%s source=%s user=%s provider=%s gate_state=%s)",
+        context.trust_tier.value,
+        context.source_service,
+        principal.principal_id,
+        provider,
+        gate_state,
+    )
+    service = get_axe_fusion_service(db=db)
+    rows = await service.get_learning_candidates(
+        provider=provider,
+        gate_state=gate_state,
+        limit=limit,
+    )
+    return [LearningCandidateResponse(**{**row, "id": str(row["id"])}) for row in rows]
+
+
+@router.post(
+    "/admin/sanitization/insights/{candidate_id}/approve",
+    response_model=CandidateDecisionResponse,
+    summary="Approve AXE sanitization learning candidate",
+)
+async def axe_admin_approve_insight(
+    candidate_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    context: AXERequestContext = Depends(validate_axe_trust),
+    principal: Principal = Depends(require_role(SystemRole.OPERATOR, SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN)),
+) -> CandidateDecisionResponse:
+    logger.warning(
+        "AXE insight approve (trust_tier=%s source=%s user=%s candidate=%s)",
+        context.trust_tier.value,
+        context.source_service,
+        principal.principal_id,
+        candidate_id,
+    )
+    service = get_axe_fusion_service(db=db)
+    updated = await service.update_learning_candidate_state(
+        candidate_id=candidate_id,
+        new_state="approved",
+        approved_by=principal.principal_id,
+    )
+    if not updated:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Candidate not found")
+    await _emit_axe_admin_audit(
+        db=db,
+        action="insight_approve",
+        actor=principal.principal_id,
+        resource_id=candidate_id,
+        details={
+            "new_state": "approved",
+            "source_service": context.source_service,
+            "request_id": request.headers.get("x-request-id"),
+        },
+    )
+    return CandidateDecisionResponse(candidate_id=candidate_id, updated=True, gate_state="approved")
+
+
+@router.post(
+    "/admin/sanitization/insights/{candidate_id}/reject",
+    response_model=CandidateDecisionResponse,
+    summary="Reject AXE sanitization learning candidate",
+)
+async def axe_admin_reject_insight(
+    candidate_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    context: AXERequestContext = Depends(validate_axe_trust),
+    principal: Principal = Depends(require_role(SystemRole.OPERATOR, SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN)),
+) -> CandidateDecisionResponse:
+    logger.warning(
+        "AXE insight reject (trust_tier=%s source=%s user=%s candidate=%s)",
+        context.trust_tier.value,
+        context.source_service,
+        principal.principal_id,
+        candidate_id,
+    )
+    service = get_axe_fusion_service(db=db)
+    updated = await service.update_learning_candidate_state(
+        candidate_id=candidate_id,
+        new_state="rejected",
+        approved_by=principal.principal_id,
+    )
+    if not updated:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Candidate not found")
+    await _emit_axe_admin_audit(
+        db=db,
+        action="insight_reject",
+        actor=principal.principal_id,
+        resource_id=candidate_id,
+        details={
+            "new_state": "rejected",
+            "source_service": context.source_service,
+            "request_id": request.headers.get("x-request-id"),
+        },
+    )
+    return CandidateDecisionResponse(candidate_id=candidate_id, updated=True, gate_state="rejected")
+
+
+@router.post(
+    "/admin/retention/run",
+    response_model=RetentionRunResponse,
+    summary="Run AXE retention cleanup",
+)
+async def axe_admin_retention_run(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    context: AXERequestContext = Depends(validate_axe_trust),
+    principal: Principal = Depends(require_role(SystemRole.OPERATOR, SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN)),
+) -> RetentionRunResponse:
+    logger.warning(
+        "AXE retention run (trust_tier=%s source=%s user=%s)",
+        context.trust_tier.value,
+        context.source_service,
+        principal.principal_id,
+    )
+    service = get_axe_fusion_service(db=db)
+    result = await service.run_retention_cleanup()
+    await _emit_axe_admin_audit(
+        db=db,
+        action="retention_run",
+        actor=principal.principal_id,
+        resource_id="retention",
+        details={
+            **result,
+            "source_service": context.source_service,
+            "request_id": request.headers.get("x-request-id"),
+        },
+    )
+    return RetentionRunResponse(**result)
+
+
+@router.post(
+    "/admin/sanitization/insights/generate",
+    response_model=LearningGenerationResponse,
+    summary="Generate AXE sanitization learning candidates",
+)
+async def axe_admin_generate_insights(
+    request: Request,
+    window_days: int = Query(7, ge=1, le=30),
+    min_sample_size: int = Query(50, ge=10, le=5000),
+    db: AsyncSession = Depends(get_db),
+    context: AXERequestContext = Depends(validate_axe_trust),
+    principal: Principal = Depends(require_role(SystemRole.OPERATOR, SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN)),
+) -> LearningGenerationResponse:
+    logger.warning(
+        "AXE insight generation (trust_tier=%s source=%s user=%s window_days=%s min_sample_size=%s)",
+        context.trust_tier.value,
+        context.source_service,
+        principal.principal_id,
+        window_days,
+        min_sample_size,
+    )
+    service = get_axe_fusion_service(db=db)
+    result = await service.generate_learning_candidates(
+        window_days=window_days,
+        min_sample_size=min_sample_size,
+    )
+    await _emit_axe_admin_audit(
+        db=db,
+        action="insights_generate",
+        actor=principal.principal_id,
+        resource_id="learning_candidates",
+        details={
+            **result,
+            "window_days": window_days,
+            "min_sample_size": min_sample_size,
+            "source_service": context.source_service,
+            "request_id": request.headers.get("x-request-id"),
+        },
+    )
+    return LearningGenerationResponse(**result)
 
 
 @router.post(
