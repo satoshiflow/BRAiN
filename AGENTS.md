@@ -175,6 +175,7 @@ All commands below are from repo root unless noted.
 - Keep architecture migration work documented under `docs/specs/*` and `docs/roadmap/*`.
 - For skill/runtime execution work, align specs with `docs/core/brain_skill_execution_standard.md`.
 - For multi-agent execution, align role usage and parallelization with `docs/core/agent_operating_matrix.md`.
+- For domain-aware orchestration work, align boundaries and rollout with `docs/specs/domain_agent_contract.md` and `docs/specs/domain_agent_integration_plan.md`.
 - Align long-running delivery execution with `docs/roadmap/BRAIN_SKILL_FIRST_IMPLEMENTATION_ROADMAP.md`.
 - Track the parallel learning/research delivery strand in `docs/roadmap/BRAIN_MISSION_DELIBERATION_INSIGHT_ROADMAP.md`.
 - For each Epic-level change, capture: scope, contracts, risks, and done criteria.
@@ -207,6 +208,7 @@ All commands below are from repo root unless noted.
 - Default working roles:
   - `brain-orchestrator`
   - `brain-architect`
+  - `brain-domain-orchestrator`
   - `brain-schema-designer`
   - `brain-runtime-engineer`
   - `brain-migration-engineer`
