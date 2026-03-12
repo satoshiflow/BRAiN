@@ -7,11 +7,17 @@ interface AdvancedCameraCaptureProps {
   open: boolean;
   onClose: () => void;
   onCapture: (file: File) => Promise<void> | void;
+  onFallbackToFilePicker?: () => void;
 }
 
 type FacingMode = "user" | "environment";
 
-export function AdvancedCameraCapture({ open, onClose, onCapture }: AdvancedCameraCaptureProps) {
+export function AdvancedCameraCapture({
+  open,
+  onClose,
+  onCapture,
+  onFallbackToFilePicker,
+}: AdvancedCameraCaptureProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -20,6 +26,7 @@ export function AdvancedCameraCapture({ open, onClose, onCapture }: AdvancedCame
   const [capturedDataUrl, setCapturedDataUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [showFallbackAction, setShowFallbackAction] = useState(false);
 
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -32,6 +39,7 @@ export function AdvancedCameraCapture({ open, onClose, onCapture }: AdvancedCame
   const startStream = useCallback(async () => {
     try {
       setError(null);
+      setShowFallbackAction(false);
       stopStream();
 
       if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function") {
@@ -57,17 +65,23 @@ export function AdvancedCameraCapture({ open, onClose, onCapture }: AdvancedCame
         switch (streamError.name) {
           case "NotAllowedError":
             message = "Camera permission denied. Please allow camera access in your browser settings.";
+            setShowFallbackAction(true);
             break;
           case "NotFoundError":
             message = "No camera device found.";
+            setShowFallbackAction(true);
             break;
           case "NotReadableError":
             message = "Camera is currently used by another application.";
+            setShowFallbackAction(true);
             break;
           default:
             message = streamError.message;
+            setShowFallbackAction(true);
             break;
         }
+      } else {
+        setShowFallbackAction(true);
       }
       setError(message);
     }
@@ -77,6 +91,7 @@ export function AdvancedCameraCapture({ open, onClose, onCapture }: AdvancedCame
     if (!open) {
       setCapturedDataUrl(null);
       setError(null);
+      setShowFallbackAction(false);
       stopStream();
       return;
     }
@@ -149,6 +164,11 @@ export function AdvancedCameraCapture({ open, onClose, onCapture }: AdvancedCame
     return null;
   }
 
+  const handleFallback = () => {
+    onClose();
+    onFallbackToFilePicker?.();
+  };
+
   return (
     <div className="fixed inset-0 z-[12000] bg-black/80 flex items-center justify-center p-4">
       <div className="w-full max-w-3xl rounded-xl border border-slate-700 bg-slate-900 overflow-hidden">
@@ -169,7 +189,20 @@ export function AdvancedCameraCapture({ open, onClose, onCapture }: AdvancedCame
             )}
           </div>
 
-          {error && <p className="text-sm text-red-400">{error}</p>}
+          {error && (
+            <div className="space-y-2">
+              <p className="text-sm text-red-400">{error}</p>
+              {showFallbackAction && onFallbackToFilePicker && (
+                <button
+                  type="button"
+                  onClick={handleFallback}
+                  className="px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-500"
+                >
+                  Select image instead
+                </button>
+              )}
+            </div>
+          )}
 
           <div className="flex flex-wrap gap-2 justify-end">
             {capturedDataUrl ? (

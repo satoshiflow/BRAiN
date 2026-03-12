@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "verify:runtime": "python3 scripts/verify_runtime.py",
+    "verify:frontend": "npm run typecheck && npm run lint && npm run build"
   },
   "dependencies": {
     "@monaco-editor/react": "4.6.0",

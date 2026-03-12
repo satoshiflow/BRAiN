@@ -66,6 +66,7 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraFallbackInputRef = useRef<HTMLInputElement>(null);
   const [pluginContext, setPluginContext] = useState<PluginContext | null>(null);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -268,6 +269,51 @@ export default function ChatPage() {
     setAttachments((prev) => prev.filter((item) => item.status !== "error"));
   };
 
+  const openImageFallbackPicker = () => {
+    cameraFallbackInputRef.current?.click();
+  };
+
+  const handleOpenCamera = async () => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function") {
+      setError("Camera API not available in this browser. Please upload an image instead.");
+      openImageFallbackPicker();
+      return;
+    }
+
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cameraDevices = devices.filter((device) => device.kind === "videoinput");
+      if (cameraDevices.length === 0) {
+        setError("No physical camera detected on this system. Switched to image picker.");
+        openImageFallbackPicker();
+        return;
+      }
+    } catch {
+      // Continue; getUserMedia will provide explicit errors if stream fails.
+    }
+
+    try {
+      if (navigator.permissions && typeof navigator.permissions.query === "function") {
+        const permissionResult = await navigator.permissions.query({
+          name: "camera" as PermissionName,
+        });
+        if (permissionResult.state === "denied") {
+          setError("Camera permission denied. Please allow access or upload an image instead.");
+          openImageFallbackPicker();
+          return;
+        }
+      }
+    } catch {
+      // Ignore permission query errors and attempt stream in modal.
+    }
+
+    setCameraOpen(true);
+  };
+
   const handleKeyPress = (e: React.KeyboardEvent) => {
     // Desktop: Enter to send, Shift+Enter for new line
     // Mobile: Always allow new lines (no keyboard shortcuts)
@@ -424,6 +470,16 @@ export default function ChatPage() {
                 event.target.value = "";
               }}
             />
+            <input
+              ref={cameraFallbackInputRef}
+              type="file"
+              className="hidden"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={(event) => {
+                void uploadFiles(event.target.files);
+                event.target.value = "";
+              }}
+            />
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -436,7 +492,7 @@ export default function ChatPage() {
             </button>
             <button
               type="button"
-              onClick={() => setCameraOpen(true)}
+              onClick={() => void handleOpenCamera()}
               disabled={loading || hasUploadingAttachments || uploadLock}
               className="shrink-0 h-11 w-11 bg-slate-800 hover:bg-slate-700 disabled:bg-slate-700 disabled:opacity-60 text-white rounded-lg transition-colors flex items-center justify-center border border-slate-700"
               aria-label="Foto machen"
@@ -495,6 +551,7 @@ export default function ChatPage() {
         onCapture={async (file) => {
           await uploadFiles([file]);
         }}
+        onFallbackToFilePicker={openImageFallbackPicker}
       />
     </div>
   );
