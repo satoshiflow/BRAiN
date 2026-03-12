@@ -12,6 +12,8 @@ from alembic import context
 
 import os
 
+from app.core.config import get_settings
+
 # this is the Alembic Config object
 config = context.config
 
@@ -25,7 +27,12 @@ target_metadata = None
 
 def get_url():
     """Get database URL from environment or config"""
-    url = os.getenv("DATABASE_URL", config.get_main_option("sqlalchemy.url"))
+    settings = get_settings()
+    url = os.getenv("DATABASE_URL") or settings.database_url or config.get_main_option("sqlalchemy.url")
+
+    if not url or url.startswith("driver://"):
+        raise RuntimeError("DATABASE_URL is not configured for Alembic migrations")
+
     if url and url.startswith("postgresql://"):
         url = url.replace("postgresql://", "postgresql+psycopg2://")
     return url

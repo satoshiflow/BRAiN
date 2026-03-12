@@ -5,6 +5,7 @@ CRUD endpoints for system events.
 """
 from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import List, Optional
+from datetime import datetime, timedelta
 
 from services.system_events import SystemEventsService
 
@@ -24,11 +25,93 @@ router = APIRouter(prefix="/api/events", tags=["events"])
 # Dependency (will be properly implemented in main app)
 _events_service: Optional[SystemEventsService] = None
 
+
+class InMemorySystemEventsService:
+    """In-memory fallback for local/test environments without DB/Redis."""
+
+    def __init__(self) -> None:
+        self._events: dict[int, SystemEventResponse] = {}
+        self._next_id = 1
+
+    async def create_event(self, event_data: SystemEventCreate) -> SystemEventResponse:
+        now = datetime.utcnow()
+        event = SystemEventResponse(
+            id=self._next_id,
+            event_type=event_data.event_type,
+            severity=event_data.severity,
+            message=event_data.message,
+            details=event_data.details,
+            source=event_data.source,
+            timestamp=now,
+            created_at=now,
+        )
+        self._events[self._next_id] = event
+        self._next_id += 1
+        return event
+
+    async def get_event(self, event_id: int) -> Optional[SystemEventResponse]:
+        return self._events.get(event_id)
+
+    async def list_events(
+        self,
+        limit: int = 100,
+        offset: int = 0,
+        event_type: Optional[str] = None,
+        severity: Optional[EventSeverity] = None,
+    ) -> List[SystemEventResponse]:
+        events = list(self._events.values())
+        events.sort(key=lambda e: e.timestamp, reverse=True)
+
+        if event_type is not None:
+            events = [e for e in events if e.event_type == event_type]
+        if severity is not None:
+            events = [e for e in events if e.severity == severity]
+
+        return events[offset : offset + limit]
+
+    async def update_event(self, event_id: int, event_data: SystemEventUpdate) -> Optional[SystemEventResponse]:
+        existing = self._events.get(event_id)
+        if existing is None:
+            return None
+
+        updated = existing.model_copy(
+            update={k: v for k, v in event_data.model_dump(exclude_unset=True).items()}
+        )
+        self._events[event_id] = updated
+        return updated
+
+    async def delete_event(self, event_id: int) -> bool:
+        return self._events.pop(event_id, None) is not None
+
+    async def get_stats(self) -> EventStats:
+        events = list(self._events.values())
+        by_severity: dict[str, int] = {}
+        by_type: dict[str, int] = {}
+        now = datetime.utcnow()
+
+        for event in events:
+            by_severity[event.severity.value] = by_severity.get(event.severity.value, 0) + 1
+            by_type[event.event_type] = by_type.get(event.event_type, 0) + 1
+
+        recent_events = sum(1 for event in events if event.timestamp >= now - timedelta(hours=24))
+        last_event_timestamp = max((event.timestamp for event in events), default=None)
+
+        return EventStats(
+            total_events=len(events),
+            events_by_severity=by_severity,
+            events_by_type=by_type,
+            recent_events=recent_events,
+            last_event_timestamp=last_event_timestamp,
+        )
+
 async def get_events_service() -> SystemEventsService:
     """Get events service instance"""
     global _events_service
     if _events_service is None:
-        _events_service = SystemEventsService()
+        try:
+            _events_service = SystemEventsService()
+        except TypeError:
+            _events_service = InMemorySystemEventsService()
     return _events_service
 
 

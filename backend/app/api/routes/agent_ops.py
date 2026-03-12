@@ -403,59 +403,65 @@ async def clear_axe_history():
 @router.get("/info")
 async def get_agents_info():
     """Get information about all constitutional agents"""
+    core_agents = [
+        {
+            "id": "supervisor",
+            "name": "SupervisorAgent",
+            "role": "Constitutional Guardian",
+            "capabilities": ["risk_assessment", "policy_evaluation", "human_oversight"],
+        },
+        {
+            "id": "coder",
+            "name": "CoderAgent",
+            "role": "Secure Code Generation",
+            "capabilities": ["code_generation", "odoo_modules", "dsgvo_compliance"],
+        },
+        {
+            "id": "ops",
+            "name": "OpsAgent",
+            "role": "Operations & Deployment",
+            "capabilities": ["deployment", "rollback", "health_monitoring"],
+        },
+        {
+            "id": "architect",
+            "name": "ArchitectAgent",
+            "role": "Architecture & Compliance Auditor",
+            "capabilities": ["architecture_review", "eu_compliance", "security_audit"],
+        },
+        {
+            "id": "axe",
+            "name": "AXEAgent",
+            "role": "Conversational Assistant",
+            "capabilities": ["chat", "system_monitoring", "log_analysis"],
+        },
+    ]
+
+    extended_agents = [
+        {
+            "id": "research",
+            "name": "ResearchAgent",
+            "role": "Information Research & Analysis",
+            "capabilities": ["web_search", "document_analysis", "source_validation", "data_gathering"],
+        },
+        {
+            "id": "test",
+            "name": "TestAgent",
+            "role": "Automated Testing & QA",
+            "capabilities": ["test_generation", "test_execution", "coverage_analysis", "bug_detection"],
+        },
+        {
+            "id": "documentation",
+            "name": "DocumentationAgent",
+            "role": "Documentation Generation",
+            "capabilities": ["api_docs", "readme", "code_comments", "user_guides"],
+        },
+    ]
+
     return {
         "name": "Constitutional Agents",
         "version": "1.0.0",
-        "agents": [
-            {
-                "id": "supervisor",
-                "name": "SupervisorAgent",
-                "role": "Constitutional Guardian",
-                "capabilities": ["risk_assessment", "policy_evaluation", "human_oversight"],
-            },
-            {
-                "id": "coder",
-                "name": "CoderAgent",
-                "role": "Secure Code Generation",
-                "capabilities": ["code_generation", "odoo_modules", "dsgvo_compliance"],
-            },
-            {
-                "id": "ops",
-                "name": "OpsAgent",
-                "role": "Operations & Deployment",
-                "capabilities": ["deployment", "rollback", "health_monitoring"],
-            },
-            {
-                "id": "architect",
-                "name": "ArchitectAgent",
-                "role": "Architecture & Compliance Auditor",
-                "capabilities": ["architecture_review", "eu_compliance", "security_audit"],
-            },
-            {
-                "id": "axe",
-                "name": "AXEAgent",
-                "role": "Conversational Assistant",
-                "capabilities": ["chat", "system_monitoring", "log_analysis"],
-            },
-            {
-                "id": "research",
-                "name": "ResearchAgent",
-                "role": "Information Research & Analysis",
-                "capabilities": ["web_search", "document_analysis", "source_validation", "data_gathering"],
-            },
-            {
-                "id": "test",
-                "name": "TestAgent",
-                "role": "Automated Testing & QA",
-                "capabilities": ["test_generation", "test_execution", "coverage_analysis", "bug_detection"],
-            },
-            {
-                "id": "documentation",
-                "name": "DocumentationAgent",
-                "role": "Documentation Generation",
-                "capabilities": ["api_docs", "readme", "code_comments", "user_guides"],
-            },
-        ],
+        "agents": core_agents,
+        "extended_agents": extended_agents,
         "compliance_frameworks": ["DSGVO", "EU AI Act"],
         "endpoints": {
             "supervisor": ["/supervise", "/metrics"],
