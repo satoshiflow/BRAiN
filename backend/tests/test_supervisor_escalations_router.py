@@ -151,8 +151,11 @@ def test_supervisor_escalation_decision_flow() -> None:
     assert in_review_response.json()["status"] == "in_review"
     assert decide_response.status_code == 200
     assert decide_response.json()["status"] == "approved"
+    assert decide_response.json()["decision_reason"] == "risk mitigated"
+    assert decide_response.json()["notes"] == {"checklist": "ok"}
     assert get_response.status_code == 200
     assert get_response.json()["status"] == "approved"
+    assert get_response.json()["notes"] == {"checklist": "ok"}
 
 
 def test_supervisor_escalation_invalid_transition_returns_409() -> None:

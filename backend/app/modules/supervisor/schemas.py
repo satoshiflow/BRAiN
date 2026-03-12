@@ -135,6 +135,10 @@ class DomainEscalationResponse(BaseModel):
     requested_by: str
     risk_tier: str
     correlation_id: Optional[str] = None
+    reviewed_by: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    decision_reason: Optional[str] = None
+    notes: Dict[str, Any] = Field(default_factory=dict)
 
 
 class DomainEscalationStatus(str, Enum):

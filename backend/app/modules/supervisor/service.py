@@ -305,6 +305,10 @@ async def create_domain_escalation_handoff(
             requested_by=model.requested_by,
             risk_tier=model.risk_tier,
             correlation_id=model.correlation_id,
+            reviewed_by=model.reviewed_by,
+            reviewed_at=model.reviewed_at,
+            decision_reason=model.decision_reason,
+            notes=dict(model.context or {}).get("decision_notes", {}),
         )
     else:
         item = DomainEscalationResponse(
@@ -356,6 +360,10 @@ async def list_domain_escalation_handoffs(
                 requested_by=item.requested_by,
                 risk_tier=item.risk_tier,
                 correlation_id=item.correlation_id,
+                reviewed_by=item.reviewed_by,
+                reviewed_at=item.reviewed_at,
+                decision_reason=item.decision_reason,
+                notes=dict(item.context or {}).get("decision_notes", {}),
             )
             for item in items
         ]
@@ -390,6 +398,10 @@ async def get_domain_escalation_handoff(
             requested_by=item.requested_by,
             risk_tier=item.risk_tier,
             correlation_id=item.correlation_id,
+            reviewed_by=item.reviewed_by,
+            reviewed_at=item.reviewed_at,
+            decision_reason=item.decision_reason,
+            notes=dict(item.context or {}).get("decision_notes", {}),
         )
 
     for item in _domain_escalations:
@@ -429,6 +441,9 @@ async def decide_domain_escalation_handoff(
         model.reviewed_by = decision.reviewer_id
         model.reviewed_at = datetime.now(timezone.utc)
         model.decision_reason = decision.decision_reason
+        context = dict(model.context or {})
+        context["decision_notes"] = decision.notes
+        model.context = context
         model.updated_at = datetime.now(timezone.utc)
         await db.commit()
         await db.refresh(model)
@@ -450,6 +465,10 @@ async def decide_domain_escalation_handoff(
             requested_by=model.requested_by,
             risk_tier=model.risk_tier,
             correlation_id=model.correlation_id,
+            reviewed_by=model.reviewed_by,
+            reviewed_at=model.reviewed_at,
+            decision_reason=model.decision_reason,
+            notes=dict(model.context or {}).get("decision_notes", {}),
         )
 
     for idx, item in enumerate(_domain_escalations):
@@ -467,6 +486,10 @@ async def decide_domain_escalation_handoff(
                 requested_by=item.requested_by,
                 risk_tier=item.risk_tier,
                 correlation_id=item.correlation_id,
+                reviewed_by=decision.reviewer_id,
+                reviewed_at=datetime.now(timezone.utc),
+                decision_reason=decision.decision_reason,
+                notes=decision.notes,
             )
             _domain_escalations[idx] = updated
 
