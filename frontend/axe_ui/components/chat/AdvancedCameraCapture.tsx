@@ -170,17 +170,21 @@ export function AdvancedCameraCapture({
   };
 
   return (
-    <div className="fixed inset-0 z-[12000] bg-black/80 flex items-center justify-center p-4">
-      <div className="w-full max-w-3xl rounded-xl border border-slate-700 bg-slate-900 overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-700 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-100">Take photo</h2>
+    <div className="fixed inset-0 z-[12000] flex items-center justify-center bg-slate-950/88 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-3xl overflow-hidden rounded-xl border border-cyan-500/20 bg-slate-950/95 shadow-[0_24px_80px_rgba(0,0,0,0.65)]">
+        <div className="flex items-center justify-between border-b border-cyan-500/15 px-4 py-3">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-cyan-300/70">Optical input channel</p>
+            <h2 className="text-sm font-semibold text-slate-100">Take photo</h2>
+          </div>
           <button onClick={onClose} type="button" className="p-1.5 text-slate-300 hover:text-white">
             <X className="w-4 h-4" />
           </button>
         </div>
 
         <div className="p-4 space-y-4">
-          <div className="aspect-video w-full rounded-lg border border-slate-700 bg-slate-950 overflow-hidden flex items-center justify-center">
+          <div className="relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-lg border border-cyan-500/20 bg-slate-950">
+            <div className="pointer-events-none absolute inset-3 rounded-md border border-cyan-400/20" />
             {capturedDataUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={capturedDataUrl} alt="Captured" className="w-full h-full object-contain" />
@@ -196,7 +200,7 @@ export function AdvancedCameraCapture({
                 <button
                   type="button"
                   onClick={handleFallback}
-                  className="px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-500"
+                  className="rounded-lg border border-cyan-400/30 bg-cyan-500/15 px-3 py-2 text-cyan-100 hover:bg-cyan-500/25"
                 >
                   Select image instead
                 </button>
@@ -210,7 +214,7 @@ export function AdvancedCameraCapture({
                 <button
                   type="button"
                   onClick={() => void handleRetake()}
-                  className="px-3 py-2 rounded-lg bg-slate-800 text-slate-100 hover:bg-slate-700 inline-flex items-center gap-2"
+                  className="inline-flex items-center gap-2 rounded-lg border border-cyan-500/20 bg-slate-900/70 px-3 py-2 text-slate-100 hover:bg-slate-800"
                 >
                   <RefreshCcw className="w-4 h-4" />
                   Retake
@@ -219,7 +223,7 @@ export function AdvancedCameraCapture({
                   type="button"
                   disabled={isSaving}
                   onClick={() => void handleConfirm()}
-                  className="px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50"
+                  className="rounded-lg bg-cyan-500/80 px-3 py-2 text-slate-950 hover:bg-cyan-400 disabled:opacity-50"
                 >
                   {isSaving ? "Saving..." : "Use photo"}
                 </button>
@@ -229,7 +233,7 @@ export function AdvancedCameraCapture({
                 <button
                   type="button"
                   onClick={() => setFacingMode((prev) => (prev === "environment" ? "user" : "environment"))}
-                  className="px-3 py-2 rounded-lg bg-slate-800 text-slate-100 hover:bg-slate-700 inline-flex items-center gap-2"
+                  className="inline-flex items-center gap-2 rounded-lg border border-cyan-500/20 bg-slate-900/70 px-3 py-2 text-slate-100 hover:bg-slate-800"
                 >
                   <SwitchCamera className="w-4 h-4" />
                   Switch camera
@@ -237,7 +241,7 @@ export function AdvancedCameraCapture({
                 <button
                   type="button"
                   onClick={handleTakePhoto}
-                  className="px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-500 inline-flex items-center gap-2"
+                  className="inline-flex items-center gap-2 rounded-lg bg-cyan-500/80 px-3 py-2 text-slate-950 hover:bg-cyan-400"
                 >
                   <Camera className="w-4 h-4" />
                   Capture
@@ -248,7 +252,7 @@ export function AdvancedCameraCapture({
             <button
               type="button"
               onClick={onClose}
-              className="px-3 py-2 rounded-lg bg-slate-800 text-slate-100 hover:bg-slate-700 inline-flex items-center gap-2"
+              className="inline-flex items-center gap-2 rounded-lg border border-cyan-500/20 bg-slate-900/70 px-3 py-2 text-slate-100 hover:bg-slate-800"
             >
               <CameraOff className="w-4 h-4" />
               Close

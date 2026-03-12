@@ -6,7 +6,7 @@ test.describe("AXE auth smoke", () => {
     await mockBackend(page);
     await loginAxe(page);
 
-    await expect(page.getByText("New Chat")).toBeVisible();
+    await expect(page.getByRole("button", { name: /New Intent Thread|New Chat/ })).toBeVisible();
     await expect(page.getByPlaceholder("Type your message...")).toBeVisible();
   });
 });

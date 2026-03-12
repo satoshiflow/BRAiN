@@ -26,7 +26,7 @@ export function SessionGroup({
 
   return (
     <section>
-      <h3 className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</h3>
+      <h3 className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{label}</h3>
       <div className="space-y-2">
         {sessions.map((session) => (
           <SessionItem

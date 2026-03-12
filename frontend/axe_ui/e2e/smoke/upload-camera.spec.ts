@@ -25,7 +25,7 @@ test.describe("AXE upload and camera fallback smoke", () => {
     });
 
     await loginAxe(page);
-    await page.getByRole("button", { name: "Foto machen" }).click();
+    await page.getByRole("button", { name: "Take photo" }).click();
 
     await expect(page.getByRole("button", { name: "Capture" })).toHaveCount(0);
   });

@@ -214,6 +214,16 @@ function ChatPageContent() {
   const handleSend = async () => {
     if (!input.trim() || loading || hasUploadingAttachments || uploadLock) return;
 
+    const failedCount = attachments.filter((item) => item.status === "error").length;
+    if (failedCount > 0) {
+      const proceed = window.confirm(
+        `${failedCount} attachment upload(s) failed. Send message without failed attachments?`
+      );
+      if (!proceed) {
+        return;
+      }
+    }
+
     const currentSessionId = await ensureActiveSessionId();
     if (!currentSessionId) {
       setError("Unable to create a chat session.");
@@ -256,17 +266,6 @@ function ChatPageContent() {
           await persistMessage(currentSessionId, "assistant", result);
           await selectSession(currentSessionId);
           setAttachments([]);
-          setLoading(false);
-          return;
-        }
-      }
-
-      const failedCount = attachments.filter((item) => item.status === "error").length;
-      if (failedCount > 0) {
-        const proceed = window.confirm(
-          `${failedCount} attachment upload(s) failed. Send message without failed attachments?`
-        );
-        if (!proceed) {
           setLoading(false);
           return;
         }
@@ -424,6 +423,7 @@ function ChatPageContent() {
           groupedSessions={groupedSessions}
           activeSessionId={activeSessionId}
           loading={sessionsLoading}
+          showMobileTrigger={false}
           onSelectSession={selectSession}
           onRenameSession={async (sessionId, title) => {
             await renameSession(sessionId, title);
@@ -442,24 +442,57 @@ function ChatPageContent() {
         />
 
         <div className="flex min-h-0 flex-1 flex-col">
-          <header className="lg:hidden flex items-center justify-center border-b border-slate-800 bg-slate-900 p-4">
+          <header className="lg:hidden flex items-center justify-between border-b border-cyan-500/10 bg-slate-950/70 p-4">
             <div className="ml-14">
-              <h1 className="text-lg font-bold text-white">AXE Chat</h1>
+              <h1 className="axe-surface-title text-lg font-bold text-white">AXE Surface</h1>
             </div>
+            <ChatSidebar
+              groupedSessions={groupedSessions}
+              activeSessionId={activeSessionId}
+              loading={sessionsLoading}
+              showDesktopRail={false}
+              onSelectSession={selectSession}
+              onRenameSession={async (sessionId, title) => {
+                await renameSession(sessionId, title);
+                await selectSession(sessionId);
+              }}
+              onDeleteSession={async (sessionId) => {
+                await removeSession(sessionId);
+                await loadSessions();
+              }}
+              onCreateSession={async () => {
+                const created = await createSession();
+                if (created) {
+                  await selectSession(created.id);
+                }
+              }}
+            />
           </header>
 
           <div className="mb-6 hidden lg:block">
-            <h1 className="text-3xl font-bold text-white">AXE Chat</h1>
-            <p className="mt-2 text-slate-400">Conversational interface with the Auxiliary Execution Engine</p>
+            <p className="mb-2 text-[11px] uppercase tracking-[0.2em] text-cyan-300/70">Intent Surface</p>
+            <h1 className="axe-surface-title text-3xl font-bold text-white">AXE Cognitive Relay</h1>
+            <p className="mt-2 max-w-2xl text-slate-400">
+              Formulate operator intent. BRAiN coordinates execution across internal systems, external agents, and robotic handoffs.
+            </p>
+            <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
+              <span className="axe-chip rounded-full px-3 py-1">Presence: linked</span>
+              <span className="axe-chip rounded-full px-3 py-1">Memory: synchronized</span>
+              <span className="axe-chip rounded-full px-3 py-1">Relay mode: orchestration</span>
+            </div>
           </div>
 
           {headerError && (
-            <div className="mb-4 rounded-lg border border-red-700 bg-red-900/50 p-3 text-sm text-red-200">
+            <div className="mb-4 rounded-lg border border-rose-500/50 bg-rose-950/45 p-3 text-sm text-rose-200">
               ⚠️ Error: {headerError}
             </div>
           )}
 
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
+          <div className="axe-panel flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl">
+            <div className="border-b border-cyan-500/10 px-4 py-3 text-xs text-slate-400 sm:px-6">
+              Active Thread: <span className="text-cyan-200">{activeSession?.title ?? "New Intent Thread"}</span>
+            </div>
+
             <div className="flex-1 space-y-3 overflow-y-auto p-3 sm:space-y-4 sm:p-6">
               {messages.map((message) => (
                 <div
@@ -468,7 +501,7 @@ function ChatPageContent() {
                 >
                   {message.role === "assistant" && (
                     <div className="hidden shrink-0 sm:block">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600">
+                      <div className="axe-ring flex h-8 w-8 items-center justify-center rounded-full border border-cyan-300/40 bg-cyan-500/15">
                         <span className="text-sm">🤖</span>
                       </div>
                     </div>
@@ -477,8 +510,8 @@ function ChatPageContent() {
                   <div
                     className={`max-w-[85%] break-words rounded-lg p-3 sm:max-w-[70%] sm:p-4 ${
                       message.role === "user"
-                        ? "bg-blue-600 text-white"
-                        : "border border-slate-700 bg-slate-800 text-slate-100"
+                        ? "border border-cyan-300/35 bg-cyan-500/15 text-cyan-50"
+                        : "border border-slate-700 bg-slate-900/80 text-slate-100"
                     }`}
                   >
                     <p className="whitespace-pre-wrap text-sm">{message.content}</p>
@@ -489,7 +522,7 @@ function ChatPageContent() {
 
                   {message.role === "user" && (
                     <div className="hidden shrink-0 sm:block">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-700">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full border border-amber-400/35 bg-amber-500/15">
                         <span className="text-sm">👤</span>
                       </div>
                     </div>
@@ -499,14 +532,14 @@ function ChatPageContent() {
 
               {loading && (
                 <div className="flex justify-start">
-                  <div className="rounded-lg border border-slate-700 bg-slate-800 p-4">
+                  <div className="rounded-lg border border-cyan-500/25 bg-slate-900/75 p-4">
                     <div className="flex items-center gap-2">
                       <div className="flex gap-1">
-                        <div className="h-2 w-2 animate-bounce rounded-full bg-slate-500" />
-                        <div className="h-2 w-2 animate-bounce rounded-full bg-slate-500" style={{ animationDelay: "0.1s" }} />
-                        <div className="h-2 w-2 animate-bounce rounded-full bg-slate-500" style={{ animationDelay: "0.2s" }} />
+                        <div className="h-2 w-2 animate-bounce rounded-full bg-cyan-300" />
+                        <div className="h-2 w-2 animate-bounce rounded-full bg-cyan-300" style={{ animationDelay: "0.1s" }} />
+                        <div className="h-2 w-2 animate-bounce rounded-full bg-cyan-300" style={{ animationDelay: "0.2s" }} />
                       </div>
-                      <span className="text-sm text-slate-400">AXE is thinking...</span>
+                      <span className="text-sm text-cyan-100/80">Synthesizing operator intent...</span>
                     </div>
                   </div>
                 </div>
@@ -515,13 +548,13 @@ function ChatPageContent() {
               <div ref={messagesEndRef} />
             </div>
 
-            <div className="border-t border-slate-800 bg-slate-900 p-3 sm:p-4">
+            <div className="border-t border-cyan-500/10 bg-slate-950/55 p-3 sm:p-4">
               {attachments.length > 0 && (
                 <div className="mb-3 flex flex-wrap gap-2">
                   {attachments.map((attachment) => (
                     <div
                       key={attachment.localId}
-                      className="inline-flex items-center gap-2 rounded-md border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-200"
+                      className="inline-flex items-center gap-2 rounded-md border border-cyan-500/25 bg-slate-900/80 px-2 py-1 text-xs text-slate-200"
                     >
                       <span className="max-w-[140px] truncate">{attachment.name}</span>
                       <span
@@ -529,7 +562,7 @@ function ChatPageContent() {
                           attachment.status === "ready"
                             ? "text-emerald-400"
                             : attachment.status === "error"
-                              ? "text-red-400"
+                              ? "text-rose-400"
                               : "text-blue-300"
                         }
                       >
@@ -550,7 +583,7 @@ function ChatPageContent() {
                     <button
                       type="button"
                       onClick={clearFailedAttachments}
-                      className="text-xs text-red-300 underline hover:text-red-200"
+                      className="text-xs text-rose-300 underline hover:text-rose-200"
                     >
                       Clear failed uploads
                     </button>
@@ -587,9 +620,9 @@ function ChatPageContent() {
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={loading || hasUploadingAttachments || uploadLock}
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-slate-700 bg-slate-800 text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:opacity-60"
-                  aria-label="Datei hochladen"
-                  title="Datei hochladen"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-cyan-500/30 bg-slate-900/80 text-cyan-100 transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:opacity-60"
+                  aria-label="Upload file"
+                  title="Upload file"
                 >
                   <Paperclip className="h-5 w-5" />
                 </button>
@@ -598,9 +631,9 @@ function ChatPageContent() {
                   type="button"
                   onClick={() => void handleOpenCamera()}
                   disabled={loading || hasUploadingAttachments || uploadLock}
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-slate-700 bg-slate-800 text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:opacity-60"
-                  aria-label="Foto machen"
-                  title="Foto machen"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-cyan-500/30 bg-slate-900/80 text-cyan-100 transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:opacity-60"
+                  aria-label="Take photo"
+                  title="Take photo"
                 >
                   <Camera className="h-5 w-5" />
                 </button>
@@ -613,13 +646,13 @@ function ChatPageContent() {
                   placeholder="Type your message..."
                   disabled={loading}
                   rows={1}
-                  className="min-h-[44px] max-h-[200px] flex-1 resize-none rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 sm:px-4 sm:py-3 sm:text-base"
+                  className="min-h-[44px] max-h-[200px] flex-1 resize-none rounded-lg border border-cyan-500/25 bg-slate-900/80 px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-400 disabled:opacity-50 sm:px-4 sm:py-3 sm:text-base"
                 />
 
                 <button
                   onClick={() => void handleSend()}
                   disabled={!input.trim() || loading || hasUploadingAttachments || uploadLock}
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-700"
+                  className="axe-ring flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-cyan-500/80 text-slate-950 transition-colors hover:bg-cyan-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-300"
                   aria-label="Send message"
                 >
                   {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
@@ -628,14 +661,14 @@ function ChatPageContent() {
             </div>
           </div>
 
-          <div className="mt-4 hidden rounded-lg border border-slate-800 bg-slate-900 p-4 sm:block">
-            <p className="mb-2 text-sm text-slate-400">Quick commands:</p>
+          <div className="axe-panel mt-4 hidden rounded-xl p-4 sm:block">
+            <p className="mb-2 text-sm text-slate-400">Mission shortcuts:</p>
             <div className="flex flex-wrap gap-2">
-              {["Check system status", "List active agents", "Show recent logs", "Get mission queue"].map((cmd) => (
+              {["Check system status", "List active agents", "Show recent logs", "Coordinate robot relay"].map((cmd) => (
                 <button
                   key={cmd}
                   onClick={() => setInput(cmd)}
-                  className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1 text-xs text-slate-300 transition-colors hover:bg-slate-700"
+                  className="rounded-lg border border-cyan-400/20 bg-slate-900/70 px-3 py-1 text-xs text-cyan-100/90 transition-colors hover:bg-cyan-500/20"
                 >
                   {cmd}
                 </button>

@@ -34,14 +34,15 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className="h-full">
-      <body className="h-full bg-slate-950 text-slate-50 overflow-hidden">
+      <body className="h-full overflow-hidden text-slate-50">
         <AuthProvider>
           <PwaInit />
-          <div className="flex h-full">
+          <div className="axe-grid-overlay relative flex h-full">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_10%,rgba(20,196,216,0.10),transparent_35%),radial-gradient(circle_at_82%_84%,rgba(225,122,58,0.15),transparent_30%)]" />
+
             <Navigation />
 
-            {/* Main Content - Responsive padding */}
-            <main className="flex-1 overflow-auto pt-16 lg:pt-0">
+            <main className="relative flex-1 overflow-auto pt-16 lg:pt-0">
               <div className="p-4 sm:p-6 lg:p-8">
                 {children}
               </div>

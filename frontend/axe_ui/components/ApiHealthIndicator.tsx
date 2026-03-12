@@ -49,10 +49,10 @@ export function ApiHealthIndicator() {
   const apiBase = getApiBase();
   const indicatorColorClass =
     apiHealth.status === "ok"
-      ? "bg-emerald-500"
+      ? "bg-emerald-400"
       : apiHealth.status === "error"
-        ? "bg-red-500"
-        : "bg-amber-400";
+        ? "bg-rose-500"
+        : "bg-amber-300";
 
   const indicatorLabel =
     apiHealth.status === "ok"
@@ -66,7 +66,7 @@ export function ApiHealthIndicator() {
       <div className="space-y-1">
         <p className="font-semibold text-slate-100">{indicatorLabel}</p>
         <p className="text-slate-300">{apiBase}</p>
-        {apiHealth.error && <p className="text-red-300">{apiHealth.error}</p>}
+        {apiHealth.error && <p className="text-rose-300">{apiHealth.error}</p>}
       </div>
     ),
     [apiBase, apiHealth.error, indicatorLabel]
@@ -76,7 +76,7 @@ export function ApiHealthIndicator() {
     <Tooltip content={tooltipContent}>
       <button
         type="button"
-        className="mt-3 inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-800 px-3 py-1"
+        className="axe-ring mt-3 inline-flex items-center gap-2 rounded-full border border-cyan-400/40 bg-slate-900/80 px-3 py-1"
       >
         <span className={`h-2 w-2 rounded-full ${indicatorColorClass} animate-pulse`} />
         <span className="text-xs text-slate-300">{indicatorLabel}</span>

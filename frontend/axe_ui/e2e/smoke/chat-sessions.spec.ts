@@ -18,10 +18,10 @@ test.describe("AXE chat session smoke", () => {
     const renameInput = page.locator("input[maxlength='200']").first();
     await renameInput.fill("Release Session");
     await page.getByRole("button", { name: "Save" }).click();
-    await expect(page.getByText("Release Session")).toBeVisible();
+    await expect(page.getByRole("button", { name: /Release Session/ }).first()).toBeVisible();
 
     page.once("dialog", (dialog) => dialog.accept());
     await page.getByRole("button", { name: "Delete" }).first().click();
-    await expect(page.getByText("Release Session")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Release Session/ })).toHaveCount(0);
   });
 });

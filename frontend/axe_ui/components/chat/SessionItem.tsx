@@ -17,10 +17,10 @@ export function SessionItem({ session, active, onSelect, onRename, onDelete }: S
 
   return (
     <div
-      className={`group rounded-lg border px-3 py-2 transition-colors ${
+      className={`group rounded-lg border px-3 py-2 transition-all ${
         active
-          ? "border-blue-600 bg-slate-800"
-          : "border-slate-800 bg-slate-900 hover:border-slate-700 hover:bg-slate-800"
+          ? "axe-ring border-cyan-400/45 bg-cyan-500/10"
+          : "border-slate-800 bg-slate-950/40 hover:border-cyan-400/20 hover:bg-slate-900/80"
       }`}
     >
       {editing ? (
@@ -44,7 +44,7 @@ export function SessionItem({ session, active, onSelect, onRename, onDelete }: S
             autoFocus
           />
           <div className="flex gap-2">
-            <button type="submit" className="text-xs text-blue-300 hover:text-blue-200">
+            <button type="submit" className="text-xs text-cyan-300 hover:text-cyan-200">
               Save
             </button>
             <button type="button" className="text-xs text-slate-400 hover:text-slate-300" onClick={() => setEditing(false)}>
@@ -58,14 +58,18 @@ export function SessionItem({ session, active, onSelect, onRename, onDelete }: S
             <p className="truncate text-sm text-slate-100">{session.title}</p>
             {session.preview && <p className="mt-1 truncate text-xs text-slate-400">{session.preview}</p>}
           </button>
-          <div className={`mt-2 items-center gap-2 text-xs ${active ? "flex" : "hidden group-hover:flex"}`}>
+          <div
+            className={`mt-2 items-center gap-2 text-xs ${
+              active ? "flex" : "flex sm:hidden sm:group-hover:flex"
+            }`}
+          >
             <button
               type="button"
               onClick={() => {
                 setTitle(session.title);
                 setEditing(true);
               }}
-              className="text-slate-400 hover:text-slate-200"
+              className="text-cyan-300/80 hover:text-cyan-200"
             >
               Rename
             </button>
@@ -76,7 +80,7 @@ export function SessionItem({ session, active, onSelect, onRename, onDelete }: S
                   await onDelete(session.id);
                 }
               }}
-              className="text-red-400 hover:text-red-300"
+              className="text-rose-300/80 hover:text-rose-200"
             >
               Delete
             </button>
