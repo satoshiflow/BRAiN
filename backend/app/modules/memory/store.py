@@ -17,7 +17,7 @@ from typing import Dict, List, Optional
 
 from loguru import logger
 
-from .db_adapter import DatabaseAdapter, get_db_adapter
+from .db_adapter import DatabaseAdapter
 from .schemas import (
     CompressionStatus,
     MemoryEntry,
@@ -50,6 +50,7 @@ class MemoryStore:
         self.event_stream = event_stream
         self.database_url = database_url
         self._db: Optional[DatabaseAdapter] = None
+        self._live_entries: Dict[str, MemoryEntry] = {}
         self._total_compressions = 0
         
         # Metrics (still tracked in memory for performance)
@@ -61,7 +62,8 @@ class MemoryStore:
     async def _get_db(self) -> DatabaseAdapter:
         """Get or initialize the database adapter."""
         if self._db is None:
-            self._db = await get_db_adapter(self.database_url)
+            self._db = DatabaseAdapter(self.database_url)
+            await self._db.initialize()
         return self._db
 
     # ------------------------------------------------------------------
@@ -72,6 +74,7 @@ class MemoryStore:
         """Store a memory entry in the appropriate layer."""
         db = await self._get_db()
         await db.store_memory(entry)
+        self._live_entries[entry.memory_id] = entry
         self._total_stores += 1
 
         await self._emit("memory.stored", memory_id=entry.memory_id, layer=entry.layer.value)
@@ -83,6 +86,11 @@ class MemoryStore:
         db = await self._get_db()
         entry = await db.get_memory(memory_id)
         if entry:
+            live = self._live_entries.get(memory_id)
+            if live is not None:
+                live.access_count = entry.access_count
+                live.last_accessed_at = entry.last_accessed_at
+                entry = live
             self._total_recalls += 1
         return entry
 
@@ -92,6 +100,7 @@ class MemoryStore:
         deleted = await db.delete_memory(memory_id)
         
         if deleted:
+            self._live_entries.pop(memory_id, None)
             await self._emit("memory.deleted", memory_id=memory_id)
         
         return deleted
@@ -118,7 +127,7 @@ class MemoryStore:
         Query memories with filters. Returns sorted by importance (desc).
         """
         db = await self._get_db()
-        return await db.query_memories(
+        entries = await db.query_memories(
             agent_id=agent_id,
             session_id=session_id,
             mission_id=mission_id,
@@ -131,13 +140,39 @@ class MemoryStore:
             include_compressed=include_compressed,
             limit=limit,
         )
+        result: List[MemoryEntry] = []
+        for entry in entries:
+            live = self._live_entries.get(entry.memory_id)
+            if live is None:
+                self._live_entries[entry.memory_id] = entry
+                result.append(entry)
+                continue
+            for field in (
+                "summary",
+                "importance",
+                "karma_score",
+                "access_count",
+                "last_accessed_at",
+                "compression",
+                "expires_at",
+                "tags",
+                "metadata",
+                "content",
+            ):
+                setattr(live, field, getattr(entry, field))
+            result.append(live)
+        return result
 
     async def keyword_search(self, query: str, limit: int = 10, **filters) -> List[MemoryEntry]:
         """Simple keyword search across memory content."""
         db = await self._get_db()
         matches = await db.keyword_search(query, limit=limit, **filters)
+        normalized: List[MemoryEntry] = []
+        for match in matches:
+            live = self._live_entries.get(match.memory_id)
+            normalized.append(live if live is not None else match)
         self._total_recalls += len(matches)
-        return matches
+        return normalized
 
     # ------------------------------------------------------------------
     # Session management

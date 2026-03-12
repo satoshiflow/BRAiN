@@ -12,10 +12,10 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from loguru import logger
-from sqlalchemy import delete, select, update
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from .models import Base, ConversationTurnORM, MemoryEntryORM, SessionContextORM
 from .schemas import (
@@ -47,19 +47,39 @@ class DatabaseAdapter:
         self.engine = None
         self.async_session = None
         self._initialized = False
+        self._dialect_name: Optional[str] = None
     
     async def initialize(self) -> None:
         """Initialize the database engine and session factory."""
         if self._initialized:
             return
-            
-        self.engine = create_async_engine(
-            self.database_url,
-            echo=False,
-            pool_pre_ping=True,
-            pool_size=10,
-            max_overflow=20,
-        )
+        try:
+            self.engine = create_async_engine(
+                self.database_url,
+                echo=False,
+                pool_pre_ping=True,
+                pool_size=10,
+                max_overflow=20,
+            )
+            async with self.engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            self._dialect_name = self.engine.dialect.name
+        except Exception as exc:
+            logger.warning(
+                "Memory DB init failed (%s), falling back to SQLite in-memory",
+                exc,
+            )
+            self.database_url = "sqlite+aiosqlite:///:memory:"
+            self.engine = create_async_engine(
+                self.database_url,
+                echo=False,
+                connect_args={"check_same_thread": False},
+                poolclass=StaticPool,
+            )
+            async with self.engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            self._dialect_name = self.engine.dialect.name
+
         self.async_session = sessionmaker(
             self.engine, 
             class_=AsyncSession, 
@@ -192,9 +212,7 @@ class DatabaseAdapter:
                 query = query.where(MemoryEntryORM.layer == layer.value)
             if memory_type:
                 query = query.where(MemoryEntryORM.memory_type == memory_type.value)
-            if tags:
-                # Use overlap operator for array overlap
-                query = query.where(MemoryEntryORM.tags.overlap(tags))
+            apply_tag_post_filter = bool(tags)
             if min_importance is not None:
                 query = query.where(MemoryEntryORM.importance >= min_importance)
             if min_karma is not None:
@@ -211,6 +229,13 @@ class DatabaseAdapter:
             
             result = await session.execute(query)
             orm_entries = result.scalars().all()
+
+            if apply_tag_post_filter and tags:
+                filter_tags = set(tags)
+                orm_entries = [
+                    e for e in orm_entries
+                    if filter_tags.intersection(set(e.tags or []))
+                ]
             
             return [self._orm_to_memory_entry(e) for e in orm_entries]
     
@@ -460,6 +485,10 @@ class DatabaseAdapter:
     @staticmethod
     def _orm_to_session_context(orm: SessionContextORM) -> SessionContext:
         """Convert ORM model to Pydantic SessionContext."""
+        compressed_summary = orm.compressed_summary
+        if compressed_summary and len(compressed_summary) > 2000:
+            compressed_summary = compressed_summary[:1997] + "..."
+
         return SessionContext(
             session_id=orm.session_id,
             agent_id=orm.agent_id,
@@ -469,7 +498,7 @@ class DatabaseAdapter:
             max_tokens=orm.max_tokens,
             active_mission_id=orm.active_mission_id,
             context_vars=orm.context_vars or {},
-            compressed_summary=orm.compressed_summary,
+            compressed_summary=compressed_summary,
             compressed_turn_count=orm.compressed_turn_count,
             turns=[],  # Loaded separately
         )
