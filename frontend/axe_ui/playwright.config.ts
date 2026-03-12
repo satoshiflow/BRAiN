@@ -11,9 +11,9 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   webServer: {
-    command: "npm run dev -- --hostname 127.0.0.1",
+    command: "NEXT_PUBLIC_AXE_E2E_BYPASS_AUTH=true npm run dev -- --hostname 127.0.0.1",
     url: "http://127.0.0.1:3002",
-    reuseExistingServer: true,
+    reuseExistingServer: false,
     timeout: 240000,
   },
   projects: [

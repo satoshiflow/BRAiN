@@ -1,10 +1,45 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
 import ChatPage from "@/app/chat/page";
-import { postAxeChat, uploadAxeAttachment } from "@/lib/api";
+import { appendAxeSessionMessage, postAxeChat, uploadAxeAttachment } from "@/lib/api";
 
 jest.mock("@/lib/api", () => ({
   postAxeChat: jest.fn(),
   uploadAxeAttachment: jest.fn(),
+  appendAxeSessionMessage: jest.fn(),
+}));
+
+jest.mock("@/components/auth/AuthGate", () => ({
+  AuthGate: ({ children }: { children: ReactNode }) => children,
+}));
+
+jest.mock("@/hooks/useAuthSession", () => ({
+  useAuthSession: () => ({
+    getAuthHeaders: () => ({ Authorization: "Bearer test-token" }),
+    withAuthRetry: async <T,>(request: (token: string) => Promise<T>) => request("test-token"),
+  }),
+}));
+
+const mockedActiveSession = { id: "session-1", title: "Session", messages: [] };
+const mockedLoadSessions = jest.fn().mockResolvedValue(undefined);
+const mockedCreateSession = jest.fn().mockResolvedValue({ id: "session-1" });
+const mockedSelectSession = jest.fn().mockResolvedValue(mockedActiveSession);
+const mockedRenameSession = jest.fn().mockResolvedValue(null);
+const mockedRemoveSession = jest.fn().mockResolvedValue(true);
+
+jest.mock("@/hooks/useChatSessions", () => ({
+  useChatSessions: () => ({
+    groupedSessions: { today: [], yesterday: [], older: [] },
+    activeSessionId: "session-1",
+    activeSession: mockedActiveSession,
+    loading: false,
+    error: null,
+    loadSessions: mockedLoadSessions,
+    createSession: mockedCreateSession,
+    selectSession: mockedSelectSession,
+    renameSession: mockedRenameSession,
+    removeSession: mockedRemoveSession,
+  }),
 }));
 
 jest.mock("@/src/plugins", () => ({
@@ -24,11 +59,27 @@ jest.mock("@/src/plugins/slashCommands", () => ({
 
 const mockedUpload = uploadAxeAttachment as jest.MockedFunction<typeof uploadAxeAttachment>;
 const mockedChat = postAxeChat as jest.MockedFunction<typeof postAxeChat>;
+const mockedAppendMessage = appendAxeSessionMessage as jest.MockedFunction<typeof appendAxeSessionMessage>;
 
 describe("chat upload flow", () => {
   beforeEach(() => {
     mockedUpload.mockReset();
     mockedChat.mockReset();
+    mockedAppendMessage.mockReset();
+    mockedLoadSessions.mockClear();
+    mockedCreateSession.mockClear();
+    mockedSelectSession.mockClear();
+    mockedRenameSession.mockClear();
+    mockedRemoveSession.mockClear();
+    mockedAppendMessage.mockResolvedValue({
+      id: "msg-1",
+      session_id: "session-1",
+      role: "user",
+      content: "placeholder",
+      attachments: [],
+      metadata: {},
+      created_at: new Date().toISOString(),
+    });
     window.confirm = jest.fn(() => true);
   });
 
@@ -61,7 +112,8 @@ describe("chat upload flow", () => {
       expect(mockedChat).toHaveBeenCalledWith(
         expect.objectContaining({
           attachments: ["att-1"],
-        })
+        }),
+        expect.objectContaining({ Authorization: "Bearer test-token" })
       );
     });
   });
@@ -91,7 +143,8 @@ describe("chat upload flow", () => {
       expect(mockedChat).toHaveBeenCalledWith(
         expect.objectContaining({
           attachments: [],
-        })
+        }),
+        expect.objectContaining({ Authorization: "Bearer test-token" })
       );
     });
   });

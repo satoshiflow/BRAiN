@@ -46,3 +46,46 @@ export interface AxeProviderRuntimeUpdateRequest {
   provider: AxeProvider;
   force_sanitization_level?: AxeSanitizationLevel;
 }
+
+export type AxeSessionStatus = "active" | "deleted";
+export type AxeSessionMessageRole = "user" | "assistant";
+
+export interface AxeSessionSummary {
+  id: string;
+  title: string;
+  preview?: string | null;
+  status: AxeSessionStatus;
+  message_count: number;
+  created_at: string;
+  updated_at: string;
+  last_message_at?: string | null;
+}
+
+export interface AxeSessionMessage {
+  id: string;
+  session_id: string;
+  role: AxeSessionMessageRole;
+  content: string;
+  attachments: string[];
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface AxeSessionDetail extends AxeSessionSummary {
+  messages: AxeSessionMessage[];
+}
+
+export interface AxeSessionCreateRequest {
+  title?: string;
+}
+
+export interface AxeSessionUpdateRequest {
+  title: string;
+}
+
+export interface AxeSessionAppendMessageRequest {
+  role: AxeSessionMessageRole;
+  content: string;
+  attachments?: string[];
+  metadata?: Record<string, unknown>;
+}

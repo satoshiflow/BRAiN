@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
@@ -8,7 +8,8 @@ import {
   Sheet,
   SheetContent,
 } from "@/components/ui/sheet";
-import { getApiHealth } from "@/lib/api";
+import { ApiHealthIndicator } from "@/components/ApiHealthIndicator";
+import { Tooltip } from "@/components/ui/tooltip";
 import { getApiBase, getControlDeckBase } from "@/lib/config";
 
 const navItems = [
@@ -16,11 +17,6 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: "📊" },
   { href: "/settings", label: "Settings", icon: "⚙️" },
 ];
-
-type ApiHealthState = {
-  status: "loading" | "ok" | "error";
-  error: string | null;
-};
 
 export function Navigation() {
   const pathname = usePathname();
@@ -63,58 +59,8 @@ function NavigationContent({
   pathname: string;
   onNavigate?: () => void;
 }) {
-  const [apiHealth, setApiHealth] = useState<ApiHealthState>({
-    status: "loading",
-    error: null,
-  });
-
-  useEffect(() => {
-    let active = true;
-
-    const checkHealth = async () => {
-      try {
-        await getApiHealth();
-        if (active) {
-          setApiHealth({ status: "ok", error: null });
-        }
-      } catch (error) {
-        if (active) {
-          setApiHealth({
-            status: "error",
-            error: error instanceof Error ? error.message : "Unknown API error",
-          });
-        }
-      }
-    };
-
-    void checkHealth();
-    const interval = setInterval(() => {
-      void checkHealth();
-    }, 30000);
-
-    return () => {
-      active = false;
-      clearInterval(interval);
-    };
-  }, []);
-
   const apiBase = getApiBase();
   const controlDeckAgentsUrl = `${getControlDeckBase()}/agents`;
-  const indicatorColorClass =
-    apiHealth.status === "ok"
-      ? "bg-emerald-500"
-      : apiHealth.status === "error"
-      ? "bg-red-500"
-      : "bg-amber-400";
-  const indicatorLabel =
-    apiHealth.status === "ok"
-      ? "API healthy"
-      : apiHealth.status === "error"
-      ? "API error"
-      : "Checking API";
-  const indicatorTitle = apiHealth.error
-    ? `API: ${apiBase}\nError: ${apiHealth.error}`
-    : `API: ${apiBase}`;
 
   return (
     <>
@@ -122,10 +68,7 @@ function NavigationContent({
       <div className="p-6 border-b border-slate-800">
         <h1 className="text-xl font-bold text-white">BRAiN AXE</h1>
         <p className="text-xs text-slate-400 mt-1">Auxiliary Execution Engine</p>
-        <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-800 px-3 py-1" title={indicatorTitle}>
-          <span className={`h-2 w-2 rounded-full ${indicatorColorClass} animate-pulse`} />
-          <span className="text-xs text-slate-300">{indicatorLabel}</span>
-        </div>
+        <ApiHealthIndicator />
       </div>
 
       {/* Navigation Links */}
@@ -162,9 +105,11 @@ function NavigationContent({
           <span className="text-base">🧭</span>
           <span>Agents im ControlDeck</span>
         </a>
-        <div className="flex items-center gap-2 text-xs text-slate-500" title={indicatorTitle}>
-          <span className="truncate max-w-[190px]">{apiBase}</span>
-        </div>
+        <Tooltip content={<span>{apiBase}</span>}>
+          <button type="button" className="flex items-center gap-2 text-xs text-slate-500">
+            <span className="truncate max-w-[190px]">{apiBase}</span>
+          </button>
+        </Tooltip>
       </div>
     </>
   );
