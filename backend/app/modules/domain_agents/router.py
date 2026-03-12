@@ -367,6 +367,7 @@ async def prepare_domain_skill_runs(
 
     run_drafts = domain_service.build_skill_run_drafts(
         request=scoped_decomposition,
+        config=config,
         resolution=resolution,
         trigger_type=payload.trigger_type,
         mission_id=payload.mission_id,

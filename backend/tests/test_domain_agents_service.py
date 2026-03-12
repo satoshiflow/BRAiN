@@ -4,6 +4,7 @@ import pytest
 
 from app.modules.domain_agents.schemas import (
     DomainAgentConfig,
+    DomainBudgetProfile,
     DomainDecompositionRequest,
     DomainResolution,
     DomainReviewOutcome,
@@ -135,3 +136,36 @@ def test_domain_agent_review_escalates_when_resolution_is_gated() -> None:
 
     assert decision.outcome == DomainReviewOutcome.ESCALATE
     assert decision.should_escalate is True
+
+
+def test_programming_decompose_limits_specialists_by_budget() -> None:
+    registry = DomainAgentRegistry()
+    registry.register(
+        DomainAgentConfig(
+            domain_key="programming",
+            display_name="Programming",
+            status=DomainStatus.ACTIVE,
+            allowed_skill_keys=["code.implement", "code.test", "code.review"],
+            allowed_capability_keys=["code.write", "code.test", "code.analyze"],
+            allowed_specialist_roles=[
+                "runtime-engineer",
+                "verification-engineer",
+                "security-reviewer",
+            ],
+            budget_profile=DomainBudgetProfile(max_specialists_per_task=2),
+        )
+    )
+    service = DomainAgentService(registry)
+
+    resolution = service.decompose(
+        DomainDecompositionRequest(
+            domain_key="programming",
+            task_name="Implement endpoint",
+            task_description="Build with tests and review",
+            available_capabilities=["code.write", "code.test"],
+        )
+    )
+
+    assert len(resolution.selected_specialists) == 2
+    assert resolution.selected_specialists[0].role == "runtime-engineer"
+    assert resolution.selected_specialists[1].role == "verification-engineer"

@@ -229,3 +229,4 @@ def test_supervisor_decision_emits_event(monkeypatch) -> None:
         )
 
     assert any(evt[0] == "supervisor.domain_escalation.decided" for evt in events)
+    assert any(evt[0] == "supervisor.domain_escalation.decided.v1" for evt in events)

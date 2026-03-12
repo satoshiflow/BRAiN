@@ -318,17 +318,16 @@ async def create_domain_escalation_handoff(
         )
         _domain_escalations.insert(0, item)
 
-    await _emit_event_safe(
-        "supervisor.domain_escalation.received",
-        {
-            "escalation_id": item.escalation_id,
-            "domain_key": payload.domain_key,
-            "requested_by": payload.requested_by,
-            "risk_tier": payload.risk_tier,
-            "correlation_id": payload.correlation_id,
-            "received_at": item.received_at.timestamp(),
-        },
-    )
+    received_payload = {
+        "escalation_id": item.escalation_id,
+        "domain_key": payload.domain_key,
+        "requested_by": payload.requested_by,
+        "risk_tier": payload.risk_tier,
+        "correlation_id": payload.correlation_id,
+        "received_at": item.received_at.timestamp(),
+    }
+    await _emit_event_safe("supervisor.domain_escalation.received.v1", received_payload)
+    await _emit_event_safe("supervisor.domain_escalation.received", received_payload)
 
     return item
 
@@ -434,15 +433,14 @@ async def decide_domain_escalation_handoff(
         await db.commit()
         await db.refresh(model)
 
-        await _emit_event_safe(
-            "supervisor.domain_escalation.decided",
-            {
-                "escalation_id": _to_external_escalation_id(str(model.id)),
-                "status": model.status,
-                "reviewed_by": decision.reviewer_id,
-                "risk_tier": model.risk_tier,
-            },
-        )
+        decided_payload = {
+            "escalation_id": _to_external_escalation_id(str(model.id)),
+            "status": model.status,
+            "reviewed_by": decision.reviewer_id,
+            "risk_tier": model.risk_tier,
+        }
+        await _emit_event_safe("supervisor.domain_escalation.decided.v1", decided_payload)
+        await _emit_event_safe("supervisor.domain_escalation.decided", decided_payload)
 
         return DomainEscalationResponse(
             escalation_id=_to_external_escalation_id(str(model.id)),
@@ -472,14 +470,13 @@ async def decide_domain_escalation_handoff(
             )
             _domain_escalations[idx] = updated
 
-            await _emit_event_safe(
-                "supervisor.domain_escalation.decided",
-                {
-                    "escalation_id": updated.escalation_id,
-                    "status": updated.status,
-                    "reviewed_by": decision.reviewer_id,
-                    "risk_tier": updated.risk_tier,
-                },
-            )
+            decided_payload = {
+                "escalation_id": updated.escalation_id,
+                "status": updated.status,
+                "reviewed_by": decision.reviewer_id,
+                "risk_tier": updated.risk_tier,
+            }
+            await _emit_event_safe("supervisor.domain_escalation.decided.v1", decided_payload)
+            await _emit_event_safe("supervisor.domain_escalation.decided", decided_payload)
             return updated
     return None

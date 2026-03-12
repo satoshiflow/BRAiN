@@ -221,8 +221,9 @@ class DomainAgentService:
         # Preserve order but remove duplicates
         selected_skills = list(dict.fromkeys(selected_skills))
 
+        max_specialists = max(1, config.budget_profile.max_specialists_per_task)
         specialists: list[SpecialistCandidate] = []
-        for idx, role in enumerate(config.allowed_specialist_roles):
+        for idx, role in enumerate(config.allowed_specialist_roles[:max_specialists]):
             specialists.append(
                 SpecialistCandidate(
                     agent_id=f"{request.domain_key}-{role}-{idx+1}",
@@ -318,6 +319,7 @@ class DomainAgentService:
     def build_skill_run_drafts(
         *,
         request: DomainDecompositionRequest,
+        config: DomainAgentConfig,
         resolution: DomainResolution,
         trigger_type,
         mission_id: str | None,
@@ -327,7 +329,9 @@ class DomainAgentService:
     ) -> list[DomainSkillRunDraft]:
         """Build deterministic SkillRun drafts from domain resolution."""
         drafts: list[DomainSkillRunDraft] = []
-        for idx, skill_key in enumerate(resolution.selected_skill_keys, start=1):
+        max_parallel_runs = max(1, config.budget_profile.max_parallel_runs)
+        selected_skill_keys = resolution.selected_skill_keys[:max_parallel_runs]
+        for idx, skill_key in enumerate(selected_skill_keys, start=1):
             identity = "|".join(
                 [
                     request.domain_key,

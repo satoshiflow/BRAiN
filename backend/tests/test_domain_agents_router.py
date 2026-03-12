@@ -464,3 +464,54 @@ def test_execute_now_allows_approved_supervisor_escalation(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert response.json()["created_run_ids"][0] == "run-approved-escalation"
+
+
+def test_prepare_skill_runs_respects_domain_parallel_budget(monkeypatch) -> None:
+    app = build_test_app()
+    client = TestClient(app)
+
+    from app.modules.domain_agents import service as da_service
+    from app.modules.domain_agents.schemas import (
+        DomainAgentConfig,
+        DomainBudgetProfile,
+        DomainStatus,
+    )
+
+    async def _fake_get_db(self, db, domain_key: str, tenant_id: str | None):
+        _ = self
+        _ = db
+        _ = tenant_id
+        if domain_key != "programming":
+            return None
+        return DomainAgentConfig(
+            tenant_id="tenant-a",
+            owner_scope="tenant",
+            domain_key="programming",
+            display_name="Programming",
+            status=DomainStatus.ACTIVE,
+            allowed_skill_keys=["code.implement", "code.test", "code.review"],
+            allowed_capability_keys=["code.write", "code.test", "code.analyze"],
+            allowed_specialist_roles=["runtime-engineer", "verification-engineer"],
+            budget_profile=DomainBudgetProfile(max_parallel_runs=1),
+        )
+
+    monkeypatch.setattr(da_service.DomainAgentRegistry, "get_db", _fake_get_db)
+
+    payload = {
+        "decomposition": {
+            "domain_key": "programming",
+            "task_name": "Review and implement endpoint",
+            "available_capabilities": ["code.write", "code.test", "code.analyze"],
+        },
+        "input_payload": {"ticket": "BUDGET-1"},
+        "trigger_type": "mission",
+        "execute_now": False,
+    }
+
+    with override_auth_principal(client, build_principal("operator")):
+        response = client.post("/api/domain-agents/prepare-skill-runs", json=payload)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["resolution"]["selected_skill_keys"]) >= 2
+    assert len(body["run_drafts"]) == 1
