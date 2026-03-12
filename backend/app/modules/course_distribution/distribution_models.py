@@ -95,6 +95,8 @@ class CourseDistribution(BaseModel):
 
     # Metadata
     published_at: Optional[float] = Field(None, description="Publication timestamp")
+    staging_url: Optional[str] = Field(None, description="Staging deployment URL")
+    staging_deployed_at: Optional[Any] = Field(None, description="Staging deployment timestamp")
     updated_at: float = Field(default_factory=lambda: datetime.utcnow().timestamp())
     created_at: float = Field(default_factory=lambda: datetime.utcnow().timestamp())
 
