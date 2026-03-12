@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Send, Loader2 } from "lucide-react";
+import { Send, Loader2, Paperclip, Camera, X } from "lucide-react";
 import { getDefaultModel } from "@/lib/config";
-import { postAxeChat } from "@/lib/api";
+import { postAxeChat, uploadAxeAttachment } from "@/lib/api";
 import type { AxeChatRequest } from "@/lib/contracts";
+import { AdvancedCameraCapture } from "@/components/chat/AdvancedCameraCapture";
 import { pluginRegistry, initializePlugins, destroyPlugins, type PluginContext } from "../../src/plugins";
 import slashCommandsPlugin from "../../src/plugins/slashCommands";
 
@@ -13,6 +14,14 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+}
+
+interface PendingAttachment {
+  localId: string;
+  name: string;
+  attachmentId?: string;
+  status: "uploading" | "ready" | "error";
+  error?: string;
 }
 
 const DEFAULT_MODEL = getDefaultModel();
@@ -56,7 +65,12 @@ export default function ChatPage() {
   const [sessionId] = useState(() => generateSessionId());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [pluginContext, setPluginContext] = useState<PluginContext | null>(null);
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const [cameraOpen, setCameraOpen] = useState(false);
+
+  const hasUploadingAttachments = attachments.some((item) => item.status === "uploading");
 
   useEffect(() => {
     const ctx: PluginContext = {
@@ -99,7 +113,7 @@ export default function ChatPage() {
   }, [input]);
 
   const handleSend = async () => {
-    if (!input.trim() || loading) return;
+    if (!input.trim() || loading || hasUploadingAttachments) return;
 
     const trimmedInput = input.trim();
     const isSlashCommand = trimmedInput.startsWith("/");
@@ -143,7 +157,10 @@ export default function ChatPage() {
       const requestBody: AxeChatRequest = {
         messages: apiMessages,
         model: DEFAULT_MODEL,
-        temperature: 0.7
+        temperature: 0.7,
+        attachments: attachments
+          .filter((item) => item.status === "ready" && item.attachmentId)
+          .map((item) => item.attachmentId as string),
       };
 
       const data = await postAxeChat(requestBody);
@@ -160,6 +177,7 @@ export default function ChatPage() {
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
+      setAttachments([]);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Unknown error occurred";
       setError(errorMsg);
@@ -174,6 +192,56 @@ export default function ChatPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const uploadFiles = async (files: FileList | File[] | null) => {
+    if (!files || files.length === 0) return;
+
+    const fileArray = Array.from(files);
+    for (const file of fileArray) {
+      const localId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      setAttachments((prev) => [
+        ...prev,
+        {
+          localId,
+          name: file.name,
+          status: "uploading",
+        },
+      ]);
+
+      try {
+        const uploaded = await uploadAxeAttachment(file);
+        setAttachments((prev) =>
+          prev.map((item) =>
+            item.localId === localId
+              ? {
+                  ...item,
+                  status: "ready",
+                  attachmentId: uploaded.attachment_id,
+                  name: uploaded.filename,
+                }
+              : item
+          )
+        );
+      } catch (uploadError) {
+        const message = uploadError instanceof Error ? uploadError.message : "Upload failed";
+        setAttachments((prev) =>
+          prev.map((item) =>
+            item.localId === localId
+              ? {
+                  ...item,
+                  status: "error",
+                  error: message,
+                }
+              : item
+          )
+        );
+      }
+    }
+  };
+
+  const removeAttachment = (localId: string) => {
+    setAttachments((prev) => prev.filter((item) => item.localId !== localId));
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -278,8 +346,72 @@ export default function ChatPage() {
 
         {/* Input - Mobile optimized */}
         <div className="border-t border-slate-800 p-3 sm:p-4 bg-slate-900">
+          {attachments.length > 0 && (
+            <div className="mb-3 flex flex-wrap gap-2">
+              {attachments.map((attachment) => (
+                <div
+                  key={attachment.localId}
+                  className="inline-flex items-center gap-2 rounded-md border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-200"
+                >
+                  <span className="max-w-[140px] truncate">{attachment.name}</span>
+                  <span
+                    className={
+                      attachment.status === "ready"
+                        ? "text-emerald-400"
+                        : attachment.status === "error"
+                        ? "text-red-400"
+                        : "text-blue-300"
+                    }
+                  >
+                    {attachment.status}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeAttachment(attachment.localId)}
+                    className="text-slate-400 hover:text-slate-100"
+                    aria-label="Remove attachment"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           {pluginContext && <ComposerActions context={pluginContext} />}
           <div className="flex gap-2 items-end">
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              accept="image/jpeg,image/png,image/webp,application/pdf,text/plain"
+              multiple
+              onChange={(event) => {
+                void uploadFiles(event.target.files);
+                event.target.value = "";
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={loading || hasUploadingAttachments}
+              className="shrink-0 h-11 w-11 bg-slate-800 hover:bg-slate-700 disabled:bg-slate-700 disabled:opacity-60 text-white rounded-lg transition-colors flex items-center justify-center border border-slate-700"
+              aria-label="Datei hochladen"
+              title="Datei hochladen"
+            >
+              <Paperclip className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setCameraOpen(true)}
+              disabled={loading || hasUploadingAttachments}
+              className="shrink-0 h-11 w-11 bg-slate-800 hover:bg-slate-700 disabled:bg-slate-700 disabled:opacity-60 text-white rounded-lg transition-colors flex items-center justify-center border border-slate-700"
+              aria-label="Foto machen"
+              title="Foto machen"
+            >
+              <Camera className="h-5 w-5" />
+            </button>
+
             <textarea
               ref={textareaRef}
               value={input}
@@ -292,7 +424,7 @@ export default function ChatPage() {
             />
             <button
               onClick={handleSend}
-              disabled={!input.trim() || loading}
+              disabled={!input.trim() || loading || hasUploadingAttachments}
               className="shrink-0 h-11 w-11 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors flex items-center justify-center"
               aria-label="Send message"
             >
@@ -323,6 +455,14 @@ export default function ChatPage() {
           )}
         </div>
       </div>
+
+      <AdvancedCameraCapture
+        open={cameraOpen}
+        onClose={() => setCameraOpen(false)}
+        onCapture={async (file) => {
+          await uploadFiles([file]);
+        }}
+      />
     </div>
   );
 }

@@ -4,6 +4,8 @@ import type {
   AxeAttachmentUploadResponse,
   AxeChatRequest,
   AxeChatResponse,
+  AxeProviderRuntimeResponse,
+  AxeProviderRuntimeUpdateRequest,
 } from "@/lib/contracts";
 
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
@@ -69,4 +71,24 @@ export async function uploadAxeAttachment(
   }
 
   return response.json() as Promise<AxeAttachmentUploadResponse>;
+}
+
+export async function getAxeProviderRuntime(
+  customHeaders?: Record<string, string>
+): Promise<AxeProviderRuntimeResponse> {
+  return apiRequest<AxeProviderRuntimeResponse>("/api/axe/provider/runtime", {
+    method: "GET",
+    headers: customHeaders,
+  });
+}
+
+export async function updateAxeProviderRuntime(
+  payload: AxeProviderRuntimeUpdateRequest,
+  customHeaders?: Record<string, string>
+): Promise<AxeProviderRuntimeResponse> {
+  return apiRequest<AxeProviderRuntimeResponse>("/api/axe/provider/runtime", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+    headers: customHeaders,
+  });
 }

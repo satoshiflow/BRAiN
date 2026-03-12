@@ -29,3 +29,20 @@ export interface AxeAttachmentUploadResponse {
   size_bytes: number;
   expires_at: string;
 }
+
+export type AxeProvider = "groq" | "ollama" | "mock";
+export type AxeSanitizationLevel = "none" | "moderate" | "strict";
+
+export interface AxeProviderRuntimeResponse {
+  provider: AxeProvider;
+  base_url: string;
+  api_key_configured: boolean;
+  model: string;
+  timeout_seconds: number;
+  sanitization_level: AxeSanitizationLevel;
+}
+
+export interface AxeProviderRuntimeUpdateRequest {
+  provider: AxeProvider;
+  force_sanitization_level?: AxeSanitizationLevel;
+}

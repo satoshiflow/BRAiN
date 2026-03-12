@@ -1,7 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { getApiBase } from "@/lib/config";
+import {
+  getAxeProviderRuntime,
+  updateAxeProviderRuntime,
+} from "@/lib/api";
+import type { AxeProvider, AxeProviderRuntimeResponse } from "@/lib/contracts";
 
 export default function SettingsPage() {
   const [apiBase, setApiBase] = useState(
@@ -11,6 +16,36 @@ export default function SettingsPage() {
   const [theme, setTheme] = useState("dark");
   const [notifications, setNotifications] = useState(true);
   const [autoScroll, setAutoScroll] = useState(true);
+  const [providerRuntime, setProviderRuntime] = useState<AxeProviderRuntimeResponse | null>(null);
+  const [providerSelection, setProviderSelection] = useState<AxeProvider>("mock");
+  const [runtimeLoading, setRuntimeLoading] = useState(false);
+  const [runtimeError, setRuntimeError] = useState<string | null>(null);
+  const [adminToken, setAdminToken] = useState("");
+
+  useEffect(() => {
+    const stored = localStorage.getItem("axe_admin_token");
+    if (stored) {
+      setAdminToken(stored);
+    }
+
+    const loadRuntime = async () => {
+      try {
+        setRuntimeLoading(true);
+        setRuntimeError(null);
+        const runtime = await getAxeProviderRuntime(
+          stored ? { Authorization: `Bearer ${stored}` } : undefined
+        );
+        setProviderRuntime(runtime);
+        setProviderSelection(runtime.provider);
+      } catch (error) {
+        setRuntimeError(error instanceof Error ? error.message : "Could not load provider runtime");
+      } finally {
+        setRuntimeLoading(false);
+      }
+    };
+
+    void loadRuntime();
+  }, []);
 
   const handleSave = () => {
     // Save settings to localStorage or backend
@@ -22,6 +57,25 @@ export default function SettingsPage() {
       autoScroll,
     }));
     alert("Settings saved successfully!");
+  };
+
+  const applyProviderSelection = async () => {
+    try {
+      setRuntimeLoading(true);
+      setRuntimeError(null);
+      const updated = await updateAxeProviderRuntime(
+        { provider: providerSelection },
+        adminToken ? { Authorization: `Bearer ${adminToken}` } : undefined
+      );
+      setProviderRuntime(updated);
+      alert(`Provider switched to ${updated.provider}.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Provider switch failed";
+      setRuntimeError(message);
+      alert(`Provider switch failed: ${message}`);
+    } finally {
+      setRuntimeLoading(false);
+    }
   };
 
   return (
@@ -70,6 +124,85 @@ export default function SettingsPage() {
               How often to refresh dashboard data
             </p>
           </div>
+        </div>
+      </div>
+
+      {/* LLM Provider Runtime */}
+      <div className="bg-slate-900 border border-slate-800 rounded-lg p-6">
+        <h2 className="text-xl font-semibold text-white mb-4">LLM Provider Runtime</h2>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              Admin Bearer Token (required for runtime change)
+            </label>
+            <input
+              type="password"
+              value={adminToken}
+              onChange={(e) => setAdminToken(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="eyJ..."
+            />
+            <div className="mt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={() => localStorage.setItem("axe_admin_token", adminToken)}
+                className="px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700"
+              >
+                Save token locally
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  localStorage.removeItem("axe_admin_token");
+                  setAdminToken("");
+                }}
+                className="px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700"
+              >
+                Clear token
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              Active Provider
+            </label>
+            <select
+              value={providerSelection}
+              onChange={(e) => setProviderSelection(e.target.value as AxeProvider)}
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={runtimeLoading}
+            >
+              <option value="groq">Groq</option>
+              <option value="ollama">Ollama</option>
+              <option value="mock">Mock</option>
+            </select>
+          </div>
+
+          <button
+            onClick={() => void applyProviderSelection()}
+            disabled={runtimeLoading}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-lg"
+          >
+            {runtimeLoading ? "Applying..." : "Apply Provider"}
+          </button>
+
+          {providerRuntime && (
+            <div className="text-sm border border-slate-700 rounded-lg p-3 bg-slate-800">
+              <div className="flex justify-between"><span className="text-slate-400">Provider</span><span className="text-white font-mono">{providerRuntime.provider}</span></div>
+              <div className="flex justify-between"><span className="text-slate-400">Model</span><span className="text-white font-mono">{providerRuntime.model}</span></div>
+              <div className="flex justify-between"><span className="text-slate-400">Sanitization</span><span className="text-white font-mono">{providerRuntime.sanitization_level}</span></div>
+              <div className="flex justify-between"><span className="text-slate-400">API Key</span><span className="text-white font-mono">{providerRuntime.api_key_configured ? "configured" : "missing"}</span></div>
+            </div>
+          )}
+
+          {runtimeError && (
+            <p className="text-sm text-red-400">
+              {runtimeError}
+              {runtimeError.includes("401") ? " (missing/invalid admin token)" : ""}
+            </p>
+          )}
         </div>
       </div>
 
