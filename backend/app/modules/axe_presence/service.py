@@ -33,8 +33,13 @@ class AXEPresenceService:
     def __init__(self, db: AsyncSession | None = None):
         self.db = db
 
-    async def get_runtime_surface(self) -> AXERuntimeSurfaceResponse:
-        active_agents, pending_missions, source_signal = await self._safe_runtime_counts()
+    async def get_runtime_surface(
+        self,
+        tenant_id: str | None = None,
+    ) -> AXERuntimeSurfaceResponse:
+        active_agents, pending_missions, source_signal = await self._safe_runtime_counts(
+            tenant_id=tenant_id,
+        )
         now = _iso_now()
 
         status = "ok"
@@ -61,8 +66,8 @@ class AXEPresenceService:
             uptime=_format_uptime(int(time.monotonic() - _START_TS)),
         )
 
-    async def get_presence(self) -> AXEPresenceResponse:
-        runtime = await self.get_runtime_surface()
+    async def get_presence(self, tenant_id: str | None = None) -> AXEPresenceResponse:
+        runtime = await self.get_runtime_surface(tenant_id=tenant_id)
         if runtime.signal == "ok":
             status = "linked"
             label = "BRAiN relay online"
@@ -81,8 +86,8 @@ class AXEPresenceService:
             action_hint=action_hint,
         )
 
-    async def get_relays(self) -> AXERelaysListResponse:
-        runtime = await self.get_runtime_surface()
+    async def get_relays(self, tenant_id: str | None = None) -> AXERelaysListResponse:
+        runtime = await self.get_runtime_surface(tenant_id=tenant_id)
         now = runtime.last_seen
 
         relays = [
@@ -113,24 +118,46 @@ class AXEPresenceService:
         ]
         return AXERelaysListResponse(relays=relays)
 
-    async def _safe_runtime_counts(self) -> tuple[int, int, str]:
+    async def _safe_runtime_counts(
+        self,
+        tenant_id: str | None = None,
+    ) -> tuple[int, int, str]:
         if self.db is None:
             return 0, 0, "warn"
 
+        active_agents = await self._safe_active_agents(tenant_id=tenant_id)
+        pending_missions = await self._safe_pending_missions(tenant_id=tenant_id)
+        source_signal = "ok" if active_agents is not None and pending_missions is not None else "warn"
+        return active_agents or 0, pending_missions or 0, source_signal
+
+    async def _safe_active_agents(self, tenant_id: str | None = None) -> int | None:
         try:
             from app.modules.agent_management.models import AgentModel, AgentStatus
-            from app.modules.skill_engine.models import SkillRunModel
 
             active_agents_query = select(func.count(AgentModel.id)).where(
                 AgentModel.status.in_([AgentStatus.ACTIVE, AgentStatus.DEGRADED])
             )
+            if tenant_id is not None and hasattr(AgentModel, "tenant_id"):
+                active_agents_query = active_agents_query.where(AgentModel.tenant_id == tenant_id)
+
+            return int((await self.db.execute(active_agents_query)).scalar() or 0)
+        except Exception as exc:  # pragma: no cover
+            logger.warning("[AXEPresence] active agents fallback: %s", exc)
+            return None
+
+    async def _safe_pending_missions(self, tenant_id: str | None = None) -> int | None:
+        try:
+            from app.modules.skill_engine.models import SkillRunModel
+
             pending_missions_query = select(func.count(SkillRunModel.id)).where(
                 SkillRunModel.state.in_(["queued", "planning", "waiting_approval"])
             )
+            if tenant_id is not None and hasattr(SkillRunModel, "tenant_id"):
+                pending_missions_query = pending_missions_query.where(
+                    SkillRunModel.tenant_id == tenant_id
+                )
 
-            active_agents = int((await self.db.execute(active_agents_query)).scalar() or 0)
-            pending_missions = int((await self.db.execute(pending_missions_query)).scalar() or 0)
-            return active_agents, pending_missions, "ok"
+            return int((await self.db.execute(pending_missions_query)).scalar() or 0)
         except Exception as exc:  # pragma: no cover
-            logger.warning("[AXEPresence] runtime aggregation fallback: %s", exc)
-            return 0, 0, "warn"
+            logger.warning("[AXEPresence] pending missions fallback: %s", exc)
+            return None

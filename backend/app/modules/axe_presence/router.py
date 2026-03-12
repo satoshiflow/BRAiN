@@ -29,9 +29,8 @@ async def get_presence(
     principal: Principal = Depends(require_auth),
     service: AXEPresenceService = Depends(get_service),
 ) -> AXEPresenceResponse:
-    _ = principal
     try:
-        return await service.get_presence()
+        return await service.get_presence(tenant_id=principal.tenant_id)
     except Exception as exc:  # pragma: no cover
         logger.error("[AXEPresence] /presence failed: %s", exc)
         raise HTTPException(
@@ -45,9 +44,8 @@ async def get_relays(
     principal: Principal = Depends(require_auth),
     service: AXEPresenceService = Depends(get_service),
 ) -> AXERelaysListResponse:
-    _ = principal
     try:
-        return await service.get_relays()
+        return await service.get_relays(tenant_id=principal.tenant_id)
     except Exception as exc:  # pragma: no cover
         logger.error("[AXEPresence] /relays failed: %s", exc)
         raise HTTPException(
@@ -61,9 +59,8 @@ async def get_runtime_surface(
     principal: Principal = Depends(require_auth),
     service: AXEPresenceService = Depends(get_service),
 ) -> AXERuntimeSurfaceResponse:
-    _ = principal
     try:
-        return await service.get_runtime_surface()
+        return await service.get_runtime_surface(tenant_id=principal.tenant_id)
     except Exception as exc:  # pragma: no cover
         logger.error("[AXEPresence] /runtime/surface failed: %s", exc)
         raise HTTPException(
