@@ -69,8 +69,10 @@ export default function ChatPage() {
   const [pluginContext, setPluginContext] = useState<PluginContext | null>(null);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [uploadLock, setUploadLock] = useState(false);
 
   const hasUploadingAttachments = attachments.some((item) => item.status === "uploading");
+  const hasFailedAttachments = attachments.some((item) => item.status === "error");
 
   useEffect(() => {
     const ctx: PluginContext = {
@@ -113,7 +115,7 @@ export default function ChatPage() {
   }, [input]);
 
   const handleSend = async () => {
-    if (!input.trim() || loading || hasUploadingAttachments) return;
+    if (!input.trim() || loading || hasUploadingAttachments || uploadLock) return;
 
     const trimmedInput = input.trim();
     const isSlashCommand = trimmedInput.startsWith("/");
@@ -153,6 +155,17 @@ export default function ChatPage() {
           role: m.role as "user" | "assistant",
           content: m.content
         }));
+
+      const failedCount = attachments.filter((item) => item.status === "error").length;
+      if (failedCount > 0) {
+        const proceed = window.confirm(
+          `${failedCount} attachment upload(s) failed. Send message without failed attachments?`
+        );
+        if (!proceed) {
+          setLoading(false);
+          return;
+        }
+      }
 
       const requestBody: AxeChatRequest = {
         messages: apiMessages,
@@ -196,52 +209,63 @@ export default function ChatPage() {
 
   const uploadFiles = async (files: FileList | File[] | null) => {
     if (!files || files.length === 0) return;
+    if (uploadLock) return;
+
+    setUploadLock(true);
 
     const fileArray = Array.from(files);
-    for (const file of fileArray) {
-      const localId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      setAttachments((prev) => [
-        ...prev,
-        {
-          localId,
-          name: file.name,
-          status: "uploading",
-        },
-      ]);
+    try {
+      for (const file of fileArray) {
+        const localId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        setAttachments((prev) => [
+          ...prev,
+          {
+            localId,
+            name: file.name,
+            status: "uploading",
+          },
+        ]);
 
-      try {
-        const uploaded = await uploadAxeAttachment(file);
-        setAttachments((prev) =>
-          prev.map((item) =>
-            item.localId === localId
-              ? {
-                  ...item,
-                  status: "ready",
-                  attachmentId: uploaded.attachment_id,
-                  name: uploaded.filename,
-                }
-              : item
-          )
-        );
-      } catch (uploadError) {
-        const message = uploadError instanceof Error ? uploadError.message : "Upload failed";
-        setAttachments((prev) =>
-          prev.map((item) =>
-            item.localId === localId
-              ? {
-                  ...item,
-                  status: "error",
-                  error: message,
-                }
-              : item
-          )
-        );
+        try {
+          const uploaded = await uploadAxeAttachment(file);
+          setAttachments((prev) =>
+            prev.map((item) =>
+              item.localId === localId
+                ? {
+                    ...item,
+                    status: "ready",
+                    attachmentId: uploaded.attachment_id,
+                    name: uploaded.filename,
+                  }
+                : item
+            )
+          );
+        } catch (uploadError) {
+          const message = uploadError instanceof Error ? uploadError.message : "Upload failed";
+          setAttachments((prev) =>
+            prev.map((item) =>
+              item.localId === localId
+                ? {
+                    ...item,
+                    status: "error",
+                    error: message,
+                  }
+                : item
+            )
+          );
+        }
       }
+    } finally {
+      setUploadLock(false);
     }
   };
 
   const removeAttachment = (localId: string) => {
     setAttachments((prev) => prev.filter((item) => item.localId !== localId));
+  };
+
+  const clearFailedAttachments = () => {
+    setAttachments((prev) => prev.filter((item) => item.status !== "error"));
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -375,6 +399,15 @@ export default function ChatPage() {
                   </button>
                 </div>
               ))}
+              {hasFailedAttachments && (
+                <button
+                  type="button"
+                  onClick={clearFailedAttachments}
+                  className="text-xs text-red-300 hover:text-red-200 underline"
+                >
+                  Clear failed uploads
+                </button>
+              )}
             </div>
           )}
 
@@ -394,7 +427,7 @@ export default function ChatPage() {
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              disabled={loading || hasUploadingAttachments}
+              disabled={loading || hasUploadingAttachments || uploadLock}
               className="shrink-0 h-11 w-11 bg-slate-800 hover:bg-slate-700 disabled:bg-slate-700 disabled:opacity-60 text-white rounded-lg transition-colors flex items-center justify-center border border-slate-700"
               aria-label="Datei hochladen"
               title="Datei hochladen"
@@ -404,7 +437,7 @@ export default function ChatPage() {
             <button
               type="button"
               onClick={() => setCameraOpen(true)}
-              disabled={loading || hasUploadingAttachments}
+              disabled={loading || hasUploadingAttachments || uploadLock}
               className="shrink-0 h-11 w-11 bg-slate-800 hover:bg-slate-700 disabled:bg-slate-700 disabled:opacity-60 text-white rounded-lg transition-colors flex items-center justify-center border border-slate-700"
               aria-label="Foto machen"
               title="Foto machen"
@@ -424,7 +457,7 @@ export default function ChatPage() {
             />
             <button
               onClick={handleSend}
-              disabled={!input.trim() || loading || hasUploadingAttachments}
+              disabled={!input.trim() || loading || hasUploadingAttachments || uploadLock}
               className="shrink-0 h-11 w-11 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors flex items-center justify-center"
               aria-label="Send message"
             >

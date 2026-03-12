@@ -15,7 +15,7 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Request, Response, UploadFile, status
@@ -374,12 +374,12 @@ class UploadResponse(BaseModel):
 
 
 class ProviderRuntimeResponse(BaseModel):
-    provider: str
+    provider: Literal["groq", "ollama", "mock"]
     base_url: str
     api_key_configured: bool
     model: str
     timeout_seconds: float
-    sanitization_level: str
+    sanitization_level: Literal["none", "moderate", "strict"]
 
 
 class ProviderRuntimeUpdateRequest(BaseModel):

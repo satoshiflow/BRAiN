@@ -24,12 +24,20 @@ export function AdvancedCameraCapture({ open, onClose, onCapture }: AdvancedCame
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
   }, []);
 
   const startStream = useCallback(async () => {
     try {
       setError(null);
       stopStream();
+
+      if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function") {
+        throw new Error("Camera API is not supported in this browser.");
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode,
@@ -44,10 +52,23 @@ export function AdvancedCameraCapture({ open, onClose, onCapture }: AdvancedCame
         await videoRef.current.play();
       }
     } catch (streamError) {
-      const message =
-        streamError instanceof Error
-          ? streamError.message
-          : "Camera stream could not be started.";
+      let message = "Camera stream could not be started.";
+      if (streamError instanceof Error) {
+        switch (streamError.name) {
+          case "NotAllowedError":
+            message = "Camera permission denied. Please allow camera access in your browser settings.";
+            break;
+          case "NotFoundError":
+            message = "No camera device found.";
+            break;
+          case "NotReadableError":
+            message = "Camera is currently used by another application.";
+            break;
+          default:
+            message = streamError.message;
+            break;
+        }
+      }
       setError(message);
     }
   }, [facingMode, stopStream]);
@@ -65,6 +86,12 @@ export function AdvancedCameraCapture({ open, onClose, onCapture }: AdvancedCame
       stopStream();
     };
   }, [open, startStream, stopStream]);
+
+  useEffect(() => {
+    return () => {
+      stopStream();
+    };
+  }, [stopStream]);
 
   const handleTakePhoto = () => {
     const video = videoRef.current;

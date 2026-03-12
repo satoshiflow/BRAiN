@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getApiBase } from "@/lib/config";
 import {
   getAxeProviderRuntime,
@@ -22,30 +22,26 @@ export default function SettingsPage() {
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const [adminToken, setAdminToken] = useState("");
 
-  useEffect(() => {
-    const stored = localStorage.getItem("axe_admin_token");
-    if (stored) {
-      setAdminToken(stored);
+  const loadRuntime = useCallback(async (token?: string) => {
+    try {
+      setRuntimeLoading(true);
+      setRuntimeError(null);
+      const runtime = await getAxeProviderRuntime(
+        token ? { Authorization: `Bearer ${token}` } : undefined
+      );
+      setProviderRuntime(runtime);
+      setProviderSelection(runtime.provider);
+    } catch (error) {
+      setRuntimeError(error instanceof Error ? error.message : "Could not load provider runtime");
+    } finally {
+      setRuntimeLoading(false);
     }
-
-    const loadRuntime = async () => {
-      try {
-        setRuntimeLoading(true);
-        setRuntimeError(null);
-        const runtime = await getAxeProviderRuntime(
-          stored ? { Authorization: `Bearer ${stored}` } : undefined
-        );
-        setProviderRuntime(runtime);
-        setProviderSelection(runtime.provider);
-      } catch (error) {
-        setRuntimeError(error instanceof Error ? error.message : "Could not load provider runtime");
-      } finally {
-        setRuntimeLoading(false);
-      }
-    };
-
-    void loadRuntime();
   }, []);
+
+  useEffect(() => {
+    void loadRuntime();
+    // Do not persist admin token to localStorage for security reasons.
+  }, [loadRuntime]);
 
   const handleSave = () => {
     // Save settings to localStorage or backend
@@ -60,6 +56,13 @@ export default function SettingsPage() {
   };
 
   const applyProviderSelection = async () => {
+    const confirmed = window.confirm(
+      `Switch provider runtime to '${providerSelection}'? This affects all active AXE chats.`
+    );
+    if (!confirmed) {
+      return;
+    }
+
     try {
       setRuntimeLoading(true);
       setRuntimeError(null);
@@ -143,19 +146,23 @@ export default function SettingsPage() {
               className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="eyJ..."
             />
+            <p className="text-xs text-amber-300 mt-2">
+              Security note: token is kept in memory only and is not persisted in localStorage.
+            </p>
             <div className="mt-2 flex gap-2">
               <button
                 type="button"
-                onClick={() => localStorage.setItem("axe_admin_token", adminToken)}
+                onClick={() => void loadRuntime(adminToken)}
                 className="px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700"
               >
-                Save token locally
+                Load runtime
               </button>
               <button
                 type="button"
                 onClick={() => {
-                  localStorage.removeItem("axe_admin_token");
                   setAdminToken("");
+                  setProviderRuntime(null);
+                  setRuntimeError(null);
                 }}
                 className="px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700"
               >
