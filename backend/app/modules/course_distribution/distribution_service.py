@@ -14,6 +14,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 import uuid
+import os
+import tempfile
+from pathlib import Path
 
 from loguru import logger
 
@@ -52,7 +55,14 @@ class DistributionService:
         storage: Optional[DistributionStorage] = None,
         event_stream: Optional[EventStream] = None,
     ):
-        self.storage = storage or DistributionStorage()
+        if storage is not None:
+            self.storage = storage
+        elif os.getenv("PYTEST_CURRENT_TEST"):
+            self.storage = DistributionStorage(
+                storage_path=Path(tempfile.mkdtemp(prefix="brain-course-distribution-"))
+            )
+        else:
+            self.storage = DistributionStorage()
         self.event_stream = event_stream  # EventStream Integration (Sprint 1)
 
     # =========================================================================
@@ -189,11 +199,18 @@ class DistributionService:
                     "seo": {
                         "meta_title": distribution.seo.meta_title,
                         "meta_description": distribution.seo.meta_description,
-                        "meta_keywords": distribution.seo.meta_keywords,
+                        "meta_keywords": distribution.seo.keywords,
                     },
-                    "published_at": distribution.published_at.isoformat() + "Z"
-                    if distribution.published_at
-                    else None,
+                    "visibility": distribution.visibility.value,
+                    "published_at": (
+                        datetime.fromtimestamp(distribution.published_at).isoformat() + "Z"
+                        if isinstance(distribution.published_at, (int, float))
+                        else (
+                            distribution.published_at.isoformat() + "Z"
+                            if distribution.published_at
+                            else None
+                        )
+                    ),
                 },
                 meta={
                     "schema_version": "1.0",
@@ -692,7 +709,12 @@ class DistributionService:
     # Tracking (Aggregated, No PII)
     # =========================================================================
 
-    async def track_enrollment_click(self, slug: str) -> bool:
+    async def track_enrollment_click(
+        self,
+        slug: Optional[str] = None,
+        distribution_id: Optional[str] = None,
+        cta_type: Optional[str] = None,
+    ) -> bool:
         """
         Track enrollment CTA click (aggregated).
 
@@ -702,8 +724,14 @@ class DistributionService:
         Returns:
             True if tracked
         """
-        # Get distribution before logging (for event)
-        distribution = self.storage.get_distribution_by_slug(slug)
+        if distribution_id and not slug:
+            distribution = self.storage.get_distribution_by_id(distribution_id)
+            slug = distribution.slug if distribution else None
+        else:
+            distribution = self.storage.get_distribution_by_slug(slug) if slug else None
+
+        if not slug:
+            return False
 
         success = self.storage.log_enrollment_click(slug)
 
@@ -717,13 +745,43 @@ class DistributionService:
 
         return success
 
+    async def log_view(
+        self,
+        distribution_id: Optional[str] = None,
+        slug: Optional[str] = None,
+        referrer_category: Optional[str] = None,
+    ) -> bool:
+        """Compatibility helper for view tracking by distribution_id or slug."""
+        distribution = None
+        if distribution_id:
+            distribution = self.storage.get_distribution_by_id(distribution_id)
+            if distribution:
+                slug = distribution.slug
+        elif slug:
+            distribution = self.storage.get_distribution_by_slug(slug)
+
+        if not slug:
+            return False
+
+        success = self.storage.log_view(slug)
+        if success and distribution:
+            await self._publish_distribution_viewed(
+                distribution.distribution_id,
+                distribution.slug,
+                distribution.view_count + 1,
+            )
+        return success
+
     # =========================================================================
     # Micro-Niche Derivations
     # =========================================================================
 
     async def create_micro_niche_variant(
         self,
-        request: MicroNicheDerivationRequest,
+        request: Optional[MicroNicheDerivationRequest] = None,
+        parent_distribution_id: Optional[str] = None,
+        target_group_override: Optional[List[str]] = None,
+        title_override: Optional[str] = None,
     ) -> CourseDistribution:
         """
         Create micro-niche variant from parent course.
@@ -737,6 +795,31 @@ class DistributionService:
         Raises:
             ValueError: If parent course not found
         """
+        if request is None:
+            if not parent_distribution_id:
+                raise ValueError("parent_distribution_id is required")
+            parent = self.storage.get_distribution_by_id(parent_distribution_id)
+            if not parent:
+                raise ValueError(f"Parent course {parent_distribution_id} not found")
+
+            suffix = "-variant"
+            if target_group_override:
+                suffix = "-" + "-".join(target_group_override).replace("_", "-")
+            new_slug = f"{parent.slug}{suffix}"[:100]
+
+            request = MicroNicheDerivationRequest(
+                parent_course_id=parent_distribution_id,
+                new_slug=new_slug,
+                language=parent.language,
+                derived_content=MicroNicheDerivedContent(
+                    title_override=title_override,
+                    target_group_override=target_group_override,
+                ),
+                seo=parent.seo,
+                cta=parent.cta,
+                target_group=target_group_override or parent.target_group,
+            )
+
         # Verify parent exists
         parent_dist = self.storage.get_distribution_by_id(request.parent_course_id)
         if not parent_dist:
@@ -807,7 +890,7 @@ class DistributionService:
     # Version Management
     # =========================================================================
 
-    async def bump_version(self, distribution_id: str) -> Optional[str]:
+    async def bump_version(self, distribution_id: str, changelog: Optional[str] = None) -> Optional[str]:
         """
         Bump course version.
 

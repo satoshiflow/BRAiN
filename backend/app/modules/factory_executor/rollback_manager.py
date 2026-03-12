@@ -6,6 +6,20 @@ Manages rollback operations for failed executions.
 Version: 2.0.0 (Sprint 6)
 """
 
+# ============================================================================
+# DEPRECATION NOTICE (Execution Consolidation Wave 1)
+# Module role will be reduced/replaced by OpenCode execution plane.
+#
+# Status: PLANNED_FOR_DEPRECATION
+# Owner: BRAiN Runtime / OpenCode Integration
+# Replacement Target: opencode worker job contracts
+# Sunset Phase: wave1-factory-executor
+# Rule: Do not add new features here. Only critical fixes allowed.
+# See: docs/specs/opencode_execution_consolidation_plan.md
+# ============================================================================
+
+
+
 from __future__ import annotations
 
 from typing import List, Dict, Any

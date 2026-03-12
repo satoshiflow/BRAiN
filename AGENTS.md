@@ -137,6 +137,9 @@ All commands below are from repo root unless noted.
 - Keep API clients centralized (avoid duplicate fetch logic).
 - Prefer existing design system/components and current project structure.
 - Run lint/build before finalizing frontend changes.
+- MUST HAVE: never hardcode real deployment URLs or localhost hosts inside runtime app feature code.
+  Route all AXE/control-deck/widget service resolution through the central config/runtime resolver.
+  Hardcoded hosts are only acceptable in explicit test files, runbooks, or local-only examples.
 
 ## 6) Architecture boundaries to preserve
 
@@ -175,6 +178,7 @@ All commands below are from repo root unless noted.
 - Keep architecture migration work documented under `docs/specs/*` and `docs/roadmap/*`.
 - For skill/runtime execution work, align specs with `docs/core/brain_skill_execution_standard.md`.
 - For multi-agent execution, align role usage and parallelization with `docs/core/agent_operating_matrix.md`.
+- For domain-aware orchestration work, align boundaries and rollout with `docs/specs/domain_agent_contract.md` and `docs/specs/domain_agent_integration_plan.md`.
 - Align long-running delivery execution with `docs/roadmap/BRAIN_SKILL_FIRST_IMPLEMENTATION_ROADMAP.md`.
 - Track the parallel learning/research delivery strand in `docs/roadmap/BRAIN_MISSION_DELIBERATION_INSIGHT_ROADMAP.md`.
 - For each Epic-level change, capture: scope, contracts, risks, and done criteria.
@@ -207,6 +211,7 @@ All commands below are from repo root unless noted.
 - Default working roles:
   - `brain-orchestrator`
   - `brain-architect`
+  - `brain-domain-orchestrator`
   - `brain-schema-designer`
   - `brain-runtime-engineer`
   - `brain-migration-engineer`
@@ -220,3 +225,15 @@ All commands below are from repo root unless noted.
   - implementation, tests, iterative coding -> primary coding model
   - repo exploration, summaries, inventories -> lower-cost model
 - Many agents may analyze in parallel, but one writer owns a given implementation surface at a time.
+
+## 12) GitHub specialist agent (`giti`) guidance
+
+- `giti` is the preferred specialist for Git/GitHub workflows (branch hygiene, PR create/edit, PR metadata updates).
+- Follow `docs/core/giti_playbook.md` for mandatory preflight checks and PR decision flow.
+- Before any PR action, ensure:
+  - `gh` is installed and available in PATH
+  - `gh auth status` is authenticated for the intended account
+  - existing PR state is checked to avoid duplicate PR creation
+- Prefer `gh pr edit` when a PR already exists for the branch.
+- Use `--body-file` for PR body updates to avoid shell quoting/substitution issues.
+- For long-lived branches, summarize the intended incremental delta, not the full historical diff.

@@ -8,6 +8,20 @@ Trust Tier Enforcement:
 - EXTERNAL requests blocked with HTTP 403
 """
 
+# ============================================================================
+# DEPRECATION NOTICE (Execution Consolidation Wave 1)
+# Module role will be reduced/replaced by OpenCode execution plane.
+#
+# Status: PLANNED_FOR_DEPRECATION
+# Owner: BRAiN Runtime / OpenCode Integration
+# Replacement Target: opencode worker (build/deploy/rollback)
+# Sunset Phase: wave1-webgenesis-exec
+# Rule: Do not add new features here. Only critical fixes allowed.
+# See: docs/specs/opencode_execution_consolidation_plan.md
+# ============================================================================
+
+
+
 from typing import Optional
 import os
 from uuid import uuid4
@@ -205,7 +219,10 @@ async def validate_trust_tier_for_deploy(request: Request) -> AXERequestContext:
 
 
 @router.post("/spec", response_model=SpecSubmitResponse, status_code=status.HTTP_201_CREATED)
-async def submit_spec(request: SpecSubmitRequest):
+async def submit_spec(
+    request: SpecSubmitRequest,
+    db: AsyncSession = Depends(get_db),
+):
     """
     Submit website specification.
 
@@ -244,6 +261,7 @@ async def submit_spec(request: SpecSubmitRequest):
         ```
     """
     try:
+        await _ensure_webgenesis_writable(db)
         service = get_webgenesis_service()
 
         site_id, spec_hash, manifest = service.store_spec(request.spec)
@@ -257,6 +275,8 @@ async def submit_spec(request: SpecSubmitRequest):
             message="Spec received and stored successfully",
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"❌ Failed to submit spec: {e}")
         raise HTTPException(

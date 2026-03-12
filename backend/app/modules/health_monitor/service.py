@@ -248,20 +248,16 @@ class HealthMonitorService:
         
         try:
             if service.service_type == "database":
-                # Database check would be done here
-                # For now, just return healthy
-                status = HealthStatus.HEALTHY
-                error = None
+                # Database health check: attempt simple query
+                status, error = await self._check_database()
             elif service.service_type == "cache":
-                # Cache check
-                status = HealthStatus.HEALTHY
-                error = None
+                # Cache health check: attempt Redis ping
+                status, error = await self._check_cache()
             elif service.service_type == "external":
-                # External API check
-                status = HealthStatus.HEALTHY
-                error = None
+                # External API check: use metadata for endpoint if provided
+                status, error = await self._check_external(service)
             else:
-                # Internal service
+                # Internal service: mark as healthy by default (no check implemented)
                 status = HealthStatus.HEALTHY
                 error = None
             
@@ -272,7 +268,7 @@ class HealthMonitorService:
                 status=status,
                 response_time_ms=response_time,
                 error_message=error,
-                output="Check passed"
+                output="Check passed" if status == HealthStatus.HEALTHY else "Check failed"
             )
         except Exception as e:
             return HealthCheckResult(
@@ -282,6 +278,52 @@ class HealthMonitorService:
                 error_message=str(e),
                 output="Check failed"
             )
+    
+    async def _check_database(self) -> tuple[HealthStatus, Optional[str]]:
+        """Check database connectivity."""
+        try:
+            from app.core.database import AsyncSessionLocal
+            async with AsyncSessionLocal() as db:
+                # Simple ping query
+                from sqlalchemy import text
+                await db.execute(text("SELECT 1"))
+            return HealthStatus.HEALTHY, None
+        except Exception as e:
+            logger.error(f"[HealthMonitor] Database check failed: {e}")
+            return HealthStatus.UNHEALTHY, str(e)
+    
+    async def _check_cache(self) -> tuple[HealthStatus, Optional[str]]:
+        """Check Redis cache connectivity."""
+        try:
+            from app.core.redis_client import get_redis
+            redis = await get_redis()
+            await redis.ping()
+            return HealthStatus.HEALTHY, None
+        except Exception as e:
+            logger.error(f"[HealthMonitor] Cache check failed: {e}")
+            return HealthStatus.UNHEALTHY, str(e)
+    
+    async def _check_external(self, service: HealthCheckModel) -> tuple[HealthStatus, Optional[str]]:
+        """Check external service via HTTP probe."""
+        try:
+            # Check if metadata contains probe URL
+            if not service.metadata or "probe_url" not in service.metadata:
+                logger.debug(f"[HealthMonitor] No probe_url for {service.service_name}, skipping")
+                return HealthStatus.UNKNOWN, "No probe URL configured"
+            
+            import httpx
+            probe_url = service.metadata["probe_url"]
+            timeout = service.metadata.get("timeout_seconds", 5)
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.get(probe_url, timeout=timeout)
+                if response.status_code == 200:
+                    return HealthStatus.HEALTHY, None
+                else:
+                    return HealthStatus.DEGRADED, f"HTTP {response.status_code}"
+        except Exception as e:
+            logger.error(f"[HealthMonitor] External check failed for {service.service_name}: {e}")
+            return HealthStatus.UNHEALTHY, str(e)
 
 
 _service: Optional[HealthMonitorService] = None

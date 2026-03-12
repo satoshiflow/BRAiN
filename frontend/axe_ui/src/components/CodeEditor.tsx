@@ -6,7 +6,7 @@
 'use client';
 
 import React, { useRef } from 'react';
-import Editor, { OnMount, Monaco } from '@monaco-editor/react';
+import Editor, { OnMount } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
 import type { CodeEditorProps } from '../types';
 

@@ -15,7 +15,6 @@ from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
-from .db_adapter import get_db_adapter
 from .schemas import (
     ConversationTurn,
     MemoryEntry,
@@ -167,7 +166,7 @@ class ContextManager:
         )
 
         # Persist turn to database
-        db = await get_db_adapter()
+        db = await self.store._get_db()
         await db.add_turn(session_id, turn)
         
         # Update session state
@@ -238,7 +237,7 @@ class ContextManager:
         session.context_vars[key] = value
         
         # Persist to database
-        db = await get_db_adapter()
+        db = await self.store._get_db()
         await db.update_session(session_id, context_vars=session.context_vars)
         return True
 
@@ -316,7 +315,7 @@ class ContextManager:
         session.total_tokens += _estimate_tokens(new_summary)
 
         # Persist updates to database
-        db = await get_db_adapter()
+        db = await self.store._get_db()
         await db.update_session(
             session.session_id,
             compressed_summary=session.compressed_summary,

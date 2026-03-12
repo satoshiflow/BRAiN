@@ -39,6 +39,16 @@ from .models import AgentModel, AgentStatus as AgentModelStatus
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
 
+@router.get("/info")
+async def agents_info() -> dict[str, str]:
+    """Legacy compatibility endpoint for agent manager info."""
+    return {
+        "name": "Agent Manager",
+        "version": "1.0.0",
+        "status": "online",
+    }
+
+
 def agent_to_response(agent: AgentModel) -> AgentResponse:
     """Convert AgentModel to AgentResponse"""
     return AgentResponse.model_validate(agent)

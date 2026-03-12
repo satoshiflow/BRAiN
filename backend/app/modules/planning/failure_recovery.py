@@ -16,6 +16,7 @@ Detox integration:
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from datetime import datetime, timezone
 from typing import Any, Callable, Coroutine, Dict, List, Optional
@@ -79,7 +80,14 @@ class FailureRecovery:
         self._detox_cooldowns: Dict[str, float] = {}
         self._total_recoveries = 0
         self._successful_recoveries = 0
-        self._recovery_policy_service = get_recovery_policy_service() if get_recovery_policy_service else None
+        recovery_policy_enabled = os.getenv(
+            "RECOVERY_POLICY_ADAPTER_ENABLED", "false"
+        ).lower() in {"1", "true", "yes", "on"}
+        self._recovery_policy_service = (
+            get_recovery_policy_service()
+            if get_recovery_policy_service and recovery_policy_enabled
+            else None
+        )
 
         logger.info("🔧 FailureRecovery initialized")
 

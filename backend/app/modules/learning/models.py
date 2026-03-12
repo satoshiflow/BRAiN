@@ -29,6 +29,7 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
+JSON_TYPE = JSON().with_variant(JSONB, "postgresql")
 
 
 class StrategyStatus(str):
@@ -80,7 +81,7 @@ class LearningStrategyORM(Base):
     domain = Column(String(50), nullable=False, default="general", index=True)
     
     # Strategy parameters (the "knobs" to tune)
-    parameters = Column(JSONB, nullable=False, default=dict)
+    parameters = Column(JSON_TYPE, nullable=False, default=dict)
     
     # Performance tracking
     status = Column(
@@ -257,9 +258,9 @@ class MetricORM(Base):
     metric_type = Column(String(20), nullable=False, index=True)
     value = Column(Float, nullable=False)
     unit = Column(String(20), nullable=False, default="")
-    tags = Column(JSONB, nullable=False, default=dict)
+    tags = Column(JSON_TYPE, nullable=False, default=dict)
     timestamp = Column(DateTime, nullable=False, index=True)
-    context = Column(JSONB, nullable=False, default=dict)
+    context = Column(JSON_TYPE, nullable=False, default=dict)
     
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     

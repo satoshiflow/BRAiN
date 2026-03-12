@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AXE Floating Widget Demo</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+      color: #333;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 40px;
+      color: white;
+    }
+
+    .header h1 {
+      font-size: 32px;
+      margin-bottom: 10px;
+    }
+
+    .header p {
+      font-size: 16px;
+      opacity: 0.9;
+    }
+
+    .content {
+      background: white;
+      border-radius: 12px;
+      padding: 40px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      margin-bottom: 40px;
+    }
+
+    .section {
+      margin-bottom: 40px;
+    }
+
+    .section:last-child {
+      margin-bottom: 0;
+    }
+
+    .section h2 {
+      font-size: 24px;
+      margin-bottom: 16px;
+      color: #1a202c;
+      border-bottom: 2px solid #667eea;
+      padding-bottom: 12px;
+    }
+
+    .section p {
+      line-height: 1.6;
+      color: #4a5568;
+      margin-bottom: 12px;
+    }
+
+    .code-block {
+      background: #f7fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 16px;
+      margin: 16px 0;
+      overflow-x: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      line-height: 1.5;
+      color: #2d3748;
+    }
+
+    .warning {
+      background: #fff5f5;
+      border-left: 4px solid #f56565;
+      padding: 16px;
+      border-radius: 4px;
+      margin: 16px 0;
+      color: #c53030;
+    }
+
+    .info {
+      background: #f0f9ff;
+      border-left: 4px solid #3b82f6;
+      padding: 16px;
+      border-radius: 4px;
+      margin: 16px 0;
+      color: #1e40af;
+    }
+
+    .button {
+      display: inline-block;
+      background: #667eea;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 6px;
+      border: none;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background 0.2s;
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .button:hover {
+      background: #5568d3;
+    }
+
+    .button.secondary {
+      background: #e2e8f0;
+      color: #2d3748;
+    }
+
+    .button.secondary:hover {
+      background: #cbd5e0;
+    }
+
+    .footer {
+      text-align: center;
+      color: white;
+      opacity: 0.8;
+    }
+
+    .checklist {
+      list-style: none;
+    }
+
+    .checklist li {
+      padding: 8px 0;
+      padding-left: 28px;
+      position: relative;
+      color: #4a5568;
+    }
+
+    .checklist li:before {
+      content: '✓';
+      position: absolute;
+      left: 0;
+      color: #48bb78;
+      font-weight: bold;
+    }
+
+    .checklist li.pending:before {
+      content: '○';
+      color: #cbd5e0;
+    }
+
+    .config-items {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin: 20px 0;
+    }
+
+    .config-item {
+      background: #f7fafc;
+      padding: 16px;
+      border-radius: 8px;
+    }
+
+    .config-item strong {
+      display: block;
+      color: #2d3748;
+      margin-bottom: 6px;
+    }
+
+    .config-item code {
+      background: white;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      color: #667eea;
+    }
+
+    @media (max-width: 768px) {
+      .content {
+        padding: 20px;
+      }
+
+      .config-items {
+        grid-template-columns: 1fr;
+      }
+
+      .header h1 {
+        font-size: 24px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🎯 AXE Floating Widget Demo</h1>
+      <p>Test the embedded chat widget on this page</p>
+    </div>
+
+    <div class="content">
+      <!-- Status Section -->
+      <div class="section">
+        <h2>Current Status</h2>
+        <div class="info">
+          <strong>✓ Widget Ready</strong>
+          <p>The AXE floating widget should appear in the bottom-right corner of your screen.</p>
+          <p>Look for the blue chat bubble → click to open the conversation panel.</p>
+        </div>
+      </div>
+
+      <!-- Configuration Section -->
+      <div class="section">
+        <h2>Widget Configuration</h2>
+        <p>This demo uses the following configuration:</p>
+        
+        <div class="config-items">
+          <div class="config-item">
+            <strong>appId</strong>
+            <code>demo-embed-test</code>
+          </div>
+          <div class="config-item">
+            <strong>backendUrl</strong>
+            <code>http://localhost:8000</code>
+          </div>
+          <div class="config-item">
+            <strong>originAllowlist</strong>
+            <code>http://127.0.0.1:3002</code>
+          </div>
+          <div class="config-item">
+            <strong>position</strong>
+            <code>bottom-right</code>
+          </div>
+        </div>
+
+        <div class="code-block">
+&lt;script
+  src="http://localhost:3002/embed.js"
+  data-app-id="demo-embed-test"
+  data-backend-url="http://localhost:8000"
+  data-origin-allowlist="http://127.0.0.1:3002"
+  data-debug="true"
+  async
+&gt;&lt;/script&gt;
+        </div>
+      </div>
+
+      <!-- Features Section -->
+      <div class="section">
+        <h2>Features to Test</h2>
+        <ul class="checklist">
+          <li>Click the blue chat bubble to open/close the widget</li>
+          <li>Type a message and press Enter to send</li>
+          <li>Try a slash command: type <code>/help</code></li>
+          <li>Check browser console for debug logs (data-debug="true")</li>
+          <li>Verify <code>window.AXEWidget</code> API is available</li>
+          <li class="pending">Widget persists across page navigation (future)</li>
+          <li class="pending">Mobile: test on iPhone/Android (future)</li>
+        </ul>
+      </div>
+
+      <!-- Widget API Section -->
+      <div class="section">
+        <h2>Widget API</h2>
+        <p>Once initialized, control the widget via JavaScript:</p>
+
+        <div class="code-block">
+// Open the widget panel
+window.AXEWidget.open();
+
+// Close the widget panel
+window.AXEWidget.close();
+
+// Check if panel is open
+console.log(window.AXEWidget.isOpen());
+
+// Send a message programmatically
+window.AXEWidget.sendMessage("Hello, AXE!");
+
+// Access configuration
+console.log(window.AXEWidget.config);
+        </div>
+
+        <button class="button" onclick="testWidgetAPI()">Test API</button>
+      </div>
+
+      <!-- Development Section -->
+      <div class="section">
+        <h2>Development Notes</h2>
+        
+        <div class="info">
+          <strong>Local Testing:</strong>
+          <ol style="margin-left: 20px; margin-top: 8px;">
+            <li>Start backend: <code>cd backend && python -m uvicorn main:app --reload</code></li>
+            <li>Start frontend: <code>cd frontend/axe_ui && npm run dev</code></li>
+            <li>Open this page: <a href="http://localhost:3002/embed-demo.html" target="_blank">http://localhost:3002/embed-demo.html</a></li>
+            <li>Open DevTools (F12) → Console to see debug logs</li>
+          </ol>
+        </div>
+
+        <p><strong>Environment Variables:</strong></p>
+        <ul class="checklist">
+          <li>Backend must allow local requests: <code>AXE_FUSION_ALLOW_LOCAL_REQUESTS=true</code></li>
+          <li>Frontend embed script base URL: <code>http://localhost:3002</code></li>
+        </ul>
+      </div>
+
+      <!-- Troubleshooting Section -->
+      <div class="section">
+        <h2>Troubleshooting</h2>
+        
+        <div class="warning">
+          <strong>Widget not appearing?</strong>
+          <ol style="margin-left: 20px; margin-top: 8px;">
+            <li>Check browser console (F12) for errors</li>
+            <li>Verify origin is in allowlist (currently: <code>http://127.0.0.1:3002</code>)</li>
+            <li>Ensure backend is running on <code>http://localhost:8000</code></li>
+            <li>Check network tab for failed requests to <code>/api/axe/*</code></li>
+          </ol>
+        </div>
+
+        <div class="warning">
+          <strong>Chat messages not sending?</strong>
+          <ol style="margin-left: 20px; margin-top: 8px;">
+            <li>Backend must have AXE Fusion module enabled</li>
+            <li>Verify <code>AXE_FUSION_ALLOW_LOCAL_REQUESTS=true</code> in backend env</li>
+            <li>Check that <code>/api/axe/chat</code> endpoint is accessible</li>
+            <li>Review backend logs for validation errors</li>
+          </ol>
+        </div>
+      </div>
+
+      <!-- Next Steps -->
+      <div class="section">
+        <h2>Next Steps</h2>
+        <ul class="checklist">
+          <li>Implement React component loader in embed.js</li>
+          <li>Add plugin system integration to embedded widget</li>
+          <li>Support external origin embedding with CORS</li>
+          <li>Create NPM package export (@axe-ui/widget)</li>
+          <li>Add TypeScript types for external integrators</li>
+          <li>Write integration tests (Playwright E2E)</li>
+          <li>Document security model (origin validation, trust-tier)</li>
+          <li>Performance optimization (bundle size, lazy loading)</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="footer">
+      <p>AXE Floating Widget Embedding Contract v1</p>
+      <p style="font-size: 12px; margin-top: 8px; opacity: 0.6;">
+        For documentation, see: <code>docs/specs/axe_widget_embedding_contract_v1.md</code>
+      </p>
+    </div>
+  </div>
+
+  <!-- Load the embed script -->
+  <script
+    src="http://localhost:3002/embed.js"
+    data-app-id="demo-embed-test"
+    data-backend-url="http://localhost:8000"
+    data-origin-allowlist="http://127.0.0.1:3002"
+    data-debug="true"
+    async
+  ></script>
+
+  <!-- Test API helper -->
+  <script>
+    function testWidgetAPI() {
+      if (!window.AXEWidget) {
+        alert('Widget not initialized yet. Please wait a moment and try again.');
+        return;
+      }
+
+      console.log('=== AXE Widget API Test ===');
+      console.log('Config:', window.AXEWidget.config);
+      console.log('Is Open?', window.AXEWidget.isOpen());
+
+      if (window.AXEWidget.isOpen()) {
+        console.log('Closing widget...');
+        window.AXEWidget.close();
+      } else {
+        console.log('Opening widget...');
+        window.AXEWidget.open();
+      }
+
+      alert('Check console (F12) for widget API status. Widget should now toggle.');
+    }
+
+    // Log when widget is ready
+    window.addEventListener('load', () => {
+      setTimeout(() => {
+        if (window.AXEWidget) {
+          console.log('✓ AXE Widget API available:', window.AXEWidget);
+        } else {
+          console.warn('✗ AXE Widget API not available');
+        }
+      }, 1000);
+    });
+  </script>
+</body>
+</html>

@@ -57,13 +57,21 @@ from app.modules.runtime_auditor.schemas import (
     RuntimeAuditorStatus,
 )
 
-# Import for Immune System integration (Phase 2 end)
+# Import for Immune System integration
 try:
     from app.modules.immune.core.service import ImmuneService
     from app.modules.immune.schemas import ImmuneEvent, ImmuneSeverity, ImmuneType
 except ImportError:
     ImmuneService = None
-    _log_optional("ImmuneService")
+    _log_optional("ImmuneService (legacy)")
+
+try:
+    from app.modules.immune_orchestrator.service import ImmuneOrchestratorService
+    from app.modules.immune_orchestrator.schemas import IncidentSignal, SignalSeverity
+except ImportError:
+    ImmuneOrchestratorService = None
+    SignalSeverity = None
+    _log_optional("ImmuneOrchestratorService")
 
 
 class RuntimeAuditor:
@@ -86,7 +94,8 @@ class RuntimeAuditor:
         collection_interval: float = 60.0,
         memory_sample_window: int = 60,
         latency_sample_window: int = 100,
-        immune_service: Optional[ImmuneService] = None,
+        immune_orchestrator: Optional["ImmuneOrchestratorService"] = None,
+        immune_service: Optional["ImmuneService"] = None,
     ):
         """
         Initialize Runtime Auditor
@@ -95,7 +104,8 @@ class RuntimeAuditor:
             collection_interval: Seconds between metric collections (default: 60)
             memory_sample_window: Number of memory samples to keep (default: 60)
             latency_sample_window: Number of latency samples to keep (default: 100)
-            immune_service: Optional ImmuneService for event publishing
+            immune_orchestrator: Optional ImmuneOrchestratorService for anomaly publishing (preferred)
+            immune_service: Optional legacy ImmuneService for backward compatibility
         """
         self.collection_interval = collection_interval
         self.start_time = time.time()
@@ -108,8 +118,13 @@ class RuntimeAuditor:
         # Process handle for resource monitoring
         self.process = psutil.Process() if psutil else None
 
-        # Immune System integration
+        # Immune System integration (prefer orchestrator over legacy)
+        self.immune_orchestrator = immune_orchestrator
         self.immune_service = immune_service
+        if immune_orchestrator:
+            logger.info("[RuntimeAuditor] Connected to ImmuneOrchestratorService")
+        elif immune_service:
+            logger.info("[RuntimeAuditor] Connected to legacy ImmuneService")
 
         # Status tracking
         self.last_collection: Optional[datetime] = None
@@ -528,50 +543,87 @@ class RuntimeAuditor:
         Args:
             anomalies: List of detected anomalies
         """
-        if not self.immune_service:
+        if not self.immune_orchestrator and not self.immune_service:
             return
 
         for anomaly in anomalies:
             if anomaly.severity in ["critical", "high"]:
                 try:
-                    # Map severity
-                    severity_map = {
-                        "critical": ImmuneSeverity.CRITICAL,
-                        "high": ImmuneSeverity.WARNING,
-                        "medium": ImmuneSeverity.INFO,
-                        "low": ImmuneSeverity.INFO,
-                    }
-
-                    # Map type
-                    type_map = {
-                        "memory_leak": ImmuneType.RESOURCE_EXHAUSTION,
-                        "deadlock": ImmuneType.AGENT_FAILURE,
-                        "cascade_failure": ImmuneType.AGENT_FAILURE,
-                        "latency_spike": ImmuneType.PERFORMANCE_DEGRADATION,
-                        "queue_saturation": ImmuneType.PERFORMANCE_DEGRADATION,
-                    }
-
-                    event = ImmuneEvent(
-                        severity=severity_map.get(anomaly.severity, ImmuneSeverity.INFO),
-                        type=type_map.get(anomaly.type, ImmuneType.UNKNOWN),
-                        message=anomaly.description,
-                        module="runtime_auditor",
-                        meta={
-                            "anomaly_type": anomaly.type,
-                            "metric_value": anomaly.metric_value,
-                            "threshold": anomaly.threshold,
-                            "recommendation": anomaly.recommendation,
-                        }
-                    )
-
-                    await self.immune_service.publish_event(event)
+                    # Prefer immune_orchestrator over legacy immune_service
+                    if self.immune_orchestrator and SignalSeverity is not None:
+                        await self._publish_to_orchestrator(anomaly)
+                    elif self.immune_service:
+                        await self._publish_to_legacy(anomaly)
 
                     logger.info(
-                        f"[RuntimeAuditor] Published {anomaly.severity} anomaly to Immune System: {anomaly.type}"
+                        f"[RuntimeAuditor] Published {anomaly.severity} anomaly: {anomaly.type}"
                     )
 
                 except Exception as e:
-                    logger.error(f"[RuntimeAuditor] Failed to publish to Immune System: {e}")
+                    logger.error(f"[RuntimeAuditor] Failed to publish anomaly: {e}")
+    
+    async def _publish_to_orchestrator(self, anomaly: AnomalyDetection):
+        """Publish anomaly to ImmuneOrchestratorService."""
+        import uuid
+        
+        # Map severity
+        severity_map = {
+            "critical": SignalSeverity.CRITICAL,
+            "high": SignalSeverity.HIGH,
+            "medium": SignalSeverity.MEDIUM,
+            "low": SignalSeverity.LOW,
+        }
+        
+        signal = IncidentSignal(
+            id=f"runtime-anomaly-{uuid.uuid4().hex[:12]}",
+            source="runtime_auditor",
+            signal_type=anomaly.type,
+            severity=severity_map.get(anomaly.severity, SignalSeverity.MEDIUM),
+            description=anomaly.description,
+            metadata={
+                "metric_value": anomaly.metric_value,
+                "threshold": anomaly.threshold,
+                "recommendation": anomaly.recommendation,
+            },
+            recurrence=1,  # Could track this if we maintain anomaly history
+            correlation_id=None,  # Could be set if we have correlation context
+        )
+        
+        await self.immune_orchestrator.ingest_signal(signal, db=None)
+    
+    async def _publish_to_legacy(self, anomaly: AnomalyDetection):
+        """Publish anomaly to legacy ImmuneService."""
+        # Map severity
+        severity_map = {
+            "critical": ImmuneSeverity.CRITICAL,
+            "high": ImmuneSeverity.WARNING,
+            "medium": ImmuneSeverity.INFO,
+            "low": ImmuneSeverity.INFO,
+        }
+
+        # Map type
+        type_map = {
+            "memory_leak": ImmuneType.RESOURCE_EXHAUSTION,
+            "deadlock": ImmuneType.AGENT_FAILURE,
+            "cascade_failure": ImmuneType.AGENT_FAILURE,
+            "latency_spike": ImmuneType.PERFORMANCE_DEGRADATION,
+            "queue_saturation": ImmuneType.PERFORMANCE_DEGRADATION,
+        }
+
+        event = ImmuneEvent(
+            severity=severity_map.get(anomaly.severity, ImmuneSeverity.INFO),
+            type=type_map.get(anomaly.type, ImmuneType.UNKNOWN),
+            message=anomaly.description,
+            module="runtime_auditor",
+            meta={
+                "anomaly_type": anomaly.type,
+                "metric_value": anomaly.metric_value,
+                "threshold": anomaly.threshold,
+                "recommendation": anomaly.recommendation,
+            }
+        )
+
+        await self.immune_service.publish_event(event)
 
     # =========================================================================
     # UTILITIES
@@ -626,3 +678,20 @@ class RuntimeAuditor:
             samples_collected=self.samples_collected,
             anomalies_detected=self.anomalies_detected,
         )
+
+
+# Singleton instance
+_runtime_auditor: Optional[RuntimeAuditor] = None
+
+def get_runtime_auditor_service(
+    immune_orchestrator: Optional["ImmuneOrchestratorService"] = None,
+    immune_service: Optional["ImmuneService"] = None,
+) -> RuntimeAuditor:
+    """Get or create the runtime auditor service singleton."""
+    global _runtime_auditor
+    if _runtime_auditor is None:
+        _runtime_auditor = RuntimeAuditor(
+            immune_orchestrator=immune_orchestrator,
+            immune_service=immune_service,
+        )
+    return _runtime_auditor

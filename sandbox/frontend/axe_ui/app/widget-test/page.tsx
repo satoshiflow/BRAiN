@@ -43,7 +43,7 @@ export default function WidgetTestPage() {
               <li>Look for the floating AXE button in <strong>bottom-right corner</strong></li>
               <li>Click the button to <strong>expand</strong> the chat panel</li>
               <li>Type a message and press <strong>Enter</strong></li>
-              <li>You'll get a mock response (no real AI backend yet)</li>
+              <li>You&apos;ll get a mock response (no real AI backend yet)</li>
               <li>Click the <strong>maximize icon</strong> to open CANVAS mode (placeholder)</li>
               <li>Click <strong>minimize</strong> to collapse back to button</li>
             </ol>

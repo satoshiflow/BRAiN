@@ -1,6 +1,11 @@
 import pytest
 
 from app.modules.opencode_repair.schemas import (
+    OpenCodeJobConstraints,
+    OpenCodeJobContext,
+    OpenCodeJobContractCreateRequest,
+    OpenCodeJobMode,
+    OpenCodeJobScope,
     RepairAutotriggerRequest,
     RepairTicketSeverity,
     RepairTicketStatus,
@@ -46,3 +51,38 @@ async def test_repair_ticket_autotrigger_and_update() -> None:
 
     audits = await service.list_audit_entries(db=None)
     assert len(audits) >= 2
+
+
+@pytest.mark.asyncio
+async def test_dispatch_job_contract_queues_job() -> None:
+    service = OpenCodeRepairService(event_stream=None)
+
+    job = await service.dispatch_job_contract(
+        OpenCodeJobContractCreateRequest(
+            correlation_id="corr-job-1",
+            mode=OpenCodeJobMode.BUILD,
+            scope=OpenCodeJobScope(
+                module="course_factory",
+                entity_id="course-123",
+                tenant_id="tenant-1",
+            ),
+            constraints=OpenCodeJobConstraints(
+                timeout_seconds=900,
+                max_iterations=1,
+                risk_level="low",
+                approval_required=False,
+                blast_radius_limit=1,
+            ),
+            context=OpenCodeJobContext(
+                trigger_event="course.deploy.staging.requested",
+                original_request={"staging_domain": "example.staging"},
+            ),
+            created_by="course_factory_service",
+        ),
+        db=None,
+    )
+
+    assert job.job_id.startswith("job_")
+    assert job.mode == OpenCodeJobMode.BUILD
+    assert job.scope.module == "course_factory"
+    assert job.status.value == "queued"

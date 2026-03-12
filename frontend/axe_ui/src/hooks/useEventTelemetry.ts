@@ -25,6 +25,8 @@
  */
 import { useEffect, useRef, useCallback, useState } from 'react';
 
+type JsonObject = Record<string, unknown>;
+
 export type AxeEventType =
   | 'axe_message'
   | 'axe_feedback'
@@ -46,7 +48,7 @@ interface AxeEventCreate {
   app_id: string;
   user_id?: string;
   anonymization_level: AnonymizationLevel;
-  event_data: Record<string, any>;
+  event_data: JsonObject;
   client_timestamp: string;
   is_training_data: boolean;
   client_version?: string;
@@ -93,51 +95,6 @@ export function useEventTelemetry({
     failedUploads: 0,
     lastUploadTime: null,
   });
-
-  /**
-   * Track a new event (adds to queue).
-   */
-  const trackEvent = useCallback(
-    (eventType: AxeEventType, eventData: Record<string, any>) => {
-      if (!telemetryEnabled) {
-        return;
-      }
-
-      const event: AxeEventCreate = {
-        event_type: eventType,
-        session_id: sessionId,
-        app_id: appId,
-        user_id: userId,
-        anonymization_level: anonymizationLevel,
-        event_data: eventData,
-        client_timestamp: new Date().toISOString(),
-        is_training_data: trainingOptIn,
-        client_version: '1.0.0', // TODO: Get from package.json
-        client_platform: typeof window !== 'undefined' ? window.navigator.userAgent : 'unknown',
-      };
-
-      eventQueue.current.push(event);
-
-      setStats((prev) => ({
-        ...prev,
-        queuedEvents: eventQueue.current.length,
-      }));
-
-      // If queue exceeds batch size, upload immediately
-      if (eventQueue.current.length >= maxBatchSize) {
-        uploadEvents();
-      }
-    },
-    [
-      telemetryEnabled,
-      sessionId,
-      appId,
-      userId,
-      anonymizationLevel,
-      trainingOptIn,
-      maxBatchSize,
-    ]
-  );
 
   /**
    * Upload queued events to backend.
@@ -193,6 +150,51 @@ export function useEventTelemetry({
   }, [backendUrl, maxBatchSize]);
 
   /**
+   * Track a new event (adds to queue).
+   */
+  const trackEvent = useCallback(
+    (eventType: AxeEventType, eventData: JsonObject) => {
+      if (!telemetryEnabled) {
+        return;
+      }
+
+      const event: AxeEventCreate = {
+        event_type: eventType,
+        session_id: sessionId,
+        app_id: appId,
+        user_id: userId,
+        anonymization_level: anonymizationLevel,
+        event_data: eventData,
+        client_timestamp: new Date().toISOString(),
+        is_training_data: trainingOptIn,
+        client_version: '1.0.0',
+        client_platform: typeof window !== 'undefined' ? window.navigator.userAgent : 'unknown',
+      };
+
+      eventQueue.current.push(event);
+
+      setStats((prev) => ({
+        ...prev,
+        queuedEvents: eventQueue.current.length,
+      }));
+
+      if (eventQueue.current.length >= maxBatchSize) {
+        uploadEvents();
+      }
+    },
+    [
+      telemetryEnabled,
+      sessionId,
+      appId,
+      userId,
+      anonymizationLevel,
+      trainingOptIn,
+      maxBatchSize,
+      uploadEvents,
+    ]
+  );
+
+  /**
    * Track session start (auto-called on mount).
    */
   const trackSessionStart = useCallback(() => {
@@ -216,7 +218,7 @@ export function useEventTelemetry({
    * Helper: Track message event.
    */
   const trackMessage = useCallback(
-    (role: 'user' | 'assistant', message: string, metadata?: Record<string, any>) => {
+    (role: 'user' | 'assistant', message: string, metadata?: JsonObject) => {
       trackEvent('axe_message', {
         role,
         message,
@@ -230,7 +232,7 @@ export function useEventTelemetry({
    * Helper: Track click event.
    */
   const trackClick = useCallback(
-    (element: string, metadata?: Record<string, any>) => {
+    (element: string, metadata?: JsonObject) => {
       trackEvent('axe_click', {
         element,
         ...metadata,
@@ -243,7 +245,7 @@ export function useEventTelemetry({
    * Helper: Track diff action.
    */
   const trackDiffAction = useCallback(
-    (action: 'applied' | 'rejected', diffId: string, metadata?: Record<string, any>) => {
+    (action: 'applied' | 'rejected', diffId: string, metadata?: JsonObject) => {
       trackEvent(
         action === 'applied' ? 'axe_diff_applied' : 'axe_diff_rejected',
         {
@@ -259,7 +261,7 @@ export function useEventTelemetry({
    * Helper: Track error.
    */
   const trackError = useCallback(
-    (error: Error | string, metadata?: Record<string, any>) => {
+    (error: Error | string, metadata?: JsonObject) => {
       trackEvent('axe_error', {
         error: error instanceof Error ? error.message : error,
         stack: error instanceof Error ? error.stack : undefined,

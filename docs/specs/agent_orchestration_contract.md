@@ -39,6 +39,9 @@ Agents do not own:
 - handle escalation and approval requests
 - coordinate multi-agent decomposition when needed
 
+Domain-aware extension rule:
+- when orchestration requires domain-specific decomposition, review, or specialist routing, the work should flow through a `Domain Agent` layer rather than being embedded ad hoc in generic agents or supervisor logic
+
 Tenant rule:
 - `tenant_id` for agent-triggered actions is token-derived or agent-identity-derived, never request-body-derived.
 
@@ -83,6 +86,16 @@ Supervisor responsibilities:
 - enforce policy-aware orchestration decisions
 
 Supervisor must not become a second execution runtime.
+
+Supervisor also must not absorb domain-specific orchestration logic that belongs in a `Domain Agent`.
+
+## Domain Agent Contract Link
+
+`Domain Agent` is the domain-aware orchestration layer that sits below supervisor and above specialist/execution routing.
+
+See:
+- `docs/specs/domain_agent_contract.md`
+- `docs/specs/domain_agent_integration_plan.md`
 
 ## Multi-Agent Coordination Rules
 

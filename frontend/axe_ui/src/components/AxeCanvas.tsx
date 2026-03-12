@@ -21,13 +21,12 @@ import { useAxeWebSocket } from '../hooks/useAxeWebSocket';
 import { useEventTelemetry } from '../hooks/useEventTelemetry';
 import { generateMessageId, generateFileId } from '../utils/id';
 import { cn } from '../utils/cn';
+import { getApiBase } from '../../lib/config';
 import type { AxeCanvasProps, AxeMessage } from '../types';
 
 export function AxeCanvas({
   mode,
-  onModeChange,
   onClose,
-  locale
 }: AxeCanvasProps) {
   const [input, setInput] = useState('');
 
@@ -54,10 +53,9 @@ export function AxeCanvas({
     isConnected,
     sendChat,
     sendDiffApplied,
-    sendDiffRejected,
-    sendFileUpdate
+    sendDiffRejected
   } = useAxeWebSocket({
-    backendUrl: process.env.NEXT_PUBLIC_BRAIN_API_BASE || 'http://localhost:8000',
+    backendUrl: getApiBase(),
     sessionId: sessionId,
     onConnected: () => console.log('[AxeCanvas] WebSocket connected'),
     onDisconnected: () => console.log('[AxeCanvas] WebSocket disconnected'),
@@ -67,8 +65,8 @@ export function AxeCanvas({
   // ============================================================================
   // Event Telemetry (Phase 3)
   // ============================================================================
-  const { trackMessage, trackClick, trackDiffAction } = useEventTelemetry({
-    backendUrl: process.env.NEXT_PUBLIC_BRAIN_API_BASE || 'http://localhost:8000',
+  const { trackMessage, trackDiffAction } = useEventTelemetry({
+    backendUrl: getApiBase(),
     sessionId: sessionId,
     appId: config?.app_id || 'axe-canvas',
     anonymizationLevel: config?.telemetry?.anonymization_level || 'pseudonymized',
@@ -272,8 +270,8 @@ export function AxeCanvas({
                         🎨 Welcome to CANVAS mode!
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        Describe what you want to build, and I'll help you write
-                        the code.
+                         Describe what you want to build, and I&apos;ll help you write
+                         the code.
                       </p>
                     </div>
                   </div>

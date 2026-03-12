@@ -74,6 +74,29 @@ Write authority:
 
 ---
 
+### 3.2a Domain Orchestrator
+
+Purpose:
+- shape work inside one business or technical domain without taking over global governance or execution ownership
+
+Best for:
+- domain decomposition
+- specialist selection
+- domain review gates
+- budget and spawn discipline inside a domain
+
+Preferred model:
+- `ChatGPT` or `Claude` depending on domain risk and ambiguity
+
+Write authority:
+- controlled; usually through orchestrator or runtime engineer
+
+Notes:
+- this operating role maps to the technical `Domain Agent` layer and the "Cardinal" metaphor
+- it must not become a second supervisor or direct execution runtime
+
+---
+
 ### 3.3 Schema and Contract Designer
 
 Purpose:

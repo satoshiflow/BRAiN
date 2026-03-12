@@ -17,14 +17,16 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    JSON,
     String,
     Text,
     func,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
+JSON_TYPE = JSON().with_variant(JSONB, "postgresql")
 
 
 class MemoryEntryORM(Base):
@@ -54,7 +56,7 @@ class MemoryEntryORM(Base):
     session_id = Column(String(32), nullable=True, index=True)
     mission_id = Column(String(100), nullable=True, index=True)
     skill_run_id = Column(String(64), nullable=True, index=True)
-    tags = Column(ARRAY(String(50)), nullable=False, default=list)
+    tags = Column(JSON_TYPE, nullable=False, default=list)
     
     # Scoring
     importance = Column(Float, nullable=False, default=50.0)
@@ -68,10 +70,10 @@ class MemoryEntryORM(Base):
     expires_at = Column(DateTime(timezone=False), nullable=True)
     
     # Embedding for semantic search (stored as JSONB array)
-    embedding = Column(JSONB, nullable=True)
+    embedding = Column(JSON_TYPE, nullable=True)
     
     # Flexible metadata
-    entry_metadata = Column("metadata", JSONB, nullable=False, default=dict)
+    entry_metadata = Column("metadata", JSON_TYPE, nullable=False, default=dict)
 
     # Indexes for common query patterns
     __table_args__ = (
@@ -154,7 +156,7 @@ class ConversationTurnORM(Base):
     role = Column(String(20), nullable=False)  # user, assistant, system
     content = Column(Text, nullable=False)
     timestamp = Column(Float, nullable=False)
-    turn_metadata = Column("metadata", JSONB, nullable=False, default=dict)
+    turn_metadata = Column("metadata", JSON_TYPE, nullable=False, default=dict)
     token_count = Column(Integer, nullable=False, default=0)
 
     __table_args__ = (
@@ -191,7 +193,7 @@ class SessionContextORM(Base):
     max_tokens = Column(Integer, nullable=False, default=8000)
     
     active_mission_id = Column(String(100), nullable=True)
-    context_vars = Column(JSONB, nullable=False, default=dict)
+    context_vars = Column(JSON_TYPE, nullable=False, default=dict)
     
     compressed_summary = Column(Text, nullable=True)
     compressed_turn_count = Column(Integer, nullable=False, default=0)

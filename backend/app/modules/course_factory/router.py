@@ -533,6 +533,7 @@ async def rollback_workflow(
 @router.post("/enhance")
 async def enhance_content(
     request: EnhancementRequest,
+    db: AsyncSession = Depends(get_db),
     service: CourseFactoryService = Depends(get_course_factory_service_with_events),
 ) -> EnhancementResult:
     """
@@ -555,6 +556,7 @@ async def enhance_content(
         with actual LLM for real content generation.
     """
     try:
+        await _ensure_course_factory_writable(db)
         logger.info(
             f"[CourseFactory API] Content enhancement: {request.course_id} "
             f"(types={[t.value for t in request.enhancement_types]})"
@@ -571,6 +573,8 @@ async def enhance_content(
 
         return result
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"[CourseFactory API] Enhancement failed: {e}")
         raise HTTPException(
@@ -588,6 +592,7 @@ async def bind_theme(
     course_id: str,
     theme_id: str,
     custom_colors: Optional[Dict[str, str]] = None,
+    db: AsyncSession = Depends(get_db),
     service: CourseFactoryService = Depends(get_course_factory_service_with_events),
 ) -> WebGenesisTheme:
     """
@@ -610,6 +615,7 @@ async def bind_theme(
         HTTPException: If theme not found
     """
     try:
+        await _ensure_course_factory_writable(db)
         logger.info(
             f"[CourseFactory API] Theme binding: {course_id} (theme={theme_id})"
         )
@@ -622,6 +628,8 @@ async def bind_theme(
 
         return theme
 
+    except HTTPException:
+        raise
     except ValueError as e:
         logger.error(f"[CourseFactory API] Theme not found: {e}")
         raise HTTPException(status_code=404, detail=str(e))
@@ -638,6 +646,7 @@ async def build_sections(
     course_id: str,
     outline: CourseOutline,
     landing_page: Optional[CourseLandingPage] = None,
+    db: AsyncSession = Depends(get_db),
     service: CourseFactoryService = Depends(get_course_factory_service_with_events),
 ) -> List[WebGenesisSection]:
     """
@@ -660,6 +669,7 @@ async def build_sections(
         List of WebGenesisSection
     """
     try:
+        await _ensure_course_factory_writable(db)
         logger.info(f"[CourseFactory API] Building sections: {course_id}")
 
         sections = await service.build_sections(
@@ -670,6 +680,8 @@ async def build_sections(
 
         return sections
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"[CourseFactory API] Section building failed: {e}")
         raise HTTPException(
@@ -683,6 +695,7 @@ async def generate_seo_pack(
     course_id: str,
     outline: CourseOutline,
     keywords: Optional[List[str]] = None,
+    db: AsyncSession = Depends(get_db),
     service: CourseFactoryService = Depends(get_course_factory_service_with_events),
 ) -> SEOPack:
     """
@@ -704,6 +717,7 @@ async def generate_seo_pack(
         SEOPack
     """
     try:
+        await _ensure_course_factory_writable(db)
         logger.info(f"[CourseFactory API] Generating SEO pack: {course_id}")
 
         seo_pack = await service.generate_seo_pack(
@@ -714,6 +728,8 @@ async def generate_seo_pack(
 
         return seo_pack
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"[CourseFactory API] SEO generation failed: {e}")
         raise HTTPException(

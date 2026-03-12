@@ -11,6 +11,7 @@ EventStream Integration (Sprint 1):
 
 from __future__ import annotations
 
+import os
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -48,8 +49,18 @@ def get_distribution_service_with_events(request: Request) -> DistributionServic
 
     EventStream is retrieved from request.app.state (set in main.py).
     """
+    service: Optional[DistributionService] = getattr(request.app.state, "distribution_service", None)
+    current_test = os.getenv("PYTEST_CURRENT_TEST")
+    service_test = getattr(request.app.state, "distribution_service_test", None)
+
+    if service is not None and (not current_test or current_test == service_test):
+        return service
+
     event_stream: Optional[EventStream] = getattr(request.app.state, "event_stream", None)
-    return DistributionService(event_stream=event_stream)
+    service = DistributionService(event_stream=event_stream)
+    request.app.state.distribution_service = service
+    request.app.state.distribution_service_test = current_test
+    return service
 
 
 # =========================================================================

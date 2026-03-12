@@ -6,6 +6,7 @@ This endpoint is kept for backward compatibility and simple health checks.
 """
 
 from fastapi import APIRouter, Depends
+from loguru import logger
 from app.modules.system_health.service import SystemHealthService
 
 router = APIRouter(prefix="/api", tags=["core"])
@@ -49,9 +50,10 @@ async def health(
             "enhanced_health_endpoint": "/api/system/health",
         }
     except Exception as e:
-        # Fallback to simple response
+        # Return unknown status on exception - do not mask failures as ok
+        logger.error(f"Health check failed: {e}")
         return {
-            "status": "ok",
-            "error": str(e),
+            "status": "unknown",
+            "error": "Health check unavailable",
             "enhanced_health_endpoint": "/api/system/health",
         }

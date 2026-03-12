@@ -191,6 +191,7 @@ class SystemHealthService:
     async def _get_immune_health(self) -> Optional[ImmuneHealthData]:
         """Get health data from Immune System"""
         if not self.immune_service:
+            logger.debug("[SystemHealth] ImmuneService not available")
             return None
 
         try:
@@ -210,7 +211,8 @@ class SystemHealthService:
                 event_rate_per_minute=event_rate,
             )
         except Exception as e:
-            logger.error(f"[SystemHealth] Failed to get immune health: {e}")
+            logger.warning(f"[SystemHealth] Failed to get immune health: {e}")
+            # Return None to signal unavailable - will be treated as degraded by aggregator
             return None
 
     async def _get_threats_health(self) -> Optional[ThreatsHealthData]:
@@ -323,10 +325,27 @@ class SystemHealthService:
 
         Logic:
         - CRITICAL: Any critical issues detected
-        - DEGRADED: High resource usage, warnings, or sub-optimal metrics
+        - DEGRADED: High resource usage, warnings, sub-optimal metrics, or subsystem unavailable
         - HEALTHY: All systems nominal
-        - UNKNOWN: Insufficient data
+        - UNKNOWN: Insufficient data (no subsystems available)
         """
+        # Count unavailable subsystems
+        unavailable_count = 0
+        if immune_health is None:
+            unavailable_count += 1
+        if mission_health is None:
+            unavailable_count += 1
+        
+        # If all critical subsystems unavailable, return UNKNOWN
+        if unavailable_count >= 2:
+            logger.warning("[SystemHealth] Multiple critical subsystems unavailable")
+            return HealthStatus.UNKNOWN
+        
+        # If any subsystem unavailable, degrade health
+        if unavailable_count > 0:
+            logger.info("[SystemHealth] System degraded due to unavailable subsystems")
+            # Continue checking for critical issues before returning degraded
+        
         # Check for critical issues
         if immune_health and immune_health.critical_issues > 0:
             return HealthStatus.CRITICAL
@@ -350,6 +369,10 @@ class SystemHealthService:
 
         # Check mission queue depth
         if mission_health and mission_health.queue_depth > 1000:
+            return HealthStatus.DEGRADED
+        
+        # Return degraded if any subsystems unavailable
+        if unavailable_count > 0:
             return HealthStatus.DEGRADED
 
         # All checks passed

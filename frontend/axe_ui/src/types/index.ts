@@ -11,6 +11,7 @@ export type AxeMode = 'assistant' | 'builder' | 'support' | 'debug';
 export type AxeTheme = 'dark' | 'light';
 export type AxeTrainingMode = 'global' | 'per_app' | 'off';
 export type AxeAnonymizationLevel = 'none' | 'pseudonymized' | 'strict';
+export type JsonObject = Record<string, unknown>;
 
 // ============================================================================
 // Widget Configuration
@@ -75,7 +76,7 @@ export interface AxeMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: string;
-  context?: Record<string, any>;
+  context?: JsonObject;
   metadata?: {
     model?: string;
     tokens?: number;
@@ -84,7 +85,7 @@ export interface AxeMessage {
 }
 
 export interface AxeExtraContext {
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 // ============================================================================
@@ -153,7 +154,7 @@ export interface AxeMessageEvent extends AxeEventBase {
   event_type: 'axe_message';
   payload: {
     message: string;
-    context?: Record<string, any>;
+    context?: JsonObject;
     training_enabled: boolean;
     anonymization_level: AxeAnonymizationLevel;
   };
@@ -173,14 +174,14 @@ export interface AxeClickEvent extends AxeEventBase {
   payload: {
     element: string;
     action: string;
-    metadata?: Record<string, any>;
+    metadata?: JsonObject;
   };
 }
 
 export interface AxeContextSnapshotEvent extends AxeEventBase {
   event_type: 'axe_context_snapshot';
   payload: {
-    snapshot: Record<string, any>;
+    snapshot: JsonObject;
   };
 }
 
@@ -224,7 +225,7 @@ export type AxeEvent =
 // API Responses
 // ============================================================================
 
-export interface AxeApiResponse<T = any> {
+export interface AxeApiResponse<T = unknown> {
   success: boolean;
   data?: T;
   error?: {

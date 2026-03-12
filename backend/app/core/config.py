@@ -1,7 +1,40 @@
+import os
 from functools import lru_cache
-from typing import Union
-from pydantic import field_validator
+from typing import Literal, Union
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Runtime Mode Detection (Runtime Deployment Contract)
+def detect_runtime_mode() -> Literal["local", "remote"]:
+    """
+    Detect runtime mode based on environment markers.
+    
+    Priority:
+    1. Explicit BRAIN_RUNTIME_MODE (local|remote)
+    2. Auto-detection (Coolify markers, hostname, Docker)
+    3. Default: remote (fail-safe)
+    
+    Returns:
+        "local" for laptop dev, "remote" for Coolify/production
+    """
+    explicit = os.getenv("BRAIN_RUNTIME_MODE", "auto").lower()
+    if explicit in ["local", "remote"]:
+        return explicit  # type: ignore
+    
+    # Auto-detection: Remote markers (Coolify)
+    if os.getenv("SERVICE_FQDN_BACKEND") or os.getenv("COOLIFY_APP_ID"):
+        return "remote"
+    
+    # Auto-detection: Docker container check
+    if os.path.exists("/.dockerenv"):
+        # Inside container - check if Coolify (remote) or local docker-compose
+        if os.getenv("COOLIFY_APP_ID"):
+            return "remote"
+        # Local docker-compose
+        return "local"
+    
+    # Default: remote (fail-safe)
+    return "remote"
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
@@ -11,17 +44,51 @@ class Settings(BaseSettings):
 
     api_prefix: str = "/api"
 
-    # Database (updated for Coolify separate services)
-    database_url: str = "postgresql+asyncpg://brain:brain@localhost:5432/brain"
+    # Runtime Mode Detection (Runtime Deployment Contract)
+    runtime_mode: Literal["local", "remote"] = Field(
+        default_factory=detect_runtime_mode,
+        description="Runtime environment: local (laptop dev) or remote (Coolify/production)",
+    )
 
-    # Redis
-    redis_url: str = "redis://localhost:6380/0"
+    # Database - mode-aware defaults
+    database_url: str = Field(
+        default_factory=lambda: (
+            "postgresql+asyncpg://brain:brain_dev_pass@localhost:5433/brain_dev"
+            if detect_runtime_mode() == "local"
+            else os.getenv("DATABASE_URL", "")  # Required in remote, fail if missing
+        ),
+        description="PostgreSQL connection URL (local default or required remote)",
+    )
 
-    # Qdrant (NEW - separate Coolify service)
-    qdrant_url: str = "http://localhost:6333"
+    # Redis - mode-aware defaults
+    redis_url: str = Field(
+        default_factory=lambda: (
+            "redis://localhost:6380/0"
+            if detect_runtime_mode() == "local"
+            else os.getenv("REDIS_URL", "")  # Required in remote, fail if missing
+        ),
+        description="Redis connection URL (local default or required remote)",
+    )
 
-    # Ollama (NEW - separate Coolify service)
-    ollama_host: str = "http://localhost:11434"
+    # Qdrant - mode-aware defaults
+    qdrant_url: str = Field(
+        default_factory=lambda: (
+            "http://localhost:6334"
+            if detect_runtime_mode() == "local"
+            else "http://qdrant:6333"  # Coolify service name
+        ),
+        description="Qdrant vector DB URL (mode-aware)",
+    )
+
+    # Ollama - mode-aware defaults
+    ollama_host: str = Field(
+        default_factory=lambda: (
+            "http://localhost:11434"
+            if detect_runtime_mode() == "local"
+            else "http://ollama:11434"  # Coolify service name
+        ),
+        description="Ollama LLM host (mode-aware)",
+    )
 
     # JWT Configuration (NEW - BRAiN Auth Foundation)
     jwt_issuer: str = "https://brain.falklabs.de"
@@ -36,12 +103,25 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 7  # Long-lived refresh tokens
     agent_token_expire_hours: int = 24  # Agent/service account tokens
 
-    # CORS - Strict allowed origins (SECURITY-001)
-    # Default: production-safe whitelist, no wildcards
-    cors_origins: Union[str, list[str]] = [
-        "https://control.brain.falklabs.de",
-        "https://axe.brain.falklabs.de",
-    ]
+    # CORS - mode-aware defaults (Runtime Deployment Contract)
+    cors_origins: Union[str, list[str]] = Field(
+        default_factory=lambda: (
+            [
+                "http://localhost:3000",
+                "http://localhost:3001",
+                "http://localhost:3002",
+                "http://127.0.0.1:3000",
+                "http://127.0.0.1:3001",
+                "http://127.0.0.1:3002",
+            ]
+            if detect_runtime_mode() == "local"
+            else [
+                "https://control.brain.falklabs.de",
+                "https://axe.brain.falklabs.de",
+            ]
+        ),
+        description="CORS allowed origins (mode-aware: local localhost, remote production domains)",
+    )
 
     # OpenRouter Configuration (Optional - for external LLM access)
     openrouter_api_key: str = ""

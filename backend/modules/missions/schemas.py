@@ -10,7 +10,7 @@ from .models import MissionPriority, MissionStatus, MissionPayload
 
 
 class MissionInfoResponse(BaseModel):
-    name: str = "BRAIN Mission System"
+    name: str = "Mission System"
     version: str = "0.1.0"
     description: str = "Lightweight Mission Queue + EventStream integration"
 

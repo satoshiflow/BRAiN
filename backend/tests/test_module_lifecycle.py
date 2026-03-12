@@ -98,6 +98,37 @@ def test_module_lifecycle_service_blocks_invalid_transition() -> None:
         )
 
 
+def test_module_lifecycle_service_requires_kill_switch_for_retired() -> None:
+    service = ModuleLifecycleService()
+    item = SimpleNamespace(
+        module_id="legacy_module",
+        lifecycle_status="stable",
+        replacement_target="new.module.path",
+        sunset_phase="phase_p5",
+        kill_switch=None,
+        notes=None,
+        updated_at=None,
+    )
+
+    async def _get_module(db, module_id):
+        return item
+
+    service.get_module = _get_module  # type: ignore[method-assign]
+    db = FakeDb()
+
+    with pytest.raises(ValueError, match="kill_switch"):
+        asyncio.run(
+            service.set_status(
+                db,
+                "legacy_module",
+                ModuleLifecycleStatus.RETIRED,
+                "new.module.path",
+                "phase_p5",
+                "retire module",
+            )
+        )
+
+
 @pytest.mark.asyncio
 async def test_module_lifecycle_service_updates_valid_transition() -> None:
     service = ModuleLifecycleService()
@@ -184,6 +215,43 @@ def test_module_lifecycle_routes_support_filters_and_matrix(monkeypatch) -> None
     matrix_response = client.get("/api/module-lifecycle/webgenesis/decommission-matrix")
     assert matrix_response.status_code == 200
     assert matrix_response.json()["replacement_target"] == "builder.webgenesis.deploy"
+
+
+def test_module_lifecycle_decommission_ledger(monkeypatch) -> None:
+    app = FastAPI()
+    app.include_router(module_lifecycle_router)
+
+    async def _db_override():
+        yield None
+
+    app.dependency_overrides[get_db] = _db_override
+    app.dependency_overrides[require_auth] = lambda: build_principal("admin")
+    client = TestClient(app)
+
+    router_module = __import__("app.modules.module_lifecycle.router", fromlist=["router"])
+
+    class FakeService:
+        async def list_decommission_ledger(self, db):
+            return [
+                {
+                    "module_id": "webgenesis",
+                    "lifecycle_status": ModuleLifecycleStatus.DEPRECATED,
+                    "replacement_target": "builder.webgenesis.deploy",
+                    "kill_switch": None,
+                    "sunset_phase": "phase_p5",
+                    "migration_adapter": "app.modules.webgenesis",
+                    "decommission_ready": True,
+                    "blockers": [],
+                }
+            ]
+
+    monkeypatch.setattr(router_module, "get_module_lifecycle_service", lambda: FakeService())
+
+    response = client.get("/api/module-lifecycle/decommission/ledger")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert payload["items"][0]["module_id"] == "webgenesis"
 
 
 @pytest.mark.asyncio

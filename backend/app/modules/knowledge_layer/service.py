@@ -4,7 +4,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth_deps import Principal
-from app.modules.skill_engine.service import get_skill_engine_service
+from app.modules.experience_layer.service import get_experience_layer_service
 
 from .models import KnowledgeItemModel
 from .schemas import KnowledgeItemCreate, KnowledgeSearchQuery
@@ -30,17 +30,16 @@ class KnowledgeLayerService:
         await db.refresh(item)
         return item
 
-    async def get_item(self, db: AsyncSession, item_id, tenant_id: str | None) -> KnowledgeItemModel | None:
-        query = select(KnowledgeItemModel).where(KnowledgeItemModel.id == item_id)
-        if tenant_id:
-            query = query.where(KnowledgeItemModel.tenant_id == tenant_id)
+    async def get_item(self, db: AsyncSession, item_id, tenant_id: str) -> KnowledgeItemModel | None:
+        query = select(KnowledgeItemModel).where(
+            KnowledgeItemModel.id == item_id,
+            KnowledgeItemModel.tenant_id == tenant_id,
+        )
         result = await db.execute(query.limit(1))
         return result.scalar_one_or_none()
 
-    async def search(self, db: AsyncSession, tenant_id: str | None, payload: KnowledgeSearchQuery) -> list[KnowledgeItemModel]:
-        query = select(KnowledgeItemModel)
-        if tenant_id:
-            query = query.where(KnowledgeItemModel.tenant_id == tenant_id)
+    async def search(self, db: AsyncSession, tenant_id: str, payload: KnowledgeSearchQuery) -> list[KnowledgeItemModel]:
+        query = select(KnowledgeItemModel).where(KnowledgeItemModel.tenant_id == tenant_id)
         if payload.type:
             query = query.where(KnowledgeItemModel.type == payload.type)
         if payload.module:
@@ -56,26 +55,28 @@ class KnowledgeLayerService:
         return list(result.scalars().all())
 
     async def ingest_run_lesson(self, db: AsyncSession, skill_run_id, principal: Principal) -> KnowledgeItemModel:
-        run = await get_skill_engine_service().get_run(db, skill_run_id, principal.tenant_id)
-        if run is None:
-            raise ValueError("Skill run not found")
+        if not principal.tenant_id:
+            raise PermissionError("Tenant context required")
+
+        experience = await get_experience_layer_service().ingest_skill_run(db, skill_run_id, principal)
+        skill_key = str(experience.signals.get("skill_key", "unknown"))
         content = (
-            f"SkillRun {run.skill_key} v{run.skill_version} finished in state {run.state}. "
-            f"Failure code: {run.failure_code or 'none'}. Evaluation: {run.evaluation_summary or {}}."
+            f"Experience lesson for SkillRun {skill_key}: {experience.summary} "
+            f"Evaluation: {experience.evaluation_summary or {}}."
         )
         item = KnowledgeItemModel(
             tenant_id=principal.tenant_id,
             type="run_lesson",
-            title=f"Run lesson: {run.skill_key}",
-            source="skill_run",
+            title=f"Run lesson: {skill_key}",
+            source="experience_record",
             version=1,
             owner=principal.principal_id,
-            module="skill_engine",
-            tags=[run.skill_key, run.state],
+            module="experience_layer",
+            tags=[skill_key, experience.state],
             content=content,
             provenance_refs=[
-                {"type": "skill_run", "id": str(run.id)},
-                {"type": "evaluation_result", "id": run.evaluation_summary.get("evaluation_result_id")},
+                {"type": "skill_run", "id": str(experience.skill_run_id)},
+                {"type": "experience_record", "id": str(experience.id)},
             ],
         )
         db.add(item)

@@ -5,13 +5,15 @@ Business logic for managing AXE identities.
 """
 
 from typing import List, Optional
-from sqlalchemy.ext.asyncio import AsyncSession
+import logging
+from datetime import datetime, timezone
+
 from sqlalchemy import select, update
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError, ProgrammingError, SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from .models import AXEIdentityORM
 from .schemas import AXEIdentityCreate, AXEIdentityUpdate, AXEIdentityResponse
-import logging
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +24,16 @@ class AXEIdentityService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self._active_cache: Optional[AXEIdentityResponse] = None
+
+    async def _rollback_optional_identity_error(self, exc: Exception) -> None:
+        if not isinstance(exc, (ProgrammingError, DBAPIError, SQLAlchemyError)):
+            raise exc
+
+        logger.warning("AXE identity lookup unavailable, using fallback identity: %s", exc)
+        try:
+            await self.db.rollback()
+        except Exception as rollback_exc:  # pragma: no cover
+            logger.debug("AXE identity rollback skipped: %s", rollback_exc)
 
     async def get_all(self) -> List[AXEIdentityResponse]:
         """Get all identities ordered by creation date (newest first)"""
@@ -50,10 +62,14 @@ class AXEIdentityService:
         if self._active_cache:
             return self._active_cache
 
-        result = await self.db.execute(
-            select(AXEIdentityORM).where(AXEIdentityORM.is_active == True)
-        )
-        identity = result.scalar_one_or_none()
+        try:
+            result = await self.db.execute(
+                select(AXEIdentityORM).where(AXEIdentityORM.is_active == True)
+            )
+            identity = result.scalar_one_or_none()
+        except Exception as exc:
+            await self._rollback_optional_identity_error(exc)
+            return None
 
         if identity:
             self._active_cache = AXEIdentityResponse.from_orm(identity)
@@ -84,8 +100,8 @@ class AXEIdentityService:
             capabilities=[],
             is_active=True,
             version=1,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             created_by="system"
         )
 

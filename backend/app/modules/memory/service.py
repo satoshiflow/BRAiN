@@ -66,7 +66,7 @@ class MemoryService:
             skill_run_id=request.skill_run_id,
             importance=request.importance,
             tags=request.tags,
-            metadata=request.metadata,
+            metadata=getattr(request, "metadata", {}),
         )
         return await self.store.store(entry)
 

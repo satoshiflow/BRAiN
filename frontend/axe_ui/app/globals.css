@@ -10,31 +10,103 @@ html,
 body {
   margin: 0;
   padding: 0;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
-    sans-serif;
+  min-height: 100%;
+  font-family: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
 }
 
 @layer base {
   :root {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    --axe-bg: 218 52% 4%;
+    --axe-panel: 224 34% 9%;
+    --axe-panel-soft: 224 28% 12%;
+    --axe-line: 204 20% 27%;
+    --axe-fg: 210 25% 94%;
+    --axe-muted: 210 16% 64%;
+    --axe-cyan: 188 95% 62%;
+    --axe-copper: 22 64% 56%;
+    --axe-amber: 41 93% 61%;
+    --axe-ok: 142 69% 53%;
+    --axe-danger: 358 86% 64%;
+    --background: var(--axe-bg);
+    --foreground: var(--axe-fg);
+    --primary: var(--axe-cyan);
+    --primary-foreground: 222 33% 9%;
   }
-}
 
-body {
-  background-color: hsl(var(--background));
-  color: hsl(var(--foreground));
-}
+  html {
+    scroll-behavior: smooth;
+  }
 
-/* Mobile-First Optimizations */
+  body {
+    background:
+      radial-gradient(1000px 700px at 88% -8%, hsla(var(--axe-cyan) / 0.12), transparent 52%),
+      radial-gradient(760px 580px at -10% 112%, hsla(var(--axe-copper) / 0.2), transparent 56%),
+      linear-gradient(125deg, hsl(223 44% 4%) 0%, hsl(223 35% 6%) 45%, hsl(222 28% 7%) 100%);
+    color: hsl(var(--foreground));
+  }
 
-/* Touch-friendly links and buttons */
-@layer base {
   button,
   a {
     -webkit-tap-highlight-color: transparent;
+  }
+
+  ::selection {
+    background: hsla(var(--axe-cyan) / 0.4);
+    color: hsl(var(--axe-fg));
+  }
+}
+
+@layer components {
+  .axe-grid-overlay {
+    position: relative;
+  }
+
+  .axe-grid-overlay::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(hsla(var(--axe-cyan) / 0.06) 1px, transparent 1px),
+      linear-gradient(90deg, hsla(var(--axe-cyan) / 0.05) 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: radial-gradient(circle at center, black, transparent 82%);
+    pointer-events: none;
+  }
+
+  .axe-panel {
+    border: 1px solid hsla(var(--axe-line) / 0.75);
+    background: linear-gradient(
+      160deg,
+      hsla(var(--axe-panel) / 0.94) 0%,
+      hsla(var(--axe-panel-soft) / 0.86) 100%
+    );
+    box-shadow:
+      inset 0 1px 0 hsla(var(--axe-cyan) / 0.14),
+      0 22px 60px rgba(0, 0, 0, 0.42);
+    backdrop-filter: blur(12px);
+  }
+
+  .axe-surface-title {
+    font-family: "Space Grotesk", "IBM Plex Sans", sans-serif;
+    letter-spacing: 0.02em;
+  }
+
+  .axe-chip {
+    border: 1px solid hsla(var(--axe-line) / 0.72);
+    background: hsla(var(--axe-panel-soft) / 0.58);
+    color: hsl(var(--axe-muted));
+  }
+
+  .axe-ring {
+    box-shadow:
+      0 0 0 1px hsla(var(--axe-cyan) / 0.45),
+      0 0 18px hsla(var(--axe-cyan) / 0.35);
+  }
+}
+
+@media (display-mode: standalone) {
+  body {
+    overscroll-behavior: none;
   }
 }
 
@@ -59,11 +131,6 @@ body {
   word-break: break-word;
 }
 
-/* Smooth scrolling */
-html {
-  scroll-behavior: smooth;
-}
-
 /* Custom scrollbar for webkit browsers */
 ::-webkit-scrollbar {
   width: 8px;
@@ -71,14 +138,14 @@ html {
 }
 
 ::-webkit-scrollbar-track {
-  background: hsl(var(--background));
+  background: hsla(var(--axe-panel) / 0.6);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgb(51, 65, 85); /* slate-700 */
+  background: hsla(var(--axe-line) / 0.95);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgb(71, 85, 105); /* slate-600 */
+  background: hsla(var(--axe-cyan) / 0.38);
 }

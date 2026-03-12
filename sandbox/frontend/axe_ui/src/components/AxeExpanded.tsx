@@ -159,7 +159,7 @@ export function AxeExpanded({
           <div className="h-full flex items-center justify-center text-center">
             <div>
               <p className="text-muted-foreground mb-2">
-                👋 Hi! I'm AXE, your AI assistant.
+                👋 Hi! I&apos;m AXE, your AI assistant.
               </p>
               <p className="text-sm text-muted-foreground">
                 How can I help you today?

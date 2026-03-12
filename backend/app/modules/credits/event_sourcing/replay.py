@@ -284,6 +284,7 @@ class ReplayEngine:
             "replay_duration_seconds": self._replay_duration_seconds,
             "integrity_valid": integrity_valid,
             "integrity_errors": self._integrity_errors,
+            "integrity_errors_count": len(self._integrity_errors),
             "snapshot_used": self._snapshot_used,
             "events_skipped_by_snapshot": self._events_skipped_by_snapshot,
             "snapshot_restore_duration_seconds": self._snapshot_restore_duration_seconds,

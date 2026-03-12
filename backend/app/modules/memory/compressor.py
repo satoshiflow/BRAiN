@@ -18,7 +18,6 @@ from typing import List, Optional
 
 from loguru import logger
 
-from .db_adapter import get_db_adapter
 from .schemas import (
     CompressionResult,
     CompressionStatus,
@@ -91,7 +90,7 @@ class MemoryCompressor:
         compressed_tokens = 0
         summaries_created = 0
 
-        db = await get_db_adapter()
+        db = await self.store._get_db()
 
         for memory in candidates:
             orig_tokens = len(memory.content) // CHARS_PER_TOKEN
