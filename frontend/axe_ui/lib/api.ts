@@ -4,6 +4,7 @@ import type {
   AxeAttachmentUploadResponse,
   AxeChatRequest,
   AxeChatResponse,
+  AxeWorkerUpdate,
   AxeSessionAppendMessageRequest,
   AxeSessionDetail,
   AxeSessionMessage,
@@ -45,6 +46,16 @@ export async function postAxeChat(
   return apiRequest<AxeChatResponse>("/api/axe/chat", {
     method: "POST",
     body: JSON.stringify(payload),
+    headers: customHeaders,
+  });
+}
+
+export async function getAxeWorkerRun(
+  workerRunId: string,
+  customHeaders?: Record<string, string>
+): Promise<AxeWorkerUpdate> {
+  return apiRequest<AxeWorkerUpdate>(`/api/axe/workers/${workerRunId}`, {
+    method: "GET",
     headers: customHeaders,
   });
 }

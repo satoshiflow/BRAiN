@@ -15,6 +15,28 @@ export interface AxeChatRequest {
 export interface AxeChatResponse {
   text: string;
   raw: Record<string, unknown>;
+  worker_run_id?: string;
+  session_id?: string;
+  message_id?: string;
+}
+
+export type AxeWorkerStatus = "queued" | "running" | "waiting_input" | "completed" | "failed";
+
+export interface AxeWorkerArtifact {
+  type: string;
+  label: string;
+  url?: string;
+}
+
+export interface AxeWorkerUpdate {
+  worker_run_id: string;
+  session_id: string;
+  message_id: string;
+  status: AxeWorkerStatus;
+  label: string;
+  detail: string;
+  updated_at: string;
+  artifacts?: AxeWorkerArtifact[];
 }
 
 export interface ApiHealthResponse {

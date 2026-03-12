@@ -5,9 +5,10 @@ import { Camera, Loader2, Paperclip, Send, X } from "lucide-react";
 import { AuthGate } from "@/components/auth/AuthGate";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
 import { AdvancedCameraCapture } from "@/components/chat/AdvancedCameraCapture";
-import { appendAxeSessionMessage, postAxeChat, uploadAxeAttachment } from "@/lib/api";
+import { WorkerRunCard } from "@/components/chat/WorkerRunCard";
+import { appendAxeSessionMessage, getAxeWorkerRun, postAxeChat, uploadAxeAttachment } from "@/lib/api";
 import { getDefaultModel } from "@/lib/config";
-import type { AxeChatRequest, AxeSessionMessageRole } from "@/lib/contracts";
+import type { AxeChatRequest, AxeSessionMessage, AxeSessionMessageRole, AxeWorkerUpdate } from "@/lib/contracts";
 import { useAuthSession } from "@/hooks/useAuthSession";
 import { useChatSessions } from "@/hooks/useChatSessions";
 import { pluginRegistry, initializePlugins, destroyPlugins, type PluginContext } from "../../src/plugins";
@@ -15,9 +16,17 @@ import slashCommandsPlugin from "../../src/plugins/slashCommands";
 
 interface Message {
   id: number;
+  sessionMessageId?: string;
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+}
+
+interface WorkerRunAnchor {
+  workerRunId: string;
+  sessionId: string;
+  messageId?: string;
+  localMessageId: number;
 }
 
 interface PendingAttachment {
@@ -88,6 +97,8 @@ function ChatPageContent() {
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [uploadLock, setUploadLock] = useState(false);
+  const [workerUpdates, setWorkerUpdates] = useState<Record<string, AxeWorkerUpdate>>({});
+  const [workerAnchors, setWorkerAnchors] = useState<Record<string, WorkerRunAnchor>>({});
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -153,6 +164,7 @@ function ChatPageContent() {
 
     const loaded = activeSession.messages.map((message, index) => ({
       id: index + 1,
+      sessionMessageId: message.id,
       role: message.role,
       content: message.content,
       timestamp: new Date(message.created_at),
@@ -189,8 +201,8 @@ function ChatPageContent() {
     role: AxeSessionMessageRole,
     content: string,
     attachmentIds: string[] = []
-  ) => {
-    await withAuthRetry((token) =>
+  ): Promise<AxeSessionMessage> => {
+    return withAuthRetry((token) =>
       appendAxeSessionMessage(
         sessionId,
         {
@@ -202,6 +214,33 @@ function ChatPageContent() {
       )
     );
   };
+
+  useEffect(() => {
+    const activeAnchors = Object.values(workerAnchors).filter(
+      (anchor) =>
+        anchor.sessionId === activeSessionId &&
+        ["queued", "running", "waiting_input"].includes(workerUpdates[anchor.workerRunId]?.status ?? "queued")
+    );
+
+    if (activeAnchors.length === 0) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      activeAnchors.forEach((anchor) => {
+        void withAuthRetry(async (token) => {
+          try {
+            const update = await getAxeWorkerRun(anchor.workerRunId, { Authorization: `Bearer ${token}` });
+            setWorkerUpdates((prev) => ({ ...prev, [anchor.workerRunId]: update }));
+          } catch {
+            // Fail soft until backend polling is available everywhere.
+          }
+        });
+      });
+    }, 2500);
+
+    return () => window.clearInterval(interval);
+  }, [activeSessionId, withAuthRetry, workerAnchors, workerUpdates]);
 
   const ensureActiveSessionId = async (): Promise<string | null> => {
     if (activeSessionId) {
@@ -250,7 +289,8 @@ function ChatPageContent() {
       .map((item) => item.attachmentId as string);
 
     try {
-      await persistMessage(currentSessionId, "user", trimmedInput, readyAttachmentIds);
+      const persistedUserMessage = await persistMessage(currentSessionId, "user", trimmedInput, readyAttachmentIds);
+      const userMessageId = persistedUserMessage.id;
 
       if (isSlashCommand && pluginContext) {
         const command = trimmedInput.slice(1).split(" ")[0];
@@ -286,6 +326,29 @@ function ChatPageContent() {
       const data = await withAuthRetry((token) =>
         postAxeChat(requestBody, { Authorization: `Bearer ${token}` })
       );
+
+      if (data.worker_run_id) {
+        const initialUpdate: AxeWorkerUpdate = {
+          worker_run_id: data.worker_run_id,
+          session_id: data.session_id ?? currentSessionId,
+          message_id: data.message_id ?? userMessageId,
+          status: "queued",
+          label: "OpenCode worker queued",
+          detail: "BRAiN delegated this request to a worker. Awaiting status updates.",
+          updated_at: new Date().toISOString(),
+          artifacts: [],
+        };
+        setWorkerUpdates((prev) => ({ ...prev, [data.worker_run_id as string]: initialUpdate }));
+        setWorkerAnchors((prev) => ({
+          ...prev,
+          [data.worker_run_id as string]: {
+            workerRunId: data.worker_run_id as string,
+            sessionId: data.session_id ?? currentSessionId,
+            messageId: data.message_id ?? userMessageId,
+            localMessageId: userMessage.id,
+          },
+        }));
+      }
 
       if (!data.text) {
         throw new Error("Invalid response: missing 'text' field");
@@ -495,38 +558,47 @@ function ChatPageContent() {
 
             <div className="flex-1 space-y-3 overflow-y-auto p-3 sm:space-y-4 sm:p-6">
               {messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`flex gap-2 sm:gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}
-                >
-                  {message.role === "assistant" && (
-                    <div className="hidden shrink-0 sm:block">
-                      <div className="axe-ring flex h-8 w-8 items-center justify-center rounded-full border border-cyan-300/40 bg-cyan-500/15">
-                        <span className="text-sm">🤖</span>
+                <div key={message.id}>
+                  <div className={`flex gap-2 sm:gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+                    {message.role === "assistant" && (
+                      <div className="hidden shrink-0 sm:block">
+                        <div className="axe-ring flex h-8 w-8 items-center justify-center rounded-full border border-cyan-300/40 bg-cyan-500/15">
+                          <span className="text-sm">🤖</span>
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
 
-                  <div
-                    className={`max-w-[85%] break-words rounded-lg p-3 sm:max-w-[70%] sm:p-4 ${
-                      message.role === "user"
-                        ? "border border-cyan-300/35 bg-cyan-500/15 text-cyan-50"
-                        : "border border-slate-700 bg-slate-900/80 text-slate-100"
-                    }`}
-                  >
-                    <p className="whitespace-pre-wrap text-sm">{message.content}</p>
-                    <p className="mt-2 text-xs opacity-70" suppressHydrationWarning>
-                      {isClient ? formatTime(message.timestamp) : ""}
-                    </p>
+                    <div
+                      className={`max-w-[85%] break-words rounded-lg p-3 sm:max-w-[70%] sm:p-4 ${
+                        message.role === "user"
+                          ? "border border-cyan-300/35 bg-cyan-500/15 text-cyan-50"
+                          : "border border-slate-700 bg-slate-900/80 text-slate-100"
+                      }`}
+                    >
+                      <p className="whitespace-pre-wrap text-sm">{message.content}</p>
+                      <p className="mt-2 text-xs opacity-70" suppressHydrationWarning>
+                        {isClient ? formatTime(message.timestamp) : ""}
+                      </p>
+
+                      {Object.values(workerAnchors)
+                        .filter((anchor) => {
+                          if (anchor.sessionId !== activeSessionId) return false;
+                          return anchor.localMessageId === message.id || anchor.messageId === message.sessionMessageId;
+                        })
+                        .map((anchor) => {
+                          const update = workerUpdates[anchor.workerRunId];
+                          return update ? <WorkerRunCard key={anchor.workerRunId} update={update} /> : null;
+                        })}
+                    </div>
+
+                    {message.role === "user" && (
+                      <div className="hidden shrink-0 sm:block">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full border border-amber-400/35 bg-amber-500/15">
+                          <span className="text-sm">👤</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
-
-                  {message.role === "user" && (
-                    <div className="hidden shrink-0 sm:block">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full border border-amber-400/35 bg-amber-500/15">
-                        <span className="text-sm">👤</span>
-                      </div>
-                    </div>
-                  )}
                 </div>
               ))}
 

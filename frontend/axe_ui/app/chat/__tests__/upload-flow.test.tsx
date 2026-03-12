@@ -1,12 +1,13 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import ChatPage from "@/app/chat/page";
-import { appendAxeSessionMessage, postAxeChat, uploadAxeAttachment } from "@/lib/api";
+import { appendAxeSessionMessage, getAxeWorkerRun, postAxeChat, uploadAxeAttachment } from "@/lib/api";
 
 jest.mock("@/lib/api", () => ({
   postAxeChat: jest.fn(),
   uploadAxeAttachment: jest.fn(),
   appendAxeSessionMessage: jest.fn(),
+  getAxeWorkerRun: jest.fn(),
 }));
 
 jest.mock("@/components/auth/AuthGate", () => ({
@@ -15,7 +16,7 @@ jest.mock("@/components/auth/AuthGate", () => ({
 
 jest.mock("@/hooks/useAuthSession", () => ({
   useAuthSession: () => ({
-    getAuthHeaders: () => ({ Authorization: "Bearer test-token" }),
+    accessToken: "test-token",
     withAuthRetry: async <T,>(request: (token: string) => Promise<T>) => request("test-token"),
   }),
 }));
@@ -60,12 +61,14 @@ jest.mock("@/src/plugins/slashCommands", () => ({
 const mockedUpload = uploadAxeAttachment as jest.MockedFunction<typeof uploadAxeAttachment>;
 const mockedChat = postAxeChat as jest.MockedFunction<typeof postAxeChat>;
 const mockedAppendMessage = appendAxeSessionMessage as jest.MockedFunction<typeof appendAxeSessionMessage>;
+const mockedGetWorkerRun = getAxeWorkerRun as jest.MockedFunction<typeof getAxeWorkerRun>;
 
 describe("chat upload flow", () => {
   beforeEach(() => {
     mockedUpload.mockReset();
     mockedChat.mockReset();
     mockedAppendMessage.mockReset();
+    mockedGetWorkerRun.mockReset();
     mockedLoadSessions.mockClear();
     mockedCreateSession.mockClear();
     mockedSelectSession.mockClear();
@@ -79,6 +82,16 @@ describe("chat upload flow", () => {
       attachments: [],
       metadata: {},
       created_at: new Date().toISOString(),
+    });
+    mockedGetWorkerRun.mockResolvedValue({
+      worker_run_id: "worker-1",
+      session_id: "session-1",
+      message_id: "msg-1",
+      status: "completed",
+      label: "OpenCode worker completed",
+      detail: "Finished successfully",
+      updated_at: new Date().toISOString(),
+      artifacts: [],
     });
     window.confirm = jest.fn(() => true);
   });
@@ -147,5 +160,25 @@ describe("chat upload flow", () => {
         expect.objectContaining({ Authorization: "Bearer test-token" })
       );
     });
+  });
+
+  it("renders an optional worker status card when chat response includes worker metadata", async () => {
+    mockedChat.mockResolvedValue({
+      text: "ok",
+      raw: {},
+      worker_run_id: "worker-1",
+      session_id: "session-1",
+      message_id: "msg-1",
+    });
+
+    render(<ChatPage />);
+
+    fireEvent.change(screen.getByPlaceholderText("Type your message..."), {
+      target: { value: "Starte Worker bitte" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+    expect(await screen.findByText("OpenCode worker queued")).toBeInTheDocument();
+    expect(screen.getByText("BRAiN delegated this request to a worker. Awaiting status updates.")).toBeInTheDocument();
   });
 });
