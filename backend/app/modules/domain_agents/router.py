@@ -289,7 +289,12 @@ async def decompose_domain_task(
             detail=f"Domain '{scoped_payload.domain_key}' not found",
         )
     try:
-        resolution = service.decompose_with_config(scoped_payload, config)
+        selected_specialists = await service.select_specialists(db, config)
+        resolution = service.decompose_with_config(
+            scoped_payload,
+            config,
+            selected_specialists=selected_specialists,
+        )
         await _emit_domain_event_safe(
             "domain.agent.decomposed.v1",
             {
@@ -362,7 +367,12 @@ async def prepare_domain_skill_runs(
             detail=f"Domain '{scoped_decomposition.domain_key}' not found",
         )
 
-    resolution = domain_service.decompose_with_config(scoped_decomposition, config)
+    selected_specialists = await domain_service.select_specialists(db, config)
+    resolution = domain_service.decompose_with_config(
+        scoped_decomposition,
+        config,
+        selected_specialists=selected_specialists,
+    )
     review = domain_service.review_resolution(resolution)
 
     run_drafts = domain_service.build_skill_run_drafts(

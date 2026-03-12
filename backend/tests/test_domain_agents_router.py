@@ -515,3 +515,58 @@ def test_prepare_skill_runs_respects_domain_parallel_budget(monkeypatch) -> None
     body = response.json()
     assert len(body["resolution"]["selected_skill_keys"]) >= 2
     assert len(body["run_drafts"]) == 1
+
+
+def test_decompose_uses_agent_management_specialists(monkeypatch) -> None:
+    app = build_test_app()
+    client = TestClient(app)
+
+    from app.modules.domain_agents import service as da_service
+    from app.modules.domain_agents.schemas import DomainAgentConfig, DomainStatus, SpecialistCandidate
+
+    async def _fake_get_db(self, db, domain_key: str, tenant_id: str | None):
+        _ = self
+        _ = db
+        _ = tenant_id
+        if domain_key != "programming":
+            return None
+        return DomainAgentConfig(
+            tenant_id="tenant-a",
+            owner_scope="tenant",
+            domain_key="programming",
+            display_name="Programming",
+            status=DomainStatus.ACTIVE,
+            allowed_skill_keys=["code.implement", "code.test"],
+            allowed_capability_keys=["code.write", "code.test"],
+            allowed_specialist_roles=["runtime-engineer"],
+        )
+
+    async def _fake_select_specialists(self, db, config):
+        _ = self
+        _ = db
+        _ = config
+        return [
+            SpecialistCandidate(
+                agent_id="agent-runtime-01",
+                role="runtime-engineer",
+                score=0.95,
+                reasons=["agent matched allowed_specialist_roles"],
+            )
+        ]
+
+    monkeypatch.setattr(da_service.DomainAgentRegistry, "get_db", _fake_get_db)
+    monkeypatch.setattr(da_service.DomainAgentService, "select_specialists", _fake_select_specialists)
+
+    payload = {
+        "domain_key": "programming",
+        "task_name": "Implement feature",
+        "available_capabilities": ["code.write", "code.test"],
+    }
+
+    with override_auth_principal(client, build_principal("operator")):
+        response = client.post("/api/domain-agents/decompose", json=payload)
+
+    assert response.status_code == 200
+    specialists = response.json()["selected_specialists"]
+    assert len(specialists) == 1
+    assert specialists[0]["agent_id"] == "agent-runtime-01"

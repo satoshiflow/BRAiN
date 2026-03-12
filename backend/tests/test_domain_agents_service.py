@@ -8,6 +8,7 @@ from app.modules.domain_agents.schemas import (
     DomainDecompositionRequest,
     DomainResolution,
     DomainReviewOutcome,
+    SpecialistCandidate,
     DomainStatus,
 )
 from app.modules.domain_agents.service import (
@@ -169,3 +170,39 @@ def test_programming_decompose_limits_specialists_by_budget() -> None:
     assert len(resolution.selected_specialists) == 2
     assert resolution.selected_specialists[0].role == "runtime-engineer"
     assert resolution.selected_specialists[1].role == "verification-engineer"
+
+
+def test_decompose_with_config_accepts_resolved_specialists_override() -> None:
+    registry = DomainAgentRegistry()
+    config = DomainAgentConfig(
+        domain_key="programming",
+        display_name="Programming",
+        status=DomainStatus.ACTIVE,
+        allowed_skill_keys=["code.implement", "code.test"],
+        allowed_capability_keys=["code.write", "code.test"],
+        allowed_specialist_roles=["runtime-engineer"],
+    )
+    registry.register(config)
+    service = DomainAgentService(registry)
+
+    injected_specialists = [
+        SpecialistCandidate(
+            agent_id="agent-42",
+            role="runtime-engineer",
+            score=0.9,
+            reasons=["resolved from agent registry"],
+        )
+    ]
+
+    resolution = service.decompose_with_config(
+        DomainDecompositionRequest(
+            domain_key="programming",
+            task_name="Implement endpoint",
+            available_capabilities=["code.write", "code.test"],
+        ),
+        config,
+        selected_specialists=injected_specialists,
+    )
+
+    assert len(resolution.selected_specialists) == 1
+    assert resolution.selected_specialists[0].agent_id == "agent-42"

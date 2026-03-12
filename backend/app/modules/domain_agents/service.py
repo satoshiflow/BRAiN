@@ -167,6 +167,7 @@ class DomainAgentService:
         self,
         request: DomainDecompositionRequest,
         config: DomainAgentConfig,
+        selected_specialists: list[SpecialistCandidate] | None = None,
     ) -> DomainResolution:
         if config.domain_key != request.domain_key:
             raise ValueError(
@@ -182,13 +183,19 @@ class DomainAgentService:
         ]
 
         if request.domain_key == "programming":
-            return self._decompose_programming(request, config, selected_capabilities)
+            return self._decompose_programming(
+                request,
+                config,
+                selected_capabilities,
+                selected_specialists,
+            )
 
         return DomainResolution(
             domain_key=config.domain_key,
             confidence=0.5,
             selected_skill_keys=list(config.allowed_skill_keys),
             selected_capability_keys=selected_capabilities,
+            selected_specialists=selected_specialists or [],
             decomposition_notes=[
                 "Initial base decomposition produced by generic DomainAgentService.",
                 "Replace with domain-specific decomposition logic in follow-up phases.",
@@ -201,6 +208,7 @@ class DomainAgentService:
         request: DomainDecompositionRequest,
         config: DomainAgentConfig,
         selected_capabilities: list[str],
+        selected_specialists: list[SpecialistCandidate] | None = None,
     ) -> DomainResolution:
         text = f"{request.task_name} {request.task_description}".lower()
 
@@ -221,17 +229,20 @@ class DomainAgentService:
         # Preserve order but remove duplicates
         selected_skills = list(dict.fromkeys(selected_skills))
 
-        max_specialists = max(1, config.budget_profile.max_specialists_per_task)
-        specialists: list[SpecialistCandidate] = []
-        for idx, role in enumerate(config.allowed_specialist_roles[:max_specialists]):
-            specialists.append(
-                SpecialistCandidate(
-                    agent_id=f"{request.domain_key}-{role}-{idx+1}",
-                    role=role,
-                    score=max(0.1, 1.0 - (idx * 0.1)),
-                    reasons=["role whitelisted by domain profile"],
+        if selected_specialists is not None:
+            specialists = selected_specialists
+        else:
+            max_specialists = max(1, config.budget_profile.max_specialists_per_task)
+            specialists: list[SpecialistCandidate] = []
+            for idx, role in enumerate(config.allowed_specialist_roles[:max_specialists]):
+                specialists.append(
+                    SpecialistCandidate(
+                        agent_id=f"{request.domain_key}-{role}-{idx+1}",
+                        role=role,
+                        score=max(0.1, 1.0 - (idx * 0.1)),
+                        reasons=["role whitelisted by domain profile"],
+                    )
                 )
-            )
 
         high_risk_markers = ["payment", "security", "auth", "production", "compliance"]
         requires_supervisor_review = any(marker in text for marker in high_risk_markers)
@@ -248,6 +259,72 @@ class DomainAgentService:
             ],
             requires_supervisor_review=requires_supervisor_review,
         )
+
+    async def select_specialists(
+        self,
+        db: AsyncSession | None,
+        config: DomainAgentConfig,
+    ) -> list[SpecialistCandidate]:
+        """Resolve specialist candidates from Agent Management.
+
+        Falls back to static domain role synthesis when DB/agent registry is not
+        available.
+        """
+        max_specialists = max(1, config.budget_profile.max_specialists_per_task)
+        if not config.allowed_specialist_roles:
+            return []
+
+        if db is None:
+            return self._fallback_specialists(config, max_specialists)
+
+        try:
+            from app.modules.agent_management.models import AgentModel, AgentStatus
+
+            query = (
+                select(AgentModel)
+                .where(AgentModel.agent_type.in_(config.allowed_specialist_roles))
+                .where(AgentModel.status.in_([AgentStatus.ACTIVE, AgentStatus.DEGRADED]))
+                .order_by(AgentModel.last_heartbeat.desc().nullslast(), AgentModel.registered_at.desc())
+                .limit(max_specialists)
+            )
+            rows = list((await db.execute(query)).scalars().all())
+            if not rows:
+                return self._fallback_specialists(config, max_specialists)
+
+            candidates: list[SpecialistCandidate] = []
+            for idx, agent in enumerate(rows):
+                candidates.append(
+                    SpecialistCandidate(
+                        agent_id=agent.agent_id,
+                        role=agent.agent_type,
+                        score=max(0.1, 1.0 - (idx * 0.1)),
+                        reasons=[
+                            "agent matched allowed_specialist_roles",
+                            f"agent status={agent.status.value if hasattr(agent.status, 'value') else agent.status}",
+                        ],
+                    )
+                )
+            return candidates
+        except Exception as exc:  # pragma: no cover
+            logger.warning("[DomainAgent] specialist lookup failed, using fallback: %s", exc)
+            return self._fallback_specialists(config, max_specialists)
+
+    @staticmethod
+    def _fallback_specialists(
+        config: DomainAgentConfig,
+        max_specialists: int,
+    ) -> list[SpecialistCandidate]:
+        candidates: list[SpecialistCandidate] = []
+        for idx, role in enumerate(config.allowed_specialist_roles[:max_specialists]):
+            candidates.append(
+                SpecialistCandidate(
+                    agent_id=f"fallback-{config.domain_key}-{role}-{idx+1}",
+                    role=role,
+                    score=max(0.1, 1.0 - (idx * 0.1)),
+                    reasons=["fallback specialist synthesized from domain profile"],
+                )
+            )
+        return candidates
 
     def review_resolution(self, resolution: DomainResolution) -> DomainReviewDecision:
         if resolution.domain_key == "programming":
