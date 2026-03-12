@@ -13,7 +13,7 @@ import urllib.request
 
 
 BASE_URL = "http://127.0.0.1:3002"
-ROUTES = ["/", "/chat", "/agents", "/settings", "/widget-test"]
+ROUTES = ["/", "/chat", "/dashboard", "/settings", "/widget-test"]
 BAD_MARKERS = (
     "Cannot find module",
     "Module not found",

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getApiHealth } from "@/lib/api";
+import { getControlDeckBase } from "@/lib/config";
 
 interface SystemStats {
   status: string;
@@ -14,6 +15,7 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const controlDeckAgentsUrl = `${getControlDeckBase()}/agents`;
 
   useEffect(() => {
     fetchStats();
@@ -107,10 +109,11 @@ export default function DashboardPage() {
             href="/chat"
           />
           <ActionButton
-            label="View Agents"
-            description="Manage agent fleet"
-            icon="🤖"
-            href="/agents"
+            label="Agents (ControlDeck)"
+            description="Open fleet management"
+            icon="🧭"
+            href={controlDeckAgentsUrl}
+            external
           />
           <ActionButton
             label="System Settings"
@@ -170,15 +173,18 @@ function StatCard({ title, value, icon, color }: {
   );
 }
 
-function ActionButton({ label, description, icon, href }: {
+function ActionButton({ label, description, icon, href, external }: {
   label: string;
   description: string;
   icon: string;
   href: string;
+  external?: boolean;
 }) {
   return (
     <a
       href={href}
+      target={external ? "_blank" : undefined}
+      rel={external ? "noreferrer" : undefined}
       className="block p-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors"
     >
       <div className="flex items-center gap-3 mb-2">

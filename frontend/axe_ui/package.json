@@ -8,6 +8,9 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
     "test:e2e": "playwright test",
     "verify:runtime": "python3 scripts/verify_runtime.py",
     "verify:frontend": "npm run typecheck && npm run lint && npm run build"
@@ -35,13 +38,19 @@
     "zustand": "4.5.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.53.2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/jest": "^30.0.0",
     "@types/node": "20.12.7",
     "@types/react": "18.3.1",
     "@types/react-dom": "18.3.0",
-    "@playwright/test": "^1.53.2",
     "autoprefixer": "10.4.19",
     "eslint": "8.57.0",
     "eslint-config-next": "14.2.33",
+    "jest": "^30.3.0",
+    "jest-environment-jsdom": "^30.3.0",
     "postcss": "8.4.38",
     "tailwindcss": "3.4.3",
     "typescript": "5.4.5"

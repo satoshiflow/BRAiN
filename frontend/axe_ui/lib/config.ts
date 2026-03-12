@@ -63,6 +63,20 @@ export function getApiBase(mode?: RuntimeMode): string {
   return "https://api.brain.falklabs.de";
 }
 
+export function getControlDeckBase(mode?: RuntimeMode): string {
+  const explicit = process.env.NEXT_PUBLIC_CONTROL_DECK_BASE;
+  if (explicit) {
+    return explicit;
+  }
+
+  const runtimeMode = mode ?? detectRuntimeMode();
+  if (runtimeMode === "local") {
+    return "http://127.0.0.1:3000";
+  }
+
+  return "https://control.brain.falklabs.de";
+}
+
 /**
  * Get current runtime mode (singleton cached).
  */

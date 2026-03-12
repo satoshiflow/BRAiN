@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
@@ -8,14 +8,19 @@ import {
   Sheet,
   SheetContent,
 } from "@/components/ui/sheet";
+import { getApiHealth } from "@/lib/api";
+import { getApiBase, getControlDeckBase } from "@/lib/config";
 
 const navItems = [
-  { href: "/", label: "Home", icon: "🏠" },
-  { href: "/dashboard", label: "Dashboard", icon: "📊" },
   { href: "/chat", label: "Chat", icon: "💬" },
-  { href: "/agents", label: "Agents", icon: "🤖" },
+  { href: "/dashboard", label: "Dashboard", icon: "📊" },
   { href: "/settings", label: "Settings", icon: "⚙️" },
 ];
+
+type ApiHealthState = {
+  status: "loading" | "ok" | "error";
+  error: string | null;
+};
 
 export function Navigation() {
   const pathname = usePathname();
@@ -58,12 +63,69 @@ function NavigationContent({
   pathname: string;
   onNavigate?: () => void;
 }) {
+  const [apiHealth, setApiHealth] = useState<ApiHealthState>({
+    status: "loading",
+    error: null,
+  });
+
+  useEffect(() => {
+    let active = true;
+
+    const checkHealth = async () => {
+      try {
+        await getApiHealth();
+        if (active) {
+          setApiHealth({ status: "ok", error: null });
+        }
+      } catch (error) {
+        if (active) {
+          setApiHealth({
+            status: "error",
+            error: error instanceof Error ? error.message : "Unknown API error",
+          });
+        }
+      }
+    };
+
+    void checkHealth();
+    const interval = setInterval(() => {
+      void checkHealth();
+    }, 30000);
+
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const apiBase = getApiBase();
+  const controlDeckAgentsUrl = `${getControlDeckBase()}/agents`;
+  const indicatorColorClass =
+    apiHealth.status === "ok"
+      ? "bg-emerald-500"
+      : apiHealth.status === "error"
+      ? "bg-red-500"
+      : "bg-amber-400";
+  const indicatorLabel =
+    apiHealth.status === "ok"
+      ? "API healthy"
+      : apiHealth.status === "error"
+      ? "API error"
+      : "Checking API";
+  const indicatorTitle = apiHealth.error
+    ? `API: ${apiBase}\nError: ${apiHealth.error}`
+    : `API: ${apiBase}`;
+
   return (
     <>
       {/* Header */}
       <div className="p-6 border-b border-slate-800">
         <h1 className="text-xl font-bold text-white">BRAiN AXE</h1>
         <p className="text-xs text-slate-400 mt-1">Auxiliary Execution Engine</p>
+        <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-800 px-3 py-1" title={indicatorTitle}>
+          <span className={`h-2 w-2 rounded-full ${indicatorColorClass} animate-pulse`} />
+          <span className="text-xs text-slate-300">{indicatorLabel}</span>
+        </div>
       </div>
 
       {/* Navigation Links */}
@@ -90,9 +152,18 @@ function NavigationContent({
 
       {/* Footer */}
       <div className="p-4 border-t border-slate-800">
-        <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-          <span className="text-xs text-slate-400">System Online</span>
+        <a
+          href={controlDeckAgentsUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="mb-3 flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 transition-colors hover:border-slate-600 hover:bg-slate-700"
+          onClick={onNavigate}
+        >
+          <span className="text-base">🧭</span>
+          <span>Agents im ControlDeck</span>
+        </a>
+        <div className="flex items-center gap-2 text-xs text-slate-500" title={indicatorTitle}>
+          <span className="truncate max-w-[190px]">{apiBase}</span>
         </div>
       </div>
     </>
