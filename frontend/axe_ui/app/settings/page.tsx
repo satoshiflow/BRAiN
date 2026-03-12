@@ -100,7 +100,7 @@ export default function SettingsPage() {
               value={apiBase}
               onChange={(e) => setApiBase(e.target.value)}
               className="w-full rounded-lg border border-cyan-500/25 bg-slate-900/70 px-4 py-2 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-400"
-              placeholder="http://localhost:8000"
+              placeholder="Configured via runtime environment"
             />
             <p className="text-xs text-slate-500 mt-1">
               The base URL for the BRAiN backend API

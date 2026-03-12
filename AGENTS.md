@@ -137,6 +137,9 @@ All commands below are from repo root unless noted.
 - Keep API clients centralized (avoid duplicate fetch logic).
 - Prefer existing design system/components and current project structure.
 - Run lint/build before finalizing frontend changes.
+- MUST HAVE: never hardcode real deployment URLs or localhost hosts inside runtime app feature code.
+  Route all AXE/control-deck/widget service resolution through the central config/runtime resolver.
+  Hardcoded hosts are only acceptable in explicit test files, runbooks, or local-only examples.
 
 ## 6) Architecture boundaries to preserve
 
