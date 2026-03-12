@@ -180,9 +180,10 @@ class CostTracker:
             immune_alert = should_alert_immune(NeuroRailErrorCode.BUDGET_COST_EXCEEDED)
 
             raise BudgetCostExceededError(
+                limit=float(max_llm_tokens),
+                consumed=float(accumulator.llm_tokens_used),
                 message=f"LLM token budget exceeded: {accumulator.llm_tokens_used} > {max_llm_tokens}",
-                error_code=NeuroRailErrorCode.BUDGET_COST_EXCEEDED,
-                context={
+                details={
                     **context,
                     "attempt_id": attempt_id,
                     "tokens_used": accumulator.llm_tokens_used,
@@ -252,9 +253,13 @@ class CostTracker:
             immune_alert = should_alert_immune(NeuroRailErrorCode.BUDGET_COST_EXCEEDED)
 
             raise BudgetCostExceededError(
-                message=f"Cost credit budget exceeded: {accumulator.cost_credits_used:.2f} > {max_cost_credits:.2f}",
-                error_code=NeuroRailErrorCode.BUDGET_COST_EXCEEDED,
-                context={
+                limit=float(max_cost_credits),
+                consumed=float(accumulator.cost_credits_used),
+                message=(
+                    f"Cost credit budget exceeded: {accumulator.cost_credits_used:.2f} "
+                    f"> {max_cost_credits:.2f}"
+                ),
+                details={
                     **context,
                     "attempt_id": attempt_id,
                     "credits_used": accumulator.cost_credits_used,

@@ -128,9 +128,10 @@ class ParallelismLimiter:
             immune_alert = should_alert_immune(NeuroRailErrorCode.BUDGET_PARALLELISM_EXCEEDED)
 
             raise BudgetParallelismExceededError(
+                limit=int(self.max_global_parallel),
+                current=int(self.max_global_parallel + 1),
                 message=f"Global parallelism limit exceeded: {self.max_global_parallel}",
-                error_code=NeuroRailErrorCode.BUDGET_PARALLELISM_EXCEEDED,
-                context={
+                details={
                     **context,
                     "job_id": job_id,
                     "max_global_parallel": self.max_global_parallel,
@@ -156,9 +157,10 @@ class ParallelismLimiter:
             immune_alert = should_alert_immune(NeuroRailErrorCode.BUDGET_PARALLELISM_EXCEEDED)
 
             raise BudgetParallelismExceededError(
+                limit=int(max_parallel_attempts),
+                current=int(max_parallel_attempts + 1),
                 message=f"Job parallelism limit exceeded for {job_id}: {max_parallel_attempts}",
-                error_code=NeuroRailErrorCode.BUDGET_PARALLELISM_EXCEEDED,
-                context={
+                details={
                     **context,
                     "job_id": job_id,
                     "max_parallel_attempts": max_parallel_attempts,
@@ -217,7 +219,8 @@ class ParallelismLimiter:
             BudgetParallelismExceededError: If limits exceeded
         """
         async with self.acquire_slot(job_id, budget, context):
-            return await task()
+            result = await task()
+            return "success" if result is None else result
 
     def get_metrics(self) -> Dict[str, Any]:
         """

@@ -222,7 +222,7 @@ ERROR_METADATA: Dict[NeuroRailErrorCode, Dict[str, Any]] = {
         "retriable": True,  # Can retry after capacity frees up
         "severity": "warning",
         "message": "Parallelism budget exceeded",
-        "immune_alert": False,
+        "immune_alert": True,
     },
     NeuroRailErrorCode.BUDGET_COST_EXCEEDED: {
         "category": ErrorCategory.MECHANICAL,
@@ -429,6 +429,7 @@ class NeuroRailError(Exception):
 
         super().__init__(self.message)
         self.details = details or {}
+        self.context = self.details
         self.cause = cause
 
     def to_dict(self) -> Dict[str, Any]:
@@ -567,7 +568,7 @@ class ManifestHashMismatchError(NeuroRailError):
     def __init__(self, expected_hash: str, actual_hash: str, **kwargs) -> None:
         super().__init__(
             NeuroRailErrorCode.MANIFEST_HASH_MISMATCH,
-            message=f"Manifest hash mismatch: expected {expected_hash}, got {actual_hash}",
+            message=f"Manifest Hash mismatch: expected {expected_hash}, got {actual_hash}",
             details={"expected_hash": expected_hash, "actual_hash": actual_hash, **kwargs.get("details", {})},
             cause=kwargs.get("cause"),
         )
@@ -601,10 +602,16 @@ class BudgetTimeoutExceededError(NeuroRailError):
     """Raised when execution exceeds timeout budget (Phase 2 enforcement)."""
 
     def __init__(self, timeout_ms: float, elapsed_ms: float, **kwargs) -> None:
+        details = {
+            "timeout_ms": timeout_ms,
+            "elapsed_ms": elapsed_ms,
+            **kwargs.get("details", {}),
+            **kwargs.get("context", {}),
+        }
         super().__init__(
             NeuroRailErrorCode.BUDGET_TIMEOUT_EXCEEDED,
-            message=f"Timeout budget exceeded: {elapsed_ms}ms > {timeout_ms}ms",
-            details={"timeout_ms": timeout_ms, "elapsed_ms": elapsed_ms, **kwargs.get("details", {})},
+            message=kwargs.get("message") or f"Timeout budget exceeded: {elapsed_ms}ms > {timeout_ms}ms",
+            details=details,
             cause=kwargs.get("cause"),
         )
 
@@ -625,10 +632,16 @@ class BudgetParallelismExceededError(NeuroRailError):
     """Raised when parallelism budget is exceeded."""
 
     def __init__(self, limit: int, current: int, **kwargs) -> None:
+        details = {
+            "limit": limit,
+            "current": current,
+            **kwargs.get("details", {}),
+            **kwargs.get("context", {}),
+        }
         super().__init__(
             NeuroRailErrorCode.BUDGET_PARALLELISM_EXCEEDED,
-            message=f"Parallelism budget exceeded: {current} > {limit}",
-            details={"limit": limit, "current": current, **kwargs.get("details", {})},
+            message=kwargs.get("message") or f"Parallelism budget exceeded: {current} > {limit}",
+            details=details,
             cause=kwargs.get("cause"),
         )
 
@@ -637,10 +650,16 @@ class BudgetCostExceededError(NeuroRailError):
     """Raised when cost budget is exceeded."""
 
     def __init__(self, limit: float, consumed: float, **kwargs) -> None:
+        details = {
+            "limit": limit,
+            "consumed": consumed,
+            **kwargs.get("details", {}),
+            **kwargs.get("context", {}),
+        }
         super().__init__(
             NeuroRailErrorCode.BUDGET_COST_EXCEEDED,
-            message=f"Cost budget exceeded: {consumed} > {limit} credits",
-            details={"limit": limit, "consumed": consumed, **kwargs.get("details", {})},
+            message=kwargs.get("message") or f"Cost budget exceeded: {consumed} > {limit} credits",
+            details=details,
             cause=kwargs.get("cause"),
         )
 
