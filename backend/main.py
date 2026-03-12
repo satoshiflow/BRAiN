@@ -103,6 +103,7 @@ from app.modules.governor.router import router as governor_router
 from app.modules.axe_fusion.router import router as axe_fusion_router
 from app.modules.axe_identity.router import router as axe_identity_router
 from app.modules.axe_knowledge.router import router as axe_knowledge_router
+from app.modules.axe_presence.router import router as axe_presence_router
 from app.modules.axe_widget.router import router as axe_widget_router
 
 # Agent Management Router (Core Module - Phase 1)
@@ -547,6 +548,9 @@ def create_app() -> FastAPI:
 
     # AXE Identity Router (Identity Management)
     app.include_router(axe_identity_router, tags=["axe-identity"])
+
+    # AXE Presence Router (2035 surface signals)
+    app.include_router(axe_presence_router, tags=["axe-presence"])
 
     # AXE Knowledge Router (Knowledge Base - TASK-003)
     app.include_router(axe_knowledge_router, tags=["axe-knowledge"])
