@@ -105,6 +105,7 @@ from app.modules.axe_identity.router import router as axe_identity_router
 from app.modules.axe_knowledge.router import router as axe_knowledge_router
 from app.modules.axe_presence.router import router as axe_presence_router
 from app.modules.axe_sessions.router import router as axe_sessions_router
+from app.modules.axe_worker_runs.router import router as axe_worker_runs_router
 from app.modules.axe_widget.router import router as axe_widget_router
 
 # Agent Management Router (Core Module - Phase 1)
@@ -555,6 +556,9 @@ def create_app() -> FastAPI:
 
     # AXE Sessions Router (User-scoped chat sessions)
     app.include_router(axe_sessions_router, tags=["axe-sessions"])
+
+    # AXE Worker Runs Router (Session-scoped worker polling)
+    app.include_router(axe_worker_runs_router, tags=["axe-workers"])
 
     # AXE Knowledge Router (Knowledge Base - TASK-003)
     app.include_router(axe_knowledge_router, tags=["axe-knowledge"])

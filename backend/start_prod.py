@@ -81,7 +81,11 @@ print("CORS added", file=sys.stderr)
 
 # AXE Router inkludieren
 from app.modules.axe_fusion.router import router as axe_router
+from app.modules.axe_sessions.router import router as axe_sessions_router
+from app.modules.axe_worker_runs.router import router as axe_worker_runs_router
 app.include_router(axe_router, prefix="/api")  # Router hat schon /axe prefix
+app.include_router(axe_sessions_router)
+app.include_router(axe_worker_runs_router)
 print("AXE router included", file=sys.stderr)
 
 # Health Endpoint

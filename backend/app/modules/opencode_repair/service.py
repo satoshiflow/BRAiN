@@ -110,6 +110,12 @@ class OpenCodeRepairService:
         )
         return job
 
+    async def get_job_contract(self, job_id: str) -> Optional[OpenCodeJobContract]:
+        for job in self._jobs:
+            if job.job_id == job_id:
+                return job
+        return None
+
     @asynccontextmanager
     async def _best_effort_db(self, db: Optional[AsyncSession]):
         if db is None:
