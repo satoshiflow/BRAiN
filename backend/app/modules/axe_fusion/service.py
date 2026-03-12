@@ -5,6 +5,7 @@ Bietet HTTP-Client zu AXEllm mit Timeout, Error Handling und Response Mapping.
 """
 
 import logging
+import os
 from typing import Any, Dict, List, Optional, Tuple
 import httpx
 
@@ -176,6 +177,13 @@ class AXEllmClient:
         self.api_key = api_key
         self.timeout = timeout
         self.client = httpx.AsyncClient(timeout=self.timeout)
+
+    def _chat_completion_url(self) -> str:
+        if self.base_url.endswith("/chat/completions"):
+            return self.base_url
+        if self.base_url.endswith("/v1"):
+            return f"{self.base_url}/chat/completions"
+        return f"{self.base_url}/v1/chat/completions"
     
     async def chat(
         self,
@@ -219,7 +227,7 @@ class AXEllmClient:
         
         try:
             response = await self.client.post(
-                f"{self.base_url}/v1/chat/completions",
+                self._chat_completion_url(),
                 json=payload,
                 headers=headers
             )
@@ -299,9 +307,11 @@ class AXEFusionService:
 
     def get_provider_runtime(self) -> Dict[str, Any]:
         config = self.selector.get_active_config()
+        active_provider = self.selector.get_active_provider()
         level = self.selector.get_sanitization_level(config.provider)
         return {
             "active": config.to_dict(),
+            "mode": active_provider.value,
             "sanitization_level": level.value,
         }
 
@@ -418,7 +428,7 @@ class AXEFusionService:
             middleware = SystemPromptMiddleware(self.db)
             messages = await middleware.inject_system_prompt(messages)
 
-        provider_config = self.selector.get_active_config()
+        provider_config = await self._resolve_runtime_config(require_chat=True)
         client = self._get_or_create_client(provider_config)
         effective_model = self._resolve_model(model, provider_config)
 
@@ -538,27 +548,115 @@ class AXEFusionService:
             Dict mit Status
         """
         try:
-            provider_config = self.selector.get_active_config()
-            client = self._get_or_create_client(provider_config)
-            response = await client.client.get(
-                f"{client.base_url}/health",
-                timeout=5.0
-            )
-            if response.status_code == 200:
-                return {
-                    "status": "healthy",
-                    "axellm": "reachable",
-                    "provider": provider_config.provider.value,
-                }
-            else:
-                return {
-                    "status": "degraded",
-                    "axellm": f"status_{response.status_code}",
-                    "provider": provider_config.provider.value,
-                }
+            provider_config = await self._resolve_runtime_config(require_chat=False)
+            return {
+                "status": "healthy",
+                "axellm": "reachable",
+                "provider": provider_config.provider.value,
+            }
+        except AXEllmUnavailableError as e:
+            logger.warning(f"AXEllm Health Check degraded: {e}")
+            return {"status": "degraded", "axellm": "not_reachable", "error": str(e)}
         except Exception as e:
             logger.warning(f"AXEllm Health Check fehlgeschlagen: {e}")
             return {"status": "unavailable", "axellm": "not_reachable", "error": str(e)}
+
+    async def _resolve_runtime_config(self, *, require_chat: bool) -> ProviderConfig:
+        provider = self.selector.get_active_provider()
+
+        if provider == LLMProvider.AUTO:
+            allow_mock = os.getenv("AXE_ALLOW_MOCK_FALLBACK", "false").strip().lower() in {
+                "1",
+                "true",
+                "yes",
+            }
+            for candidate in self.selector.get_auto_candidates():
+                if await self._probe_provider(candidate, require_chat=require_chat):
+                    return candidate
+            if allow_mock:
+                logger.warning("AXE runtime auto resolution fell back to mock provider")
+                return ProviderConfig(
+                    provider=LLMProvider.MOCK,
+                    base_url=os.getenv("MOCK_BASE_URL", "http://localhost:8081"),
+                    api_key=os.getenv("MOCK_API_KEY", ""),
+                    model=os.getenv("MOCK_MODEL", "mock-local"),
+                    timeout_seconds=float(os.getenv("AXELLM_TIMEOUT_SECONDS", "60")),
+                )
+            raise AXEllmUnavailableError("No real LLM provider is reachable in auto mode")
+
+        config = self.selector.get_active_config()
+        if provider == LLMProvider.MOCK and not os.getenv("AXE_ALLOW_MOCK_FALLBACK", "").strip():
+            raise AXEllmUnavailableError("Mock provider is disabled for this environment")
+
+        if provider != LLMProvider.MOCK and not await self._probe_provider(config, require_chat=require_chat):
+            raise AXEllmUnavailableError(
+                f"Configured provider '{provider.value}' is not reachable"
+            )
+        return config
+
+    async def _probe_provider(self, config: ProviderConfig, *, require_chat: bool) -> bool:
+        if config.provider == LLMProvider.MOCK:
+            return False
+
+        if config.provider == LLMProvider.OPENAI and not config.api_key:
+            return False
+        if config.provider == LLMProvider.GROQ and not config.api_key:
+            return False
+
+        client = self._get_or_create_client(config)
+        health_url, headers = self._build_health_request(config)
+        try:
+            response = await client.client.get(health_url, headers=headers, timeout=5.0)
+            if response.status_code != 200:
+                return False
+        except Exception:
+            return False
+
+        if not require_chat:
+            return True
+
+        if config.provider != LLMProvider.OLLAMA:
+            return True
+
+        model_url = f"{self._normalize_ollama_base(config.base_url)}/api/tags"
+        try:
+            response = await client.client.get(model_url, timeout=5.0)
+            if response.status_code != 200:
+                return False
+            payload = response.json()
+            models = payload.get("models", []) if isinstance(payload, dict) else []
+            model_names = {
+                model.get("name")
+                for model in models
+                if isinstance(model, dict) and model.get("name")
+            }
+            return config.model in model_names
+        except Exception:
+            return False
+
+    def _build_health_request(self, config: ProviderConfig) -> tuple[str, dict[str, str]]:
+        headers: dict[str, str] = {}
+
+        if config.provider == LLMProvider.OLLAMA:
+            return f"{self._normalize_ollama_base(config.base_url)}/api/tags", headers
+
+        if config.provider in {LLMProvider.GROQ, LLMProvider.OPENAI}:
+            if not config.api_key:
+                raise AXEllmUnavailableError(f"{config.provider.value} API key is not configured")
+            headers["Authorization"] = f"Bearer {config.api_key}"
+            base_url = config.base_url.rstrip("/")
+            if not base_url.endswith("/v1"):
+                base_url = f"{base_url}/v1"
+            return f"{base_url}/models", headers
+
+        return f"{config.base_url}/health", headers
+
+    @staticmethod
+    def _normalize_ollama_base(base_url: str) -> str:
+        normalized = base_url.rstrip("/")
+        if normalized.endswith("/v1"):
+            return normalized[:-3]
+        return normalized
 
 
 # Singleton Service Instance

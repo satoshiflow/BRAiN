@@ -32,10 +32,14 @@ os.environ.setdefault('ENABLE_MISSION_WORKER', 'false')
 os.environ.setdefault('ENABLE_BUILTIN_SKILL_SEED', 'false')
 os.environ.setdefault('ENABLE_AXE_TEST_MISSIONS', 'false')
 
-# Default LLM to mock if not configured
-os.environ.setdefault('LOCAL_LLM_MODE', 'mock')
-os.environ.setdefault('MOCK_BASE_URL', 'http://localhost:8081')
-os.environ.setdefault('AXELLM_BASE_URL', 'http://localhost:8081')
+# Default LLM strategy: local first, real cloud fallback, no implicit mock
+os.environ.setdefault('LOCAL_LLM_MODE', 'auto')
+os.environ.setdefault('OLLAMA_BASE_URL', 'http://localhost:11434/v1')
+os.environ.setdefault('OLLAMA_MODEL', 'qwen2.5:0.5b')
+os.environ.setdefault('OPENAI_BASE_URL', 'https://api.openai.com/v1')
+os.environ.setdefault('OPENAI_MODEL', 'gpt-4o-mini')
+os.environ.setdefault('AXELLM_BASE_URL', os.environ.get('OLLAMA_BASE_URL', 'http://localhost:11434/v1'))
+os.environ.setdefault('AXELLM_MODEL', os.environ.get('OLLAMA_MODEL', 'qwen2.5:0.5b'))
 
 print(f"LOCAL_LLM_MODE: {os.environ.get('LOCAL_LLM_MODE')}", file=sys.stderr)
 print(f"AXELLM_BASE_URL: {os.environ.get('AXELLM_BASE_URL')}", file=sys.stderr)

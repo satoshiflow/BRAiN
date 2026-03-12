@@ -374,7 +374,8 @@ class UploadResponse(BaseModel):
 
 
 class ProviderRuntimeResponse(BaseModel):
-    provider: Literal["groq", "ollama", "mock"]
+    provider: Literal["openai", "groq", "ollama", "mock"]
+    mode: Literal["auto", "openai", "groq", "ollama", "mock"]
     base_url: str
     api_key_configured: bool
     model: str
@@ -645,6 +646,7 @@ async def axe_provider_runtime(
     active = runtime["active"]
     return ProviderRuntimeResponse(
         provider=active["provider"],
+        mode=runtime.get("mode", active["provider"]),
         base_url=active["base_url"],
         api_key_configured=active["api_key_configured"],
         model=active["model"],
@@ -695,6 +697,7 @@ async def axe_update_provider_runtime(
     active = runtime["active"]
     return ProviderRuntimeResponse(
         provider=active["provider"],
+        mode=runtime.get("mode", active["provider"]),
         base_url=active["base_url"],
         api_key_configured=active["api_key_configured"],
         model=active["model"],
