@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3002",
+    "dev": "python3 scripts/run_dev.py",
+    "dev:direct": "next dev -p 3002",
+    "dev:e2e": "NEXT_DIST_DIR=.next-e2e next dev -p 3012 --hostname 127.0.0.1",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

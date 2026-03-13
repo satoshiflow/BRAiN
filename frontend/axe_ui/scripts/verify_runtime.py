@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import sys
 import time
+import re
 import urllib.error
 import urllib.request
 
@@ -20,6 +21,8 @@ BAD_MARKERS = (
     "ChunkLoadError",
     "./682.js",
 )
+
+ASSET_PATTERN = re.compile(r'/(?:_next/static/[^"\'\s>]+)')
 
 
 def fetch(path: str, retries: int = 5, timeout: int = 20) -> tuple[int, str]:
@@ -35,8 +38,20 @@ def fetch(path: str, retries: int = 5, timeout: int = 20) -> tuple[int, str]:
     raise RuntimeError(f"Route {path} unreachable: {last_error}")
 
 
+def collect_static_assets(body: str) -> set[str]:
+    assets: set[str] = set()
+    for match in ASSET_PATTERN.findall(body):
+        asset_path = match.split("?", 1)[0]
+        if asset_path.endswith(".map"):
+            continue
+        assets.add(asset_path)
+    return assets
+
+
 def main() -> int:
     failures: list[str] = []
+    assets: set[str] = set()
+
     for path in ROUTES:
         try:
             status, body = fetch(path)
@@ -52,6 +67,33 @@ def main() -> int:
             if marker in body:
                 failures.append(f"Route {path} contains runtime marker '{marker}'")
                 break
+
+        assets.update(collect_static_assets(body))
+
+    if not assets:
+        failures.append("No /_next/static assets discovered from route HTML")
+    else:
+        has_js = any(path.endswith(".js") for path in assets)
+        has_css = any(path.endswith(".css") for path in assets)
+        if not has_js:
+            failures.append("No JavaScript assets discovered under /_next/static")
+        if not has_css:
+            failures.append("No CSS assets discovered under /_next/static")
+
+        for asset_path in sorted(assets):
+            try:
+                status, body = fetch(asset_path)
+            except Exception as exc:  # pragma: no cover - runtime probe utility
+                failures.append(str(exc))
+                continue
+
+            if status != 200:
+                failures.append(f"Asset {asset_path} returned HTTP {status}")
+                continue
+
+            if body.lstrip().startswith("<!DOCTYPE html"):
+                failures.append(f"Asset {asset_path} returned HTML instead of static content")
+                continue
 
     if failures:
         print("AXE UI runtime verification failed:")

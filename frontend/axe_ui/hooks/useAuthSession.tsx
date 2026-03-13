@@ -101,18 +101,23 @@ export function AuthSessionProvider({ children }: { children: React.ReactNode })
           throw error;
         }
 
-        const refreshed = await refreshAccessToken(refreshToken);
-        setAccessToken(refreshed.access_token);
-        setRefreshToken(refreshed.refresh_token);
+        try {
+          const refreshed = await refreshAccessToken(refreshToken);
+          setAccessToken(refreshed.access_token);
+          setRefreshToken(refreshed.refresh_token);
 
-        const refreshedProfile = await fetchCurrentUser(refreshed.access_token);
-        setUser(refreshedProfile);
-        setStatus("authenticated");
+          const refreshedProfile = await fetchCurrentUser(refreshed.access_token);
+          setUser(refreshedProfile);
+          setStatus("authenticated");
 
-        return request(refreshed.access_token);
+          return request(refreshed.access_token);
+        } catch (refreshError) {
+          clearAuthState();
+          throw refreshError;
+        }
       }
     },
-    [accessToken, refreshToken]
+    [accessToken, clearAuthState, refreshToken]
   );
 
   const getAuthHeaders = useCallback(() => {

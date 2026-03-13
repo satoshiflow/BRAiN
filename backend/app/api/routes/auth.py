@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from app.core.jwt_middleware import get_jwt_validator
 
 from app.core.database import get_db
@@ -375,6 +376,12 @@ async def refresh_token(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(e),
             headers={"WWW-Authenticate": "Bearer"},
+        )
+    except SQLAlchemyError as e:
+        logger.warning("Auth refresh unavailable due to database state: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication backend temporarily unavailable",
         )
 
 

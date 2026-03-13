@@ -140,6 +140,9 @@ All commands below are from repo root unless noted.
 - MUST HAVE: never hardcode real deployment URLs or localhost hosts inside runtime app feature code.
   Route all AXE/control-deck/widget service resolution through the central config/runtime resolver.
   Hardcoded hosts are only acceptable in explicit test files, runbooks, or local-only examples.
+- MUST HAVE: isolate Next.js runtime artifacts by execution mode (`NEXT_DIST_DIR`), and avoid concurrent
+  dev/test servers writing to the same dist directory/port. E2E must use a dedicated port/distDir or
+  reuse an already-running server cleanly.
 
 ## 6) Architecture boundaries to preserve
 

@@ -7,13 +7,13 @@ export default defineConfig({
   retries: 1,
   timeout: 45000,
   use: {
-    baseURL: "http://127.0.0.1:3002",
+    baseURL: "http://127.0.0.1:3012",
     trace: "on-first-retry",
   },
   webServer: {
-    command: "NEXT_PUBLIC_AXE_E2E_BYPASS_AUTH=true npm run dev -- --hostname 127.0.0.1",
-    url: "http://127.0.0.1:3002",
-    reuseExistingServer: false,
+    command: "NEXT_PUBLIC_AXE_E2E_BYPASS_AUTH=true npm run dev:e2e",
+    url: "http://127.0.0.1:3012",
+    reuseExistingServer: true,
     timeout: 240000,
   },
   projects: [
