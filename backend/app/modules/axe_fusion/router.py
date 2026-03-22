@@ -29,6 +29,7 @@ from app.core.audit_bridge import write_unified_audit
 from app.core.auth_deps import (
     get_current_principal,
     Principal,
+    PrincipalType,
     require_role,
     SystemRole,
 )
@@ -86,7 +87,7 @@ LEGACY_AXE_DOC_LINK = os.getenv(
     "https://github.com/falklabs/brain-v2/blob/main/docs/modules/axe/AXE_API_DEPRECATIONS.md",
 )
 
-AXE_CHAT_EXECUTION_PATH = os.getenv("AXE_CHAT_EXECUTION_PATH", "direct").strip().lower()
+AXE_CHAT_EXECUTION_PATH = os.getenv("AXE_CHAT_EXECUTION_PATH", "skillrun_bridge").strip().lower()
 AXE_CHAT_SKILL_KEY = os.getenv("AXE_CHAT_SKILL_KEY", "")
 AXE_CHAT_SKILL_VERSION = int(os.getenv("AXE_CHAT_SKILL_VERSION", "1"))
 AXE_CHAT_BRIDGE_FALLBACK_DIRECT = os.getenv("AXE_CHAT_BRIDGE_FALLBACK_DIRECT", "true").strip().lower() in {
@@ -512,8 +513,14 @@ async def _try_skillrun_bridge(
         logger.warning("AXE skillrun bridge enabled but AXE_CHAT_SKILL_KEY is empty")
         return None
     if principal is None:
-        logger.warning("AXE skillrun bridge requires authenticated principal; falling back")
-        return None
+        principal = Principal(
+            principal_id="axe-legacy-bridge",
+            principal_type=PrincipalType.SERVICE,
+            name="AXE Legacy Bridge",
+            roles=[SystemRole.OPERATOR.value],
+            scopes=["read", "write"],
+            tenant_id=None,
+        )
 
     skill_engine = get_skill_engine_service()
     payload = SkillRunCreate(
@@ -1246,6 +1253,7 @@ async def axe_message_legacy(
         model="qwen2.5:0.5b",
         messages=[ChatMessage(role="user", content=user_message)],
         temperature=0.7,
+        attachments=[],
     )
 
     try:
@@ -1258,13 +1266,14 @@ async def axe_message_legacy(
         if bridged is not None:
             reply = bridged.text
         else:
-            service = get_axe_fusion_service(db=db)
-            result = await service.chat(
-                model="qwen2.5:0.5b",
-                messages=[{"role": "user", "content": user_message}],
-                temperature=0.7,
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "error": "Legacy endpoint requires SkillRun bridge",
+                    "message": "Configure AXE_CHAT_SKILL_KEY and AXE_CHAT_EXECUTION_PATH=skillrun_bridge",
+                    "code": "AXE_LEGACY_SKILLRUN_REQUIRED",
+                },
             )
-            reply = result.get("text") or ""
     except Exception:
         # Keep compatibility behavior stable even if upstream LLM is unavailable.
         reply = "AXE received your message."

@@ -138,3 +138,9 @@ Thumbs.db
 
 # Local external archive (do not commit)
 docs/archive/brain-team/
+
+# Generated local CI evidence snapshots (README/baseline may be tracked)
+docs/roadmap/local_ci/[0-9]*.md
+
+# Generated critic reports
+reports/critic/*.json

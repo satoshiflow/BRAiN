@@ -1,6 +1,6 @@
 # Epic 2 Execution Todo (Codex)
 
-Status: Active
+Status: Completed (Phase 1-5)
 Date: 2026-03-22
 
 ## Phase 1 - AXE Frontdoor Convergence
@@ -10,9 +10,9 @@ Date: 2026-03-22
 - [x] Keep legacy `/api/axe/message` as compatibility wrapper while preparing full SkillRun delegation.
 - [x] Extend AXE runtime response with governed binding visibility where available.
 - [x] Keep router compatibility for existing test stubs and local dev without DB.
-- [ ] Switch default AXE execution path from `direct` to `skillrun_bridge` after canonical skill is active.
-- [ ] Move `/api/axe/message` from direct provider call to SkillRun-only wrapper.
-- [ ] Add explicit deny/redirect behavior for direct runtime bypass endpoints.
+- [x] Switch default AXE execution path from `direct` to `skillrun_bridge` after canonical skill is active.
+- [x] Move `/api/axe/message` from direct provider call to SkillRun-only wrapper.
+- [x] Add explicit deny/redirect behavior for direct runtime bypass endpoints.
 
 ### Phase 1 Runtime Flags
 
