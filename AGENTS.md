@@ -240,3 +240,61 @@ All commands below are from repo root unless noted.
 - Prefer `gh pr edit` when a PR already exists for the branch.
 - Use `--body-file` for PR body updates to avoid shell quoting/substitution issues.
 - For long-lived branches, summarize the intended incremental delta, not the full historical diff.
+
+## 13) Local CI fallback mode (GitHub Actions unavailable)
+
+Use this mode when GitHub CI cannot run (for example billing lock, runner outage, or org policy block).
+
+### Operating principles
+
+- Do not block implementation work only because remote CI is unavailable.
+- Treat local verification as the authoritative gate until remote CI is restored.
+- Keep changes scoped and incremental; avoid large mixed changesets.
+
+### Required local verification by surface
+
+Recommended helper script (from repo root):
+
+- `./scripts/local_ci_gate.sh <backend|backend-fast|axe|axe-fast|all>`
+- The script writes a timestamped evidence report under `docs/roadmap/local_ci/`.
+- Optional automation: `./scripts/install_git_hooks.sh` to enable pre-push local CI checks.
+
+Backend changes:
+
+- Minimum loop verification:
+  - `cd backend && PYTHONPATH=. pytest <targeted suites> -q`
+- Pre-handoff and merge-candidate verification:
+  - `./scripts/run_rc_staging_gate.sh`
+
+AXE UI changes:
+
+- Run in `frontend/axe_ui`:
+  - `npm run lint`
+  - `npm run typecheck`
+  - `npm run build`
+  - `npm run test:e2e`
+- During intermediate loops, chromium-only E2E is acceptable; run full matrix before phase close.
+
+### Evidence requirements
+
+For each delivery slice, record:
+
+- commands executed
+- pass/fail result
+- notable warnings or blockers
+- timestamp
+
+Store evidence in handoff notes or roadmap/progress docs so status remains auditable without GitHub checks.
+
+### Branch and PR behavior while CI is blocked
+
+- Continue normal branch hygiene and small commits.
+- Keep PRs as coordination artifacts, but do not rely on GitHub check status while blocked.
+- If branch protection blocks merge on required checks, continue local-verified branch progression until CI is restored.
+
+### Re-entry when GitHub CI is restored
+
+1. Rebase or merge latest `main` into the working branch.
+2. Re-run full local verification gates.
+3. Re-run GitHub Actions checks.
+4. Resolve drift and only then merge.

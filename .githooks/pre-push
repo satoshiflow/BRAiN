@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+ROOT_DIR="$(git rev-parse --show-toplevel)"
+
+if [[ "${SKIP_LOCAL_CI:-0}" == "1" ]]; then
+  echo "[pre-push] SKIP_LOCAL_CI=1 set; skipping local CI checks."
+  exit 0
+fi
+
+MODE="${LOCAL_CI_MODE:-auto}"
+
+detect_changed_files() {
+  if git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' >/dev/null 2>&1; then
+    local base
+    base="$(git merge-base HEAD @{upstream})"
+    git diff --name-only "$base"...HEAD
+    return
+  fi
+
+  if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+    git diff --name-only HEAD~1...HEAD
+    return
+  fi
+
+  git ls-files
+}
+
+run_mode() {
+  local selected_mode="$1"
+  echo "[pre-push] running local gate mode: $selected_mode"
+  "$ROOT_DIR/scripts/local_ci_gate.sh" "$selected_mode"
+}
+
+if [[ "$MODE" != "auto" ]]; then
+  case "$MODE" in
+    backend|backend-fast|axe|axe-fast|all)
+      run_mode "$MODE"
+      exit 0
+      ;;
+    off)
+      echo "[pre-push] LOCAL_CI_MODE=off; skipping local CI checks."
+      exit 0
+      ;;
+    *)
+      echo "[pre-push] Unknown LOCAL_CI_MODE: $MODE"
+      echo "[pre-push] Allowed: auto, off, backend, backend-fast, axe, axe-fast, all"
+      exit 2
+      ;;
+  esac
+fi
+
+needs_backend=0
+needs_axe=0
+
+while IFS= read -r file; do
+  case "$file" in
+    backend/*|scripts/run_rc_staging_gate.sh|scripts/local_ci_gate.sh)
+      needs_backend=1
+      ;;
+    frontend/axe_ui/*)
+      needs_axe=1
+      ;;
+    package.json|package-lock.json|pnpm-lock.yaml|yarn.lock)
+      needs_axe=1
+      ;;
+    AGENTS.md)
+      needs_backend=1
+      needs_axe=1
+      ;;
+  esac
+done < <(detect_changed_files)
+
+if [[ "$needs_backend" == "1" && "$needs_axe" == "1" ]]; then
+  run_mode all
+  exit 0
+fi
+
+if [[ "$needs_backend" == "1" ]]; then
+  run_mode backend-fast
+  exit 0
+fi
+
+if [[ "$needs_axe" == "1" ]]; then
+  run_mode axe-fast
+  exit 0
+fi
+
+echo "[pre-push] No backend/axe-ui changes detected; skipping local CI gate."
