@@ -37,3 +37,14 @@ class EvolutionProposalModel(Base):
         ),
         Index("ix_evolution_proposals_tenant_run", "tenant_id", "skill_run_id"),
     )
+
+
+class EvolutionControlFlagModel(Base):
+    __tablename__ = "evolution_control_flags"
+
+    tenant_id = Column(String(64), primary_key=True)
+    adaptive_frozen = Column(String(8), nullable=False, default="false")
+    freeze_reason = Column(Text, nullable=True)
+    frozen_by = Column(String(120), nullable=True)
+    frozen_at = Column(DateTime(timezone=True), nullable=True)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)

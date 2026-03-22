@@ -83,8 +83,12 @@ class MemoryStore:
 
     async def get(self, memory_id: str) -> Optional[MemoryEntry]:
         """Retrieve a memory by ID. Updates access stats."""
+        return await self.get_for_tenant(memory_id, None)
+
+    async def get_for_tenant(self, memory_id: str, tenant_id: Optional[str]) -> Optional[MemoryEntry]:
+        """Retrieve a memory by ID with optional tenant boundary."""
         db = await self._get_db()
-        entry = await db.get_memory(memory_id)
+        entry = await db.get_memory_for_tenant(memory_id, tenant_id)
         if entry:
             live = self._live_entries.get(memory_id)
             if live is not None:
@@ -94,10 +98,10 @@ class MemoryStore:
             self._total_recalls += 1
         return entry
 
-    async def delete(self, memory_id: str) -> bool:
+    async def delete(self, memory_id: str, tenant_id: Optional[str] = None) -> bool:
         """Delete a memory entry."""
         db = await self._get_db()
-        deleted = await db.delete_memory(memory_id)
+        deleted = await db.delete_memory(memory_id, tenant_id=tenant_id)
         
         if deleted:
             self._live_entries.pop(memory_id, None)
@@ -118,6 +122,7 @@ class MemoryStore:
         layer: Optional[MemoryLayer] = None,
         memory_type: Optional[MemoryType] = None,
         tags: Optional[List[str]] = None,
+        tenant_id: Optional[str] = None,
         min_importance: Optional[float] = None,
         min_karma: Optional[float] = None,
         include_compressed: bool = True,
@@ -135,6 +140,7 @@ class MemoryStore:
             layer=layer,
             memory_type=memory_type,
             tags=tags,
+            tenant_id=tenant_id,
             min_importance=min_importance,
             min_karma=min_karma,
             include_compressed=include_compressed,
@@ -189,18 +195,22 @@ class MemoryStore:
 
     async def get_session(self, session_id: str) -> Optional[SessionContext]:
         """Get a session by ID with all its turns."""
-        db = await self._get_db()
-        return await db.get_session(session_id)
+        return await self.get_session_for_tenant(session_id, None)
 
-    async def delete_session(self, session_id: str) -> bool:
+    async def get_session_for_tenant(self, session_id: str, tenant_id: Optional[str]) -> Optional[SessionContext]:
+        """Get a session by ID with optional tenant boundary."""
+        db = await self._get_db()
+        return await db.get_session(session_id, tenant_id=tenant_id)
+
+    async def delete_session(self, session_id: str, tenant_id: Optional[str] = None) -> bool:
         """Delete a session and all its turns."""
         db = await self._get_db()
-        return await db.delete_session(session_id)
+        return await db.delete_session(session_id, tenant_id=tenant_id)
 
-    async def list_sessions(self, agent_id: Optional[str] = None) -> List[SessionContext]:
+    async def list_sessions(self, agent_id: Optional[str] = None, tenant_id: Optional[str] = None) -> List[SessionContext]:
         """List all sessions, optionally filtered by agent."""
         db = await self._get_db()
-        return await db.list_sessions(agent_id)
+        return await db.list_sessions(agent_id, tenant_id=tenant_id)
 
     # ------------------------------------------------------------------
     # Bulk operations
@@ -224,8 +234,12 @@ class MemoryStore:
 
     async def get_stats(self) -> MemoryStats:
         """Get memory system statistics."""
+        return await self.get_stats_for_tenant(None)
+
+    async def get_stats_for_tenant(self, tenant_id: Optional[str]) -> MemoryStats:
+        """Get memory system statistics with optional tenant boundary."""
         db = await self._get_db()
-        stats = await db.get_stats()
+        stats = await db.get_stats_for_tenant(tenant_id)
         
         return MemoryStats(
             total_memories=stats["total_memories"],
@@ -237,6 +251,11 @@ class MemoryStore:
             avg_importance=stats["avg_importance"],
             avg_karma=stats["avg_karma"],
         )
+
+    async def evict_stale_sessions(self, ttl_hours: float, tenant_id: Optional[str] = None) -> int:
+        """Evict inactive sessions older than TTL."""
+        db = await self._get_db()
+        return await db.evict_stale_sessions(ttl_hours=ttl_hours, tenant_id=tenant_id)
 
     # ------------------------------------------------------------------
     # EventStream

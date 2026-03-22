@@ -29,6 +29,9 @@ class KnowledgeItemModel(Base):
     tags = Column(JSONB, nullable=False, default=list)
     content = Column(Text, nullable=False)
     provenance_refs = Column(JSONB, nullable=False, default=list)
+    skill_run_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+    experience_record_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+    evaluation_result_id = Column(UUID(as_uuid=True), nullable=True, index=True)
     valid_until = Column(DateTime(timezone=True), nullable=True)
     superseded_by_id = Column(UUID(as_uuid=True), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
@@ -36,4 +39,5 @@ class KnowledgeItemModel(Base):
     __table_args__ = (
         Index("ix_knowledge_items_tenant_type", "tenant_id", "type"),
         Index("ix_knowledge_items_tenant_module", "tenant_id", "module"),
+        Index("ix_knowledge_items_run_chain", "tenant_id", "skill_run_id", "experience_record_id", "evaluation_result_id"),
     )

@@ -64,6 +64,7 @@ class KnowledgeLayerService:
             f"Experience lesson for SkillRun {skill_key}: {experience.summary} "
             f"Evaluation: {experience.evaluation_summary or {}}."
         )
+        evaluation_result_id = experience.evaluation_summary.get("evaluation_result_id") if isinstance(experience.evaluation_summary, dict) else None
         item = KnowledgeItemModel(
             tenant_id=principal.tenant_id,
             type="run_lesson",
@@ -74,9 +75,15 @@ class KnowledgeLayerService:
             module="experience_layer",
             tags=[skill_key, experience.state],
             content=content,
+            skill_run_id=experience.skill_run_id,
+            experience_record_id=experience.id,
+            evaluation_result_id=evaluation_result_id,
             provenance_refs=[
                 {"type": "skill_run", "id": str(experience.skill_run_id)},
                 {"type": "experience_record", "id": str(experience.id)},
+                *([
+                    {"type": "evaluation_result", "id": str(evaluation_result_id)}
+                ] if evaluation_result_id else []),
             ],
         )
         db.add(item)

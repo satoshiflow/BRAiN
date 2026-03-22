@@ -17,6 +17,7 @@ from .provider_selector import (
     ProviderSelector,
     SanitizationLevel,
 )
+from app.modules.provider_bindings.service import get_provider_binding_service
 
 logger = logging.getLogger(__name__)
 
@@ -287,6 +288,7 @@ class AXEFusionService:
         self.db = db
         self.selector = ProviderSelector()
         self.sanitizer = DataSanitizer()
+        self.provider_binding_service = get_provider_binding_service()
         self.mapping_repo = AXEMappingRepository()
         self._clients: Dict[Tuple[str, str, str], AXEllmClient] = {}
 
@@ -314,6 +316,56 @@ class AXEFusionService:
             "mode": active_provider.value,
             "sanitization_level": level.value,
         }
+
+    async def get_provider_runtime_snapshot(self) -> Dict[str, Any]:
+        runtime = self.get_provider_runtime()
+        if not self.db:
+            return runtime
+        capability_key = os.getenv("AXE_PROVIDER_CAPABILITY_KEY", "text.generate")
+        capability_version = int(os.getenv("AXE_PROVIDER_CAPABILITY_VERSION", "1"))
+        try:
+            binding = await self.provider_binding_service.find_binding_by_provider(
+                self.db,
+                capability_key=capability_key,
+                capability_version=capability_version,
+                provider_key=runtime["active"]["provider"],
+                tenant_id=None,
+            )
+        except Exception as exc:
+            logger.warning("Provider binding lookup unavailable for AXE runtime snapshot: %s", exc)
+            return runtime
+        if binding is None:
+            return runtime
+        runtime["governed_binding"] = {
+            "provider_binding_id": str(binding.id),
+            "capability_key": binding.capability_key,
+            "capability_version": binding.capability_version,
+            "provider_key": binding.provider_key,
+            "status": binding.status,
+            "adapter_key": binding.adapter_key,
+        }
+        configured = ProviderConfig(
+            provider=LLMProvider(runtime["active"]["provider"]),
+            base_url=runtime["active"]["base_url"],
+            api_key=os.getenv(f"{runtime['active']['provider'].upper()}_API_KEY", ""),
+            model=runtime["active"]["model"],
+            timeout_seconds=runtime["active"]["timeout_seconds"],
+        )
+        provider_ok = await self._probe_provider(configured, require_chat=False)
+        try:
+            await self.provider_binding_service.update_health_projection(
+                binding_id=str(binding.id),
+                health_status="healthy" if provider_ok else "degraded",
+                circuit_state="closed" if provider_ok else "open",
+                ttl_seconds=int(os.getenv("PROVIDER_BINDING_HEALTH_TTL", "300")),
+            )
+            health = await self.provider_binding_service.get_health_projection(str(binding.id))
+        except Exception as exc:
+            logger.warning("Provider binding health projection unavailable: %s", exc)
+            health = None
+        if health:
+            runtime["governed_binding"]["health"] = health
+        return runtime
 
     def set_provider_runtime(
         self,
@@ -563,6 +615,11 @@ class AXEFusionService:
 
     async def _resolve_runtime_config(self, *, require_chat: bool) -> ProviderConfig:
         provider = self.selector.get_active_provider()
+        enforce_bindings = os.getenv("AXE_ENFORCE_PROVIDER_BINDINGS", "false").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+        }
 
         if provider == LLMProvider.AUTO:
             allow_mock = os.getenv("AXE_ALLOW_MOCK_FALLBACK", "false").strip().lower() in {
@@ -572,6 +629,16 @@ class AXEFusionService:
             }
             for candidate in self.selector.get_auto_candidates():
                 if await self._probe_provider(candidate, require_chat=require_chat):
+                    if enforce_bindings and self.db:
+                        binding = await self.provider_binding_service.find_binding_by_provider(
+                            self.db,
+                            capability_key=os.getenv("AXE_PROVIDER_CAPABILITY_KEY", "text.generate"),
+                            capability_version=int(os.getenv("AXE_PROVIDER_CAPABILITY_VERSION", "1")),
+                            provider_key=candidate.provider.value,
+                            tenant_id=None,
+                        )
+                        if binding is None:
+                            continue
                     return candidate
             if allow_mock:
                 logger.warning("AXE runtime auto resolution fell back to mock provider")
@@ -592,6 +659,18 @@ class AXEFusionService:
             raise AXEllmUnavailableError(
                 f"Configured provider '{provider.value}' is not reachable"
             )
+        if enforce_bindings and self.db and provider != LLMProvider.MOCK:
+            binding = await self.provider_binding_service.find_binding_by_provider(
+                self.db,
+                capability_key=os.getenv("AXE_PROVIDER_CAPABILITY_KEY", "text.generate"),
+                capability_version=int(os.getenv("AXE_PROVIDER_CAPABILITY_VERSION", "1")),
+                provider_key=provider.value,
+                tenant_id=None,
+            )
+            if binding is None:
+                raise AXEllmUnavailableError(
+                    f"Configured provider '{provider.value}' has no enabled governed ProviderBinding"
+                )
         return config
 
     async def _probe_provider(self, config: ProviderConfig, *, require_chat: bool) -> bool:

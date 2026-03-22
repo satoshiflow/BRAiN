@@ -11,6 +11,7 @@ class ExperienceRecordResponse(BaseModel):
     id: UUID
     tenant_id: str | None
     skill_run_id: UUID
+    evaluation_result_id: UUID | None = None
     idempotency_key: str
     state: str
     failure_code: str | None = None

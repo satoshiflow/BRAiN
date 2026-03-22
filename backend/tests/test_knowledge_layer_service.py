@@ -50,9 +50,10 @@ async def test_ingest_run_lesson_uses_experience_layer(monkeypatch) -> None:
             return SimpleNamespace(
                 id=exp_id,
                 skill_run_id=run_id,
+                evaluation_result_id=uuid4(),
                 state="succeeded",
                 summary="SkillRun completed successfully",
-                evaluation_summary={"score": 0.9},
+                evaluation_summary={"score": 0.9, "evaluation_result_id": str(uuid4())},
                 signals={"skill_key": "builder.webgenesis.generate"},
             )
 
@@ -64,6 +65,8 @@ async def test_ingest_run_lesson_uses_experience_layer(monkeypatch) -> None:
     assert item.source == "experience_record"
     assert item.module == "experience_layer"
     assert item.title == "Run lesson: builder.webgenesis.generate"
+    assert item.skill_run_id == run_id
+    assert item.experience_record_id == exp_id
     assert item.provenance_refs[0]["type"] == "skill_run"
     assert item.provenance_refs[1] == {"type": "experience_record", "id": str(exp_id)}
 

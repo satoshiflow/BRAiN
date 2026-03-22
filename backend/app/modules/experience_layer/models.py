@@ -21,6 +21,7 @@ class ExperienceRecordModel(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(String(64), nullable=True, index=True)
     skill_run_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    evaluation_result_id = Column(UUID(as_uuid=True), nullable=True, index=True)
     idempotency_key = Column(String(160), nullable=False, unique=True)
     state = Column(String(32), nullable=False, index=True)
     failure_code = Column(String(40), nullable=True)
@@ -31,4 +32,5 @@ class ExperienceRecordModel(Base):
 
     __table_args__ = (
         Index("ix_experience_records_tenant_run", "tenant_id", "skill_run_id"),
+        Index("ix_experience_records_eval", "tenant_id", "evaluation_result_id"),
     )

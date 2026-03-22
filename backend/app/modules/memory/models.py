@@ -42,6 +42,7 @@ class MemoryEntryORM(Base):
     
     # Identifiers (memory_id is the string representation)
     memory_id = Column(String(32), unique=True, nullable=False, index=True)
+    tenant_id = Column(String(64), nullable=True, index=True)
     
     # Layer and type
     layer = Column(String(20), nullable=False, index=True)  # working, episodic, semantic
@@ -86,6 +87,7 @@ class MemoryEntryORM(Base):
         Index("idx_memory_entries_mission", "mission_id"),
         Index("idx_memory_entries_skill_run", "skill_run_id"),
         Index("idx_memory_entries_expires", "expires_at"),
+        Index("idx_memory_entries_tenant", "tenant_id"),
         # GIN index for tags array and metadata JSONB
         Index("idx_memory_entries_tags", "tags", postgresql_using="gin"),
         Index("idx_memory_entries_metadata", "metadata", postgresql_using="gin"),
@@ -184,6 +186,7 @@ class SessionContextORM(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     session_id = Column(String(32), unique=True, nullable=False, index=True)
+    tenant_id = Column(String(64), nullable=True, index=True)
     agent_id = Column(String(100), nullable=False, index=True)
     
     started_at = Column(DateTime(timezone=False), nullable=False, default=datetime.utcnow)
@@ -202,6 +205,7 @@ class SessionContextORM(Base):
     turns = relationship("ConversationTurnORM", cascade="all, delete-orphan")
 
     __table_args__ = (
+        Index("idx_session_contexts_tenant", "tenant_id"),
         Index("idx_session_contexts_agent", "agent_id"),
         Index("idx_session_contexts_started", "started_at"),
     )
@@ -209,6 +213,7 @@ class SessionContextORM(Base):
     def to_dict(self) -> Dict[str, Any]:
         return {
             "session_id": self.session_id,
+            "tenant_id": self.tenant_id,
             "agent_id": self.agent_id,
             "started_at": self.started_at,
             "last_activity_at": self.last_activity_at,

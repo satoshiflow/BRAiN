@@ -74,6 +74,7 @@ class MemoryEntry(BaseModel):
     """A single memory record in BRAIN's memory system."""
 
     memory_id: str = Field(default_factory=lambda: f"mem_{uuid.uuid4().hex[:12]}")
+    tenant_id: Optional[str] = Field(None, max_length=64)
     layer: MemoryLayer
     memory_type: MemoryType
     content: str = Field(..., max_length=10000, description="Primary content of the memory")
@@ -122,6 +123,7 @@ class SessionContext(BaseModel):
     """
 
     session_id: str = Field(default_factory=lambda: f"sess_{uuid.uuid4().hex[:10]}")
+    tenant_id: Optional[str] = Field(None, max_length=64)
     agent_id: str = Field(..., max_length=100)
     started_at: datetime = Field(default_factory=datetime.utcnow)
     last_activity_at: datetime = Field(default_factory=datetime.utcnow)
@@ -158,6 +160,7 @@ class MemoryQuery(BaseModel):
     """Query for selective recall."""
 
     query: str = Field(..., max_length=10000, description="Natural language query or keyword")
+    tenant_id: Optional[str] = Field(None, max_length=64)
     agent_id: Optional[str] = Field(None, max_length=100)
     session_id: Optional[str] = Field(None, max_length=100)
     mission_id: Optional[str] = Field(None, max_length=100)
@@ -214,6 +217,7 @@ class MemoryStoreRequest(BaseModel):
     """Request to store a memory."""
 
     content: str = Field(..., max_length=10000)
+    tenant_id: Optional[str] = Field(None, max_length=64)
     memory_type: MemoryType
     layer: MemoryLayer = MemoryLayer.EPISODIC
     agent_id: Optional[str] = Field(None, max_length=100)
@@ -222,6 +226,7 @@ class MemoryStoreRequest(BaseModel):
     skill_run_id: Optional[str] = Field(None, max_length=64)
     importance: float = Field(50.0, ge=0.0, le=100.0)
     tags: List[str] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 class SkillRunMemoryIngestResponse(BaseModel):
@@ -234,6 +239,7 @@ class SessionCreateRequest(BaseModel):
     """Request to create a new session."""
 
     agent_id: str = Field(..., max_length=100)
+    tenant_id: Optional[str] = Field(None, max_length=64)
     max_tokens: int = Field(8000, ge=1000, le=128000)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 

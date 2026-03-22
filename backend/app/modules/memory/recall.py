@@ -62,6 +62,7 @@ class SelectiveRecall:
 
         # Get base candidates
         candidates = await self.store.query(
+            tenant_id=query.tenant_id,
             agent_id=query.agent_id,
             session_id=query.session_id,
             mission_id=query.mission_id,

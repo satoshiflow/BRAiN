@@ -37,6 +37,8 @@ from app.modules.axe_governance import (
     TrustTier,
     get_axe_trust_validator,
 )
+from app.modules.skill_engine.schemas import SkillRunCreate, SkillRunState, TriggerType
+from app.modules.skill_engine.service import get_skill_engine_service
 
 from .service import (
     get_axe_fusion_service,
@@ -83,6 +85,15 @@ LEGACY_AXE_DOC_LINK = os.getenv(
     "AXE_LEGACY_DOC_LINK",
     "https://github.com/falklabs/brain-v2/blob/main/docs/modules/axe/AXE_API_DEPRECATIONS.md",
 )
+
+AXE_CHAT_EXECUTION_PATH = os.getenv("AXE_CHAT_EXECUTION_PATH", "direct").strip().lower()
+AXE_CHAT_SKILL_KEY = os.getenv("AXE_CHAT_SKILL_KEY", "")
+AXE_CHAT_SKILL_VERSION = int(os.getenv("AXE_CHAT_SKILL_VERSION", "1"))
+AXE_CHAT_BRIDGE_FALLBACK_DIRECT = os.getenv("AXE_CHAT_BRIDGE_FALLBACK_DIRECT", "true").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+}
 
 
 # === Security Utilities ===
@@ -381,6 +392,7 @@ class ProviderRuntimeResponse(BaseModel):
     model: str
     timeout_seconds: float
     sanitization_level: Literal["none", "moderate", "strict"]
+    governed_binding: Optional[dict[str, Any]] = None
 
 
 class ProviderRuntimeUpdateRequest(BaseModel):
@@ -472,6 +484,102 @@ class LegacyAxeMessageRequest(BaseModel):
     metadata: dict = Field(default_factory=dict)
 
 
+def _extract_text_from_skillrun_output(output_payload: dict[str, Any]) -> str:
+    if not isinstance(output_payload, dict):
+        return ""
+    for key in ("text.generate", "text_generate", "response", "result"):
+        value = output_payload.get(key)
+        if isinstance(value, dict):
+            text = value.get("text") or value.get("content")
+            if isinstance(text, str) and text.strip():
+                return text
+        if isinstance(value, str) and value.strip():
+            return value
+    fallback = output_payload.get("text")
+    return fallback if isinstance(fallback, str) else ""
+
+
+async def _try_skillrun_bridge(
+    *,
+    db: AsyncSession,
+    principal: Optional[Principal],
+    chat_request: ChatRequest,
+    request_id: str,
+) -> ChatResponse | None:
+    if AXE_CHAT_EXECUTION_PATH != "skillrun_bridge":
+        return None
+    if not AXE_CHAT_SKILL_KEY:
+        logger.warning("AXE skillrun bridge enabled but AXE_CHAT_SKILL_KEY is empty")
+        return None
+    if principal is None:
+        logger.warning("AXE skillrun bridge requires authenticated principal; falling back")
+        return None
+
+    skill_engine = get_skill_engine_service()
+    payload = SkillRunCreate(
+        skill_key=AXE_CHAT_SKILL_KEY,
+        version=AXE_CHAT_SKILL_VERSION,
+        input_payload={
+            "model": chat_request.model,
+            "messages": [msg.model_dump() for msg in chat_request.messages],
+            "temperature": chat_request.temperature or 0.7,
+            "request_id": request_id,
+            "channel": "axe",
+        },
+        idempotency_key=f"axe:{principal.tenant_id or 'system'}:{principal.principal_id}:{request_id}",
+        trigger_type=TriggerType.API,
+        causation_id=request_id,
+    )
+
+    run = await skill_engine.create_run(db, payload, principal)
+    report = await skill_engine.execute_run(db, run.id, principal)
+    state = report.skill_run.state.value
+
+    if state == SkillRunState.WAITING_APPROVAL.value:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error": "Approval required",
+                "message": "AXE request queued and waiting for approval",
+                "code": "SKILLRUN_WAITING_APPROVAL",
+                "skill_run_id": str(report.skill_run.id),
+            },
+        )
+
+    if state != SkillRunState.SUCCEEDED.value:
+        if AXE_CHAT_BRIDGE_FALLBACK_DIRECT:
+            logger.warning(
+                "AXE skillrun bridge failed state=%s run=%s, using direct fallback",
+                state,
+                report.skill_run.id,
+            )
+            return None
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error": "SkillRun execution failed",
+                "message": report.skill_run.failure_reason_sanitized or "SkillRun execution failed",
+                "code": report.skill_run.failure_code or "SKILLRUN_FAILED",
+                "skill_run_id": str(report.skill_run.id),
+            },
+        )
+
+    text = _extract_text_from_skillrun_output(report.skill_run.output_payload)
+    if not text.strip() and AXE_CHAT_BRIDGE_FALLBACK_DIRECT:
+        logger.warning("AXE skillrun bridge produced empty response for run=%s; using fallback", report.skill_run.id)
+        return None
+    return ChatResponse(
+        text=text or "",
+        raw={
+            "execution_path": "skillrun_bridge",
+            "skill_run_id": str(report.skill_run.id),
+            "skill_run_state": state,
+            "evaluation_summary": report.skill_run.evaluation_summary,
+            "output_payload": report.skill_run.output_payload,
+        },
+    )
+
+
 # === Endpoints ===
 
 @router.post(
@@ -535,6 +643,15 @@ async def axe_chat(
 
         # Konvertiere Pydantic Model zu Dict für Service
         messages = [msg.model_dump() for msg in chat_request.messages]
+
+        bridged = await _try_skillrun_bridge(
+            db=db,
+            principal=principal,
+            chat_request=chat_request,
+            request_id=request_id,
+        )
+        if bridged is not None:
+            return bridged
         
         result = await service.chat(
             model=chat_request.model,
@@ -546,7 +663,7 @@ async def axe_chat(
         
         return ChatResponse(
             text=result["text"],
-            raw=result["raw"]
+            raw={**result["raw"], "execution_path": "direct"}
         )
         
     except AXEllmUnavailableError as e:
@@ -642,7 +759,10 @@ async def axe_provider_runtime(
         principal.principal_id,
     )
     service = get_axe_fusion_service(db=db)
-    runtime = service.get_provider_runtime()
+    if hasattr(service, "get_provider_runtime_snapshot"):
+        runtime = await service.get_provider_runtime_snapshot()
+    else:
+        runtime = service.get_provider_runtime()
     active = runtime["active"]
     return ProviderRuntimeResponse(
         provider=active["provider"],
@@ -652,6 +772,7 @@ async def axe_provider_runtime(
         model=active["model"],
         timeout_seconds=active["timeout_seconds"],
         sanitization_level=runtime["sanitization_level"],
+        governed_binding=runtime.get("governed_binding"),
     )
 
 
@@ -682,6 +803,8 @@ async def axe_update_provider_runtime(
         provider=payload.provider,
         force_sanitization_level=payload.force_sanitization_level,
     )
+    if hasattr(service, "get_provider_runtime_snapshot"):
+        runtime = await service.get_provider_runtime_snapshot()
     await _emit_axe_admin_audit(
         db=db,
         action="provider_runtime_update",
@@ -703,6 +826,7 @@ async def axe_update_provider_runtime(
         model=active["model"],
         timeout_seconds=active["timeout_seconds"],
         sanitization_level=runtime["sanitization_level"],
+        governed_binding=runtime.get("governed_binding"),
     )
 
 
@@ -1116,16 +1240,31 @@ async def axe_message_legacy(
     response.headers["Sunset"] = LEGACY_AXE_SUNSET
     response.headers["Link"] = f'<{LEGACY_AXE_DOC_LINK}>; rel="deprecation"'
     response.headers["Warning"] = '299 - "Deprecated API: use /api/axe/chat"'
-    service = get_axe_fusion_service(db=db)
     user_message = payload.message or ""
+    request_id = context.request_id or f"axe-legacy-{uuid4().hex}"
+    chat_request = ChatRequest(
+        model="qwen2.5:0.5b",
+        messages=[ChatMessage(role="user", content=user_message)],
+        temperature=0.7,
+    )
 
     try:
-        result = await service.chat(
-            model="qwen2.5:0.5b",
-            messages=[{"role": "user", "content": user_message}],
-            temperature=0.7,
+        bridged = await _try_skillrun_bridge(
+            db=db,
+            principal=None,
+            chat_request=chat_request,
+            request_id=request_id,
         )
-        reply = result.get("text") or ""
+        if bridged is not None:
+            reply = bridged.text
+        else:
+            service = get_axe_fusion_service(db=db)
+            result = await service.chat(
+                model="qwen2.5:0.5b",
+                messages=[{"role": "user", "content": user_message}],
+                temperature=0.7,
+            )
+            reply = result.get("text") or ""
     except Exception:
         # Keep compatibility behavior stable even if upstream LLM is unavailable.
         reply = "AXE received your message."

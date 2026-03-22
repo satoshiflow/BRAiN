@@ -44,6 +44,7 @@ def test_experience_ingest_and_get(monkeypatch) -> None:
         id=exp_id,
         tenant_id="tenant-a",
         skill_run_id=run_id,
+        evaluation_result_id=None,
         idempotency_key=f"experience:tenant-a:{run_id}",
         state="succeeded",
         failure_code=None,
