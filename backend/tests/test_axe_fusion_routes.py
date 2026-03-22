@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import io
 import pytest
+from fastapi import HTTPException
 
 from app.modules.axe_governance import AXERequestContext, TrustTier
 
@@ -125,6 +126,7 @@ class _FusionServiceStub:
 def test_axe_fusion_chat_route_allows_dmz(client, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(axe_fusion_router_module, "get_axe_trust_validator", lambda: _AllowDmzValidator())
     monkeypatch.setattr(axe_fusion_router_module, "get_axe_fusion_service", lambda db=None: _FusionServiceStub())
+    monkeypatch.setattr(axe_fusion_router_module, "AXE_CHAT_EXECUTION_PATH", "direct")
 
     response = client.post(
         "/api/axe/chat",
@@ -140,6 +142,90 @@ def test_axe_fusion_chat_route_allows_dmz(client, monkeypatch: pytest.MonkeyPatc
     assert body["text"] == "stubbed response"
     assert "raw" in body
     assert "x-axe-request-id" in response.headers
+
+
+def test_axe_fusion_chat_prefers_skillrun_bridge(client, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(axe_fusion_router_module, "get_axe_trust_validator", lambda: _AllowDmzValidator())
+    monkeypatch.setattr(axe_fusion_router_module, "AXE_CHAT_EXECUTION_PATH", "skillrun_bridge")
+    monkeypatch.setattr(axe_fusion_router_module, "AXE_CHAT_SKILL_KEY", "axe.chat.bridge")
+
+    async def _bridge(**kwargs):  # noqa: ANN001
+        return axe_fusion_router_module.ChatResponse(
+            text="bridge response",
+            raw={"execution_path": "skillrun_bridge", "skill_run_id": "run-1"},
+        )
+
+    monkeypatch.setattr(axe_fusion_router_module, "_try_skillrun_bridge", _bridge)
+
+    response = client.post(
+        "/api/axe/chat",
+        json={
+            "model": "gpt-4o-mini",
+            "messages": [{"role": "user", "content": "hello"}],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["text"] == "bridge response"
+    assert body["raw"]["execution_path"] == "skillrun_bridge"
+
+
+def test_axe_fusion_chat_bridge_waiting_approval_returns_409(client, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(axe_fusion_router_module, "get_axe_trust_validator", lambda: _AllowDmzValidator())
+    monkeypatch.setattr(axe_fusion_router_module, "AXE_CHAT_EXECUTION_PATH", "skillrun_bridge")
+    monkeypatch.setattr(axe_fusion_router_module, "AXE_CHAT_SKILL_KEY", "axe.chat.bridge")
+
+    async def _bridge(**kwargs):  # noqa: ANN001
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "Approval required",
+                "code": "SKILLRUN_WAITING_APPROVAL",
+            },
+        )
+
+    monkeypatch.setattr(axe_fusion_router_module, "_try_skillrun_bridge", _bridge)
+
+    response = client.post(
+        "/api/axe/chat",
+        json={
+            "model": "gpt-4o-mini",
+            "messages": [{"role": "user", "content": "hello"}],
+        },
+    )
+
+    assert response.status_code == 409
+    detail = response.json()["detail"]
+    assert detail["code"] == "SKILLRUN_WAITING_APPROVAL"
+
+
+def test_axe_fusion_chat_stress_batch(client, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(axe_fusion_router_module, "get_axe_trust_validator", lambda: _AllowDmzValidator())
+    monkeypatch.setattr(axe_fusion_router_module, "AXE_CHAT_EXECUTION_PATH", "skillrun_bridge")
+    monkeypatch.setattr(axe_fusion_router_module, "AXE_CHAT_SKILL_KEY", "axe.chat.bridge")
+
+    async def _bridge(**kwargs):  # noqa: ANN001
+        request_id = kwargs.get("request_id", "n/a")
+        return axe_fusion_router_module.ChatResponse(
+            text="stress-ok",
+            raw={"execution_path": "skillrun_bridge", "request_id": request_id},
+        )
+
+    monkeypatch.setattr(axe_fusion_router_module, "_try_skillrun_bridge", _bridge)
+
+    for idx in range(20):
+        response = client.post(
+            "/api/axe/chat",
+            json={
+                "model": "gpt-4o-mini",
+                "messages": [{"role": "user", "content": f"msg-{idx}"}],
+            },
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["text"] == "stress-ok"
+        assert body["raw"]["execution_path"] == "skillrun_bridge"
 
 
 def test_axe_fusion_chat_route_denies_external(client, monkeypatch: pytest.MonkeyPatch):

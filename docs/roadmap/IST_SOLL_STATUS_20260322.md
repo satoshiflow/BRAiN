@@ -42,6 +42,5 @@
 
 ## Verbleibende Restpunkte (non-blocking)
 
-- AXE-Bridge benoetigt produktiv ein aktives kanonisches Chat-Skill (`AXE_CHAT_SKILL_KEY`) fuer vollen SkillRun-only Betrieb.
 - Einige lokale Evidence-/Manual-Test-Artefakte sind bewusst unversioniert.
 - Fuer Merge-Reife weiterhin RC-Gate und ggf. Full-Scope-Tests vor Release fahren.

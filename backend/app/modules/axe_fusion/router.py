@@ -88,7 +88,7 @@ LEGACY_AXE_DOC_LINK = os.getenv(
 )
 
 AXE_CHAT_EXECUTION_PATH = os.getenv("AXE_CHAT_EXECUTION_PATH", "skillrun_bridge").strip().lower()
-AXE_CHAT_SKILL_KEY = os.getenv("AXE_CHAT_SKILL_KEY", "")
+AXE_CHAT_SKILL_KEY = os.getenv("AXE_CHAT_SKILL_KEY", "axe.chat.bridge")
 AXE_CHAT_SKILL_VERSION = int(os.getenv("AXE_CHAT_SKILL_VERSION", "1"))
 AXE_CHAT_BRIDGE_FALLBACK_DIRECT = os.getenv("AXE_CHAT_BRIDGE_FALLBACK_DIRECT", "true").strip().lower() in {
     "1",
@@ -705,6 +705,9 @@ async def axe_chat(
                 "code": "AXELLM_ERROR"
             }
         )
+
+    except HTTPException:
+        raise
         
     except Exception as e:
         logger.exception("Unerwarteter Fehler in axe_chat: %s", e)

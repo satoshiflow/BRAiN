@@ -319,6 +319,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         except Exception as e:
             logger.warning(f"⚠️ Could not seed built-in skills: {e}")
 
+    # Seed canonical AXE chat bridge skill/capability contract
+    if _feature_enabled("ENABLE_AXE_CHAT_SKILL_SEED", "true"):
+        try:
+            from app.modules.skills.axe_chat_skill_seeder import seed_axe_chat_skill_contract
+            from app.core.database import AsyncSessionLocal
+
+            async with AsyncSessionLocal() as db:
+                await seed_axe_chat_skill_contract(db)
+        except Exception as e:
+            logger.warning(f"⚠️ Could not seed AXE chat skill contract: {e}")
+
     logger.info("✅ All systems operational")
 
     yield
