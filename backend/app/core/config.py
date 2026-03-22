@@ -96,6 +96,16 @@ class Settings(BaseSettings):
     jwt_jwks_url: str = "https://brain.falklabs.de/.well-known/jwks.json"
     jwks_cache_ttl_seconds: int = 3600  # 1 hour cache for JWKS keys
 
+    # Frontend URL resolution
+    control_deck_base_url: str = Field(
+        default_factory=lambda: (
+            "http://127.0.0.1:3000"
+            if detect_runtime_mode() == "local"
+            else os.getenv("CONTROL_DECK_BASE_URL", "https://control.brain.falklabs.de")
+        ),
+        description="ControlDeck base URL for invitation links",
+    )
+
     # Token Key Configuration (A1 - Token Architecture)
     jwt_private_key_pem: str = ""  # RSA private key PEM (from BRAIN_JWT_PRIVATE_KEY env)
     jwt_algorithm: str = "RS256"  # JWT signing algorithm

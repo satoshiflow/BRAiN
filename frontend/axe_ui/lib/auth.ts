@@ -1,5 +1,17 @@
 import { getApiBase } from "@/lib/config";
 
+export class AuthApiError extends Error {
+  status: number;
+  body: string;
+
+  constructor(status: number, body: string, fallbackMessage?: string) {
+    super(body || fallbackMessage || `Auth error ${status}`);
+    this.name = "AuthApiError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
 export interface LoginCredentials {
   email: string;
   password: string;
@@ -37,10 +49,23 @@ async function authRequest<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || response.statusText || `Auth error ${response.status}`);
+    throw new AuthApiError(response.status, text, response.statusText);
   }
 
   return response.json() as Promise<T>;
+}
+
+export function isUnauthorizedAuthError(error: unknown): boolean {
+  if (error instanceof AuthApiError) {
+    return error.status === 401;
+  }
+
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return message.includes("401") || message.includes("unauthorized");
 }
 
 export async function login(credentials: LoginCredentials): Promise<TokenPair> {
@@ -79,6 +104,6 @@ export async function logout(refreshToken: string): Promise<void> {
 
   if (!response.ok && response.status !== 204) {
     const text = await response.text();
-    throw new Error(text || response.statusText || `Logout error ${response.status}`);
+    throw new AuthApiError(response.status, text, response.statusText);
   }
 }

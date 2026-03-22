@@ -42,6 +42,11 @@ __all__ = ["router", "admin_router", "get_current_user_db", "require_role_db", "
 device_security = HTTPBearer(auto_error=False)
 
 
+def _build_invitation_url(token: str) -> str:
+    base_url = get_settings().control_deck_base_url.rstrip("/")
+    return f"{base_url}/auth/register?token={token}"
+
+
 def _utc_now_naive() -> datetime:
     """UTC now as naive datetime for legacy DB DateTime columns."""
     return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -292,17 +297,13 @@ async def create_invitation(
             db, current_user.id, data
         )
 
-        # Build invitation URL
-        base_url = "https://control-deck.falklabs.de"  # TODO: From config
-        invitation_url = f"{base_url}/auth/register?token={invitation.token}"
-
         return InvitationResponse(
             id=invitation.id,
             email=invitation.email,
             role=invitation.role,
             token=invitation.token,
             expires_at=invitation.expires_at,
-            invitation_url=invitation_url
+            invitation_url=_build_invitation_url(invitation.token)
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -569,8 +570,6 @@ async def list_invitations(
     result = await db.execute(query)
     invitations = result.scalars().all()
     
-    # Build invitation URLs
-    base_url = "https://control-deck.falklabs.de"
     responses = []
     for inv in invitations:
         responses.append(InvitationResponse(
@@ -579,7 +578,7 @@ async def list_invitations(
             role=inv.role,
             token=inv.token,
             expires_at=inv.expires_at,
-            invitation_url=f"{base_url}/auth/register?token={inv.token}"
+            invitation_url=_build_invitation_url(inv.token)
         ))
     
     return responses

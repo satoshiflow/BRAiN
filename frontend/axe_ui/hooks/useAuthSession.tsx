@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import {
   fetchCurrentUser,
+  isUnauthorizedAuthError,
   login as loginRequest,
   logout as logoutRequest,
   refreshAccessToken,
@@ -95,9 +96,7 @@ export function AuthSessionProvider({ children }: { children: React.ReactNode })
       try {
         return await request(accessToken);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Request failed";
-        const isUnauthorized = message.includes("401") || message.toLowerCase().includes("unauthorized");
-        if (!isUnauthorized || !refreshToken) {
+        if (!isUnauthorizedAuthError(error) || !refreshToken) {
           throw error;
         }
 

@@ -113,3 +113,8 @@ Recommended:
   - Inspect `NEXT_PUBLIC_BRAIN_API_BASE` and rebuild/restart frontend.
 - Playwright startup timeout:
   - Ensure no port conflict on `127.0.0.1:3002`.
+
+## Related references
+
+- Auth/session contract: `docs/frontend/AXE_AUTH_SESSION_CONTRACT.md`
+- Local mock-backed chat validation: `docs/frontend/AXE_LOCAL_CHAT_PIPELINE_RUNBOOK.md`
