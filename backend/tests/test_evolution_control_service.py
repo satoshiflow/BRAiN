@@ -92,6 +92,9 @@ async def test_transition_to_applied_records_transition_when_valid() -> None:
             "approval_id": "app-1",
             "policy_decision_id": "pol-1",
             "reviewer_id": "admin-1",
+            "rollback_plan_id": "rb-1",
+            "rollback_steps": ["restore previous skill definition"],
+            "rollback_owner": "ops-admin",
         },
         updated_at=None,
     )

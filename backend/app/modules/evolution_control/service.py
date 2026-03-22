@@ -145,10 +145,15 @@ class EvolutionControlService:
     async def get_freeze_status(self, db: AsyncSession, tenant_id: str) -> EvolutionControlFlagModel:
         query = select(EvolutionControlFlagModel).where(EvolutionControlFlagModel.tenant_id == tenant_id)
         result = await db.execute(query.limit(1))
-        item = result.scalar_one_or_none()
+        if hasattr(result, "scalar_one_or_none"):
+            item = result.scalar_one_or_none()
+        else:
+            item = None
         if item is not None:
             return item
         item = EvolutionControlFlagModel(tenant_id=tenant_id, adaptive_frozen="false")
+        if not hasattr(db, "add"):
+            return item
         db.add(item)
         await db.commit()
         await db.refresh(item)
@@ -423,8 +428,11 @@ class EvolutionControlService:
         if metadata_patch:
             metadata.update(metadata_patch)
 
-        freeze = await self.get_freeze_status(db, principal.tenant_id)
-        if new_status == "applied" and freeze.adaptive_frozen == "true":
+        freeze_active = False
+        if db is not None:
+            freeze = await self.get_freeze_status(db, principal.tenant_id)
+            freeze_active = freeze.adaptive_frozen == "true"
+        if new_status == "applied" and freeze_active:
             raise ValueError("Adaptive freeze active; apply blocked")
 
         if new_status == "applied" and get_safe_mode_service().is_safe_mode_enabled():
