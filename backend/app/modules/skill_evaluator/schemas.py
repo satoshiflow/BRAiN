@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 
 class EvaluatorType(str, Enum):
@@ -38,7 +38,7 @@ class EvaluationResultResponse(BaseModel):
     status: EvaluationStatus
     overall_score: float | None = None
     dimension_scores: dict[str, float] = Field(default_factory=dict)
-    passed: bool
+    passed: bool = Field(validation_alias=AliasChoices("passed", "pass"), serialization_alias="pass")
     criteria_snapshot: dict[str, Any] = Field(default_factory=dict)
     findings: dict[str, Any] = Field(default_factory=dict)
     recommendations: dict[str, Any] = Field(default_factory=dict)
@@ -49,6 +49,10 @@ class EvaluationResultResponse(BaseModel):
     policy_violations: list[dict[str, Any]] = Field(default_factory=list)
     correlation_id: str | None = None
     evaluation_revision: int
+    revision_of_id: UUID | None = None
+    evidence_artifact_refs: list[dict[str, Any]] = Field(default_factory=list)
+    review_artifact_refs: list[dict[str, Any]] = Field(default_factory=list)
+    comparison_artifact_refs: list[dict[str, Any]] = Field(default_factory=list)
     created_at: datetime
     completed_at: datetime | None = None
     created_by: str

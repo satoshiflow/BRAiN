@@ -31,6 +31,8 @@ class CapabilityDefinitionCreate(BaseModel):
     qos_targets: dict[str, Any] = Field(default_factory=dict)
     fallback_capability_key: str | None = Field(default=None, max_length=120)
     policy_constraints: dict[str, Any] = Field(default_factory=dict)
+    contract_artifact_refs: list[dict[str, Any]] = Field(default_factory=list)
+    adapter_test_artifact_refs: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class CapabilityDefinitionUpdate(BaseModel):
@@ -43,6 +45,8 @@ class CapabilityDefinitionUpdate(BaseModel):
     qos_targets: dict[str, Any] | None = None
     fallback_capability_key: str | None = Field(default=None, max_length=120)
     policy_constraints: dict[str, Any] | None = None
+    contract_artifact_refs: list[dict[str, Any]] | None = None
+    adapter_test_artifact_refs: list[dict[str, Any]] | None = None
 
 
 class CapabilityDefinitionResponse(BaseModel):
@@ -61,6 +65,8 @@ class CapabilityDefinitionResponse(BaseModel):
     qos_targets: dict[str, Any]
     fallback_capability_key: str | None = None
     policy_constraints: dict[str, Any]
+    contract_artifact_refs: list[dict[str, Any]]
+    adapter_test_artifact_refs: list[dict[str, Any]]
     checksum_sha256: str
     created_by: str
     updated_by: str

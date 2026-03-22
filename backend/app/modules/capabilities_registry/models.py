@@ -36,6 +36,8 @@ class CapabilityDefinitionModel(Base):
     qos_targets = Column(JSONB, nullable=False, default=dict)
     fallback_capability_key = Column(String(120), nullable=True)
     policy_constraints = Column(JSONB, nullable=False, default=dict)
+    contract_artifact_refs = Column(JSONB, nullable=False, default=list)
+    adapter_test_artifact_refs = Column(JSONB, nullable=False, default=list)
     checksum_sha256 = Column(String(64), nullable=False)
     created_by = Column(String(120), nullable=False)
     updated_by = Column(String(120), nullable=False)

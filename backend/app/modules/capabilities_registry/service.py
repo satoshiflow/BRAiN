@@ -8,6 +8,7 @@ from sqlalchemy import and_, desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth_deps import Principal
+from app.core.control_plane_events import record_control_plane_event
 
 from .models import CapabilityDefinitionModel
 from .schemas import CapabilityDefinitionCreate, CapabilityDefinitionStatus, CapabilityDefinitionUpdate
@@ -70,6 +71,8 @@ class CapabilityRegistryService:
                 "qos_targets": item.qos_targets,
                 "fallback_capability_key": item.fallback_capability_key,
                 "policy_constraints": item.policy_constraints,
+                "contract_artifact_refs": item.contract_artifact_refs,
+                "adapter_test_artifact_refs": item.adapter_test_artifact_refs,
             }
         return item
 
@@ -224,11 +227,29 @@ class CapabilityRegistryService:
             qos_targets=payload.qos_targets,
             fallback_capability_key=payload.fallback_capability_key,
             policy_constraints=payload.policy_constraints,
+            contract_artifact_refs=payload.contract_artifact_refs,
+            adapter_test_artifact_refs=payload.adapter_test_artifact_refs,
             checksum_sha256=checksum,
             created_by=principal.principal_id,
             updated_by=principal.principal_id,
         )
         db.add(model)
+        await db.flush()
+        await record_control_plane_event(
+            db=db,
+            tenant_id=model.tenant_id,
+            entity_type="capability_definition",
+            entity_id=str(model.id),
+            event_type="capability.definition.created.v1",
+            correlation_id=None,
+            mission_id=None,
+            actor_id=principal.principal_id,
+            actor_type=principal.principal_type.value,
+            payload={"capability_key": model.capability_key, "version": model.version, "status": model.status},
+            audit_required=True,
+            audit_action="capability_definition_create",
+            audit_message="Capability definition created",
+        )
         await db.commit()
         await db.refresh(model)
         logger.info("Created capability definition {} v{}", model.capability_key, model.version)
@@ -287,6 +308,7 @@ class CapabilityRegistryService:
             return None
         if not self.is_transition_allowed(definition.status, target_status.value):
             raise ValueError(f"Illegal status transition: {definition.status} -> {target_status.value}")
+        previous_status = definition.status
         if target_status == CapabilityDefinitionStatus.ACTIVE:
             await self._validate_fallback_cycle(db, definition.tenant_id, definition.owner_scope, definition.capability_key, definition.fallback_capability_key)
             active_result = await db.execute(
@@ -303,6 +325,32 @@ class CapabilityRegistryService:
                 active.updated_by = principal.principal_id
         definition.status = target_status.value
         definition.updated_by = principal.principal_id
+        event_map = {
+            CapabilityDefinitionStatus.ACTIVE: "capability.definition.activated.v1",
+            CapabilityDefinitionStatus.BLOCKED: "capability.definition.blocked.v1",
+            CapabilityDefinitionStatus.DEPRECATED: "capability.definition.deprecated.v1",
+            CapabilityDefinitionStatus.RETIRED: "capability.definition.retired.v1",
+        }
+        await record_control_plane_event(
+            db=db,
+            tenant_id=definition.tenant_id,
+            entity_type="capability_definition",
+            entity_id=str(definition.id),
+            event_type=event_map.get(target_status, f"capability.definition.{target_status.value}.v1"),
+            correlation_id=None,
+            mission_id=None,
+            actor_id=principal.principal_id,
+            actor_type=principal.principal_type.value,
+            payload={
+                "capability_key": definition.capability_key,
+                "version": definition.version,
+                "previous_status": previous_status,
+                "status": target_status.value,
+            },
+            audit_required=True,
+            audit_action=f"capability_definition_{target_status.value}",
+            audit_message=f"Capability definition moved to {target_status.value}",
+        )
         await db.commit()
         await db.refresh(definition)
         return definition
