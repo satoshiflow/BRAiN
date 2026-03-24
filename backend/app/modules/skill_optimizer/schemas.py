@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import Enum
 from typing import Any
 from uuid import UUID
 
@@ -27,3 +28,14 @@ class SkillOptimizerRecommendationResponse(BaseModel):
 class SkillOptimizerRecommendationListResponse(BaseModel):
     items: list[SkillOptimizerRecommendationResponse] = Field(default_factory=list)
     total: int
+
+
+class OptimizerRecommendationStatus(str, Enum):
+    OPEN = "open"
+    ACCEPTED = "accepted"
+    DISMISSED = "dismissed"
+
+
+class SkillOptimizerRecommendationStatusUpdateRequest(BaseModel):
+    status: OptimizerRecommendationStatus
+    reason: str | None = Field(default=None, max_length=500)
