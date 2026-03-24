@@ -1,17 +1,80 @@
 from __future__ import annotations
 
 from statistics import mean
+from typing import Any
 
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.control_plane_events import record_control_plane_event
 from app.modules.skill_engine.models import SkillRunModel
 from app.modules.skill_evaluator.models import EvaluationResultModel
 
 from .models import SkillOptimizerRecommendationModel
+from .schemas import OptimizerRecommendationStatus
 
 
 class SkillOptimizerService:
+    async def _emit_recommendation_event(
+        self,
+        db: AsyncSession,
+        recommendation: SkillOptimizerRecommendationModel,
+    ) -> None:
+        await record_control_plane_event(
+            db=db,
+            tenant_id=recommendation.tenant_id,
+            entity_type="optimizer_recommendation",
+            entity_id=str(recommendation.id),
+            event_type="optimizer.recommendation.created.v1",
+            correlation_id=None,
+            mission_id=None,
+            actor_id="skill_optimizer",
+            actor_type="system",
+            payload={
+                "skill_key": recommendation.skill_key,
+                "skill_version": recommendation.skill_version,
+                "recommendation_type": recommendation.recommendation_type,
+                "status": recommendation.status,
+                "confidence": recommendation.confidence,
+            },
+            audit_required=False,
+        )
+
+    async def _emit_status_transition_event(
+        self,
+        db: AsyncSession,
+        recommendation: SkillOptimizerRecommendationModel,
+        previous_status: str,
+        actor_id: str,
+        reason: str | None,
+    ) -> None:
+        payload: dict[str, Any] = {
+            "skill_key": recommendation.skill_key,
+            "skill_version": recommendation.skill_version,
+            "recommendation_type": recommendation.recommendation_type,
+            "previous_status": previous_status,
+            "new_status": recommendation.status,
+        }
+        if reason:
+            payload["reason"] = reason
+
+        await record_control_plane_event(
+            db=db,
+            tenant_id=recommendation.tenant_id,
+            entity_type="optimizer_recommendation",
+            entity_id=str(recommendation.id),
+            event_type="optimizer.recommendation.status_changed.v1",
+            correlation_id=None,
+            mission_id=None,
+            actor_id=actor_id,
+            actor_type="human",
+            payload=payload,
+            audit_required=True,
+            audit_action="optimizer_recommendation_status_changed",
+            audit_message="Optimizer recommendation status changed",
+            severity="info",
+        )
+
     async def generate_for_skill(self, db: AsyncSession, tenant_id: str | None, skill_key: str) -> list[SkillOptimizerRecommendationModel]:
         query = select(SkillRunModel).where(SkillRunModel.skill_key == skill_key)
         if tenant_id:
@@ -83,6 +146,9 @@ class SkillOptimizerService:
             await db.commit()
             for item in created:
                 await db.refresh(item)
+            for item in created:
+                await self._emit_recommendation_event(db, item)
+            await db.commit()
         return created
 
     async def list_for_skill(self, db: AsyncSession, tenant_id: str | None, skill_key: str) -> list[SkillOptimizerRecommendationModel]:
@@ -92,6 +158,54 @@ class SkillOptimizerService:
         query = query.order_by(desc(SkillOptimizerRecommendationModel.created_at))
         result = await db.execute(query)
         return list(result.scalars().all())
+
+    async def get_recommendation(
+        self,
+        db: AsyncSession,
+        recommendation_id,
+        tenant_id: str | None,
+    ) -> SkillOptimizerRecommendationModel | None:
+        query = select(SkillOptimizerRecommendationModel).where(SkillOptimizerRecommendationModel.id == recommendation_id)
+        if tenant_id:
+            query = query.where(SkillOptimizerRecommendationModel.tenant_id == tenant_id)
+        result = await db.execute(query.limit(1))
+        return result.scalar_one_or_none()
+
+    async def update_status(
+        self,
+        db: AsyncSession,
+        recommendation_id,
+        tenant_id: str | None,
+        status: OptimizerRecommendationStatus,
+        actor_id: str,
+        reason: str | None = None,
+    ) -> SkillOptimizerRecommendationModel | None:
+        recommendation = await self.get_recommendation(db, recommendation_id, tenant_id)
+        if recommendation is None:
+            return None
+
+        previous_status = str(recommendation.status)
+        target_status = status.value
+        if previous_status == target_status:
+            return recommendation
+        if previous_status != OptimizerRecommendationStatus.OPEN.value:
+            raise ValueError(
+                f"Recommendation status transition not allowed: {previous_status} -> {target_status}"
+            )
+        if target_status == OptimizerRecommendationStatus.OPEN.value:
+            raise ValueError("Recommendation status transition not allowed: open -> open")
+
+        recommendation.status = target_status
+        await self._emit_status_transition_event(
+            db,
+            recommendation,
+            previous_status=previous_status,
+            actor_id=actor_id,
+            reason=reason,
+        )
+        await db.commit()
+        await db.refresh(recommendation)
+        return recommendation
 
 
 _skill_optimizer_service: SkillOptimizerService | None = None

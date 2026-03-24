@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from uuid import uuid4
 
 import importlib
@@ -14,6 +15,7 @@ from app.core.database import get_db
 from app.modules.skill_evaluator.router import router as skill_evaluator_router
 from app.modules.skill_evaluator.service import SkillEvaluatorService
 from app.modules.skill_optimizer.router import router as skill_optimizer_router
+from app.modules.skill_optimizer.schemas import OptimizerRecommendationStatus
 from app.modules.skill_optimizer.service import SkillOptimizerService
 
 
@@ -80,6 +82,7 @@ def test_skill_evaluator_builds_failed_summary() -> None:
 @pytest.mark.asyncio
 async def test_skill_optimizer_generates_failure_recommendation() -> None:
     service = SkillOptimizerService()
+    emitted_events: list[str] = []
 
     class FakeScalarResult:
         def __init__(self, items):
@@ -122,9 +125,70 @@ async def test_skill_optimizer_generates_failure_recommendation() -> None:
             return None
 
     db = FakeDb()
+    async def _emit_event(_db, recommendation):  # noqa: ANN001
+        emitted_events.append(recommendation.recommendation_type)
+
+    service._emit_recommendation_event = _emit_event  # type: ignore[method-assign]
     recs = await service.generate_for_skill(db, "tenant-a", "demo.skill")
     assert len(recs) >= 1
     assert any(rec.recommendation_type == "review_capability_sequence" for rec in recs)
+    assert emitted_events
+
+
+@pytest.mark.asyncio
+async def test_skill_optimizer_emits_event_per_recommendation() -> None:
+    service = SkillOptimizerService()
+    emitted_events: list[str] = []
+
+    class FakeScalarResult:
+        def __init__(self, items):
+            self._items = items
+
+        def all(self):
+            return self._items
+
+    class FakeResult:
+        def __init__(self, items):
+            self._items = items
+
+        def scalars(self):
+            return FakeScalarResult(self._items)
+
+    class FakeDb:
+        def __init__(self):
+            self.added = []
+            self.calls = 0
+
+        async def execute(self, query):
+            self.calls += 1
+            if self.calls == 1:
+                return FakeResult([
+                    type("Run", (), {"id": uuid4(), "state": "failed", "cost_actual": 2.0, "cost_estimate": 1.0, "skill_version": 2, "created_at": datetime.now(timezone.utc)})(),
+                    type("Run", (), {"id": uuid4(), "state": "failed", "cost_actual": 3.0, "cost_estimate": 1.0, "skill_version": 2, "created_at": datetime.now(timezone.utc)})(),
+                ])
+            return FakeResult([
+                type("Evaluation", (), {"id": uuid4(), "overall_score": 0.0, "passed": False, "created_at": datetime.now(timezone.utc)})(),
+                type("Evaluation", (), {"id": uuid4(), "overall_score": 0.0, "passed": False, "created_at": datetime.now(timezone.utc)})(),
+            ])
+
+        def add(self, item):
+            self.added.append(item)
+
+        async def commit(self):
+            return None
+
+        async def refresh(self, item):
+            return None
+
+    async def _emit_event(_db, recommendation):  # noqa: ANN001
+        emitted_events.append(recommendation.recommendation_type)
+
+    service._emit_recommendation_event = _emit_event  # type: ignore[method-assign]
+    db = FakeDb()
+    recs = await service.generate_for_skill(db, "tenant-a", "demo.skill")
+
+    assert recs
+    assert len(emitted_events) == len(recs)
 
 
 @pytest.fixture
@@ -179,6 +243,109 @@ def test_optimizer_generate_route_uses_service(evaluation_optimizer_client: Test
         response = evaluation_optimizer_client.post("/api/optimizer/recommendations", params={"skill_key": "demo.skill"})
     assert response.status_code == 200
     assert response.json()["items"][0]["recommendation_type"] == "review_capability_sequence"
+
+
+def test_optimizer_status_update_route_uses_service(
+    evaluation_optimizer_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    principal = build_principal()
+    recommendation_id = uuid4()
+    router_module = importlib.import_module("app.modules.skill_optimizer.router")
+
+    class FakeService:
+        async def update_status(self, db, recommendation_id, tenant_id, status, actor_id, reason):  # noqa: ANN001
+            assert tenant_id == principal.tenant_id
+            assert status.value == "accepted"
+            return {
+                "id": recommendation_id,
+                "tenant_id": tenant_id,
+                "skill_key": "demo.skill",
+                "skill_version": 2,
+                "recommendation_type": "review_capability_sequence",
+                "confidence": 0.9,
+                "status": "accepted",
+                "rationale": "ok",
+                "evidence": {},
+                "source_snapshot": {},
+                "created_at": datetime.now(timezone.utc),
+                "created_by": actor_id,
+            }
+
+    monkeypatch.setattr(router_module, "get_skill_optimizer_service", lambda: FakeService())
+    with override_auth_principal(evaluation_optimizer_client, principal):
+        response = evaluation_optimizer_client.patch(
+            f"/api/optimizer/recommendations/{recommendation_id}/status",
+            json={"status": "accepted", "reason": "approved by operator"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "accepted"
+
+
+@pytest.mark.asyncio
+async def test_optimizer_status_update_emits_transition_event() -> None:
+    service = SkillOptimizerService()
+    recommendation_id = uuid4()
+    emitted_events: list[tuple[str, str, str]] = []
+
+    class FakeDb:
+        def __init__(self) -> None:
+            self.recommendation = SimpleNamespace(
+                id=recommendation_id,
+                tenant_id="tenant-a",
+                skill_key="demo.skill",
+                skill_version=2,
+                recommendation_type="review_capability_sequence",
+                confidence=0.8,
+                status="open",
+                rationale="review",
+                evidence={},
+                source_snapshot={},
+                created_at=datetime.now(timezone.utc),
+                created_by="skill_optimizer",
+            )
+
+        async def execute(self, query):  # noqa: ANN001
+            class _Result:
+                def __init__(self, item):
+                    self.item = item
+
+                def scalar_one_or_none(self):
+                    return self.item
+
+            return _Result(self.recommendation)
+
+        async def commit(self):
+            return None
+
+        async def refresh(self, _item):
+            return None
+
+    async def _emit_status_transition_event(  # noqa: ANN001
+        db,
+        recommendation,
+        previous_status,
+        actor_id,
+        reason,
+    ):
+        emitted_events.append((previous_status, recommendation.status, actor_id))
+
+    service._emit_status_transition_event = _emit_status_transition_event  # type: ignore[method-assign]
+    db = FakeDb()
+
+    updated = await service.update_status(
+        db,
+        recommendation_id=recommendation_id,
+        tenant_id="tenant-a",
+        status=OptimizerRecommendationStatus.ACCEPTED,
+        actor_id="operator-123",
+        reason="approved",
+    )
+
+    assert updated is not None
+    assert updated.status == "accepted"
+    assert emitted_events == [("open", "accepted", "operator-123")]
 
 
 def test_evaluation_get_route_uses_service(evaluation_optimizer_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
