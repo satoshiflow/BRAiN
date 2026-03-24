@@ -2,5 +2,5 @@
 import { redirect } from "next/navigation";
 
 export default function SettingsRedirect() {
-  redirect("/settings/general");
+  redirect("/settings/llm-providers");
 }
