@@ -15,7 +15,6 @@ from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
-from .db_adapter import get_db_adapter
 from .schemas import (
     ConversationTurn,
     MemoryEntry,
@@ -57,6 +56,7 @@ class ContextManager:
         agent_id: str,
         max_tokens: int = 8000,
         metadata: Optional[Dict[str, Any]] = None,
+        tenant_id: Optional[str] = None,
     ) -> SessionContext:
         """
         Start a new session for an agent.
@@ -65,11 +65,13 @@ class ContextManager:
         (important context promoted to episodic memory).
         """
         # End existing session if any
-        existing_sid = self._agent_sessions.get(agent_id)
+        session_key = f"{tenant_id or 'global'}:{agent_id}"
+        existing_sid = self._agent_sessions.get(session_key)
         if existing_sid:
-            await self.end_session(existing_sid)
+            await self.end_session(existing_sid, tenant_id=tenant_id)
 
         session = SessionContext(
+            tenant_id=tenant_id,
             agent_id=agent_id,
             max_tokens=max_tokens,
         )
@@ -77,18 +79,18 @@ class ContextManager:
             session.context_vars.update(metadata)
 
         await self.store.create_session(session)
-        self._agent_sessions[agent_id] = session.session_id
+        self._agent_sessions[session_key] = session.session_id
 
         logger.info("▶️ Session started: %s (agent=%s)", session.session_id, agent_id)
         return session
 
-    async def end_session(self, session_id: str) -> Optional[Dict]:
+    async def end_session(self, session_id: str, tenant_id: Optional[str] = None) -> Optional[Dict]:
         """
         End a session and promote important context to episodic memory.
 
         Returns summary of what was promoted.
         """
-        session = await self.store.get_session(session_id)
+        session = await self.store.get_session_for_tenant(session_id, tenant_id)
         if not session:
             return None
 
@@ -129,8 +131,8 @@ class ContextManager:
             promoted += 1
 
         # Clean up
-        self._agent_sessions.pop(session.agent_id, None)
-        await self.store.delete_session(session_id)
+        self._agent_sessions.pop(f"{session.tenant_id or 'global'}:{session.agent_id}", None)
+        await self.store.delete_session(session_id, tenant_id=tenant_id)
 
         logger.info("⏹️ Session ended: %s (promoted %d memories)", session_id, promoted)
         return {"session_id": session_id, "promoted": promoted}
@@ -145,6 +147,7 @@ class ContextManager:
         role: str,
         content: str,
         metadata: Optional[Dict[str, Any]] = None,
+        tenant_id: Optional[str] = None,
     ) -> Optional[ConversationTurn]:
         """
         Add a conversation turn to the session.
@@ -154,7 +157,7 @@ class ContextManager:
 
         Returns the created turn, or None if session not found.
         """
-        session = await self.store.get_session(session_id)
+        session = await self.store.get_session_for_tenant(session_id, tenant_id)
         if not session:
             return None
 
@@ -167,7 +170,7 @@ class ContextManager:
         )
 
         # Persist turn to database
-        db = await get_db_adapter()
+        db = await self.store._get_db()
         await db.add_turn(session_id, turn)
         
         # Update session state
@@ -190,14 +193,14 @@ class ContextManager:
 
         return turn
 
-    async def get_context_window(self, session_id: str) -> Optional[Dict]:
+    async def get_context_window(self, session_id: str, tenant_id: Optional[str] = None) -> Optional[Dict]:
         """
         Get the current context window for an agent session.
 
         Returns the compressed summary (if any) plus recent turns,
         suitable for passing to an LLM.
         """
-        session = await self.store.get_session(session_id)
+        session = await self.store.get_session_for_tenant(session_id, tenant_id)
         if not session:
             return None
 
@@ -229,16 +232,16 @@ class ContextManager:
     # Context variables
     # ------------------------------------------------------------------
 
-    async def set_context_var(self, session_id: str, key: str, value: Any) -> bool:
+    async def set_context_var(self, session_id: str, key: str, value: Any, tenant_id: Optional[str] = None) -> bool:
         """Set a context variable for a session."""
-        session = await self.store.get_session(session_id)
+        session = await self.store.get_session_for_tenant(session_id, tenant_id)
         if not session:
             return False
         
         session.context_vars[key] = value
         
         # Persist to database
-        db = await get_db_adapter()
+        db = await self.store._get_db()
         await db.update_session(session_id, context_vars=session.context_vars)
         return True
 
@@ -258,6 +261,7 @@ class ContextManager:
         agent_id: str,
         limit: int = 20,
         min_importance: float = 30.0,
+        tenant_id: Optional[str] = None,
     ) -> List[MemoryEntry]:
         """
         Get an agent's cross-session history from episodic memory.
@@ -265,15 +269,16 @@ class ContextManager:
         Useful for providing historical context to an agent at session start.
         """
         return await self.store.query(
+            tenant_id=tenant_id,
             agent_id=agent_id,
             layer=MemoryLayer.EPISODIC,
             min_importance=min_importance,
             limit=limit,
         )
 
-    async def get_mission_context(self, mission_id: str) -> List[MemoryEntry]:
+    async def get_mission_context(self, mission_id: str, tenant_id: Optional[str] = None) -> List[MemoryEntry]:
         """Get all memories associated with a mission."""
-        return await self.store.query(mission_id=mission_id, limit=100)
+        return await self.store.query(mission_id=mission_id, tenant_id=tenant_id, limit=100)
 
     # ------------------------------------------------------------------
     # Compression
@@ -316,7 +321,7 @@ class ContextManager:
         session.total_tokens += _estimate_tokens(new_summary)
 
         # Persist updates to database
-        db = await get_db_adapter()
+        db = await self.store._get_db()
         await db.update_session(
             session.session_id,
             compressed_summary=session.compressed_summary,

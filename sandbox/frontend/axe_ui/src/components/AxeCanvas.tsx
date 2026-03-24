@@ -272,7 +272,7 @@ export function AxeCanvas({
                         🎨 Welcome to CANVAS mode!
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        Describe what you want to build, and I'll help you write
+                        Describe what you want to build, and I&apos;ll help you write
                         the code.
                       </p>
                     </div>

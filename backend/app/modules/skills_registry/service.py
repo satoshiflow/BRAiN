@@ -8,6 +8,7 @@ from sqlalchemy import Select, and_, desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth_deps import Principal
+from app.core.control_plane_events import record_control_plane_event
 from app.modules.capabilities_registry.models import CapabilityDefinitionModel
 
 from .models import SkillDefinitionModel
@@ -85,6 +86,10 @@ class SkillRegistryService:
             "risk_tier": data["risk_tier"],
             "policy_pack_ref": data["policy_pack_ref"],
             "trust_tier_min": data["trust_tier_min"],
+            "builder_role": data.get("builder_role", "manual"),
+            "definition_artifact_refs": data.get("definition_artifact_refs", []),
+            "example_artifact_refs": data.get("example_artifact_refs", []),
+            "builder_artifact_refs": data.get("builder_artifact_refs", []),
         }
 
     @staticmethod
@@ -238,11 +243,31 @@ class SkillRegistryService:
             risk_tier=payload.risk_tier.value,
             policy_pack_ref=payload.policy_pack_ref,
             trust_tier_min=payload.trust_tier_min.value,
+            builder_role=payload.builder_role,
+            definition_artifact_refs=payload.definition_artifact_refs,
+            example_artifact_refs=payload.example_artifact_refs,
+            builder_artifact_refs=payload.builder_artifact_refs,
             checksum_sha256=checksum,
             created_by=principal.principal_id,
             updated_by=principal.principal_id,
         )
         db.add(model)
+        await db.flush()
+        await record_control_plane_event(
+            db=db,
+            tenant_id=model.tenant_id,
+            entity_type="skill_definition",
+            entity_id=str(model.id),
+            event_type="skill.definition.created.v1",
+            correlation_id=None,
+            mission_id=None,
+            actor_id=principal.principal_id,
+            actor_type=principal.principal_type.value,
+            payload={"skill_key": model.skill_key, "version": model.version, "status": model.status},
+            audit_required=True,
+            audit_action="skill_definition_create",
+            audit_message="Skill definition created",
+        )
         await db.commit()
         await db.refresh(model)
         logger.info("Created skill definition {} v{}", model.skill_key, model.version)
@@ -276,6 +301,8 @@ class SkillRegistryService:
                 raise ValueError("required_capabilities must not be empty")
             await self._ensure_required_capabilities(db, definition.tenant_id, changes["required_capabilities"])
         for field, value in changes.items():
+            if field == "builder_role" and definition.status != SkillDefinitionStatus.DRAFT.value:
+                raise ValueError("builder_role is immutable after draft")
             if hasattr(value, "value"):
                 value = value.value
             setattr(definition, field, value)
@@ -324,6 +351,7 @@ class SkillRegistryService:
             return None
         if not self.is_transition_allowed(definition.status, target_status.value):
             raise ValueError(f"Illegal status transition: {definition.status} -> {target_status.value}")
+        previous_status = definition.status
         if target_status == SkillDefinitionStatus.ACTIVE:
             await self._ensure_required_capabilities(db, definition.tenant_id, definition.required_capabilities)
             active_result = await db.execute(
@@ -343,6 +371,33 @@ class SkillRegistryService:
         if target_status in {SkillDefinitionStatus.APPROVED, SkillDefinitionStatus.ACTIVE}:
             definition.approved_by = principal.principal_id
             definition.approved_at = definition.approved_at or definition.updated_at
+        event_map = {
+            SkillDefinitionStatus.REVIEW: "skill.definition.submitted.v1",
+            SkillDefinitionStatus.APPROVED: "skill.definition.approved.v1",
+            SkillDefinitionStatus.ACTIVE: "skill.definition.activated.v1",
+            SkillDefinitionStatus.DEPRECATED: "skill.definition.deprecated.v1",
+            SkillDefinitionStatus.REJECTED: "skill.definition.rejected.v1",
+        }
+        await record_control_plane_event(
+            db=db,
+            tenant_id=definition.tenant_id,
+            entity_type="skill_definition",
+            entity_id=str(definition.id),
+            event_type=event_map.get(target_status, f"skill.definition.{target_status.value}.v1"),
+            correlation_id=None,
+            mission_id=None,
+            actor_id=principal.principal_id,
+            actor_type=principal.principal_type.value,
+            payload={
+                "skill_key": definition.skill_key,
+                "version": definition.version,
+                "previous_status": previous_status,
+                "status": target_status.value,
+            },
+            audit_required=True,
+            audit_action=f"skill_definition_{target_status.value}",
+            audit_message=f"Skill definition moved to {target_status.value}",
+        )
         await db.commit()
         await db.refresh(definition)
         return definition

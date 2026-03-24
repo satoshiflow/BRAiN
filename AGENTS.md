@@ -137,6 +137,12 @@ All commands below are from repo root unless noted.
 - Keep API clients centralized (avoid duplicate fetch logic).
 - Prefer existing design system/components and current project structure.
 - Run lint/build before finalizing frontend changes.
+- MUST HAVE: never hardcode real deployment URLs or localhost hosts inside runtime app feature code.
+  Route all AXE/control-deck/widget service resolution through the central config/runtime resolver.
+  Hardcoded hosts are only acceptable in explicit test files, runbooks, or local-only examples.
+- MUST HAVE: isolate Next.js runtime artifacts by execution mode (`NEXT_DIST_DIR`), and avoid concurrent
+  dev/test servers writing to the same dist directory/port. E2E must use a dedicated port/distDir or
+  reuse an already-running server cleanly.
 
 ## 6) Architecture boundaries to preserve
 
@@ -175,6 +181,7 @@ All commands below are from repo root unless noted.
 - Keep architecture migration work documented under `docs/specs/*` and `docs/roadmap/*`.
 - For skill/runtime execution work, align specs with `docs/core/brain_skill_execution_standard.md`.
 - For multi-agent execution, align role usage and parallelization with `docs/core/agent_operating_matrix.md`.
+- For domain-aware orchestration work, align boundaries and rollout with `docs/specs/domain_agent_contract.md` and `docs/specs/domain_agent_integration_plan.md`.
 - Align long-running delivery execution with `docs/roadmap/BRAIN_SKILL_FIRST_IMPLEMENTATION_ROADMAP.md`.
 - Track the parallel learning/research delivery strand in `docs/roadmap/BRAIN_MISSION_DELIBERATION_INSIGHT_ROADMAP.md`.
 - For each Epic-level change, capture: scope, contracts, risks, and done criteria.
@@ -207,6 +214,7 @@ All commands below are from repo root unless noted.
 - Default working roles:
   - `brain-orchestrator`
   - `brain-architect`
+  - `brain-domain-orchestrator`
   - `brain-schema-designer`
   - `brain-runtime-engineer`
   - `brain-migration-engineer`
@@ -220,3 +228,73 @@ All commands below are from repo root unless noted.
   - implementation, tests, iterative coding -> primary coding model
   - repo exploration, summaries, inventories -> lower-cost model
 - Many agents may analyze in parallel, but one writer owns a given implementation surface at a time.
+
+## 12) GitHub specialist agent (`giti`) guidance
+
+- `giti` is the preferred specialist for Git/GitHub workflows (branch hygiene, PR create/edit, PR metadata updates).
+- Follow `docs/core/giti_playbook.md` for mandatory preflight checks and PR decision flow.
+- Before any PR action, ensure:
+  - `gh` is installed and available in PATH
+  - `gh auth status` is authenticated for the intended account
+  - existing PR state is checked to avoid duplicate PR creation
+- Prefer `gh pr edit` when a PR already exists for the branch.
+- Use `--body-file` for PR body updates to avoid shell quoting/substitution issues.
+- For long-lived branches, summarize the intended incremental delta, not the full historical diff.
+
+## 13) Local CI fallback mode (GitHub Actions unavailable)
+
+Use this mode when GitHub CI cannot run (for example billing lock, runner outage, or org policy block).
+
+### Operating principles
+
+- Do not block implementation work only because remote CI is unavailable.
+- Treat local verification as the authoritative gate until remote CI is restored.
+- Keep changes scoped and incremental; avoid large mixed changesets.
+
+### Required local verification by surface
+
+Recommended helper script (from repo root):
+
+- `./scripts/local_ci_gate.sh <backend|backend-fast|axe|axe-fast|all>`
+- The script writes a timestamped evidence report under `docs/roadmap/local_ci/`.
+- Optional automation: `./scripts/install_git_hooks.sh` to enable pre-push local CI checks.
+
+Backend changes:
+
+- Minimum loop verification:
+  - `cd backend && PYTHONPATH=. pytest <targeted suites> -q`
+- Pre-handoff and merge-candidate verification:
+  - `./scripts/run_rc_staging_gate.sh`
+
+AXE UI changes:
+
+- Run in `frontend/axe_ui`:
+  - `npm run lint`
+  - `npm run typecheck`
+  - `npm run build`
+  - `npm run test:e2e`
+- During intermediate loops, chromium-only E2E is acceptable; run full matrix before phase close.
+
+### Evidence requirements
+
+For each delivery slice, record:
+
+- commands executed
+- pass/fail result
+- notable warnings or blockers
+- timestamp
+
+Store evidence in handoff notes or roadmap/progress docs so status remains auditable without GitHub checks.
+
+### Branch and PR behavior while CI is blocked
+
+- Continue normal branch hygiene and small commits.
+- Keep PRs as coordination artifacts, but do not rely on GitHub check status while blocked.
+- If branch protection blocks merge on required checks, continue local-verified branch progression until CI is restored.
+
+### Re-entry when GitHub CI is restored
+
+1. Rebase or merge latest `main` into the working branch.
+2. Re-run full local verification gates.
+3. Re-run GitHub Actions checks.
+4. Resolve drift and only then merge.

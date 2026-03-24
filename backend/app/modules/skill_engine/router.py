@@ -80,3 +80,36 @@ async def cancel_skill_run(
     if item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Skill run {run_id} not found")
     return SkillRunResponse.model_validate(item)
+
+
+@router.post("/{run_id}/approve", response_model=SkillRunResponse)
+async def approve_skill_run(
+    run_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_role(SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN)),
+):
+    service = get_skill_engine_service()
+    try:
+        item = await service.approve_run(db, run_id, principal)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Skill run {run_id} not found")
+    return SkillRunResponse.model_validate(item)
+
+
+@router.post("/{run_id}/reject", response_model=SkillRunResponse)
+async def reject_skill_run(
+    run_id: UUID,
+    reason: str = Query(default="approval_rejected"),
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_role(SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN)),
+):
+    service = get_skill_engine_service()
+    try:
+        item = await service.reject_run(db, run_id, principal, reason=reason)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Skill run {run_id} not found")
+    return SkillRunResponse.model_validate(item)

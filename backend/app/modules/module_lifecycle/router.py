@@ -8,6 +8,7 @@ from app.core.database import get_db
 
 from .schemas import (
     ModuleClassification,
+    ModuleDecommissionLedgerResponse,
     ModuleDecommissionMatrix,
     ModuleLifecycleListResponse,
     ModuleLifecycleResponse,
@@ -111,3 +112,12 @@ async def get_decommission_matrix(
         sunset_phase=item.sunset_phase,
         notes=item.notes,
     )
+
+
+@router.get("/decommission/ledger", response_model=ModuleDecommissionLedgerResponse)
+async def get_decommission_ledger(
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_role(SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN)),
+):
+    items = await get_module_lifecycle_service().list_decommission_ledger(db)
+    return ModuleDecommissionLedgerResponse(items=items, total=len(items))

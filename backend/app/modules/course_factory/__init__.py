@@ -24,11 +24,6 @@ from app.modules.course_factory.schemas import (
     CourseGenerationRequest,
     CourseGenerationResult,
 )
-from app.modules.course_factory.service import (
-    CourseFactoryService,
-    get_course_factory_service,
-)
-
 __all__ = [
     # Schemas
     "CourseOutline",
@@ -45,3 +40,14 @@ __all__ = [
     "CourseFactoryService",
     "get_course_factory_service",
 ]
+
+
+def __getattr__(name: str):
+    if name in {"CourseFactoryService", "get_course_factory_service"}:
+        from app.modules.course_factory.service import CourseFactoryService, get_course_factory_service
+
+        return {
+            "CourseFactoryService": CourseFactoryService,
+            "get_course_factory_service": get_course_factory_service,
+        }[name]
+    raise AttributeError(f"module 'app.modules.course_factory' has no attribute {name!r}")

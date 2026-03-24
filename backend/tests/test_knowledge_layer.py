@@ -51,6 +51,9 @@ def test_knowledge_layer_search_and_run_lesson_ingest(monkeypatch) -> None:
         tags=["builder.webgenesis.generate", "succeeded"],
         content="SkillRun lesson",
         provenance_refs=[{"type": "skill_run", "id": str(run_id)}],
+        skill_run_id=run_id,
+        experience_record_id=None,
+        evaluation_result_id=None,
         valid_until=None,
         superseded_by_id=None,
         created_at="2026-03-08T00:00:00Z",
@@ -76,6 +79,9 @@ def test_knowledge_layer_search_and_run_lesson_ingest(monkeypatch) -> None:
     ingest_response = client.post(f"/api/knowledge-items/run-lessons/{run_id}")
     assert ingest_response.status_code == 201
     assert ingest_response.json()["knowledge_item"]["id"] == str(item_id)
+    assert ingest_response.headers.get("Deprecation") == "true"
+    assert ingest_response.headers.get("Sunset") is not None
+    assert "/api/experience/skill-runs/" in (ingest_response.headers.get("Link") or "")
 
 
 def test_knowledge_layer_ingest_returns_not_found(monkeypatch) -> None:
@@ -140,3 +146,28 @@ def test_knowledge_layer_write_blocked_when_retired(monkeypatch) -> None:
         },
     )
     assert response.status_code == 409
+
+
+def test_knowledge_layer_requires_tenant_context() -> None:
+    app = FastAPI()
+    app.include_router(knowledge_layer_router)
+
+    async def _db_override():
+        yield None
+
+    principal = Principal(
+        principal_id="system-admin-1",
+        principal_type=PrincipalType.HUMAN,
+        email="sysadmin@example.com",
+        name="SysAdmin",
+        roles=["SYSTEM_ADMIN"],
+        scopes=["read", "write"],
+        tenant_id=None,
+    )
+    app.dependency_overrides[get_db] = _db_override
+    app.dependency_overrides[require_auth] = lambda: principal
+    app.dependency_overrides[get_current_principal] = lambda: principal
+    client = TestClient(app)
+
+    response = client.get("/api/knowledge-items", params={"query": "lesson"})
+    assert response.status_code == 403

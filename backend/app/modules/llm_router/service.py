@@ -25,7 +25,10 @@ from .schemas import (
     ProviderStatus,
     ChatMessage,
     MessageRole,
+    OpenAIConfig,
     OllamaConfig,
+    AnthropicConfig,
+    OpenWebUIConfig,
     OpenRouterConfig,
 )
 
@@ -72,6 +75,20 @@ class LLMRouterService:
             site_name=os.getenv("OPENROUTER_SITE_NAME", "BRAiN"),
         )
 
+        openai_config = OpenAIConfig(
+            api_key=os.getenv("OPENAI_API_KEY"),
+            base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+            default_model=os.getenv("OPENAI_MODEL", "gpt-4-turbo-preview"),
+            organization=os.getenv("OPENAI_ORGANIZATION"),
+        )
+
+        anthropic_config = AnthropicConfig(
+            api_key=os.getenv("ANTHROPIC_API_KEY"),
+            base_url=os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com/v1"),
+            default_model=os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022"),
+            version=os.getenv("ANTHROPIC_VERSION", "2023-06-01"),
+        )
+
         openwebui_config = OpenWebUIConfig(
             host=os.getenv("OPENWEBUI_HOST", "http://localhost:3000"),
             api_key=os.getenv("OPENWEBUI_API_KEY"),
@@ -83,6 +100,8 @@ class LLMRouterService:
             ollama=ollama_config,
             openrouter=openrouter_config,
             openwebui=openwebui_config,
+            openai=openai_config,
+            anthropic=anthropic_config,
         )
 
     def _configure_litellm(self):

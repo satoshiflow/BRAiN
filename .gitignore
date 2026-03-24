@@ -67,6 +67,8 @@ node_modules/
 
 # Next.js build output
 .next/
+.next-dev/
+.next-e2e/
 out/
 dist/
 build/
@@ -77,6 +79,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 *.tsbuildinfo
+frontend/axe_ui/test-results/
 
 # Vercel
 .vercel/
@@ -135,3 +138,9 @@ Thumbs.db
 
 # Local external archive (do not commit)
 docs/archive/brain-team/
+
+# Generated local CI evidence snapshots (README/baseline may be tracked)
+docs/roadmap/local_ci/[0-9]*.md
+
+# Generated critic reports
+reports/critic/*.json

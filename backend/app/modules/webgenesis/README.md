@@ -1,5 +1,13 @@
 # WebGenesis Module
 
+> **DEPRECATION NOTICE (Execution Consolidation Wave 1)**  
+> Status: PLANNED_FOR_DEPRECATION  
+> Replacement Target: opencode worker (build/deploy/rollback)  
+> Sunset Phase: wave1-webgenesis-exec  
+> Rule: No new feature work; critical fixes only.  
+> See: `docs/specs/opencode_execution_consolidation_plan.md`
+
+
 **Version:** 1.0.0 (Sprint I MVP)
 **Purpose:** AI-powered website generation and deployment system
 

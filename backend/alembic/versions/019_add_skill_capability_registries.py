@@ -129,18 +129,18 @@ def upgrade() -> None:
         "CREATE INDEX IF NOT EXISTS ix_skill_definitions_key_scope_version ON skill_definitions (skill_key, owner_scope, version);"
     )
 
+    op.execute("DROP TRIGGER IF EXISTS update_capability_definitions_updated_at ON capability_definitions;")
     op.execute(
         """
-        DROP TRIGGER IF EXISTS update_capability_definitions_updated_at ON capability_definitions;
         CREATE TRIGGER update_capability_definitions_updated_at
             BEFORE UPDATE ON capability_definitions
             FOR EACH ROW
             EXECUTE FUNCTION update_updated_at_column();
         """
     )
+    op.execute("DROP TRIGGER IF EXISTS update_skill_definitions_updated_at ON skill_definitions;")
     op.execute(
         """
-        DROP TRIGGER IF EXISTS update_skill_definitions_updated_at ON skill_definitions;
         CREATE TRIGGER update_skill_definitions_updated_at
             BEFORE UPDATE ON skill_definitions
             FOR EACH ROW

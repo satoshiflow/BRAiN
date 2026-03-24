@@ -1,12 +1,11 @@
 /**
- * AXE UI - Main Exports
- * Export all public APIs for the AXE widget
+ * AXE UI - Canonical Public Exports
  */
 
-// Main Component
-export { FloatingAxe } from './components/FloatingAxe';
+export { default as FloatingAxe } from "./widget";
+export * from "./widget";
 
-// Types
+// Legacy compatibility types/stores (deprecated)
 export type {
   FloatingAxeProps,
   AxeConfig,
@@ -18,9 +17,8 @@ export type {
   AxeDiff,
   AxeEvent,
   AxeTrainingMode,
-  AxeAnonymizationLevel
-} from './types';
+  AxeAnonymizationLevel,
+} from "./types";
 
-// Stores (for advanced usage)
-export { useAxeStore } from './store/axeStore';
-export { useDiffStore } from './store/diffStore';
+export { useAxeStore } from "./store/axeStore";
+export { useDiffStore } from "./store/diffStore";

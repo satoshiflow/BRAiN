@@ -90,3 +90,90 @@ def test_mission_templates_create_blocked_when_deprecated(monkeypatch) -> None:
         },
     )
     assert response.status_code == 409
+
+
+def test_mission_templates_update_blocked_when_retired(monkeypatch) -> None:
+    app = FastAPI()
+    app.include_router(mission_templates_router)
+    fake_db = object()
+    principal = _principal()
+
+    async def _db_override():
+        yield fake_db
+
+    app.dependency_overrides[get_db] = _db_override
+    app.dependency_overrides[require_auth] = lambda: principal
+    client = TestClient(app)
+
+    route_module = __import__("app.modules.missions.router", fromlist=["router"])
+
+    class FakeLifecycleService:
+        async def get_module(self, db, module_id):
+            assert db is fake_db
+            assert module_id == "missions"
+            return SimpleNamespace(lifecycle_status="retired")
+
+    monkeypatch.setattr(route_module, "get_module_lifecycle_service", lambda: FakeLifecycleService())
+
+    response = client.put(
+        "/api/missions/templates/template-1",
+        json={"name": "blocked update"},
+    )
+    assert response.status_code == 409
+
+
+def test_mission_templates_delete_blocked_when_retired(monkeypatch) -> None:
+    app = FastAPI()
+    app.include_router(mission_templates_router)
+    fake_db = object()
+    principal = _principal()
+
+    async def _db_override():
+        yield fake_db
+
+    app.dependency_overrides[get_db] = _db_override
+    app.dependency_overrides[require_auth] = lambda: principal
+    client = TestClient(app)
+
+    route_module = __import__("app.modules.missions.router", fromlist=["router"])
+
+    class FakeLifecycleService:
+        async def get_module(self, db, module_id):
+            assert db is fake_db
+            assert module_id == "missions"
+            return SimpleNamespace(lifecycle_status="retired")
+
+    monkeypatch.setattr(route_module, "get_module_lifecycle_service", lambda: FakeLifecycleService())
+
+    response = client.delete("/api/missions/templates/template-1")
+    assert response.status_code == 409
+
+
+def test_mission_templates_instantiate_blocked_when_retired(monkeypatch) -> None:
+    app = FastAPI()
+    app.include_router(mission_templates_router)
+    fake_db = object()
+    principal = _principal()
+
+    async def _db_override():
+        yield fake_db
+
+    app.dependency_overrides[get_db] = _db_override
+    app.dependency_overrides[require_auth] = lambda: principal
+    client = TestClient(app)
+
+    route_module = __import__("app.modules.missions.router", fromlist=["router"])
+
+    class FakeLifecycleService:
+        async def get_module(self, db, module_id):
+            assert db is fake_db
+            assert module_id == "missions"
+            return SimpleNamespace(lifecycle_status="retired")
+
+    monkeypatch.setattr(route_module, "get_module_lifecycle_service", lambda: FakeLifecycleService())
+
+    response = client.post(
+        "/api/missions/templates/template-1/instantiate",
+        json={"variables": {"source": "x"}, "mission_name": "blocked instantiate"},
+    )
+    assert response.status_code == 409

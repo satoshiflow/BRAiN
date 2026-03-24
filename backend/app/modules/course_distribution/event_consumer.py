@@ -349,7 +349,7 @@ class DistributionEventConsumer:
                 f"[DistributionConsumer] Error checking duplicate for {stream_message_id}: {e}",
                 exc_info=True
             )
-            return False  # Fail open on error
+            raise
 
     async def mark_processed(
         self,

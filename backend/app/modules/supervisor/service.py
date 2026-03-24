@@ -1,19 +1,25 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Any, List
 import time
-import logging
+import uuid
+from uuid import uuid4
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.agent_management.models import AgentModel, AgentStatus as ManagedAgentStatus
-from app.modules.skill_engine.models import SkillRunModel
+from .schemas import (
+    AgentStatus,
+    DomainEscalationDecisionRequest,
+    DomainEscalationRequest,
+    DomainEscalationResponse,
+    SupervisorHealth,
+    SupervisorStatus,
+)
 
-from .schemas import AgentStatus, SupervisorHealth, SupervisorStatus
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 # Optional EventStream import (Sprint 5: EventStream Integration)
 try:
@@ -24,6 +30,26 @@ except ImportError:
 
 # Module-level EventStream (Sprint 5: EventStream Integration)
 _event_stream: Any = None
+_domain_escalations: list[DomainEscalationResponse] = []
+
+_ALLOWED_ESCALATION_TRANSITIONS: dict[str, set[str]] = {
+    # queued -> in_review is a manual reviewer action via POST /escalations/domain/{id}/decision.
+    # There is no background worker that auto-advances to in_review.
+    # Reviewers must explicitly set status="in_review" before approving or denying.
+    "queued": {"in_review", "cancelled"},
+    "in_review": {"approved", "denied", "cancelled"},
+    "approved": set(),   # terminal
+    "denied": set(),     # terminal
+    "cancelled": set(),  # terminal
+}
+
+
+def _to_external_escalation_id(value: str) -> str:
+    return f"esc-{value}"
+
+
+def _from_external_escalation_id(value: str) -> str:
+    return value[4:] if value.startswith("esc-") else value
 
 
 def set_event_stream(stream: Any) -> None:
@@ -103,6 +129,8 @@ async def get_status(db: AsyncSession | None = None) -> SupervisorStatus:
     agents: List[AgentStatus] = []
 
     if db is not None:
+        from app.modules.skill_engine.models import SkillRunModel
+
         total = (await db.execute(select(func.count(SkillRunModel.id)))).scalar() or 0
         running = (
             await db.execute(select(func.count(SkillRunModel.id)).where(SkillRunModel.state == "running"))
@@ -126,6 +154,23 @@ async def get_status(db: AsyncSession | None = None) -> SupervisorStatus:
             )
         ).scalar() or 0
         agents = await list_agents(db)
+    else:
+        # Backward compatibility path used by legacy tests/callers that monkeypatch
+        # `get_stats()` and expect status aggregation from missions-like counters.
+        try:
+            stats_response = await get_stats()
+            stats = getattr(stats_response, "stats", None)
+            if stats is not None:
+                by_status = getattr(stats, "by_status", {}) or {}
+                total = int(getattr(stats, "total", 0) or 0)
+                running = int(by_status.get("RUNNING", 0) or 0)
+                pending = int(by_status.get("PENDING", 0) or 0)
+                completed = int(by_status.get("COMPLETED", 0) or 0)
+                failed = int(by_status.get("FAILED", 0) or 0)
+                cancelled = int(by_status.get("CANCELLED", 0) or 0)
+        except Exception:
+            # Keep non-blocking behavior and fall back to zeroed counters.
+            pass
 
     result = SupervisorStatus(
         status="ok",
@@ -166,6 +211,9 @@ async def list_agents(db: AsyncSession | None = None) -> List[AgentStatus]:
     result: List[AgentStatus] = []
 
     if db is not None:
+        from app.modules.agent_management.models import AgentModel, AgentStatus as ManagedAgentStatus
+        from app.modules.skill_engine.models import SkillRunModel
+
         running_query = (
             select(SkillRunModel.requested_by, func.count(SkillRunModel.id))
             .where(SkillRunModel.state == "running")
@@ -195,3 +243,263 @@ async def list_agents(db: AsyncSession | None = None) -> List[AgentStatus]:
     })
 
     return result
+
+
+async def get_stats() -> Any:
+    """Compatibility helper for legacy supervisor status consumers.
+
+    Returns an object with `.stats.total` and `.stats.by_status` fields.
+    Tests may monkeypatch this function directly.
+    """
+    try:
+        from app.modules.missions.service import get_stats as missions_get_stats
+
+        return await missions_get_stats()
+    except Exception:
+        # Stable fallback contract
+        return SimpleNamespace(
+            stats=SimpleNamespace(
+                total=0,
+                by_status={
+                    "PENDING": 0,
+                    "RUNNING": 0,
+                    "COMPLETED": 0,
+                    "FAILED": 0,
+                    "CANCELLED": 0,
+                },
+                last_updated=time.time(),
+            )
+        )
+
+
+async def create_domain_escalation_handoff(
+    payload: DomainEscalationRequest,
+    db: AsyncSession | None = None,
+) -> DomainEscalationResponse:
+    """Create a supervisor handoff record for a domain escalation."""
+    if db is not None:
+        from app.modules.supervisor.models import DomainEscalationModel
+
+        model = DomainEscalationModel(
+            tenant_id=payload.tenant_id,
+            domain_key=payload.domain_key,
+            requested_by=payload.requested_by,
+            requested_by_type=payload.requested_by_type,
+            status="queued",
+            reason=payload.reason,
+            reasons=payload.reasons,
+            recommended_next_actions=payload.recommended_next_actions,
+            risk_tier=payload.risk_tier,
+            correlation_id=payload.correlation_id,
+            context=payload.context,
+        )
+        db.add(model)
+        await db.commit()
+        await db.refresh(model)
+
+        item = DomainEscalationResponse(
+            escalation_id=_to_external_escalation_id(str(model.id)),
+            status=model.status,
+            received_at=model.created_at,
+            domain_key=model.domain_key,
+            requested_by=model.requested_by,
+            risk_tier=model.risk_tier,
+            correlation_id=model.correlation_id,
+            reviewed_by=model.reviewed_by,
+            reviewed_at=model.reviewed_at,
+            decision_reason=model.decision_reason,
+            notes=dict(model.context or {}).get("decision_notes", {}),
+        )
+    else:
+        item = DomainEscalationResponse(
+            escalation_id=_to_external_escalation_id(str(uuid4())),
+            status="queued",
+            received_at=datetime.now(timezone.utc),
+            domain_key=payload.domain_key,
+            requested_by=payload.requested_by,
+            risk_tier=payload.risk_tier,
+            correlation_id=payload.correlation_id,
+        )
+        _domain_escalations.insert(0, item)
+
+    received_payload = {
+        "escalation_id": item.escalation_id,
+        "domain_key": payload.domain_key,
+        "requested_by": payload.requested_by,
+        "risk_tier": payload.risk_tier,
+        "correlation_id": payload.correlation_id,
+        "received_at": item.received_at.timestamp(),
+    }
+    await _emit_event_safe("supervisor.domain_escalation.received.v1", received_payload)
+    await _emit_event_safe("supervisor.domain_escalation.received", received_payload)
+
+    return item
+
+
+async def list_domain_escalation_handoffs(
+    limit: int = 50,
+    db: AsyncSession | None = None,
+    tenant_id: str | None = None,
+) -> list[DomainEscalationResponse]:
+    """List recent supervisor escalation handoff records."""
+    limit = max(1, min(limit, 200))
+    if db is not None:
+        from app.modules.supervisor.models import DomainEscalationModel
+
+        query = select(DomainEscalationModel).order_by(DomainEscalationModel.created_at.desc())
+        if tenant_id is not None:
+            query = query.where(DomainEscalationModel.tenant_id == tenant_id)
+        result = await db.execute(query.limit(limit))
+        items = list(result.scalars().all())
+        return [
+            DomainEscalationResponse(
+                escalation_id=_to_external_escalation_id(str(item.id)),
+                status=item.status,
+                received_at=item.created_at,
+                domain_key=item.domain_key,
+                requested_by=item.requested_by,
+                risk_tier=item.risk_tier,
+                correlation_id=item.correlation_id,
+                reviewed_by=item.reviewed_by,
+                reviewed_at=item.reviewed_at,
+                decision_reason=item.decision_reason,
+                notes=dict(item.context or {}).get("decision_notes", {}),
+            )
+            for item in items
+        ]
+    return _domain_escalations[:limit]
+
+
+async def get_domain_escalation_handoff(
+    escalation_id: str,
+    db: AsyncSession | None = None,
+    tenant_id: str | None = None,
+) -> DomainEscalationResponse | None:
+    normalized_id = _from_external_escalation_id(escalation_id)
+    if db is not None:
+        from app.modules.supervisor.models import DomainEscalationModel
+
+        try:
+            escalation_uuid = uuid.UUID(normalized_id)
+        except ValueError:
+            return None
+
+        query = select(DomainEscalationModel).where(DomainEscalationModel.id == escalation_uuid)
+        if tenant_id is not None:
+            query = query.where(DomainEscalationModel.tenant_id == tenant_id)
+        item = (await db.execute(query.limit(1))).scalar_one_or_none()
+        if item is None:
+            return None
+        return DomainEscalationResponse(
+            escalation_id=_to_external_escalation_id(str(item.id)),
+            status=item.status,
+            received_at=item.created_at,
+            domain_key=item.domain_key,
+            requested_by=item.requested_by,
+            risk_tier=item.risk_tier,
+            correlation_id=item.correlation_id,
+            reviewed_by=item.reviewed_by,
+            reviewed_at=item.reviewed_at,
+            decision_reason=item.decision_reason,
+            notes=dict(item.context or {}).get("decision_notes", {}),
+        )
+
+    for item in _domain_escalations:
+        if item.escalation_id == escalation_id:
+            return item
+    return None
+
+
+async def decide_domain_escalation_handoff(
+    escalation_id: str,
+    decision: DomainEscalationDecisionRequest,
+    db: AsyncSession | None = None,
+    tenant_id: str | None = None,
+) -> DomainEscalationResponse | None:
+    normalized_id = _from_external_escalation_id(escalation_id)
+    if db is not None:
+        from app.modules.supervisor.models import DomainEscalationModel
+
+        try:
+            escalation_uuid = uuid.UUID(normalized_id)
+        except ValueError:
+            return None
+
+        query = select(DomainEscalationModel).where(DomainEscalationModel.id == escalation_uuid)
+        if tenant_id is not None:
+            query = query.where(DomainEscalationModel.tenant_id == tenant_id)
+        model = (await db.execute(query.limit(1))).scalar_one_or_none()
+        if model is None:
+            return None
+
+        current_status = str(model.status)
+        next_status = decision.status.value
+        if next_status != current_status and next_status not in _ALLOWED_ESCALATION_TRANSITIONS.get(current_status, set()):
+            raise ValueError(f"Invalid escalation transition: {current_status} -> {next_status}")
+
+        model.status = next_status
+        model.reviewed_by = decision.reviewer_id
+        model.reviewed_at = datetime.now(timezone.utc)
+        model.decision_reason = decision.decision_reason
+        context = dict(model.context or {})
+        context["decision_notes"] = decision.notes
+        model.context = context
+        model.updated_at = datetime.now(timezone.utc)
+        await db.commit()
+        await db.refresh(model)
+
+        decided_payload = {
+            "escalation_id": _to_external_escalation_id(str(model.id)),
+            "status": model.status,
+            "reviewed_by": decision.reviewer_id,
+            "risk_tier": model.risk_tier,
+        }
+        await _emit_event_safe("supervisor.domain_escalation.decided.v1", decided_payload)
+        await _emit_event_safe("supervisor.domain_escalation.decided", decided_payload)
+
+        return DomainEscalationResponse(
+            escalation_id=_to_external_escalation_id(str(model.id)),
+            status=model.status,
+            received_at=model.created_at,
+            domain_key=model.domain_key,
+            requested_by=model.requested_by,
+            risk_tier=model.risk_tier,
+            correlation_id=model.correlation_id,
+            reviewed_by=model.reviewed_by,
+            reviewed_at=model.reviewed_at,
+            decision_reason=model.decision_reason,
+            notes=dict(model.context or {}).get("decision_notes", {}),
+        )
+
+    for idx, item in enumerate(_domain_escalations):
+        if item.escalation_id == escalation_id:
+            current_status = item.status
+            next_status = decision.status.value
+            if next_status != current_status and next_status not in _ALLOWED_ESCALATION_TRANSITIONS.get(current_status, set()):
+                raise ValueError(f"Invalid escalation transition: {current_status} -> {next_status}")
+
+            updated = DomainEscalationResponse(
+                escalation_id=item.escalation_id,
+                status=next_status,
+                received_at=item.received_at,
+                domain_key=item.domain_key,
+                requested_by=item.requested_by,
+                risk_tier=item.risk_tier,
+                correlation_id=item.correlation_id,
+                reviewed_by=decision.reviewer_id,
+                reviewed_at=datetime.now(timezone.utc),
+                decision_reason=decision.decision_reason,
+                notes=decision.notes,
+            )
+            _domain_escalations[idx] = updated
+
+            decided_payload = {
+                "escalation_id": updated.escalation_id,
+                "status": updated.status,
+                "reviewed_by": decision.reviewer_id,
+                "risk_tier": updated.risk_tier,
+            }
+            await _emit_event_safe("supervisor.domain_escalation.decided.v1", decided_payload)
+            await _emit_event_safe("supervisor.domain_escalation.decided", decided_payload)
+            return updated
+    return None

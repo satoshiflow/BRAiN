@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,6 +13,12 @@ from app.core.database import get_db
 
 router = APIRouter(prefix="/api/capabilities", tags=["capability-runtime"], dependencies=[Depends(require_auth)])
 
+BLOCK_DIRECT_EXECUTE = os.getenv("BRAIN_BLOCK_DIRECT_CAPABILITY_EXECUTE", "true").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+}
+
 
 @router.post("/execute", response_model=CapabilityExecutionResponse)
 async def execute_capability(
@@ -18,6 +26,15 @@ async def execute_capability(
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(require_role(SystemRole.OPERATOR, SystemRole.ADMIN, SystemRole.SERVICE, SystemRole.SYSTEM_ADMIN)),
 ):
+    if BLOCK_DIRECT_EXECUTE:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error": "Direct capability execution blocked",
+                "code": "CAP_DIRECT_EXECUTE_BLOCKED",
+                "message": "Use SkillRun via Skill Engine (or AXE frontdoor) instead of /api/capabilities/execute",
+            },
+        )
     service = get_capability_execution_service()
     enriched = payload.model_copy(update={"tenant_id": principal.tenant_id, "actor_id": principal.principal_id})
     try:

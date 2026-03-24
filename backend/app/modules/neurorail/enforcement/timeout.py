@@ -73,7 +73,7 @@ class TimeoutEnforcer:
             BudgetTimeoutExceededError: If timeout exceeded
         """
         context = context or {}
-        timeout_ms = budget.timeout_ms or 30000  # Default: 30s
+        timeout_ms = budget.timeout_ms if budget.timeout_ms is not None else 30000
         grace_period_ms = budget.grace_period_ms or 5000  # Default: 5s
 
         timeout_sec = timeout_ms / 1000.0
@@ -116,9 +116,10 @@ class TimeoutEnforcer:
 
             # Raise BudgetTimeoutExceededError
             raise BudgetTimeoutExceededError(
+                timeout_ms=timeout_ms,
+                elapsed_ms=elapsed_ms,
                 message=f"Execution exceeded timeout budget: {elapsed_ms:.2f}ms > {timeout_ms}ms",
-                error_code=NeuroRailErrorCode.BUDGET_TIMEOUT_EXCEEDED,
-                context={
+                details={
                     **context,
                     "timeout_ms": timeout_ms,
                     "elapsed_ms": elapsed_ms,
@@ -153,7 +154,7 @@ class TimeoutEnforcer:
             BudgetTimeoutExceededError: If timeout or grace period exceeded
         """
         context = context or {}
-        timeout_ms = budget.timeout_ms or 30000
+        timeout_ms = budget.timeout_ms if budget.timeout_ms is not None else 30000
         grace_period_ms = budget.grace_period_ms or 5000
 
         timeout_sec = timeout_ms / 1000.0
@@ -220,9 +221,13 @@ class TimeoutEnforcer:
 
             # Raise BudgetTimeoutExceededError
             raise BudgetTimeoutExceededError(
-                message=f"Execution exceeded timeout budget: {elapsed_ms:.2f}ms > {timeout_ms}ms",
-                error_code=NeuroRailErrorCode.BUDGET_TIMEOUT_EXCEEDED,
-                context={
+                timeout_ms=timeout_ms,
+                elapsed_ms=elapsed_ms,
+                message=(
+                    f"Execution exceeded timeout budget: {elapsed_ms:.2f}ms > "
+                    f"{timeout_ms}ms"
+                ),
+                details={
                     **context,
                     "timeout_ms": timeout_ms,
                     "elapsed_ms": elapsed_ms,

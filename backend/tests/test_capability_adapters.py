@@ -61,6 +61,11 @@ class FakeCapabilityRegistryService:
         )()
 
 
+class FakeProviderBindingServiceNone:
+    async def resolve_binding_for_execution(self, db, capability_key, capability_version, tenant_id, policy_context):  # noqa: ANN001
+        return None
+
+
 def build_principal() -> Principal:
     return Principal(
         principal_id="operator-123",
@@ -146,7 +151,8 @@ async def test_connector_adapter_returns_normalized_error_for_missing_connector(
 
 
 @pytest.mark.asyncio
-async def test_capability_execution_service_rejects_binding_mismatch() -> None:
+async def test_capability_execution_service_rejects_binding_mismatch(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BRAIN_CAPABILITY_ALLOW_INMEMORY_FALLBACK", "true")
     service = CapabilityExecutionService(capability_registry=FakeCapabilityRegistryService(), binding_registry=InMemoryProviderBindingRegistry())
     request = CapabilityExecutionRequest(
         tenant_id="tenant-a",
@@ -182,3 +188,51 @@ def test_capability_runtime_routes_require_authentication(capability_runtime_cli
     with override_auth_unauthorized(capability_runtime_client):
         response = capability_runtime_client.get("/api/capabilities/bindings", params={"capability_key": "text.generate", "capability_version": 1})
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_resolve_binding_for_execution_requires_persistent_binding_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("BRAIN_CAPABILITY_ALLOW_INMEMORY_FALLBACK", raising=False)
+    service = CapabilityExecutionService(
+        capability_registry=FakeCapabilityRegistryService(),
+        binding_registry=InMemoryProviderBindingRegistry(),
+        provider_binding_service=FakeProviderBindingServiceNone(),
+    )
+
+    binding_result, selection = await service.resolve_binding_for_execution(
+        db=None,
+        tenant_id="tenant-a",
+        capability_key="text.generate",
+        capability_version=1,
+        policy_context={"source": "pytest"},
+    )
+
+    assert binding_result is None
+    assert selection is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_binding_for_execution_allows_compat_fallback_only_when_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("BRAIN_CAPABILITY_ALLOW_INMEMORY_FALLBACK", "true")
+    service = CapabilityExecutionService(
+        capability_registry=FakeCapabilityRegistryService(),
+        binding_registry=InMemoryProviderBindingRegistry(),
+        provider_binding_service=FakeProviderBindingServiceNone(),
+    )
+
+    binding_result, selection = await service.resolve_binding_for_execution(
+        db=None,
+        tenant_id="tenant-a",
+        capability_key="text.generate",
+        capability_version=1,
+        policy_context={"source": "pytest"},
+    )
+
+    assert binding_result is not None
+    assert binding_result.binding.provider_binding_id == "binding.text.generate.ollama.v1"
+    assert selection is not None
+    assert selection["selection_reason"] == "compat_in_memory_fallback"

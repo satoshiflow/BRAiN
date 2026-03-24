@@ -15,6 +15,7 @@ class SkillRunState(str, Enum):
     PLANNING = "planning"
     WAITING_APPROVAL = "waiting_approval"
     RUNNING = "running"
+    CANCEL_REQUESTED = "cancel_requested"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     CANCELLED = "cancelled"
@@ -51,7 +52,9 @@ class SkillRunResponse(BaseModel):
     requested_by: str
     requested_by_type: str
     trigger_type: TriggerType
+    policy_decision_id: UUID | None = None
     policy_decision: dict[str, Any]
+    policy_snapshot: dict[str, Any]
     risk_tier: str
     correlation_id: str
     causation_id: str | None = None
@@ -62,9 +65,14 @@ class SkillRunResponse(BaseModel):
     finished_at: datetime | None = None
     deadline_at: datetime | None = None
     retry_count: int
+    state_sequence: int = 0
+    state_changed_at: datetime | None = None
     cost_estimate: float | None = None
     cost_actual: float | None = None
     output_payload: dict[str, Any]
+    input_artifact_refs: list[dict[str, Any]] = Field(default_factory=list)
+    output_artifact_refs: list[dict[str, Any]] = Field(default_factory=list)
+    evidence_artifact_refs: list[dict[str, Any]] = Field(default_factory=list)
     evaluation_summary: dict[str, Any]
     failure_code: str | None = None
     failure_reason_sanitized: str | None = None

@@ -12,6 +12,7 @@ import { useAxeWebSocket } from '../hooks/useAxeWebSocket';
 import { useEventTelemetry } from '../hooks/useEventTelemetry';
 import { generateMessageId } from '../utils/id';
 import { cn } from '../utils/cn';
+import { getApiBase } from '../../lib/config';
 import type { AxeMode, AxeMessage } from '../types';
 
 interface AxeExpandedProps {
@@ -25,10 +26,8 @@ interface AxeExpandedProps {
 
 export function AxeExpanded({
   mode,
-  onModeChange,
   onMinimize,
   onOpenCanvas,
-  locale,
   theme
 }: AxeExpandedProps) {
   const [input, setInput] = useState('');
@@ -38,7 +37,7 @@ export function AxeExpanded({
   // WebSocket Connection
   // ============================================================================
   const { isConnected, sendChat } = useAxeWebSocket({
-    backendUrl: process.env.NEXT_PUBLIC_BRAIN_API_BASE || 'http://localhost:8000',
+    backendUrl: getApiBase(),
     sessionId: sessionId,
     onConnected: () => console.log('[AxeExpanded] WebSocket connected'),
     onDisconnected: () => console.log('[AxeExpanded] WebSocket disconnected'),
@@ -48,8 +47,8 @@ export function AxeExpanded({
   // ============================================================================
   // Event Telemetry (Phase 3)
   // ============================================================================
-  const { trackMessage, trackClick } = useEventTelemetry({
-    backendUrl: process.env.NEXT_PUBLIC_BRAIN_API_BASE || 'http://localhost:8000',
+  const { trackMessage } = useEventTelemetry({
+    backendUrl: getApiBase(),
     sessionId: sessionId,
     appId: config?.app_id || 'axe-expanded',
     anonymizationLevel: config?.telemetry?.anonymization_level || 'pseudonymized',
@@ -159,7 +158,7 @@ export function AxeExpanded({
           <div className="h-full flex items-center justify-center text-center">
             <div>
               <p className="text-muted-foreground mb-2">
-                👋 Hi! I'm AXE, your AI assistant.
+                👋 Hi! I&apos;m AXE, your AI assistant.
               </p>
               <p className="text-sm text-muted-foreground">
                 How can I help you today?

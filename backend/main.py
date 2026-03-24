@@ -43,6 +43,10 @@ from app.workers.autoscaler import start_autoscaler, stop_autoscaler
 
 # Metrics collector (Cluster System metrics collection)
 from app.workers.metrics_collector import start_metrics_collector, stop_metrics_collector
+from app.workers.axe_learning_scheduler import (
+    start_axe_learning_scheduler,
+    stop_axe_learning_scheduler,
+)
 
 # Event Stream (ADR-001: REQUIRED core infrastructure)
 try:
@@ -99,6 +103,9 @@ from app.modules.governor.router import router as governor_router
 from app.modules.axe_fusion.router import router as axe_fusion_router
 from app.modules.axe_identity.router import router as axe_identity_router
 from app.modules.axe_knowledge.router import router as axe_knowledge_router
+from app.modules.axe_presence.router import router as axe_presence_router
+from app.modules.axe_sessions.router import router as axe_sessions_router
+from app.modules.axe_worker_runs.router import router as axe_worker_runs_router
 from app.modules.axe_widget.router import router as axe_widget_router
 
 # Agent Management Router (Core Module - Phase 1)
@@ -117,6 +124,7 @@ from app.modules.config_management.router import router as config_management_rou
 from app.modules.audit_logging.router import router as audit_logging_router
 from app.modules.skills_registry.router import router as skills_registry_router
 from app.modules.capabilities_registry.router import router as capabilities_registry_router
+from app.modules.provider_bindings.router import router as provider_bindings_router
 from app.modules.capability_runtime.router import router as capability_runtime_router
 from app.modules.skill_engine.router import router as skill_engine_router
 from app.modules.skill_evaluator.router import router as skill_evaluator_router
@@ -125,6 +133,14 @@ from app.modules.memory.router import router as memory_router
 from app.modules.learning.router import router as learning_router
 from app.modules.webgenesis.router import router as webgenesis_router
 from app.modules.knowledge_layer.router import router as knowledge_layer_router
+from app.modules.experience_layer.router import router as experience_layer_router
+from app.modules.observer_core.router import router as observer_core_router
+from app.modules.insight_layer.router import router as insight_layer_router
+from app.modules.consolidation_layer.router import router as consolidation_layer_router
+from app.modules.evolution_control.router import router as evolution_control_router
+from app.modules.deliberation_layer.router import router as deliberation_layer_router
+from app.modules.discovery_layer.router import router as discovery_layer_router
+from app.modules.economy_layer.router import router as economy_layer_router
 from app.modules.module_lifecycle.router import router as module_lifecycle_router
 from app.modules.immune_orchestrator.router import router as immune_orchestrator_router
 from app.modules.recovery_policy_engine.router import router as recovery_policy_router
@@ -154,6 +170,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Startup
     configure_logging()
     logger.info(f"🧠 BRAiN Core v0.3.0 starting (env: {settings.environment})")
+    logger.info(f"🔧 Runtime mode: {settings.runtime_mode}")
+
+    # Runtime Mode Validation (Remote requires secrets)
+    if settings.runtime_mode == "remote":
+        required_remote_vars = ["DATABASE_URL", "REDIS_URL"]
+        missing = [var for var in required_remote_vars if not os.getenv(var)]
+        if missing:
+            raise RuntimeError(
+                f"Remote mode requires environment variables: {', '.join(missing)}. "
+                f"Set BRAIN_RUNTIME_MODE=local for local development or provide required secrets."
+            )
+        logger.info("✅ Remote mode validation passed")
 
     startup_profile = os.getenv("BRAIN_STARTUP_PROFILE", "full").lower()
     logger.info("🚀 Startup profile: %s", startup_profile)
@@ -260,6 +288,27 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         autoscaler_task = asyncio.create_task(start_autoscaler(check_interval=60))
         logger.info("✅ Autoscaler worker started (interval: 60s)")
 
+    # Start runtime auditor (Health System hardening - Sprint B)
+    runtime_auditor = None
+    if _feature_enabled("ENABLE_RUNTIME_AUDITOR", "true") and event_stream:
+        try:
+            from app.modules.runtime_auditor.service import get_runtime_auditor_service
+            immune_orchestrator = get_immune_orchestrator_service()
+            runtime_auditor = get_runtime_auditor_service(immune_orchestrator=immune_orchestrator)
+            await runtime_auditor.start()
+            logger.info("✅ Runtime auditor started (continuous monitoring active)")
+        except Exception as e:
+            logger.warning(f"⚠️ Runtime auditor not started: {e}")
+
+    # Start AXE learning scheduler worker (retention + candidate generation)
+    axe_learning_scheduler_task = None
+    if _feature_enabled("ENABLE_AXE_LEARNING_SCHEDULER", "false"):
+        interval_seconds = int(os.getenv("AXE_LEARNING_INTERVAL_SECONDS", "3600"))
+        axe_learning_scheduler_task = asyncio.create_task(
+            start_axe_learning_scheduler(interval_seconds=interval_seconds)
+        )
+        logger.info("✅ AXE learning scheduler started (interval: %ss)", interval_seconds)
+
     # Seed built-in skills (optional in local profiles)
     if _feature_enabled("ENABLE_BUILTIN_SKILL_SEED", "true"):
         try:
@@ -269,6 +318,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 await seed_builtin_skills(db)
         except Exception as e:
             logger.warning(f"⚠️ Could not seed built-in skills: {e}")
+
+    # Seed canonical AXE chat bridge skill/capability contract
+    if _feature_enabled("ENABLE_AXE_CHAT_SKILL_SEED", "true"):
+        try:
+            from app.modules.skills.axe_chat_skill_seeder import seed_axe_chat_skill_contract
+            from app.core.database import AsyncSessionLocal
+
+            async with AsyncSessionLocal() as db:
+                await seed_axe_chat_skill_contract(db)
+        except Exception as e:
+            logger.warning(f"⚠️ Could not seed AXE chat skill contract: {e}")
 
     logger.info("✅ All systems operational")
 
@@ -290,6 +350,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if autoscaler_task:
         stop_autoscaler()
         logger.info("🛑 Autoscaler worker stopped")
+
+    if runtime_auditor:
+        await runtime_auditor.stop()
+        logger.info("🛑 Runtime auditor stopped")
+
+    if axe_learning_scheduler_task:
+        stop_axe_learning_scheduler()
+        logger.info("🛑 AXE learning scheduler stopped")
 
     if redis:
         await redis.close()
@@ -326,14 +394,19 @@ def create_app() -> FastAPI:
         "https://axe.brain.falklabs.de",
         "http://localhost:3000",  # dev only
         "http://localhost:3001",  # dev only
+        "http://localhost:3002",  # AXE UI dev
+        "http://127.0.0.1:3000",  # dev only
+        "http://127.0.0.1:3001",  # dev only
+        "http://127.0.0.1:3002",  # AXE UI dev
     ]
 
     app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins,
+        allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
         allow_credentials=True,  # Safe because origins are explicitly whitelisted
-        allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
-        allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
+        allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+        allow_headers=["*"],
     )
 
     # UTF-8 Middleware - Ensures all JSON responses have charset=utf-8
@@ -436,6 +509,7 @@ def create_app() -> FastAPI:
     app.include_router(task_queue_router, tags=["tasks"])  # NEW: Task Queue (Core)
     app.include_router(skills_registry_router, tags=["skill-registry"])
     app.include_router(capabilities_registry_router, tags=["capability-registry"])
+    app.include_router(provider_bindings_router, tags=["provider-bindings"])
     app.include_router(capability_runtime_router, tags=["capability-runtime"])
     app.include_router(skill_engine_router, tags=["skill-engine"])
     app.include_router(skill_evaluator_router, tags=["skill-evaluator"])
@@ -444,6 +518,14 @@ def create_app() -> FastAPI:
     app.include_router(learning_router, tags=["learning"])
     app.include_router(webgenesis_router, tags=["webgenesis"])
     app.include_router(knowledge_layer_router, tags=["knowledge-layer"])
+    app.include_router(experience_layer_router, tags=["experience-layer"])
+    app.include_router(observer_core_router, tags=["observer-core"])
+    app.include_router(insight_layer_router, tags=["insight-layer"])
+    app.include_router(consolidation_layer_router, tags=["consolidation-layer"])
+    app.include_router(evolution_control_router, tags=["evolution-control"])
+    app.include_router(deliberation_layer_router, tags=["deliberation-layer"])
+    app.include_router(discovery_layer_router, tags=["discovery-layer"])
+    app.include_router(economy_layer_router, tags=["economy-layer"])
     app.include_router(module_lifecycle_router, tags=["module-lifecycle"])
     app.include_router(health_monitor_router, tags=["health"])  # NEW: Health Monitor (Core)
     app.include_router(config_management_router, tags=["config"])  # NEW: Config Management (Core)
@@ -486,6 +568,15 @@ def create_app() -> FastAPI:
 
     # AXE Identity Router (Identity Management)
     app.include_router(axe_identity_router, tags=["axe-identity"])
+
+    # AXE Presence Router (2035 surface signals)
+    app.include_router(axe_presence_router, tags=["axe-presence"])
+
+    # AXE Sessions Router (User-scoped chat sessions)
+    app.include_router(axe_sessions_router, tags=["axe-sessions"])
+
+    # AXE Worker Runs Router (Session-scoped worker polling)
+    app.include_router(axe_worker_runs_router, tags=["axe-workers"])
 
     # AXE Knowledge Router (Knowledge Base - TASK-003)
     app.include_router(axe_knowledge_router, tags=["axe-knowledge"])

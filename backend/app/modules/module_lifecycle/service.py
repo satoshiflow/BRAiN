@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .models import ModuleLifecycleModel
-from .schemas import ModuleClassification, ModuleLifecycleStatus
+from .schemas import ModuleClassification, ModuleDecommissionLedgerEntry, ModuleLifecycleStatus
 
 
 ALLOWED_TRANSITIONS: dict[ModuleLifecycleStatus, set[ModuleLifecycleStatus]] = {
@@ -66,6 +66,10 @@ class ModuleLifecycleService:
             raise ValueError(f"Invalid lifecycle transition: {current_status.value} -> {status.value}")
         if status in {ModuleLifecycleStatus.DEPRECATED, ModuleLifecycleStatus.RETIRED} and not (replacement_target or item.replacement_target):
             raise ValueError("replacement_target is required for deprecated or retired modules")
+        if status in {ModuleLifecycleStatus.DEPRECATED, ModuleLifecycleStatus.RETIRED} and not (sunset_phase or item.sunset_phase):
+            raise ValueError("sunset_phase is required for deprecated or retired modules")
+        if status == ModuleLifecycleStatus.RETIRED and not item.kill_switch:
+            raise ValueError("kill_switch is required before retiring a module")
 
         setattr(item, "lifecycle_status", status.value)
         if replacement_target is not None:
@@ -78,6 +82,39 @@ class ModuleLifecycleService:
         await db.commit()
         await db.refresh(item)
         return item
+
+    async def list_decommission_ledger(self, db: AsyncSession) -> list[ModuleDecommissionLedgerEntry]:
+        query = select(ModuleLifecycleModel).where(
+            ModuleLifecycleModel.lifecycle_status.in_(
+                [ModuleLifecycleStatus.DEPRECATED.value, ModuleLifecycleStatus.RETIRED.value]
+            )
+        )
+        result = await db.execute(query.order_by(ModuleLifecycleModel.module_id.asc()))
+        items = list(result.scalars().all())
+
+        ledger: list[ModuleDecommissionLedgerEntry] = []
+        for item in items:
+            blockers: list[str] = []
+            if not item.replacement_target:
+                blockers.append("missing_replacement_target")
+            if not item.sunset_phase:
+                blockers.append("missing_sunset_phase")
+            if item.lifecycle_status == ModuleLifecycleStatus.RETIRED.value and not item.kill_switch:
+                blockers.append("missing_kill_switch")
+
+            ledger.append(
+                ModuleDecommissionLedgerEntry(
+                    module_id=item.module_id,
+                    lifecycle_status=ModuleLifecycleStatus(item.lifecycle_status),
+                    replacement_target=item.replacement_target,
+                    kill_switch=item.kill_switch,
+                    sunset_phase=item.sunset_phase,
+                    migration_adapter=item.migration_adapter,
+                    decommission_ready=len(blockers) == 0,
+                    blockers=blockers,
+                )
+            )
+        return ledger
 
 
 _module_lifecycle_service: ModuleLifecycleService | None = None

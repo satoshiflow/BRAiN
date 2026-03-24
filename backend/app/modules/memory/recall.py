@@ -22,7 +22,6 @@ from typing import List, Optional
 
 from loguru import logger
 
-from .db_adapter import get_db_adapter
 from .schemas import (
     MemoryEntry,
     MemoryLayer,
@@ -63,6 +62,7 @@ class SelectiveRecall:
 
         # Get base candidates
         candidates = await self.store.query(
+            tenant_id=query.tenant_id,
             agent_id=query.agent_id,
             session_id=query.session_id,
             mission_id=query.mission_id,
@@ -117,7 +117,7 @@ class SelectiveRecall:
         )
 
         decayed = 0
-        db = await get_db_adapter()
+        db = await self.store._get_db()
         
         for mem in memories:
             last_access = mem.last_accessed_at or mem.created_at
@@ -205,7 +205,7 @@ class SelectiveRecall:
         memory.importance = new_importance
         
         # Persist reinforcement to database
-        db = await get_db_adapter()
+        db = await self.store._get_db()
         await db.update_memory(
             memory.memory_id,
             access_count=memory.access_count,

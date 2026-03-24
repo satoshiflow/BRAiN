@@ -10,13 +10,16 @@ import math
 import random
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from loguru import logger
 from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .ab_testing import ABTesting
+from .adaptive_behavior import AdaptiveBehavior
 from .models import LearningStrategyORM, ExperimentORM, MetricORM
+from .performance_tracker import PerformanceTracker
 from .schemas import (
     Experiment,
     ExperimentStatus,
@@ -38,6 +41,10 @@ class LearningService:
 
     def __init__(self, exploration_rate: float = 0.2) -> None:
         self._exploration_rate = exploration_rate
+        self._legacy_tracker = PerformanceTracker()
+        self._legacy_behavior = AdaptiveBehavior(exploration_rate=exploration_rate)
+        self._legacy_ab_testing = ABTesting()
+        self._db_session_cache: Dict[int, AsyncSession] = {}
 
         logger.info("🎓 LearningService initialized with PostgreSQL persistence (v%s)", MODULE_VERSION)
 
@@ -45,8 +52,30 @@ class LearningService:
     # Metrics
     # ------------------------------------------------------------------
 
-    async def record_metric(self, db: AsyncSession, entry: MetricEntry) -> MetricEntry:
+    def record_metric(self, *args: Any, **kwargs: Any) -> Any:
+        """Record metric (legacy sync and DB async compatibility)."""
+        db: Any = kwargs.get("db")
+        entry: Optional[MetricEntry] = kwargs.get("entry")
+
+        if len(args) == 1:
+            if self._is_db_like(args[0]) and db is None:
+                db = args[0]
+            elif entry is None:
+                entry = args[0]
+        elif len(args) >= 2:
+            db = args[0]
+            entry = args[1]
+
+        if entry is None:
+            raise TypeError("record_metric requires a MetricEntry")
+
+        if db is None:
+            return self._legacy_tracker.record(entry)
+        return self._record_metric_db(db, entry)
+
+    async def _record_metric_db(self, db: Any, entry: MetricEntry) -> MetricEntry:
         """Record a metric data point to the database."""
+        db = await self._resolve_db_session(db)
         metric = MetricORM(
             metric_id=entry.metric_id,
             agent_id=entry.agent_id,
@@ -64,6 +93,7 @@ class LearningService:
 
     async def query_metrics(self, db: AsyncSession, query: MetricQuery) -> List[MetricEntry]:
         """Query metrics from the database with filters."""
+        db = await self._resolve_db_session(db)
         stmt = select(MetricORM)
         
         if query.agent_id:
@@ -97,10 +127,32 @@ class LearningService:
             for m in metrics
         ]
 
-    async def summarize_metric(
-        self, db: AsyncSession, agent_id: str, metric_type: MetricType, since: Optional[float] = None,
+    def summarize_metric(self, *args: Any, **kwargs: Any) -> Any:
+        """Summarize metric (legacy sync and DB async compatibility)."""
+        db: Any = kwargs.get("db")
+        agent_id = kwargs.get("agent_id")
+        metric_type = kwargs.get("metric_type")
+        since = kwargs.get("since")
+
+        if len(args) == 2:
+            agent_id, metric_type = args
+        elif len(args) >= 3:
+            db, agent_id, metric_type = args[:3]
+            if len(args) >= 4 and since is None:
+                since = args[3]
+
+        if agent_id is None or metric_type is None:
+            raise TypeError("summarize_metric requires agent_id and metric_type")
+
+        if db is None:
+            return self._legacy_tracker.summarize(agent_id, metric_type, since)
+        return self._summarize_metric_db(db, agent_id, metric_type, since)
+
+    async def _summarize_metric_db(
+        self, db: Any, agent_id: str, metric_type: MetricType, since: Optional[float] = None,
     ) -> MetricSummary:
-        """Compute summary statistics for an agent's metric."""
+        """Compute summary statistics for an agent's metric from DB."""
+        db = await self._resolve_db_session(db)
         metric_type_value = metric_type.value if isinstance(metric_type, MetricType) else metric_type
         
         stmt = select(MetricORM).where(
@@ -147,6 +199,7 @@ class LearningService:
 
     async def get_agent_metrics(self, db: AsyncSession, agent_id: str) -> Dict[str, MetricSummary]:
         """Get summaries for all metric types of an agent."""
+        db = await self._resolve_db_session(db)
         stmt = select(MetricORM.metric_type).where(MetricORM.agent_id == agent_id).distinct()
         result = await db.execute(stmt)
         metric_types = result.scalars().all()
@@ -155,7 +208,7 @@ class LearningService:
         for mt in metric_types:
             try:
                 metric_type = MetricType(mt)
-                result[mt] = await self.summarize_metric(db, agent_id, metric_type)
+                result[mt] = await self._summarize_metric_db(db, agent_id, metric_type)
             except ValueError:
                 continue  # Skip unknown metric types
         
@@ -165,8 +218,30 @@ class LearningService:
     # Strategies
     # ------------------------------------------------------------------
 
-    async def register_strategy(self, db: AsyncSession, strategy: LearningStrategy) -> LearningStrategy:
+    def register_strategy(self, *args: Any, **kwargs: Any) -> Any:
+        """Register strategy (legacy sync and DB async compatibility)."""
+        db: Any = kwargs.get("db")
+        strategy: Optional[LearningStrategy] = kwargs.get("strategy")
+
+        if len(args) == 1:
+            if self._is_db_like(args[0]) and db is None:
+                db = args[0]
+            elif strategy is None:
+                strategy = args[0]
+        elif len(args) >= 2:
+            db = args[0]
+            strategy = args[1]
+
+        if strategy is None:
+            raise TypeError("register_strategy requires a LearningStrategy")
+
+        if db is None:
+            return self._legacy_behavior.register_strategy(strategy)
+        return self._register_strategy_db(db, strategy)
+
+    async def _register_strategy_db(self, db: Any, strategy: LearningStrategy) -> LearningStrategy:
         """Register a new learning strategy in the database."""
+        db = await self._resolve_db_session(db)
         # Check for duplicate name for this agent/domain
         stmt = select(LearningStrategyORM).where(
             and_(
@@ -207,8 +282,29 @@ class LearningService:
         logger.info("📝 Strategy registered: '%s' for %s/%s", strategy.name, strategy.agent_id, strategy.domain)
         return strategy
 
-    async def select_strategy(self, db: AsyncSession, agent_id: str, domain: str) -> Optional[LearningStrategy]:
+    def select_strategy(self, *args: Any, **kwargs: Any) -> Any:
+        """Select strategy (legacy sync and DB async compatibility)."""
+        db: Any = kwargs.get("db")
+        agent_id = kwargs.get("agent_id")
+        domain = kwargs.get("domain")
+
+        if len(args) == 2:
+            agent_id, domain = args
+        elif len(args) >= 3:
+            db, agent_id, domain = args[:3]
+
+        if agent_id is None or domain is None:
+            raise TypeError("select_strategy requires agent_id and domain")
+
+        if db is None:
+            return self._legacy_behavior.select_strategy(agent_id, domain)
+        return self._select_strategy_db(db, agent_id, domain)
+
+    async def _select_strategy_db(
+        self, db: Any, agent_id: str, domain: str
+    ) -> Optional[LearningStrategy]:
         """Select the best strategy using epsilon-greedy with KARMA weighting."""
+        db = await self._resolve_db_session(db)
         usable_statuses = [
             StrategyStatus.ACTIVE.value,
             StrategyStatus.CANDIDATE.value,
@@ -252,10 +348,37 @@ class LearningService:
         
         return self._strategy_from_orm(selected)
 
-    async def record_outcome(
-        self, db: AsyncSession, strategy_id: str, success: bool, metric_value: Optional[float] = None,
+    def record_outcome(self, *args: Any, **kwargs: Any) -> Any:
+        """Record outcome (legacy sync and DB async compatibility)."""
+        db: Any = kwargs.get("db")
+        strategy_id = kwargs.get("strategy_id")
+        success = kwargs.get("success")
+        metric_value = kwargs.get("metric_value")
+
+        if len(args) == 1:
+            strategy_id = args[0]
+        elif len(args) == 2:
+            strategy_id, success = args
+        elif len(args) == 3:
+            if self._is_db_like(args[0]):
+                db, strategy_id, success = args
+            else:
+                strategy_id, success, metric_value = args
+        elif len(args) >= 4:
+            db, strategy_id, success, metric_value = args[:4]
+
+        if strategy_id is None or success is None:
+            raise TypeError("record_outcome requires strategy_id and success")
+
+        if db is None:
+            return self._legacy_behavior.record_outcome(strategy_id, success, metric_value)
+        return self._record_outcome_db(db, strategy_id, success, metric_value)
+
+    async def _record_outcome_db(
+        self, db: Any, strategy_id: str, success: bool, metric_value: Optional[float] = None,
     ) -> Optional[LearningStrategy]:
         """Record outcome of applying a strategy."""
+        db = await self._resolve_db_session(db)
         stmt = select(LearningStrategyORM).where(LearningStrategyORM.strategy_id == strategy_id)
         result = await db.execute(stmt)
         strategy = result.scalar_one_or_none()
@@ -293,6 +416,7 @@ class LearningService:
         self, db: AsyncSession, agent_id: str, domain: Optional[str] = None, status: Optional[StrategyStatus] = None,
     ) -> List[LearningStrategy]:
         """Get strategies for an agent, optionally filtered."""
+        db = await self._resolve_db_session(db)
         stmt = select(LearningStrategyORM).where(LearningStrategyORM.agent_id == agent_id)
         
         if domain:
@@ -311,6 +435,7 @@ class LearningService:
 
     async def get_strategy(self, db: AsyncSession, strategy_id: str) -> Optional[LearningStrategy]:
         """Get a strategy by ID."""
+        db = await self._resolve_db_session(db)
         stmt = select(LearningStrategyORM).where(LearningStrategyORM.strategy_id == strategy_id)
         result = await db.execute(stmt)
         strategy = result.scalar_one_or_none()
@@ -322,6 +447,7 @@ class LearningService:
 
     async def promote_strategy(self, db: AsyncSession, strategy_id: str) -> Optional[LearningStrategy]:
         """Manually promote a strategy."""
+        db = await self._resolve_db_session(db)
         stmt = select(LearningStrategyORM).where(LearningStrategyORM.strategy_id == strategy_id)
         result = await db.execute(stmt)
         strategy = result.scalar_one_or_none()
@@ -338,6 +464,7 @@ class LearningService:
 
     async def demote_strategy(self, db: AsyncSession, strategy_id: str) -> Optional[LearningStrategy]:
         """Manually demote a strategy."""
+        db = await self._resolve_db_session(db)
         stmt = select(LearningStrategyORM).where(LearningStrategyORM.strategy_id == strategy_id)
         result = await db.execute(stmt)
         strategy = result.scalar_one_or_none()
@@ -356,8 +483,30 @@ class LearningService:
     # A/B Testing
     # ------------------------------------------------------------------
 
-    async def create_experiment(self, db: AsyncSession, experiment: Experiment) -> Experiment:
-        """Create a new A/B experiment."""
+    def create_experiment(self, *args: Any, **kwargs: Any) -> Any:
+        """Create experiment (legacy sync and DB async compatibility)."""
+        db: Any = kwargs.get("db")
+        experiment: Optional[Experiment] = kwargs.get("experiment")
+
+        if len(args) == 1:
+            if self._is_db_like(args[0]) and db is None:
+                db = args[0]
+            elif experiment is None:
+                experiment = args[0]
+        elif len(args) >= 2:
+            db = args[0]
+            experiment = args[1]
+
+        if experiment is None:
+            raise TypeError("create_experiment requires an Experiment")
+
+        if db is None:
+            return self._legacy_ab_testing.create_experiment(experiment)
+        return self._create_experiment_db(db, experiment)
+
+    async def _create_experiment_db(self, db: Any, experiment: Experiment) -> Experiment:
+        """Create a new A/B experiment in DB."""
+        db = await self._resolve_db_session(db)
         orm_experiment = ExperimentORM(
             experiment_id=experiment.experiment_id,
             name=experiment.name,
@@ -393,8 +542,26 @@ class LearningService:
         logger.info("🧪 Experiment created: '%s' (%s)", experiment.name, experiment.experiment_id)
         return experiment
 
-    async def start_experiment(self, db: AsyncSession, experiment_id: str) -> Optional[Experiment]:
-        """Start an experiment (DRAFT → RUNNING)."""
+    def start_experiment(self, *args: Any, **kwargs: Any) -> Any:
+        """Start experiment (legacy sync and DB async compatibility)."""
+        db: Any = kwargs.get("db")
+        experiment_id = kwargs.get("experiment_id")
+
+        if len(args) == 1:
+            experiment_id = args[0]
+        elif len(args) >= 2:
+            db, experiment_id = args[:2]
+
+        if experiment_id is None:
+            raise TypeError("start_experiment requires experiment_id")
+
+        if db is None:
+            return self._legacy_ab_testing.start_experiment(experiment_id)
+        return self._start_experiment_db(db, experiment_id)
+
+    async def _start_experiment_db(self, db: Any, experiment_id: str) -> Optional[Experiment]:
+        """Start an experiment (DRAFT -> RUNNING) in DB."""
+        db = await self._resolve_db_session(db)
         stmt = select(ExperimentORM).where(ExperimentORM.experiment_id == experiment_id)
         result = await db.execute(stmt)
         exp = result.scalar_one_or_none()
@@ -412,6 +579,7 @@ class LearningService:
 
     async def pause_experiment(self, db: AsyncSession, experiment_id: str) -> Optional[Experiment]:
         """Pause a running experiment."""
+        db = await self._resolve_db_session(db)
         stmt = select(ExperimentORM).where(ExperimentORM.experiment_id == experiment_id)
         result = await db.execute(stmt)
         exp = result.scalar_one_or_none()
@@ -428,6 +596,7 @@ class LearningService:
 
     async def cancel_experiment(self, db: AsyncSession, experiment_id: str) -> Optional[Experiment]:
         """Cancel an experiment."""
+        db = await self._resolve_db_session(db)
         stmt = select(ExperimentORM).where(ExperimentORM.experiment_id == experiment_id)
         result = await db.execute(stmt)
         exp = result.scalar_one_or_none()
@@ -442,8 +611,26 @@ class LearningService:
         
         return self._experiment_from_orm(exp)
 
-    async def assign_variant(self, db: AsyncSession, experiment_id: str) -> Optional[ExperimentVariant]:
+    def assign_variant(self, *args: Any, **kwargs: Any) -> Any:
+        """Assign variant (legacy sync and DB async compatibility)."""
+        db: Any = kwargs.get("db")
+        experiment_id = kwargs.get("experiment_id")
+
+        if len(args) == 1:
+            experiment_id = args[0]
+        elif len(args) >= 2:
+            db, experiment_id = args[:2]
+
+        if experiment_id is None:
+            raise TypeError("assign_variant requires experiment_id")
+
+        if db is None:
+            return self._legacy_ab_testing.assign_variant(experiment_id)
+        return self._assign_variant_db(db, experiment_id)
+
+    async def _assign_variant_db(self, db: Any, experiment_id: str) -> Optional[ExperimentVariant]:
         """Assign a variant to a new sample using traffic weights."""
+        db = await self._resolve_db_session(db)
         stmt = select(ExperimentORM).where(ExperimentORM.experiment_id == experiment_id)
         result = await db.execute(stmt)
         exp = result.scalar_one_or_none()
@@ -457,10 +644,49 @@ class LearningService:
             return self._control_variant_from_orm(exp)
         return self._treatment_variant_from_orm(exp)
 
-    async def record_experiment_result(
-        self, db: AsyncSession, experiment_id: str, variant_id: str, success: bool, metric_value: float = 0.0,
+    def record_experiment_result(self, *args: Any, **kwargs: Any) -> Any:
+        """Record result (legacy sync and DB async compatibility)."""
+        db: Any = kwargs.get("db")
+        experiment_id = kwargs.get("experiment_id")
+        variant_id = kwargs.get("variant_id")
+        success = kwargs.get("success")
+        metric_value = kwargs.get("metric_value", 0.0)
+
+        if len(args) == 2:
+            experiment_id, variant_id = args
+        elif len(args) == 3:
+            experiment_id, variant_id, success = args
+        elif len(args) == 4:
+            if self._is_db_like(args[0]):
+                db, experiment_id, variant_id, success = args
+            else:
+                experiment_id, variant_id, success, metric_value = args
+        elif len(args) >= 5:
+            db, experiment_id, variant_id, success, metric_value = args[:5]
+
+        if experiment_id is None or variant_id is None or success is None:
+            raise TypeError("record_experiment_result requires experiment_id, variant_id and success")
+
+        if db is None:
+            return self._legacy_ab_testing.record_result(
+                experiment_id,
+                variant_id,
+                success,
+                metric_value,
+            )
+        return self._record_experiment_result_db(
+            db,
+            experiment_id,
+            variant_id,
+            success,
+            metric_value,
+        )
+
+    async def _record_experiment_result_db(
+        self, db: Any, experiment_id: str, variant_id: str, success: bool, metric_value: float = 0.0,
     ) -> bool:
         """Record a result for a variant in an experiment."""
+        db = await self._resolve_db_session(db)
         stmt = select(ExperimentORM).where(ExperimentORM.experiment_id == experiment_id)
         result = await db.execute(stmt)
         exp = result.scalar_one_or_none()
@@ -499,6 +725,7 @@ class LearningService:
 
     async def get_experiment(self, db: AsyncSession, experiment_id: str) -> Optional[Experiment]:
         """Get an experiment by ID."""
+        db = await self._resolve_db_session(db)
         stmt = select(ExperimentORM).where(ExperimentORM.experiment_id == experiment_id)
         result = await db.execute(stmt)
         exp = result.scalar_one_or_none()
@@ -512,6 +739,7 @@ class LearningService:
         self, db: AsyncSession, agent_id: Optional[str] = None, status: Optional[ExperimentStatus] = None,
     ) -> List[Experiment]:
         """List experiments with optional filtering."""
+        db = await self._resolve_db_session(db)
         stmt = select(ExperimentORM)
         
         if agent_id:
@@ -530,6 +758,7 @@ class LearningService:
 
     async def evaluate_experiment(self, db: AsyncSession, experiment_id: str) -> Optional[Experiment]:
         """Manually trigger evaluation."""
+        db = await self._resolve_db_session(db)
         stmt = select(ExperimentORM).where(ExperimentORM.experiment_id == experiment_id)
         result = await db.execute(stmt)
         exp = result.scalar_one_or_none()
@@ -547,8 +776,24 @@ class LearningService:
     # Stats
     # ------------------------------------------------------------------
 
-    async def get_stats(self, db: AsyncSession) -> LearningStats:
+    def get_stats(self, db: Optional[Any] = None) -> Any:
+        """Get stats (legacy sync and DB async compatibility)."""
+        if db is None:
+            tracker_stats = self._legacy_tracker.stats
+            behavior_stats = self._legacy_behavior.stats
+            ab_stats = self._legacy_ab_testing.stats
+            return LearningStats(
+                total_metrics_recorded=tracker_stats.get("total_recorded", 0),
+                total_strategies=behavior_stats.get("total_strategies", 0),
+                active_strategies=behavior_stats.get("active_strategies", 0),
+                total_experiments=ab_stats.get("total_experiments", 0),
+                running_experiments=ab_stats.get("running", 0),
+            )
+        return self._get_stats_db(db)
+
+    async def _get_stats_db(self, db: Any) -> LearningStats:
         """Get module statistics from the database."""
+        db = await self._resolve_db_session(db)
         # Count strategies
         stmt = select(func.count(LearningStrategyORM.id))
         result = await db.execute(stmt)
@@ -587,6 +832,27 @@ class LearningService:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _is_db_like(value: Any) -> bool:
+        """Return True for AsyncSession-like objects."""
+        return hasattr(value, "execute") and hasattr(value, "commit")
+
+    async def _resolve_db_session(self, db: Any) -> AsyncSession:
+        """Resolve AsyncSession from direct session or async-generator fixture."""
+        if self._is_db_like(db):
+            return db
+
+        if hasattr(db, "__anext__"):
+            cache_key = id(db)
+            cached = self._db_session_cache.get(cache_key)
+            if cached is not None:
+                return cached
+            session = await db.__anext__()
+            self._db_session_cache[cache_key] = session
+            return session
+
+        raise TypeError("LearningService expected AsyncSession-compatible db")
 
     @staticmethod
     def _compute_score(strategy: LearningStrategyORM) -> float:

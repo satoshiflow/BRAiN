@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth_deps import Principal, SystemRole, get_current_principal, require_auth, require_role
@@ -14,6 +14,12 @@ from .service import get_knowledge_layer_service
 
 
 router = APIRouter(prefix="/api/knowledge-items", tags=["knowledge-layer"], dependencies=[Depends(require_auth)])
+
+
+def _require_tenant(principal: Principal) -> str:
+    if not principal.tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tenant context required")
+    return principal.tenant_id
 
 
 async def _ensure_knowledge_layer_writable(db: AsyncSession) -> None:
@@ -34,6 +40,7 @@ async def create_knowledge_item(
     principal: Principal = Depends(require_role(SystemRole.OPERATOR, SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN)),
 ):
     await _ensure_knowledge_layer_writable(db)
+    _require_tenant(principal)
     item = await get_knowledge_layer_service().create_item(db, payload, principal)
     return KnowledgeItemResponse.model_validate(item)
 
@@ -44,7 +51,8 @@ async def get_knowledge_item(
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ):
-    item = await get_knowledge_layer_service().get_item(db, item_id, principal.tenant_id)
+    tenant_id = _require_tenant(principal)
+    item = await get_knowledge_layer_service().get_item(db, item_id, tenant_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Knowledge item not found")
     return KnowledgeItemResponse.model_validate(item)
@@ -59,19 +67,27 @@ async def search_knowledge_items(
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ):
-    items = await get_knowledge_layer_service().search(db, principal.tenant_id, KnowledgeSearchQuery(query=query, type=type, module=module, limit=limit))
+    tenant_id = _require_tenant(principal)
+    items = await get_knowledge_layer_service().search(db, tenant_id, KnowledgeSearchQuery(query=query, type=type, module=module, limit=limit))
     return KnowledgeItemListResponse(items=[KnowledgeItemResponse.model_validate(item) for item in items], total=len(items))
 
 
 @router.post("/run-lessons/{skill_run_id}", response_model=RunLessonIngestResponse, status_code=status.HTTP_201_CREATED)
 async def ingest_run_lesson(
     skill_run_id: UUID,
+    response: Response,
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(require_role(SystemRole.OPERATOR, SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN)),
 ):
+    _require_tenant(principal)
     await _ensure_knowledge_layer_writable(db)
     try:
         item = await get_knowledge_layer_service().ingest_run_lesson(db, skill_run_id, principal)
+        response.headers["Deprecation"] = "true"
+        response.headers["Sunset"] = "Tue, 30 Jun 2026 00:00:00 GMT"
+        response.headers["Link"] = f'</api/experience/skill-runs/{skill_run_id}/ingest>; rel="successor-version"'
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return RunLessonIngestResponse(skill_run_id=skill_run_id, knowledge_item=KnowledgeItemResponse.model_validate(item))

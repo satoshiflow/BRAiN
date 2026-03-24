@@ -66,5 +66,9 @@ class SystemPromptMiddleware:
 
         except Exception as e:
             logger.error(f"Failed to inject system prompt: {e}", exc_info=True)
+            try:
+                await self.db.rollback()
+            except Exception:  # pragma: no cover
+                logger.debug("Skipping AXE system prompt rollback cleanup", exc_info=True)
             # Fail-safe: return original messages
             return messages

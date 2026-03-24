@@ -95,51 +95,6 @@ export function useEventTelemetry({
   });
 
   /**
-   * Track a new event (adds to queue).
-   */
-  const trackEvent = useCallback(
-    (eventType: AxeEventType, eventData: Record<string, any>) => {
-      if (!telemetryEnabled) {
-        return;
-      }
-
-      const event: AxeEventCreate = {
-        event_type: eventType,
-        session_id: sessionId,
-        app_id: appId,
-        user_id: userId,
-        anonymization_level: anonymizationLevel,
-        event_data: eventData,
-        client_timestamp: new Date().toISOString(),
-        is_training_data: trainingOptIn,
-        client_version: '1.0.0', // TODO: Get from package.json
-        client_platform: typeof window !== 'undefined' ? window.navigator.userAgent : 'unknown',
-      };
-
-      eventQueue.current.push(event);
-
-      setStats((prev) => ({
-        ...prev,
-        queuedEvents: eventQueue.current.length,
-      }));
-
-      // If queue exceeds batch size, upload immediately
-      if (eventQueue.current.length >= maxBatchSize) {
-        uploadEvents();
-      }
-    },
-    [
-      telemetryEnabled,
-      sessionId,
-      appId,
-      userId,
-      anonymizationLevel,
-      trainingOptIn,
-      maxBatchSize,
-    ]
-  );
-
-  /**
    * Upload queued events to backend.
    */
   const uploadEvents = useCallback(async () => {
@@ -191,6 +146,52 @@ export function useEventTelemetry({
       isUploading.current = false;
     }
   }, [backendUrl, maxBatchSize]);
+
+  /**
+   * Track a new event (adds to queue).
+   */
+  const trackEvent = useCallback(
+    (eventType: AxeEventType, eventData: Record<string, any>) => {
+      if (!telemetryEnabled) {
+        return;
+      }
+
+      const event: AxeEventCreate = {
+        event_type: eventType,
+        session_id: sessionId,
+        app_id: appId,
+        user_id: userId,
+        anonymization_level: anonymizationLevel,
+        event_data: eventData,
+        client_timestamp: new Date().toISOString(),
+        is_training_data: trainingOptIn,
+        client_version: '1.0.0', // TODO: Get from package.json
+        client_platform: typeof window !== 'undefined' ? window.navigator.userAgent : 'unknown',
+      };
+
+      eventQueue.current.push(event);
+
+      setStats((prev) => ({
+        ...prev,
+        queuedEvents: eventQueue.current.length,
+      }));
+
+      // If queue exceeds batch size, upload immediately
+      if (eventQueue.current.length >= maxBatchSize) {
+        void uploadEvents();
+      }
+    },
+    [
+      telemetryEnabled,
+      sessionId,
+      appId,
+      userId,
+      anonymizationLevel,
+      trainingOptIn,
+      maxBatchSize,
+      uploadEvents,
+    ]
+  );
 
   /**
    * Track session start (auto-called on mount).

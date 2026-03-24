@@ -67,6 +67,10 @@ class ProviderBindingSpec(BaseModel):
     capability_version: int = Field(..., ge=1)
     adapter_key: str = Field(..., min_length=1, max_length=120)
     provider_key: str = Field(..., min_length=1, max_length=120)
+    provider_type: str = Field(default="service", min_length=1, max_length=32)
+    endpoint_ref: str | None = Field(default=None, max_length=255)
+    model_or_tool_ref: str | None = Field(default=None, max_length=255)
+    priority: int = Field(default=100, ge=0)
     config: dict[str, Any] = Field(default_factory=dict)
     enabled: bool = True
 

@@ -1,33 +1,68 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { CodeEditor } from "@/src/components/CodeEditor";
+import { AttachmentTray } from "@/src/components/chat/AttachmentTray";
+import { AdvancedCameraCapture } from "@/src/components/chat/AdvancedCameraCapture";
+import { ChatComposer } from "@/src/components/chat/ChatComposer";
+import { MessageList, type ChatMessageItem } from "@/src/components/chat/MessageList";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/src/components/ui/resizable";
+import { sendAxeChat } from "@/lib/api";
+import { useAttachmentUpload } from "@/src/hooks/useAttachmentUpload";
 
-interface Message {
-  id: number;
-  role: "user" | "assistant";
-  content: string;
-  timestamp: Date;
-}
+type WorkspaceTab = "canvas" | "editor";
 
-const API_BASE = process.env.NEXT_PUBLIC_BRAIN_API_BASE || "http://localhost:8000";
+const AXE_MODEL = "qwen2.5:0.5b";
+
+const quickCommands = [
+  "Check system status",
+  "List active agents",
+  "Show recent logs",
+  "Get mission queue",
+];
 
 export default function ChatPage() {
-  const [messages, setMessages] = useState<Message[]>([
+  const [messages, setMessages] = useState<ChatMessageItem[]>([
     {
-      id: 1,
+      id: "assistant-init",
       role: "assistant",
-      content: "Hello! I'm the AXE (Auxiliary Execution Engine) agent. I can help you execute commands, analyze logs, and monitor system status. How can I assist you today?",
+      content:
+        "Hello! I'm the AXE agent. You can upload files, capture photos, and work side-by-side with canvas/editor in split mode.",
       timestamp: new Date(),
     },
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>("canvas");
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [code, setCode] = useState("// AXE editor\n\nexport function run() {\n  return 'ready';\n}\n");
+
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const drawingRef = useRef(false);
+
+  const {
+    attachments,
+    addFiles,
+    removeAttachment,
+    readyAttachmentIds,
+    clearAttachments,
+    isUploading,
+  } = useAttachmentUpload();
+
+  const canSend = useMemo(
+    () => input.trim().length > 0 && !loading && !isUploading,
+    [input, loading, isUploading]
+  );
 
   const handleSend = async () => {
-    if (!input.trim() || loading) return;
+    if (!canSend) return;
 
-    const userMessage: Message = {
-      id: messages.length + 1,
+    const userMessage: ChatMessageItem = {
+      id: `user-${Date.now()}`,
       role: "user",
       content: input.trim(),
       timestamp: new Date(),
@@ -38,145 +73,192 @@ export default function ChatPage() {
     setLoading(true);
 
     try {
-      const response = await fetch(`${API_BASE}/api/axe/message`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMessage.content }),
+      const response = await sendAxeChat({
+        model: AXE_MODEL,
+        messages: [{ role: "user", content: userMessage.content }],
+        temperature: 0.7,
+        attachments: readyAttachmentIds.length > 0 ? readyAttachmentIds : undefined,
       });
 
-      const data = await response.json();
-
-      const assistantMessage: Message = {
-        id: messages.length + 2,
+      const assistantMessage: ChatMessageItem = {
+        id: `assistant-${Date.now()}`,
         role: "assistant",
-        content: data.response || "I received your message.",
+        content: response.text || "I received your message.",
         timestamp: new Date(),
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
+      clearAttachments();
     } catch (error) {
-      const errorMessage: Message = {
-        id: messages.length + 2,
-        role: "assistant",
-        content: "Sorry, I encountered an error processing your request. Please try again.",
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Sorry, I encountered an error processing your request.";
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `assistant-error-${Date.now()}`,
+          role: "assistant",
+          content: `Request failed: ${message}`,
+          timestamp: new Date(),
+        },
+      ]);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
+  const handleStartDrawing = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    drawingRef.current = true;
+    const rect = canvas.getBoundingClientRect();
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    context.lineWidth = 2;
+    context.lineCap = "round";
+    context.strokeStyle = "#38bdf8";
+    context.beginPath();
+    context.moveTo(event.clientX - rect.left, event.clientY - rect.top);
+  };
+
+  const handleDraw = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!drawingRef.current) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    context.lineTo(event.clientX - rect.left, event.clientY - rect.top);
+    context.stroke();
+  };
+
+  const handleStopDrawing = () => {
+    drawingRef.current = false;
+  };
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    context.clearRect(0, 0, canvas.width, canvas.height);
   };
 
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)]">
-      {/* Header */}
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-white">AXE Chat</h1>
         <p className="text-slate-400 mt-2">
-          Conversational interface with the Auxiliary Execution Engine
+          Split workspace with upload, camera capture, canvas, and editor.
         </p>
       </div>
 
-      {/* Chat Container */}
-      <div className="flex-1 bg-slate-900 border border-slate-800 rounded-lg flex flex-col overflow-hidden">
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          {messages.map((message) => (
-            <div
-              key={message.id}
-              className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-            >
-              <div
-                className={`max-w-[80%] rounded-lg p-4 ${
-                  message.role === "user"
-                    ? "bg-blue-600 text-white"
-                    : "bg-slate-800 text-slate-100 border border-slate-700"
-                }`}
-              >
-                <div className="flex items-start gap-3">
-                  {message.role === "assistant" && (
-                    <span className="text-2xl">🤖</span>
-                  )}
-                  <div className="flex-1">
-                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                    <p className="text-xs opacity-70 mt-2">
-                      {message.timestamp.toLocaleTimeString()}
-                    </p>
-                  </div>
+      <div className="flex-1 bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+        <ResizablePanelGroup direction="horizontal">
+          <ResizablePanel defaultSize={48} minSize={35}>
+            <div className="h-full flex flex-col">
+              <MessageList messages={messages} loading={loading} />
+              <AttachmentTray attachments={attachments} onRemove={removeAttachment} />
+              <ChatComposer
+                value={input}
+                loading={loading}
+                uploading={isUploading}
+                onChange={setInput}
+                onSend={() => void handleSend()}
+                onFilesSelected={addFiles}
+                onOpenCamera={() => setCameraOpen(true)}
+              />
+            </div>
+          </ResizablePanel>
+
+          <ResizableHandle withHandle />
+
+          <ResizablePanel defaultSize={52} minSize={35}>
+            <div className="h-full flex flex-col bg-slate-950">
+              <div className="border-b border-slate-800 px-4 py-3 flex items-center justify-between">
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setWorkspaceTab("canvas")}
+                    className={`px-3 py-1.5 rounded-md text-sm border transition-colors ${
+                      workspaceTab === "canvas"
+                        ? "bg-blue-600 text-white border-blue-500"
+                        : "bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800"
+                    }`}
+                  >
+                    Canvas
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWorkspaceTab("editor")}
+                    className={`px-3 py-1.5 rounded-md text-sm border transition-colors ${
+                      workspaceTab === "editor"
+                        ? "bg-blue-600 text-white border-blue-500"
+                        : "bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800"
+                    }`}
+                  >
+                    Editor
+                  </button>
                 </div>
+                {workspaceTab === "canvas" && (
+                  <button
+                    type="button"
+                    onClick={clearCanvas}
+                    className="px-3 py-1.5 rounded-md text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
+                  >
+                    Clear canvas
+                  </button>
+                )}
+              </div>
+
+              <div className="flex-1 p-4">
+                {workspaceTab === "canvas" ? (
+                  <div className="h-full rounded-lg border border-slate-700 bg-slate-900 p-2">
+                    <canvas
+                      ref={canvasRef}
+                      width={1200}
+                      height={800}
+                      onPointerDown={handleStartDrawing}
+                      onPointerMove={handleDraw}
+                      onPointerUp={handleStopDrawing}
+                      onPointerLeave={handleStopDrawing}
+                      className="w-full h-full rounded bg-slate-950 touch-none"
+                    />
+                  </div>
+                ) : (
+                  <div className="h-full rounded-lg overflow-hidden border border-slate-700">
+                    <CodeEditor language="typescript" value={code} onChange={setCode} theme="vs-dark" />
+                  </div>
+                )}
               </div>
             </div>
-          ))}
-
-          {loading && (
-            <div className="flex justify-start">
-              <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
-                <div className="flex items-center gap-2">
-                  <div className="flex gap-1">
-                    <div className="w-2 h-2 rounded-full bg-slate-500 animate-bounce"></div>
-                    <div
-                      className="w-2 h-2 rounded-full bg-slate-500 animate-bounce"
-                      style={{ animationDelay: "0.1s" }}
-                    ></div>
-                    <div
-                      className="w-2 h-2 rounded-full bg-slate-500 animate-bounce"
-                      style={{ animationDelay: "0.2s" }}
-                    ></div>
-                  </div>
-                  <span className="text-sm text-slate-400">AXE is thinking...</span>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Input */}
-        <div className="border-t border-slate-800 p-4">
-          <div className="flex gap-4">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Type your message..."
-              disabled={loading}
-              className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-            />
-            <button
-              onClick={handleSend}
-              disabled={!input.trim() || loading}
-              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
-            >
-              {loading ? "Sending..." : "Send"}
-            </button>
-          </div>
-        </div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </div>
 
-      {/* Quick Commands */}
       <div className="mt-4 p-4 bg-slate-900 border border-slate-800 rounded-lg">
         <p className="text-sm text-slate-400 mb-2">Quick commands:</p>
         <div className="flex flex-wrap gap-2">
-          {["Check system status", "List active agents", "Show recent logs", "Get mission queue"].map(
-            (cmd) => (
-              <button
-                key={cmd}
-                onClick={() => setInput(cmd)}
-                className="px-3 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition-colors"
-              >
-                {cmd}
-              </button>
-            )
-          )}
+          {quickCommands.map((cmd) => (
+            <button
+              key={cmd}
+              onClick={() => setInput(cmd)}
+              className="px-3 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition-colors"
+            >
+              {cmd}
+            </button>
+          ))}
         </div>
       </div>
+
+      <AdvancedCameraCapture
+        open={cameraOpen}
+        onClose={() => setCameraOpen(false)}
+        onCapture={async (file) => {
+          await addFiles([file]);
+        }}
+      />
     </div>
   );
 }

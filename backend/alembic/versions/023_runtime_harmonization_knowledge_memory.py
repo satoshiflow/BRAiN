@@ -13,7 +13,7 @@ from alembic import op
 revision: str = "023_runtime_harmonization_knowledge_memory"
 down_revision: Union[str, None] = "022_add_agent_delegations"
 branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = "010_memory_persistence"
 
 
 def upgrade() -> None:
@@ -27,7 +27,17 @@ def upgrade() -> None:
     op.execute("CREATE INDEX IF NOT EXISTS idx_tasks_correlation_id ON tasks (correlation_id);")
 
     op.execute("ALTER TABLE IF EXISTS memory_entries ADD COLUMN IF NOT EXISTS skill_run_id VARCHAR(64);")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_memory_entries_skill_run ON memory_entries (skill_run_id);")
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF to_regclass('public.memory_entries') IS NOT NULL THEN
+                CREATE INDEX IF NOT EXISTS idx_memory_entries_skill_run ON memory_entries (skill_run_id);
+            END IF;
+        END
+        $$;
+        """
+    )
 
     op.execute(
         """

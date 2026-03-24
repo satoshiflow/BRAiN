@@ -8,14 +8,14 @@ from __future__ import annotations
 
 import os
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from loguru import logger
-from sqlalchemy import delete, select, update
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from .models import Base, ConversationTurnORM, MemoryEntryORM, SessionContextORM
 from .schemas import (
@@ -47,19 +47,39 @@ class DatabaseAdapter:
         self.engine = None
         self.async_session = None
         self._initialized = False
+        self._dialect_name: Optional[str] = None
     
     async def initialize(self) -> None:
         """Initialize the database engine and session factory."""
         if self._initialized:
             return
-            
-        self.engine = create_async_engine(
-            self.database_url,
-            echo=False,
-            pool_pre_ping=True,
-            pool_size=10,
-            max_overflow=20,
-        )
+        try:
+            self.engine = create_async_engine(
+                self.database_url,
+                echo=False,
+                pool_pre_ping=True,
+                pool_size=10,
+                max_overflow=20,
+            )
+            async with self.engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            self._dialect_name = self.engine.dialect.name
+        except Exception as exc:
+            logger.warning(
+                "Memory DB init failed (%s), falling back to SQLite in-memory",
+                exc,
+            )
+            self.database_url = "sqlite+aiosqlite:///:memory:"
+            self.engine = create_async_engine(
+                self.database_url,
+                echo=False,
+                connect_args={"check_same_thread": False},
+                poolclass=StaticPool,
+            )
+            async with self.engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            self._dialect_name = self.engine.dialect.name
+
         self.async_session = sessionmaker(
             self.engine, 
             class_=AsyncSession, 
@@ -106,6 +126,7 @@ class DatabaseAdapter:
             
             orm_data = {
                 "memory_id": entry.memory_id,
+                "tenant_id": entry.tenant_id,
                 "layer": entry.layer.value,
                 "memory_type": entry.memory_type.value,
                 "content": entry.content,
@@ -139,10 +160,15 @@ class DatabaseAdapter:
     
     async def get_memory(self, memory_id: str) -> Optional[MemoryEntry]:
         """Retrieve a memory by ID and update access stats."""
+        return await self.get_memory_for_tenant(memory_id, None)
+
+    async def get_memory_for_tenant(self, memory_id: str, tenant_id: Optional[str]) -> Optional[MemoryEntry]:
+        """Retrieve a memory by ID and optional tenant boundary."""
         async with self.session() as session:
-            result = await session.execute(
-                select(MemoryEntryORM).where(MemoryEntryORM.memory_id == memory_id)
-            )
+            query = select(MemoryEntryORM).where(MemoryEntryORM.memory_id == memory_id)
+            if tenant_id is not None:
+                query = query.where(MemoryEntryORM.tenant_id == tenant_id)
+            result = await session.execute(query)
             orm_entry = result.scalar_one_or_none()
             
             if orm_entry:
@@ -153,12 +179,13 @@ class DatabaseAdapter:
                 return self._orm_to_memory_entry(orm_entry)
             return None
     
-    async def delete_memory(self, memory_id: str) -> bool:
+    async def delete_memory(self, memory_id: str, tenant_id: Optional[str] = None) -> bool:
         """Delete a memory entry."""
         async with self.session() as session:
-            result = await session.execute(
-                delete(MemoryEntryORM).where(MemoryEntryORM.memory_id == memory_id)
-            )
+            query = delete(MemoryEntryORM).where(MemoryEntryORM.memory_id == memory_id)
+            if tenant_id is not None:
+                query = query.where(MemoryEntryORM.tenant_id == tenant_id)
+            result = await session.execute(query)
             return result.rowcount > 0
     
     async def query_memories(
@@ -170,6 +197,7 @@ class DatabaseAdapter:
         layer: Optional[MemoryLayer] = None,
         memory_type: Optional[MemoryType] = None,
         tags: Optional[List[str]] = None,
+        tenant_id: Optional[str] = None,
         min_importance: Optional[float] = None,
         min_karma: Optional[float] = None,
         include_compressed: bool = True,
@@ -180,6 +208,8 @@ class DatabaseAdapter:
             query = select(MemoryEntryORM)
             
             # Apply filters
+            if tenant_id is not None:
+                query = query.where(MemoryEntryORM.tenant_id == tenant_id)
             if agent_id:
                 query = query.where(MemoryEntryORM.agent_id == agent_id)
             if session_id:
@@ -192,9 +222,7 @@ class DatabaseAdapter:
                 query = query.where(MemoryEntryORM.layer == layer.value)
             if memory_type:
                 query = query.where(MemoryEntryORM.memory_type == memory_type.value)
-            if tags:
-                # Use overlap operator for array overlap
-                query = query.where(MemoryEntryORM.tags.overlap(tags))
+            apply_tag_post_filter = bool(tags)
             if min_importance is not None:
                 query = query.where(MemoryEntryORM.importance >= min_importance)
             if min_karma is not None:
@@ -211,6 +239,13 @@ class DatabaseAdapter:
             
             result = await session.execute(query)
             orm_entries = result.scalars().all()
+
+            if apply_tag_post_filter and tags:
+                filter_tags = set(tags)
+                orm_entries = [
+                    e for e in orm_entries
+                    if filter_tags.intersection(set(e.tags or []))
+                ]
             
             return [self._orm_to_memory_entry(e) for e in orm_entries]
     
@@ -231,6 +266,8 @@ class DatabaseAdapter:
             )
             
             # Apply additional filters
+            if filters.get("tenant_id"):
+                db_query = db_query.where(MemoryEntryORM.tenant_id == filters["tenant_id"])
             if filters.get("agent_id"):
                 db_query = db_query.where(MemoryEntryORM.agent_id == filters["agent_id"])
             if filters.get("session_id"):
@@ -262,6 +299,16 @@ class DatabaseAdapter:
                 )
             )
             return result.rowcount
+
+    async def evict_stale_sessions(self, ttl_hours: float, tenant_id: Optional[str] = None) -> int:
+        """Delete sessions inactive longer than ttl_hours."""
+        cutoff = datetime.utcnow() - timedelta(hours=ttl_hours)
+        async with self.session() as session:
+            query = delete(SessionContextORM).where(SessionContextORM.last_activity_at <= cutoff)
+            if tenant_id is not None:
+                query = query.where(SessionContextORM.tenant_id == tenant_id)
+            result = await session.execute(query)
+            return result.rowcount
     
     async def update_memory(self, memory_id: str, **updates) -> bool:
         """Update specific fields of a memory entry."""
@@ -288,6 +335,7 @@ class DatabaseAdapter:
             
             orm_data = {
                 "session_id": session.session_id,
+                "tenant_id": session.tenant_id,
                 "agent_id": session.agent_id,
                 "started_at": session.started_at,
                 "last_activity_at": session.last_activity_at,
@@ -308,12 +356,13 @@ class DatabaseAdapter:
             
             return session
     
-    async def get_session(self, session_id: str) -> Optional[SessionContext]:
+    async def get_session(self, session_id: str, tenant_id: Optional[str] = None) -> Optional[SessionContext]:
         """Get a session by ID with its turns."""
         async with self.session() as session:
-            result = await session.execute(
-                select(SessionContextORM).where(SessionContextORM.session_id == session_id)
-            )
+            query = select(SessionContextORM).where(SessionContextORM.session_id == session_id)
+            if tenant_id is not None:
+                query = query.where(SessionContextORM.tenant_id == tenant_id)
+            result = await session.execute(query)
             orm_session = result.scalar_one_or_none()
             
             if orm_session:
@@ -332,18 +381,22 @@ class DatabaseAdapter:
                 return session_ctx
             return None
     
-    async def delete_session(self, session_id: str) -> bool:
+    async def delete_session(self, session_id: str, tenant_id: Optional[str] = None) -> bool:
         """Delete a session and all its turns."""
         async with self.session() as session:
-            result = await session.execute(
-                delete(SessionContextORM).where(SessionContextORM.session_id == session_id)
-            )
+            query = delete(SessionContextORM).where(SessionContextORM.session_id == session_id)
+            if tenant_id is not None:
+                query = query.where(SessionContextORM.tenant_id == tenant_id)
+            result = await session.execute(query)
             return result.rowcount > 0
     
-    async def list_sessions(self, agent_id: Optional[str] = None) -> List[SessionContext]:
+    async def list_sessions(self, agent_id: Optional[str] = None, tenant_id: Optional[str] = None) -> List[SessionContext]:
         """List all sessions, optionally filtered by agent."""
         async with self.session() as session:
             query = select(SessionContextORM)
+
+            if tenant_id is not None:
+                query = query.where(SessionContextORM.tenant_id == tenant_id)
             
             if agent_id:
                 query = query.where(SessionContextORM.agent_id == agent_id)
@@ -394,26 +447,37 @@ class DatabaseAdapter:
     
     async def get_stats(self) -> Dict[str, Any]:
         """Get memory system statistics."""
+        return await self.get_stats_for_tenant(None)
+
+    async def get_stats_for_tenant(self, tenant_id: Optional[str]) -> Dict[str, Any]:
+        """Get memory system statistics with optional tenant boundary."""
         async with self.session() as session:
             # Total memories
-            result = await session.execute(select(MemoryEntryORM))
+            memories_query = select(MemoryEntryORM)
+            if tenant_id is not None:
+                memories_query = memories_query.where(MemoryEntryORM.tenant_id == tenant_id)
+            result = await session.execute(memories_query)
             total = len(result.scalars().all())
             
             # Count by layer
-            result = await session.execute(
-                select(MemoryEntryORM.layer, func.count(MemoryEntryORM.id))
-                .group_by(MemoryEntryORM.layer)
-            )
+            grouped = select(MemoryEntryORM.layer, func.count(MemoryEntryORM.id)).group_by(MemoryEntryORM.layer)
+            if tenant_id is not None:
+                grouped = grouped.where(MemoryEntryORM.tenant_id == tenant_id)
+            result = await session.execute(grouped)
             layer_counts = {row[0]: row[1] for row in result.all()}
             
             # Active sessions
-            result = await session.execute(select(SessionContextORM))
+            sessions_query = select(SessionContextORM)
+            if tenant_id is not None:
+                sessions_query = sessions_query.where(SessionContextORM.tenant_id == tenant_id)
+            result = await session.execute(sessions_query)
             active_sessions = len(result.scalars().all())
             
             # Avg importance and karma
-            result = await session.execute(
-                select(func.avg(MemoryEntryORM.importance), func.avg(MemoryEntryORM.karma_score))
-            )
+            avg_query = select(func.avg(MemoryEntryORM.importance), func.avg(MemoryEntryORM.karma_score))
+            if tenant_id is not None:
+                avg_query = avg_query.where(MemoryEntryORM.tenant_id == tenant_id)
+            result = await session.execute(avg_query)
             avg_row = result.one_or_none()
             avg_importance = float(avg_row[0]) if avg_row and avg_row[0] else 0.0
             avg_karma = float(avg_row[1]) if avg_row and avg_row[1] else 0.0
@@ -437,6 +501,7 @@ class DatabaseAdapter:
         """Convert ORM model to Pydantic MemoryEntry."""
         return MemoryEntry(
             memory_id=orm.memory_id,
+            tenant_id=orm.tenant_id,
             layer=MemoryLayer(orm.layer),
             memory_type=MemoryType(orm.memory_type),
             content=orm.content,
@@ -460,8 +525,13 @@ class DatabaseAdapter:
     @staticmethod
     def _orm_to_session_context(orm: SessionContextORM) -> SessionContext:
         """Convert ORM model to Pydantic SessionContext."""
+        compressed_summary = orm.compressed_summary
+        if compressed_summary and len(compressed_summary) > 2000:
+            compressed_summary = compressed_summary[:1997] + "..."
+
         return SessionContext(
             session_id=orm.session_id,
+            tenant_id=orm.tenant_id,
             agent_id=orm.agent_id,
             started_at=orm.started_at,
             last_activity_at=orm.last_activity_at,
@@ -469,7 +539,7 @@ class DatabaseAdapter:
             max_tokens=orm.max_tokens,
             active_mission_id=orm.active_mission_id,
             context_vars=orm.context_vars or {},
-            compressed_summary=orm.compressed_summary,
+            compressed_summary=compressed_summary,
             compressed_turn_count=orm.compressed_turn_count,
             turns=[],  # Loaded separately
         )

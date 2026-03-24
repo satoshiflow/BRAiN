@@ -69,6 +69,12 @@ async def _ensure_memory_writable(db: AsyncSession) -> None:
         )
 
 
+def _require_tenant(principal: Principal) -> str:
+    if not principal.tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tenant context required")
+    return principal.tenant_id
+
+
 # ============================================================================
 # Info & Stats
 # ============================================================================
@@ -85,7 +91,7 @@ async def memory_info(principal: Principal = Depends(require_auth)):
 async def memory_stats(principal: Principal = Depends(require_auth)):
     """Get memory system statistics."""
     svc = get_memory_service()
-    return await svc.get_stats()
+    return await svc.get_stats_for_tenant(principal.tenant_id)
 
 
 # ============================================================================
@@ -101,8 +107,9 @@ async def store_memory(
 ):
     """Store a new memory entry."""
     await _ensure_memory_writable(db)
+    tenant_id = _require_tenant(principal)
     svc = get_memory_service()
-    memory = await svc.store_memory(request)
+    memory = await svc.store_memory(request.model_copy(update={"tenant_id": tenant_id}))
     logger.info(
         "Memory entry stored",
         extra={
@@ -122,7 +129,8 @@ async def get_memory(
 ):
     """Get a memory by ID."""
     svc = get_memory_service()
-    entry = await svc.get_memory(memory_id)
+    tenant_id = _require_tenant(principal)
+    entry = await svc.get_memory_for_tenant(memory_id, tenant_id)
     if not entry:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Memory '{memory_id}' not found")
     # Verify ownership if agent_id is present
@@ -138,15 +146,16 @@ async def delete_memory(
 ):
     """Delete a memory."""
     svc = get_memory_service()
+    tenant_id = _require_tenant(principal)
     # Get the memory first to verify ownership
-    entry = await svc.get_memory(memory_id)
+    entry = await svc.get_memory_for_tenant(memory_id, tenant_id)
     if not entry:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Memory '{memory_id}' not found")
     # Verify ownership
     if entry.agent_id and not await verify_agent_ownership(principal, entry.agent_id):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not authorized for this memory")
 
-    await svc.delete_memory(memory_id)
+    await svc.delete_memory(memory_id, tenant_id=tenant_id)
     logger.info(
         "Memory entry deleted",
         extra={
@@ -175,10 +184,11 @@ async def recall_memories(
     and access frequency for optimal retrieval.
     """
     # Verify ownership if agent_id is specified
+    tenant_id = _require_tenant(principal)
     if query.agent_id and not await verify_agent_ownership(principal, query.agent_id):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not authorized for this agent")
     svc = get_memory_service()
-    return await svc.recall_memories(query)
+    return await svc.recall_memories(query.model_copy(update={"tenant_id": tenant_id}))
 
 
 # ============================================================================
@@ -198,12 +208,14 @@ async def create_session(
     and its context is promoted to episodic memory.
     """
     # Verify ownership for agent-specific resources
+    tenant_id = _require_tenant(principal)
     if not await verify_agent_ownership(principal, request.agent_id):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not authorized for this agent")
 
     svc = get_memory_service()
     session = await svc.start_session(
         agent_id=request.agent_id,
+        tenant_id=tenant_id,
         max_tokens=request.max_tokens,
         metadata=request.metadata,
     )
@@ -226,7 +238,8 @@ async def get_session(
 ):
     """Get a session by ID."""
     svc = get_memory_service()
-    session = await svc.get_session(session_id)
+    tenant_id = _require_tenant(principal)
+    session = await svc.get_session(session_id, tenant_id=tenant_id)
     if not session:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Session '{session_id}' not found")
     # Verify ownership
@@ -244,15 +257,16 @@ async def end_session(
     End a session. Important context is promoted to episodic memory.
     """
     svc = get_memory_service()
+    tenant_id = _require_tenant(principal)
     # Get session first to verify ownership
-    session = await svc.get_session(session_id)
+    session = await svc.get_session(session_id, tenant_id=tenant_id)
     if not session:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Session '{session_id}' not found")
     # Verify ownership
     if not await verify_agent_ownership(principal, session.agent_id):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not authorized for this session")
 
-    result = await svc.end_session(session_id)
+    result = await svc.end_session(session_id, tenant_id=tenant_id)
     logger.info(
         "Memory session ended",
         extra={
@@ -275,7 +289,8 @@ async def list_sessions(
     if agent_id and not await verify_agent_ownership(principal, agent_id):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not authorized for this agent")
     svc = get_memory_service()
-    return await svc.list_sessions(agent_id)
+    tenant_id = _require_tenant(principal)
+    return await svc.list_sessions(agent_id, tenant_id=tenant_id)
 
 
 # ============================================================================
@@ -295,8 +310,9 @@ async def add_turn(
     Auto-compresses oldest turns when token budget is near limit.
     """
     svc = get_memory_service()
+    tenant_id = _require_tenant(principal)
     # Get session first to verify ownership
-    session = await svc.get_session(session_id)
+    session = await svc.get_session(session_id, tenant_id=tenant_id)
     if not session:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Session '{session_id}' not found")
     # Verify ownership
@@ -307,6 +323,7 @@ async def add_turn(
         session_id=session_id,
         role=request.role,
         content=request.content,
+        tenant_id=tenant_id,
         metadata=request.metadata,
     )
     if not turn:
@@ -325,15 +342,16 @@ async def get_context_window(
     Returns compressed summary + recent turns, ready for LLM consumption.
     """
     svc = get_memory_service()
+    tenant_id = _require_tenant(principal)
     # Get session first to verify ownership
-    session = await svc.get_session(session_id)
+    session = await svc.get_session(session_id, tenant_id=tenant_id)
     if not session:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Session '{session_id}' not found")
     # Verify ownership
     if not await verify_agent_ownership(principal, session.agent_id):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not authorized for this session")
 
-    ctx = await svc.get_context_window(session_id)
+    ctx = await svc.get_context_window(session_id, tenant_id=tenant_id)
     if not ctx:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Session '{session_id}' not found")
     return ctx
@@ -356,7 +374,8 @@ async def get_agent_history(
     if not await verify_agent_ownership(principal, agent_id):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not authorized for this agent")
     svc = get_memory_service()
-    return await svc.get_agent_history(agent_id, limit, min_importance)
+    tenant_id = _require_tenant(principal)
+    return await svc.get_agent_history(agent_id, tenant_id=tenant_id, limit=limit, min_importance=min_importance)
 
 
 @router.get("/missions/{mission_id}/context", response_model=list[MemoryEntry])
@@ -366,8 +385,9 @@ async def get_mission_context(
 ):
     """Get all memories associated with a mission."""
     svc = get_memory_service()
+    tenant_id = _require_tenant(principal)
     # Get mission context and verify ownership of associated agent (if any)
-    return await svc.get_mission_context(mission_id)
+    return await svc.get_mission_context(mission_id, tenant_id=tenant_id)
 
 
 @router.get("/skill-runs/{skill_run_id}", response_model=list[MemoryEntry])
@@ -376,7 +396,8 @@ async def get_skill_run_context(
     principal: Principal = Depends(require_auth),
 ):
     svc = get_memory_service()
-    return await svc.get_skill_run_context(skill_run_id)
+    tenant_id = _require_tenant(principal)
+    return await svc.get_skill_run_context(skill_run_id, tenant_id=tenant_id)
 
 
 @router.post("/skill-runs/{skill_run_id}/ingest", response_model=SkillRunMemoryIngestResponse, status_code=status.HTTP_201_CREATED)
@@ -391,6 +412,7 @@ async def ingest_skill_run_memory(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Skill run not found")
     memory = await get_memory_service().store_memory(
         MemoryStoreRequest(
+            tenant_id=_require_tenant(principal),
             content=f"SkillRun {run.skill_key} v{run.skill_version} ended as {run.state}",
             memory_type=MemoryType.MISSION_OUTCOME,
             layer=MemoryLayer.EPISODIC,
@@ -464,4 +486,4 @@ async def run_maintenance(
         "Memory maintenance started",
         extra={"principal_id": principal.principal_id, "action": "run_maintenance"},
     )
-    return await svc.run_maintenance()
+    return await svc.run_maintenance_for_tenant(principal.tenant_id)

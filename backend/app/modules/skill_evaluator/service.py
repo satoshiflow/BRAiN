@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.control_plane_events import record_control_plane_event
+
 from .models import EvaluationResultModel
 
 if TYPE_CHECKING:
@@ -98,13 +100,21 @@ class SkillEvaluatorService:
 
     async def create_for_run(self, db: AsyncSession, run: SkillRunModel) -> EvaluationResultModel:
         payload = self._build_evaluation(run)
+        previous_result = await db.execute(
+            select(EvaluationResultModel)
+            .where(EvaluationResultModel.skill_run_id == run.id)
+            .order_by(desc(EvaluationResultModel.evaluation_revision))
+            .limit(1)
+        )
+        previous = previous_result.scalar_one_or_none()
+        next_revision = (previous.evaluation_revision + 1) if previous is not None else 1
         record = EvaluationResultModel(
             tenant_id=run.tenant_id,
             skill_run_id=run.id,
             skill_key=run.skill_key,
             skill_version=run.skill_version,
             evaluator_type="rule",
-            status="completed",
+            status="pending",
             overall_score=payload["overall_score"],
             dimension_scores=payload["dimension_scores"],
             passed=payload["passed"],
@@ -117,12 +127,73 @@ class SkillEvaluatorService:
             policy_compliance=payload["policy_compliance"],
             policy_violations=payload["policy_violations"],
             correlation_id=run.correlation_id,
-            evaluation_revision=1,
+            evaluation_revision=next_revision,
+            revision_of_id=previous.id if previous is not None else None,
+            evidence_artifact_refs=run.evidence_artifact_refs,
+            review_artifact_refs=[],
+            comparison_artifact_refs=[],
             created_at=datetime.now(timezone.utc),
-            completed_at=datetime.now(timezone.utc),
             created_by="skill_evaluator",
         )
         db.add(record)
+        await db.flush()
+        await record_control_plane_event(
+            db=db,
+            tenant_id=run.tenant_id,
+            entity_type="evaluation_result",
+            entity_id=str(record.id),
+            event_type="evaluation.result.created.v1",
+            correlation_id=run.correlation_id,
+            mission_id=run.mission_id,
+            actor_id="skill_evaluator",
+            actor_type="system",
+            payload={
+                "skill_run_id": str(run.id),
+                "status": record.status,
+                "evaluation_revision": record.evaluation_revision,
+            },
+            audit_required=False,
+        )
+        record.status = "completed"
+        record.completed_at = datetime.now(timezone.utc)
+        await record_control_plane_event(
+            db=db,
+            tenant_id=run.tenant_id,
+            entity_type="evaluation_result",
+            entity_id=str(record.id),
+            event_type="evaluation.result.completed.v1",
+            correlation_id=run.correlation_id,
+            mission_id=run.mission_id,
+            actor_id="skill_evaluator",
+            actor_type="system",
+            payload={
+                "skill_run_id": str(run.id),
+                "status": record.status,
+                "passed": record.passed,
+                "policy_compliance": record.policy_compliance,
+            },
+            audit_required=record.policy_compliance == "non_compliant",
+            audit_action="evaluation_complete",
+            audit_message="Evaluation result completed",
+            severity="warning" if record.policy_compliance == "non_compliant" else "info",
+        )
+        if record.policy_compliance == "non_compliant":
+            await record_control_plane_event(
+                db=db,
+                tenant_id=run.tenant_id,
+                entity_type="evaluation_result",
+                entity_id=str(record.id),
+                event_type="evaluation.result.non_compliant.v1",
+                correlation_id=run.correlation_id,
+                mission_id=run.mission_id,
+                actor_id="skill_evaluator",
+                actor_type="system",
+                payload={"skill_run_id": str(run.id), "violations": record.policy_violations},
+                audit_required=True,
+                audit_action="evaluation_non_compliant",
+                audit_message="Evaluation result marked non-compliant",
+                severity="warning",
+            )
         await db.commit()
         await db.refresh(record)
         return record
@@ -134,6 +205,10 @@ class SkillEvaluatorService:
         query = query.order_by(desc(EvaluationResultModel.created_at))
         result = await db.execute(query)
         return list(result.scalars().all())
+
+    async def get_latest_for_run(self, db: AsyncSession, skill_run_id, tenant_id: str | None) -> EvaluationResultModel | None:
+        items = await self.list_for_run(db, skill_run_id, tenant_id)
+        return items[0] if items else None
 
     async def get_evaluation(self, db: AsyncSession, evaluation_id, tenant_id: str | None) -> EvaluationResultModel | None:
         query = select(EvaluationResultModel).where(EvaluationResultModel.id == evaluation_id)

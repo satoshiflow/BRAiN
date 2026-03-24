@@ -31,6 +31,9 @@ class KnowledgeItemResponse(BaseModel):
     tags: list[str]
     content: str
     provenance_refs: list[dict[str, Any]]
+    skill_run_id: UUID | None = None
+    experience_record_id: UUID | None = None
+    evaluation_result_id: UUID | None = None
     valid_until: datetime | None = None
     superseded_by_id: UUID | None = None
     created_at: datetime

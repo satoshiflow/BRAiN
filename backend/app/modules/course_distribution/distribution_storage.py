@@ -70,22 +70,37 @@ class DistributionStorage:
     def __init__(self, storage_path: Path = STORAGE_BASE):
         self.storage_path = storage_path
         self.storage_path.mkdir(parents=True, exist_ok=True)
+        self._distributions_file = self.storage_path / "distributions.json"
+        self._slug_index_file = self.storage_path / "slug_index.json"
+        self._views_log_file = self.storage_path / "views.jsonl"
+        self._derivations_file = self.storage_path / "derivations.json"
         self._initialize_storage()
 
     def _initialize_storage(self):
         """Initialize storage files if they don't exist."""
         files = [
-            (DISTRIBUTIONS_FILE, {}),
-            (SLUG_INDEX_FILE, {}),
-            (DERIVATIONS_FILE, {}),
+            (self._distributions_file, {}),
+            (self._slug_index_file, {}),
+            (self._derivations_file, {}),
         ]
         for file_path, default_content in files:
             if not file_path.exists():
                 with file_lock(file_path, 'w') as f:
                     json.dump(default_content, f, indent=2)
 
-        if not VIEWS_LOG_FILE.exists():
-            VIEWS_LOG_FILE.touch()
+        if not self._views_log_file.exists():
+            self._views_log_file.touch()
+
+    @property
+    def distributions(self) -> Dict[str, CourseDistribution]:
+        """Compatibility accessor for in-memory style tests."""
+        with file_lock(self._distributions_file, 'r') as f:
+            payload = json.load(f)
+        return {dist_id: CourseDistribution(**data) for dist_id, data in payload.items()}
+
+    def get_distribution(self, distribution_id: str) -> Optional[CourseDistribution]:
+        """Compatibility alias for older test contracts."""
+        return self.get_distribution_by_id(distribution_id)
 
     # =========================================================================
     # CRUD Operations
@@ -108,10 +123,10 @@ class DistributionStorage:
         distribution.updated_at = datetime.utcnow().timestamp()
 
         # Load existing data
-        with file_lock(DISTRIBUTIONS_FILE, 'r') as f:
+        with file_lock(self._distributions_file, 'r') as f:
             distributions = json.load(f)
 
-        with file_lock(SLUG_INDEX_FILE, 'r') as f:
+        with file_lock(self._slug_index_file, 'r') as f:
             slug_index = json.load(f)
 
         # Check slug uniqueness
@@ -122,23 +137,23 @@ class DistributionStorage:
             )
 
         # Save distribution
-        distributions[distribution.distribution_id] = distribution.model_dump()
+        distributions[distribution.distribution_id] = distribution.model_dump(mode="json")
 
         # Update slug index
         slug_index[distribution.slug] = distribution.distribution_id
 
         # Write atomically
-        with file_lock(DISTRIBUTIONS_FILE, 'w') as f:
+        with file_lock(self._distributions_file, 'w') as f:
             json.dump(distributions, f, indent=2)
 
-        with file_lock(SLUG_INDEX_FILE, 'w') as f:
+        with file_lock(self._slug_index_file, 'w') as f:
             json.dump(slug_index, f, indent=2)
 
         return True
 
     def get_distribution_by_id(self, distribution_id: str) -> Optional[CourseDistribution]:
         """Get distribution by ID."""
-        with file_lock(DISTRIBUTIONS_FILE, 'r') as f:
+        with file_lock(self._distributions_file, 'r') as f:
             distributions = json.load(f)
 
         data = distributions.get(distribution_id)
@@ -149,7 +164,7 @@ class DistributionStorage:
 
     def get_distribution_by_slug(self, slug: str) -> Optional[CourseDistribution]:
         """Get distribution by slug."""
-        with file_lock(SLUG_INDEX_FILE, 'r') as f:
+        with file_lock(self._slug_index_file, 'r') as f:
             slug_index = json.load(f)
 
         distribution_id = slug_index.get(slug)
@@ -175,7 +190,7 @@ class DistributionStorage:
         Returns:
             List of CourseDistribution instances
         """
-        with file_lock(DISTRIBUTIONS_FILE, 'r') as f:
+        with file_lock(self._distributions_file, 'r') as f:
             distributions = json.load(f)
 
         results = []
@@ -208,7 +223,7 @@ class DistributionStorage:
         Returns:
             True if deleted, False if not found
         """
-        with file_lock(DISTRIBUTIONS_FILE, 'r') as f:
+        with file_lock(self._distributions_file, 'r') as f:
             distributions = json.load(f)
 
         if distribution_id not in distributions:
@@ -221,17 +236,17 @@ class DistributionStorage:
         del distributions[distribution_id]
 
         # Delete from slug index
-        with file_lock(SLUG_INDEX_FILE, 'r') as f:
+        with file_lock(self._slug_index_file, 'r') as f:
             slug_index = json.load(f)
 
         if slug in slug_index:
             del slug_index[slug]
 
         # Write atomically
-        with file_lock(DISTRIBUTIONS_FILE, 'w') as f:
+        with file_lock(self._distributions_file, 'w') as f:
             json.dump(distributions, f, indent=2)
 
-        with file_lock(SLUG_INDEX_FILE, 'w') as f:
+        with file_lock(self._slug_index_file, 'w') as f:
             json.dump(slug_index, f, indent=2)
 
         return True
@@ -258,7 +273,7 @@ class DistributionStorage:
             "timestamp": datetime.utcnow().timestamp(),
         }
 
-        with file_lock(VIEWS_LOG_FILE, 'a') as f:
+        with file_lock(self._views_log_file, 'a') as f:
             f.write(json.dumps(event) + '\n')
 
         # Increment view count
@@ -281,7 +296,7 @@ class DistributionStorage:
             "timestamp": datetime.utcnow().timestamp(),
         }
 
-        with file_lock(VIEWS_LOG_FILE, 'a') as f:
+        with file_lock(self._views_log_file, 'a') as f:
             f.write(json.dumps(event) + '\n')
 
         # Increment enrollment count
@@ -332,7 +347,7 @@ class DistributionStorage:
         Returns:
             True if saved
         """
-        with file_lock(DERIVATIONS_FILE, 'r') as f:
+        with file_lock(self._derivations_file, 'r') as f:
             derivations = json.load(f)
 
         # Store derivation tree
@@ -345,7 +360,7 @@ class DistributionStorage:
             "created_at": datetime.utcnow().timestamp(),
         })
 
-        with file_lock(DERIVATIONS_FILE, 'w') as f:
+        with file_lock(self._derivations_file, 'w') as f:
             json.dump(derivations, f, indent=2)
 
         return True
@@ -360,7 +375,7 @@ class DistributionStorage:
         Returns:
             List of derivation records
         """
-        with file_lock(DERIVATIONS_FILE, 'r') as f:
+        with file_lock(self._derivations_file, 'r') as f:
             derivations = json.load(f)
 
         return derivations.get(parent_course_id, [])

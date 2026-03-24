@@ -86,6 +86,10 @@ class SkillDefinitionCreate(BaseModel):
     risk_tier: RiskTier = Field(default=RiskTier.MEDIUM)
     policy_pack_ref: str = Field(default="default", min_length=1, max_length=120)
     trust_tier_min: TrustTier = Field(default=TrustTier.INTERNAL)
+    builder_role: str = Field(default="manual", min_length=1, max_length=64)
+    definition_artifact_refs: list[dict[str, Any]] = Field(default_factory=list)
+    example_artifact_refs: list[dict[str, Any]] = Field(default_factory=list)
+    builder_artifact_refs: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class SkillDefinitionUpdate(BaseModel):
@@ -101,6 +105,9 @@ class SkillDefinitionUpdate(BaseModel):
     risk_tier: RiskTier | None = None
     policy_pack_ref: str | None = Field(default=None, min_length=1, max_length=120)
     trust_tier_min: TrustTier | None = None
+    definition_artifact_refs: list[dict[str, Any]] | None = None
+    example_artifact_refs: list[dict[str, Any]] | None = None
+    builder_artifact_refs: list[dict[str, Any]] | None = None
 
 
 class SkillDefinitionResponse(BaseModel):
@@ -122,6 +129,10 @@ class SkillDefinitionResponse(BaseModel):
     risk_tier: RiskTier
     policy_pack_ref: str
     trust_tier_min: TrustTier
+    builder_role: str
+    definition_artifact_refs: list[dict[str, Any]]
+    example_artifact_refs: list[dict[str, Any]]
+    builder_artifact_refs: list[dict[str, Any]]
     checksum_sha256: str
     created_by: str
     updated_by: str

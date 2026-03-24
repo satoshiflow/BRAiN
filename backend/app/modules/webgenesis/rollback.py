@@ -20,6 +20,20 @@ Fail-Safe Policy:
 - Site may be in degraded state (manual intervention needed)
 """
 
+# ============================================================================
+# DEPRECATION NOTICE (Execution Consolidation Wave 1)
+# Module role will be reduced/replaced by OpenCode execution plane.
+#
+# Status: PLANNED_FOR_DEPRECATION
+# Owner: BRAiN Runtime / OpenCode Integration
+# Replacement Target: opencode worker (build/deploy/rollback)
+# Sunset Phase: wave1-webgenesis-exec
+# Rule: Do not add new features here. Only critical fixes allowed.
+# See: docs/specs/opencode_execution_consolidation_plan.md
+# ============================================================================
+
+
+
 from __future__ import annotations
 
 import shutil

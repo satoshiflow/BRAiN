@@ -36,11 +36,13 @@ class CapabilityDefinitionModel(Base):
     qos_targets = Column(JSONB, nullable=False, default=dict)
     fallback_capability_key = Column(String(120), nullable=True)
     policy_constraints = Column(JSONB, nullable=False, default=dict)
+    contract_artifact_refs = Column(JSONB, nullable=False, default=list)
+    adapter_test_artifact_refs = Column(JSONB, nullable=False, default=list)
     checksum_sha256 = Column(String(64), nullable=False)
     created_by = Column(String(120), nullable=False)
     updated_by = Column(String(120), nullable=False)
-    created_at = Column(DateTime, nullable=False, default=utcnow)
-    updated_at = Column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 
     __table_args__ = (
         Index("ix_capability_definitions_key_version_scope", "capability_key", "version", "owner_scope"),

@@ -108,3 +108,62 @@ class SupervisorStatus(BaseModel):
         default=0,
         description="Actions waiting for human approval"
     )
+
+
+class DomainEscalationRequest(BaseModel):
+    """Domain-to-supervisor escalation handoff payload."""
+
+    domain_key: str = Field(..., min_length=1, max_length=100)
+    requested_by: str = Field(..., min_length=1, max_length=120)
+    requested_by_type: str = Field(..., min_length=1, max_length=32)
+    tenant_id: Optional[str] = Field(default=None, max_length=64)
+    reason: str = Field(..., min_length=1, max_length=1000)
+    reasons: List[str] = Field(default_factory=list)
+    recommended_next_actions: List[str] = Field(default_factory=list)
+    risk_tier: str = Field(default="high", max_length=32)
+    correlation_id: Optional[str] = Field(default=None, max_length=160)
+    context: Dict[str, Any] = Field(default_factory=dict)
+
+
+class DomainEscalationResponse(BaseModel):
+    """Supervisor handoff record returned after escalation submission."""
+
+    escalation_id: str
+    status: str
+    received_at: datetime
+    domain_key: str
+    requested_by: str
+    risk_tier: str
+    correlation_id: Optional[str] = None
+    reviewed_by: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    decision_reason: Optional[str] = None
+    notes: Dict[str, Any] = Field(default_factory=dict)
+
+
+class DomainEscalationStatus(str, Enum):
+    QUEUED = "queued"
+    IN_REVIEW = "in_review"
+    APPROVED = "approved"
+    DENIED = "denied"
+    CANCELLED = "cancelled"
+
+
+class DomainEscalationDecisionRequest(BaseModel):
+    """Supervisor decision payload for an escalation.
+
+    Note: ``reviewer_id`` is always overwritten server-side with the authenticated
+    principal's ID (see router). Callers may omit it; any supplied value is ignored.
+    """
+
+    status: DomainEscalationStatus = Field(...)
+    reviewer_id: Optional[str] = Field(default=None, max_length=120)
+    decision_reason: str = Field(..., min_length=1, max_length=1000)
+    notes: Dict[str, Any] = Field(default_factory=dict)
+
+
+class DomainEscalationListResponse(BaseModel):
+    """List response for escalation handoff records."""
+
+    items: List[DomainEscalationResponse] = Field(default_factory=list)
+    total: int = 0

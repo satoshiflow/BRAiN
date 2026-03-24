@@ -14,6 +14,9 @@ from app.core.audit_bridge import write_unified_audit
 from app.core.event_contract import EventSeverity, build_event_instance, build_runtime_event_payload
 from app.modules.opencode_repair.models import OpenCodeRepairAuditModel, OpenCodeRepairTicketModel
 from app.modules.opencode_repair.schemas import (
+    OpenCodeJobContract,
+    OpenCodeJobContractCreateRequest,
+    OpenCodeJobStatus,
     RepairAuditEntry,
     RepairAutotriggerRequest,
     RepairTicket,
@@ -69,6 +72,49 @@ class OpenCodeRepairService:
         self.event_stream = event_stream
         self._tickets: List[RepairTicket] = []
         self._audit_entries: List[RepairAuditEntry] = []
+        self._jobs: List[OpenCodeJobContract] = []
+
+    async def dispatch_job_contract(
+        self, request: OpenCodeJobContractCreateRequest, db: Optional[AsyncSession] = None
+    ) -> OpenCodeJobContract:
+        job = OpenCodeJobContract(
+            job_id=f"job_{uuid.uuid4().hex[:12]}",
+            correlation_id=request.correlation_id,
+            mode=request.mode,
+            scope=request.scope,
+            constraints=request.constraints,
+            context=request.context,
+            status=OpenCodeJobStatus.QUEUED,
+            created_at=_now_utc(),
+            created_by=request.created_by,
+        )
+        self._jobs.append(job)
+
+        await write_unified_audit(
+            event_type="opencode.job.requested",
+            action="opencode.job.dispatch",
+            actor=request.created_by,
+            actor_type="system",
+            resource_type="opencode_job",
+            resource_id=job.job_id,
+            severity="info",
+            message=f"OpenCode job queued for {request.scope.module}",
+            correlation_id=request.correlation_id,
+            details={
+                "mode": request.mode.value,
+                "scope": request.scope.model_dump(),
+                "constraints": request.constraints.model_dump(),
+                "trigger_event": request.context.trigger_event,
+            },
+            db=db,
+        )
+        return job
+
+    async def get_job_contract(self, job_id: str) -> Optional[OpenCodeJobContract]:
+        for job in self._jobs:
+            if job.job_id == job_id:
+                return job
+        return None
 
     @asynccontextmanager
     async def _best_effort_db(self, db: Optional[AsyncSession]):

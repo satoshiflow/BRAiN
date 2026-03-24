@@ -61,6 +61,22 @@ class ModuleDecommissionMatrix(BaseModel):
     notes: str | None = None
 
 
+class ModuleDecommissionLedgerEntry(BaseModel):
+    module_id: str
+    lifecycle_status: ModuleLifecycleStatus
+    replacement_target: str | None = None
+    kill_switch: str | None = None
+    sunset_phase: str | None = None
+    migration_adapter: str | None = None
+    decommission_ready: bool
+    blockers: list[str] = Field(default_factory=list)
+
+
+class ModuleDecommissionLedgerResponse(BaseModel):
+    items: list[ModuleDecommissionLedgerEntry] = Field(default_factory=list)
+    total: int
+
+
 class ModuleLifecycleTransitionRequest(BaseModel):
     replacement_target: str | None = Field(default=None, max_length=120)
     sunset_phase: str | None = Field(default=None, max_length=64)

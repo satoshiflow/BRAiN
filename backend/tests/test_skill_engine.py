@@ -98,6 +98,14 @@ def test_summarize_evaluation_marks_failures() -> None:
     assert summary["issues_detected"] == ["CAP-FAIL"]
 
 
+def test_skill_run_state_machine_rules() -> None:
+    assert SkillEngineService.is_transition_allowed("queued", "planning") is True
+    assert SkillEngineService.is_transition_allowed("planning", "waiting_approval") is True
+    assert SkillEngineService.is_transition_allowed("running", "cancel_requested") is True
+    assert SkillEngineService.is_transition_allowed("cancel_requested", "cancelled") is True
+    assert SkillEngineService.is_transition_allowed("queued", "succeeded") is False
+
+
 @pytest.fixture
 def skill_engine_app() -> FastAPI:
     app = FastAPI()
@@ -141,7 +149,9 @@ def test_skill_engine_execute_route_uses_service(skill_engine_client: TestClient
                     "requested_by": principal_arg.principal_id,
                     "requested_by_type": principal_arg.principal_type.value,
                     "trigger_type": "api",
+                    "policy_decision_id": None,
                     "policy_decision": {"allowed": True},
+                    "policy_snapshot": {"allowed": True},
                     "risk_tier": "medium",
                     "correlation_id": "corr-1",
                     "causation_id": None,
@@ -152,9 +162,14 @@ def test_skill_engine_execute_route_uses_service(skill_engine_client: TestClient
                     "finished_at": datetime.now(timezone.utc),
                     "deadline_at": None,
                     "retry_count": 0,
+                    "state_sequence": 2,
+                    "state_changed_at": datetime.now(timezone.utc),
                     "cost_estimate": 0.0,
                     "cost_actual": 0.0,
                     "output_payload": {"text.generate": {"text": "ok"}},
+                    "input_artifact_refs": [],
+                    "output_artifact_refs": [],
+                    "evidence_artifact_refs": [],
                     "evaluation_summary": {"overall_score": 1.0},
                     "failure_code": None,
                     "failure_reason_sanitized": None,

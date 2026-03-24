@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { getApiHealth } from "@/lib/api";
+import { getControlDeckBase } from "@/lib/config";
 
 interface SystemStats {
   status: string;
@@ -9,12 +11,12 @@ interface SystemStats {
   uptime: string;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_BRAIN_API_BASE || "http://localhost:8000";
-
 export default function DashboardPage() {
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const controlDeckAgentsUrl = `${getControlDeckBase()}/agents`;
+  const usingFallback = stats?.agents === 5 && stats?.missions === 12 && stats?.uptime === "2h 34m";
 
   useEffect(() => {
     fetchStats();
@@ -24,8 +26,7 @@ export default function DashboardPage() {
 
   const fetchStats = async () => {
     try {
-      const response = await fetch(`${API_BASE}/api/health`);
-      const data = await response.json();
+      const data = await getApiHealth();
 
       // Mock stats for now - replace with actual API calls
       setStats({
@@ -64,13 +65,18 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-white">AXE Dashboard</h1>
-        <p className="text-slate-400 mt-2">Auxiliary Execution Engine System Overview</p>
+        <p className="mb-2 text-[11px] uppercase tracking-[0.2em] text-cyan-300/70">Systems Overview Surface</p>
+        <h1 className="axe-surface-title text-3xl font-bold text-white">AXE Presence Matrix</h1>
+        <p className="mt-2 text-slate-400">Live operator view of system health, mission load, and agent orchestration posture.</p>
       </div>
 
-      {/* Stats Grid */}
+      {usingFallback && (
+        <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+          Runtime surface is currently using compatibility telemetry. The upcoming AXE presence backend can replace these fallback values without changing this UI.
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard
           title="System Status"
@@ -85,22 +91,21 @@ export default function DashboardPage() {
           color="blue"
         />
         <StatCard
-          title="Pending Missions"
+          title="Mission Load"
           value={stats?.missions.toString() || "0"}
-          icon="📋"
+          icon="◎"
           color="purple"
         />
         <StatCard
           title="Uptime"
           value={stats?.uptime || "0m"}
-          icon="⏱"
+          icon="◌"
           color="yellow"
         />
       </div>
 
-      {/* Quick Actions */}
-      <div className="bg-slate-900 border border-slate-800 rounded-lg p-6">
-        <h2 className="text-xl font-semibold text-white mb-4">Quick Actions</h2>
+      <div className="axe-panel rounded-xl p-6">
+        <h2 className="axe-surface-title mb-4 text-xl font-semibold text-white">Control Relays</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <ActionButton
             label="Start Chat"
@@ -109,10 +114,11 @@ export default function DashboardPage() {
             href="/chat"
           />
           <ActionButton
-            label="View Agents"
-            description="Manage agent fleet"
-            icon="🤖"
-            href="/agents"
+            label="Agents (ControlDeck)"
+            description="Open fleet management"
+            icon="🧭"
+            href={controlDeckAgentsUrl}
+            external
           />
           <ActionButton
             label="System Settings"
@@ -123,9 +129,8 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Recent Activity */}
-      <div className="bg-slate-900 border border-slate-800 rounded-lg p-6">
-        <h2 className="text-xl font-semibold text-white mb-4">Recent Activity</h2>
+      <div className="axe-panel rounded-xl p-6">
+        <h2 className="axe-surface-title mb-4 text-xl font-semibold text-white">Recent Signal Log</h2>
         <div className="space-y-3">
           <ActivityItem
             time="2 minutes ago"
@@ -137,11 +142,33 @@ export default function DashboardPage() {
             event="Agent CoderAgent started code generation"
             type="info"
           />
-          <ActivityItem
-            time="1 hour ago"
-            event="Supervisor approved HIGH risk action"
-            type="warning"
-          />
+          <ActivityItem time="1 hour ago" event="Supervisor approved HIGH risk action" type="warning" />
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="axe-panel rounded-xl p-5">
+          <p className="mb-2 text-[11px] uppercase tracking-[0.18em] text-cyan-300/70">External Agents</p>
+          <h3 className="axe-surface-title text-lg font-semibold text-white">Relay Handshake</h3>
+          <p className="mt-2 text-sm text-slate-400">
+            Placeholder lane for downstream agent relays. Intended for future `axe_presence` aggregation.
+          </p>
+          <div className="mt-4 flex gap-2 text-xs">
+            <span className="axe-chip rounded-full px-3 py-1">dispatch</span>
+            <span className="axe-chip rounded-full px-3 py-1">sync</span>
+          </div>
+        </div>
+
+        <div className="axe-panel rounded-xl p-5">
+          <p className="mb-2 text-[11px] uppercase tracking-[0.18em] text-amber-300/70">Robot Relay</p>
+          <h3 className="axe-surface-title text-lg font-semibold text-white">Execution Link</h3>
+          <p className="mt-2 text-sm text-slate-400">
+            Placeholder surface for robotic handoff confidence, last contact, and execution confirmation requirements.
+          </p>
+          <div className="mt-4 flex gap-2 text-xs">
+            <span className="axe-chip rounded-full px-3 py-1">standby</span>
+            <span className="axe-chip rounded-full px-3 py-1">confirm before execute</span>
+          </div>
         </div>
       </div>
     </div>
@@ -155,39 +182,42 @@ function StatCard({ title, value, icon, color }: {
   color: "green" | "blue" | "purple" | "yellow";
 }) {
   const colorClasses = {
-    green: "bg-green-500/20 border-green-500/50 text-green-400",
-    blue: "bg-blue-500/20 border-blue-500/50 text-blue-400",
-    purple: "bg-purple-500/20 border-purple-500/50 text-purple-400",
-    yellow: "bg-yellow-500/20 border-yellow-500/50 text-yellow-400",
+    green: "border-emerald-400/35 bg-emerald-500/10 text-emerald-200",
+    blue: "border-cyan-400/35 bg-cyan-500/10 text-cyan-200",
+    purple: "border-fuchsia-400/30 bg-fuchsia-500/10 text-fuchsia-200",
+    yellow: "border-amber-400/35 bg-amber-500/10 text-amber-200",
   };
 
   return (
-    <div className={`p-6 rounded-lg border ${colorClasses[color]}`}>
+    <div className={`rounded-xl border p-6 ${colorClasses[color]}`}>
       <div className="flex items-center justify-between mb-2">
         <span className="text-2xl">{icon}</span>
       </div>
       <div className="text-2xl font-bold text-white">{value}</div>
-      <div className="text-sm text-slate-400 mt-1">{title}</div>
+      <div className="mt-1 text-sm text-slate-300">{title}</div>
     </div>
   );
 }
 
-function ActionButton({ label, description, icon, href }: {
+function ActionButton({ label, description, icon, href, external }: {
   label: string;
   description: string;
   icon: string;
   href: string;
+  external?: boolean;
 }) {
   return (
     <a
       href={href}
-      className="block p-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors"
+      target={external ? "_blank" : undefined}
+      rel={external ? "noreferrer" : undefined}
+      className="block rounded-lg border border-cyan-500/20 bg-slate-900/70 p-4 transition-colors hover:border-cyan-400/45 hover:bg-slate-800"
     >
       <div className="flex items-center gap-3 mb-2">
         <span className="text-2xl">{icon}</span>
         <span className="font-semibold text-white">{label}</span>
       </div>
-      <p className="text-sm text-slate-400">{description}</p>
+      <p className="text-sm text-slate-300">{description}</p>
     </a>
   );
 }
@@ -205,7 +235,7 @@ function ActivityItem({ time, event, type }: {
 
   return (
     <div className="flex items-start gap-3 p-3 bg-slate-800/50 rounded-lg">
-      <div className={`w-2 h-2 rounded-full mt-2 ${dotColors[type]}`}></div>
+      <div className={`mt-2 h-2 w-2 rounded-full ${dotColors[type]}`}></div>
       <div className="flex-1">
         <p className="text-sm text-white">{event}</p>
         <p className="text-xs text-slate-500 mt-1">{time}</p>

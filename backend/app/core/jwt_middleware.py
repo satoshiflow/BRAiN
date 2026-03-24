@@ -397,7 +397,8 @@ class JWTValidator:
 
 # Global JWKS client and validator instances
 _jwks_client: Optional[JWKSClient] = None
-_jwt_validator: Optional[JWTValidator] = None
+_jwt_validator_remote: Optional[JWTValidator] = None
+_jwt_validator_local: Optional[JWTValidator] = None
 
 
 def get_jwks_client() -> JWKSClient:
@@ -427,41 +428,50 @@ def get_jwt_validator(use_local_keys: bool = False) -> JWTValidator:
     Returns:
         JWTValidator configured for RS256
     """
-    global _jwt_validator
-    if _jwt_validator is None:
-        settings = get_settings()
-        if not settings.jwt_issuer or not settings.jwt_audience:
-            raise RuntimeError("JWT_ISSUER and JWT_AUDIENCE must be configured")
-        
-        # A1: Use local keys if available and requested
-        local_key_manager = None
-        if use_local_keys:
+    global _jwt_validator_remote, _jwt_validator_local
+
+    settings = get_settings()
+    if not settings.jwt_issuer or not settings.jwt_audience:
+        raise RuntimeError("JWT_ISSUER and JWT_AUDIENCE must be configured")
+
+    if use_local_keys:
+        if _jwt_validator_local is None:
+            local_key_manager = None
             try:
                 local_key_manager = get_token_key_manager()
-                # Verify keys are loaded
                 local_key_manager.get_key_id()
                 logger.info("A1 Token Architecture: Using local RS256 keys")
             except Exception as e:
                 logger.warning(f"Local keys not available, falling back to remote JWKS: {e}")
-                local_key_manager = None
-        
-        _jwt_validator = JWTValidator(
-            jwks_client=get_jwks_client() if not local_key_manager else None,
+
+            _jwt_validator_local = JWTValidator(
+                jwks_client=get_jwks_client() if not local_key_manager else None,
+                issuer=settings.jwt_issuer,
+                audience=settings.jwt_audience,
+                allowed_algorithms=DEFAULT_ALGORITHMS,
+                token_key_manager=local_key_manager,
+            )
+        return _jwt_validator_local
+
+    if _jwt_validator_remote is None:
+        _jwt_validator_remote = JWTValidator(
+            jwks_client=get_jwks_client(),
             issuer=settings.jwt_issuer,
             audience=settings.jwt_audience,
-            allowed_algorithms=DEFAULT_ALGORITHMS,  # A1: RS256 only
-            token_key_manager=local_key_manager,
+            allowed_algorithms=DEFAULT_ALGORITHMS,
+            token_key_manager=None,
         )
-    return _jwt_validator
+    return _jwt_validator_remote
 
 
 async def reset_jwks_cache():
     """Reset the JWKS cache (useful for testing)"""
-    global _jwks_client, _jwt_validator
+    global _jwks_client, _jwt_validator_remote, _jwt_validator_local
     if _jwks_client:
         await _jwks_client.close()
     _jwks_client = None
-    _jwt_validator = None
+    _jwt_validator_remote = None
+    _jwt_validator_local = None
 
 
 # A1 Token Architecture: Token creation with RS256

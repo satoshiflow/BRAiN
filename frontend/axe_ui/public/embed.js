@@ -1,0 +1,743 @@
+/**
+ * AXE Floating Widget Embed Script (v2 - with React Loader)
+ * 
+ * Usage: Add to external website
+ * <script
+ *   src="https://axe.example.com/embed.js"
+ *   data-app-id="mysite-chat"
+ *   data-backend-url="https://api.brain.example.com"
+ *   data-origin-allowlist="mysite.com,app.mysite.com"
+ *   data-branding-logo="https://mysite.com/logo.png"
+ *   data-branding-colors="primary:#667eea,secondary:#764ba2"
+ *   async
+ * ></script>
+ * 
+ * Initializes window.AXEWidget singleton with React component
+ */
+
+(function () {
+  const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+
+  function inferDefaultBackendUrl() {
+    if (typeof window !== "undefined" && LOCAL_HOSTS.has(window.location.hostname)) {
+      return "http://127.0.0.1:8000";
+    }
+
+    return "https://api.brain.falklabs.de";
+  }
+
+  function resolveBackendUrl(rawBackendUrl) {
+    const candidate = (rawBackendUrl || "").trim();
+    const source = candidate || inferDefaultBackendUrl();
+
+    try {
+      const parsed = new URL(source);
+      return parsed.origin;
+    } catch {
+      return null;
+    }
+  }
+
+  // Prevent multiple initializations
+  if (window.AXEWidget && window.AXEWidget._initialized) {
+    console.warn("[AXE Embed] Widget already initialized");
+    return;
+  }
+
+  const DEBUG_MODE = typeof localStorage !== "undefined" && localStorage.getItem("AXE_EMBED_DEBUG") === "true";
+
+  // Parse script attributes
+  function getScriptConfig() {
+    const script = document.currentScript || document.scripts[document.scripts.length - 1];
+    if (!script) {
+      console.error("[AXE Embed] Could not find script element");
+      return null;
+    }
+
+    const config = {
+      appId: script.getAttribute("data-app-id"),
+      backendUrl: resolveBackendUrl(script.getAttribute("data-backend-url")),
+      originAllowlist: script.getAttribute("data-origin-allowlist"),
+      debug: script.getAttribute("data-debug") === "true" || DEBUG_MODE,
+      position: script.getAttribute("data-position") || "bottom-right",
+      theme: script.getAttribute("data-theme") || "light",
+      branding: {
+        logo: script.getAttribute("data-branding-logo"),
+        colors: parseBrandingColors(script.getAttribute("data-branding-colors")),
+        headerText: script.getAttribute("data-branding-header-text") || "AXE Chat",
+      },
+      webhookUrl: script.getAttribute("data-webhook-url"),
+      webhookSecret: script.getAttribute("data-webhook-secret") || "",
+      plugins: parsePlugins(script.getAttribute("data-plugins")),
+    };
+
+    // Validate required attributes
+    if (!config.appId || !config.originAllowlist) {
+      console.error(
+        "[AXE Embed] Missing required attributes: data-app-id, data-origin-allowlist"
+      );
+      return null;
+    }
+
+    if (!config.backendUrl) {
+      console.error("[AXE Embed] Invalid backend URL; expected absolute URL");
+      return null;
+    }
+
+    return config;
+  }
+
+  // Parse branding colors from string like "primary:#667eea,secondary:#764ba2"
+  function parseBrandingColors(colorString) {
+    if (!colorString) return {};
+    const colors = {};
+    colorString.split(",").forEach((pair) => {
+      const [key, value] = pair.trim().split(":");
+      if (key && value) colors[key] = value;
+    });
+    return colors;
+  }
+
+  // Parse plugins from JSON string
+  function parsePlugins(pluginString) {
+    if (!pluginString) return [];
+    try {
+      return JSON.parse(pluginString);
+    } catch (e) {
+      console.warn("[AXE Embed] Failed to parse plugins:", e);
+      return [];
+    }
+  }
+
+  function parseOriginAllowlistEntries(value) {
+    return String(value || "")
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+  }
+
+  function parseAllowlistEntry(entry) {
+    if (entry.startsWith("http://") || entry.startsWith("https://")) {
+      const url = new URL(entry);
+      if (url.pathname !== "/" || url.search || url.hash) {
+        return { valid: false, reason: `Allowlist URL must be origin-only: ${entry}` };
+      }
+      return { valid: true, type: "origin", origin: url.origin };
+    }
+
+    if (entry.includes("/") || entry.includes("?") || entry.includes("#") || entry.includes("*")) {
+      return { valid: false, reason: `Invalid allowlist host entry: ${entry}` };
+    }
+
+    const url = new URL(`https://${entry}`);
+    const normalizedHost = url.port ? `${url.hostname}:${url.port}` : url.hostname;
+    if (normalizedHost.toLowerCase() !== entry.toLowerCase()) {
+      return { valid: false, reason: `Invalid allowlist host entry: ${entry}` };
+    }
+
+    return {
+      valid: true,
+      type: "host",
+      hostname: url.hostname.toLowerCase(),
+      port: url.port || null,
+    };
+  }
+
+  function validateCurrentOrigin(originAllowlistRaw) {
+    let currentUrl;
+
+    try {
+      currentUrl = new URL(window.location.origin);
+    } catch {
+      return {
+        valid: false,
+        code: "CONFIG_INVALID",
+        reason: `Invalid current origin: ${window.location.origin}`,
+      };
+    }
+
+    const entries = parseOriginAllowlistEntries(originAllowlistRaw);
+    if (entries.length === 0) {
+      return {
+        valid: false,
+        code: "CONFIG_INVALID",
+        reason: "originAllowlist has no valid entries",
+      };
+    }
+
+    for (const entry of entries) {
+      let parsed;
+      try {
+        parsed = parseAllowlistEntry(entry);
+      } catch {
+        return {
+          valid: false,
+          code: "CONFIG_INVALID",
+          reason: `Malformed allowlist entry: ${entry}`,
+        };
+      }
+
+      if (!parsed.valid) {
+        return {
+          valid: false,
+          code: "CONFIG_INVALID",
+          reason: parsed.reason,
+        };
+      }
+
+      if (parsed.type === "origin" && parsed.origin === currentUrl.origin) {
+        return { valid: true };
+      }
+
+      if (
+        parsed.type === "host" &&
+        parsed.hostname === currentUrl.hostname.toLowerCase() &&
+        (!parsed.port || parsed.port === currentUrl.port)
+      ) {
+        return { valid: true };
+      }
+    }
+
+    return {
+      valid: false,
+      code: "ORIGIN_MISMATCH",
+      reason: `Origin ${currentUrl.origin} not in allowlist`,
+    };
+  }
+
+  // Log helper
+  function log(level, message, data) {
+    const config = getScriptConfig() || {};
+    if (config.debug || DEBUG_MODE) {
+      const prefix = `[AXE:${level.toUpperCase()}]`;
+      if (data) {
+        console.log(prefix, message, data);
+      } else {
+        console.log(prefix, message);
+      }
+    }
+  }
+
+  function buildWebhookSignatureInput(timestamp, requestId, payloadJson) {
+    return `${timestamp}.${requestId}.${payloadJson}`;
+  }
+
+  function toHex(buffer) {
+    const bytes = new Uint8Array(buffer);
+    return Array.from(bytes)
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  async function createWebhookSignature(secret, message) {
+    if (!secret || !window.crypto || !window.crypto.subtle) {
+      return "";
+    }
+
+    const encoder = new TextEncoder();
+    const key = await window.crypto.subtle.importKey(
+      "raw",
+      encoder.encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    const signatureBuffer = await window.crypto.subtle.sign("HMAC", key, encoder.encode(message));
+    return toHex(signatureBuffer);
+  }
+
+  function emitTelemetry(event, data) {
+    const payload = {
+      event,
+      timestamp: new Date().toISOString(),
+      data: data || {},
+    };
+
+    log("info", `Telemetry: ${event}`, payload.data);
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent("axe:embed-telemetry", {
+          detail: payload,
+        })
+      );
+    } catch (error) {
+      log("warn", "Telemetry event dispatch failed", { event, error: String(error) });
+    }
+  }
+
+  // Load real widget runtime bundle
+  async function loadWidgetRuntimeBundle() {
+    return new Promise((resolve, reject) => {
+      if (window.AXEWidgetRuntime && typeof window.AXEWidgetRuntime.mount === "function") {
+        resolve();
+        return;
+      }
+
+      const runtimeScript = document.createElement("script");
+      const script = document.currentScript || document.scripts[document.scripts.length - 1];
+      const scriptSrc = script && script.src ? script.src : "";
+      const runtimeSrc = scriptSrc ? scriptSrc.replace(/embed\.js(?:\?.*)?$/, "widget-runtime.js") : "/widget-runtime.js";
+
+      runtimeScript.src = runtimeSrc;
+      runtimeScript.async = true;
+      runtimeScript.onload = () => {
+        if (window.AXEWidgetRuntime && typeof window.AXEWidgetRuntime.mount === "function") {
+          log("info", "Loaded real widget runtime bundle", { runtimeSrc });
+          resolve();
+          return;
+        }
+
+        reject(new Error("Runtime loaded without mount() API"));
+      };
+      runtimeScript.onerror = (error) => reject(error);
+      document.head.appendChild(runtimeScript);
+    });
+  }
+
+  // Initialize widget
+  async function initWidget() {
+    const config = getScriptConfig();
+    if (!config) return;
+
+    const originValidation = validateCurrentOrigin(config.originAllowlist);
+    if (!originValidation.valid) {
+      emitTelemetry("embed_init_blocked", {
+        appId: config.appId,
+        code: originValidation.code,
+        reason: originValidation.reason,
+      });
+      console.error(`[AXE Embed] ${originValidation.code}: ${originValidation.reason}`);
+      return;
+    }
+
+    try {
+      log("info", "Starting AXE Widget initialization", { appId: config.appId });
+      emitTelemetry("embed_init_start", {
+        appId: config.appId,
+      });
+
+      // Wait for DOM to be ready
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", () => initializeWidget(config));
+      } else {
+        initializeWidget(config);
+      }
+    } catch (error) {
+      console.error("[AXE Embed] Initialization error:", error);
+    }
+  }
+
+  // Initialize widget (called when DOM is ready)
+  async function initializeWidget(config) {
+    try {
+      // Create container
+      const container = document.createElement("div");
+      container.id = "axe-widget-container";
+      container.setAttribute("data-testid", "axe-widget-container");
+      document.body.appendChild(container);
+
+      let runtimeInstance = null;
+
+      // Attempt to load and mount real widget runtime first
+      try {
+        await loadWidgetRuntimeBundle();
+        runtimeInstance = window.AXEWidgetRuntime.mount(container, config, {
+          emit: (event, data) => {
+            if (window.AXEWidget && window.AXEWidget.emit) {
+              window.AXEWidget.emit(event, data);
+            }
+          },
+          log,
+        });
+        log("info", "Real widget runtime mounted");
+        emitTelemetry("runtime_mount_success", {
+          appId: config.appId,
+          mode: "real-runtime",
+        });
+      } catch (e) {
+        log("warn", "Real widget runtime unavailable, using fallback widget", e);
+        emitTelemetry("runtime_mount_fallback", {
+          appId: config.appId,
+          reason: e instanceof Error ? e.message : String(e),
+        });
+        createFallbackWidget(container, config);
+      }
+
+      // Initialize widget API
+      createWidgetAPI(container, config, runtimeInstance);
+    } catch (error) {
+      console.error("[AXE Embed] Widget initialization failed:", error);
+      emitTelemetry("embed_init_failed", {
+        appId: config.appId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      createWidgetAPI(null, config, null); // Create API with null widget for error handling
+    }
+  }
+
+  // Create fallback widget (when React loading fails)
+  function createFallbackWidget(container, config) {
+    const positionMap = {
+      "bottom-right": { bottom: "16px", right: "16px" },
+      "bottom-left": { bottom: "16px", left: "16px" },
+      "top-right": { top: "16px", right: "16px" },
+      "top-left": { top: "16px", left: "16px" },
+    };
+
+    const position = positionMap[config.position] || positionMap["bottom-right"];
+    const positionStyle = Object.entries(position)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join("; ");
+
+    const primaryColor = config.branding?.colors?.primary || "#3b82f6";
+    const secondaryColor = config.branding?.colors?.secondary || "#1d4ed8";
+
+    container.innerHTML = `
+      <div style="
+        position: fixed;
+        ${positionStyle};
+        width: 56px;
+        height: 56px;
+        border-radius: 9999px;
+        background: linear-gradient(to bottom right, ${primaryColor}, ${secondaryColor});
+        color: white;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        z-index: 50;
+        transition: box-shadow 0.2s;
+      " id="axe-widget-button" title="Chat with AXE">
+        ${config.branding?.logo ? `<img src="${config.branding.logo}" style="width: 32px; height: 32px;" alt="AXE" />` : "💬"}
+      </div>
+    `;
+
+    let isOpen = false;
+    const button = container.querySelector("#axe-widget-button");
+
+    button.addEventListener("mouseenter", () => {
+      button.style.boxShadow = "0 25px 30px -5px rgba(0, 0, 0, 0.15)";
+    });
+
+    button.addEventListener("mouseleave", () => {
+      button.style.boxShadow = "0 20px 25px -5px rgba(0, 0, 0, 0.1)";
+    });
+
+    button.addEventListener("click", () => {
+      isOpen = !isOpen;
+      if (isOpen) {
+        showPanel(container, config);
+      } else {
+        hidePanel(container);
+      }
+    });
+
+    log("info", "Fallback widget created");
+  }
+
+  // Show chat panel
+  function showPanel(container, config) {
+    let panel = document.getElementById("axe-widget-panel");
+    if (!panel) {
+      const positionMap = {
+        "bottom-right": { bottom: "80px", right: "16px" },
+        "bottom-left": { bottom: "80px", left: "16px" },
+        "top-right": { top: "80px", right: "16px" },
+        "top-left": { top: "80px", left: "16px" },
+      };
+
+      const position = positionMap[config.position] || positionMap["bottom-right"];
+      const positionStyle = Object.entries(position)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join("; ");
+
+      panel = document.createElement("div");
+      panel.id = "axe-widget-panel";
+      panel.innerHTML = `
+        <div style="
+          position: fixed;
+          ${positionStyle};
+          width: 320px;
+          height: 384px;
+          border-radius: 8px;
+          box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
+          background: white;
+          display: flex;
+          flex-direction: column;
+          z-index: 49;
+          overflow: hidden;
+        ">
+          <div style="
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px;
+            background: #f0f9ff;
+            border-bottom: 1px solid #e0f2fe;
+          ">
+            <h2 style="
+              font-weight: 600;
+              font-size: 14px;
+              margin: 0;
+            ">${config.branding?.headerText || "AXE Chat"}</h2>
+            <button id="axe-panel-close" style="
+              background: none;
+              border: none;
+              cursor: pointer;
+              padding: 4px;
+              font-size: 16px;
+            ">×</button>
+          </div>
+          
+          <div style="
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #6b7280;
+            font-size: 14px;
+          ">
+            <p>Chat widget ready at origin: <strong>${window.location.origin}</strong></p>
+          </div>
+          
+          <div style="
+            display: flex;
+            gap: 8px;
+            padding: 12px;
+            background: #f9fafb;
+            border-top: 1px solid #e5e7eb;
+          ">
+            <input 
+              id="axe-panel-input"
+              type="text" 
+              placeholder="Type a message..."
+              disabled
+              style="
+                flex: 1;
+                padding: 8px 12px;
+                border: 1px solid #d1d5db;
+                border-radius: 4px;
+                font-size: 14px;
+                background: white;
+                color: #6b7280;
+                cursor: not-allowed;
+              "
+            />
+            <button style="
+              width: 32px;
+              height: 32px;
+              border-radius: 4px;
+              background: #3b82f6;
+              color: white;
+              border: none;
+              cursor: not-allowed;
+              opacity: 0.5;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              font-size: 16px;
+            " disabled>→</button>
+          </div>
+        </div>
+      `;
+      container.appendChild(panel);
+
+      panel.querySelector("#axe-panel-close").addEventListener("click", () => {
+        container.querySelector("#axe-widget-button").click();
+      });
+    }
+    panel.style.display = "block";
+
+    // Emit event
+    if (window.AXEWidget && window.AXEWidget.emit) {
+      window.AXEWidget.emit("open");
+    }
+  }
+
+  // Hide chat panel
+  function hidePanel(container) {
+    const panel = document.getElementById("axe-widget-panel");
+    if (panel) {
+      panel.style.display = "none";
+    }
+
+    // Emit event
+    if (window.AXEWidget && window.AXEWidget.emit) {
+      window.AXEWidget.emit("close");
+    }
+  }
+
+  // Create widget API and event system
+  function createWidgetAPI(container, config, runtimeInstance) {
+    const eventListeners = {};
+    let isOpen = false;
+    const sessionId = `axe_session_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+
+    const widgetAPI = {
+      // Configuration
+      config,
+      sessionId,
+
+      // Lifecycle
+      open() {
+        if (runtimeInstance && typeof runtimeInstance.open === "function") {
+          runtimeInstance.open();
+          isOpen = runtimeInstance.isOpen ? runtimeInstance.isOpen() : true;
+          return;
+        }
+
+        if (container) {
+          isOpen = true;
+          showPanel(container, config);
+        }
+      },
+
+      close() {
+        if (runtimeInstance && typeof runtimeInstance.close === "function") {
+          runtimeInstance.close();
+          isOpen = runtimeInstance.isOpen ? runtimeInstance.isOpen() : false;
+          return;
+        }
+
+        if (container) {
+          isOpen = false;
+          hidePanel(container);
+        }
+      },
+
+      isOpen() {
+        if (runtimeInstance && typeof runtimeInstance.isOpen === "function") {
+          return runtimeInstance.isOpen();
+        }
+
+        return isOpen;
+      },
+
+      destroy() {
+        if (runtimeInstance && typeof runtimeInstance.destroy === "function") {
+          runtimeInstance.destroy();
+        }
+
+        if (container && container.parentNode) {
+          container.parentNode.removeChild(container);
+        }
+        this.emit("destroy");
+        window.AXEWidget._initialized = false;
+      },
+
+      // Messaging
+      sendMessage(content) {
+        if (runtimeInstance && typeof runtimeInstance.sendMessage === "function") {
+          runtimeInstance.sendMessage(content);
+          return;
+        }
+
+        log("info", "Message sent", { content });
+        this.emit("message-sent", { content, sessionId });
+
+        // Track analytics if webhook is configured
+        if (config.webhookUrl) {
+          this.trackEvent("message-sent", { content });
+        }
+      },
+
+      // Plugin system
+      registerPlugin(manifest) {
+        log("info", "Plugin registered", { pluginId: manifest.id });
+        this.emit("plugin-registered", manifest);
+      },
+
+      unregisterPlugin(pluginId) {
+        log("info", "Plugin unregistered", { pluginId });
+        this.emit("plugin-unregistered", { pluginId });
+      },
+
+      // Event system
+      on(event, callback) {
+        if (!eventListeners[event]) {
+          eventListeners[event] = [];
+        }
+        eventListeners[event].push(callback);
+        log("debug", `Listener added for event: ${event}`);
+
+        // Return unsubscribe function
+        return () => {
+          eventListeners[event] = eventListeners[event].filter((cb) => cb !== callback);
+        };
+      },
+
+      emit(event, data) {
+        log("debug", `Event emitted: ${event}`, data);
+        if (eventListeners[event]) {
+          eventListeners[event].forEach((callback) => {
+            try {
+              callback(data);
+            } catch (e) {
+              console.error(`[AXE Embed] Error in event listener for ${event}:`, e);
+            }
+          });
+        }
+      },
+
+      // Analytics
+      trackEvent(eventName, data) {
+        if (!config.webhookUrl) return;
+
+        const requestId = `embed_webhook_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+        const timestamp = new Date().toISOString();
+        const payload = {
+          appId: config.appId,
+          sessionId,
+          event: eventName,
+          data,
+          timestamp,
+        };
+
+        const payloadJson = JSON.stringify(payload);
+
+        createWebhookSignature(
+          config.webhookSecret,
+          buildWebhookSignatureInput(timestamp, requestId, payloadJson)
+        )
+          .then((signature) => {
+            return fetch(config.webhookUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-AXE-Request-Id": requestId,
+                "X-AXE-Timestamp": timestamp,
+                "X-AXE-Signature": signature ? `v1=${signature}` : "",
+              },
+              body: payloadJson,
+            });
+          })
+          .catch((e) => log("warn", "Webhook send failed", e));
+      },
+
+      // Branding
+      updateBranding(newBranding) {
+        config.branding = { ...config.branding, ...newBranding };
+        log("info", "Branding updated", newBranding);
+        this.emit("branding-updated", newBranding);
+      },
+
+      _initialized: true,
+    };
+
+    window.AXEWidget = widgetAPI;
+    log("info", "Widget API initialized");
+    emitTelemetry("widget_api_ready", {
+      appId: config.appId,
+      runtime: runtimeInstance ? "real-runtime" : "fallback",
+    });
+    widgetAPI.emit("ready");
+  }
+
+  // Start initialization
+  initWidget();
+})();

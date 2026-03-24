@@ -17,14 +17,16 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    JSON,
     String,
     Text,
     func,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
+JSON_TYPE = JSON().with_variant(JSONB, "postgresql")
 
 
 class MemoryEntryORM(Base):
@@ -40,6 +42,7 @@ class MemoryEntryORM(Base):
     
     # Identifiers (memory_id is the string representation)
     memory_id = Column(String(32), unique=True, nullable=False, index=True)
+    tenant_id = Column(String(64), nullable=True, index=True)
     
     # Layer and type
     layer = Column(String(20), nullable=False, index=True)  # working, episodic, semantic
@@ -54,7 +57,7 @@ class MemoryEntryORM(Base):
     session_id = Column(String(32), nullable=True, index=True)
     mission_id = Column(String(100), nullable=True, index=True)
     skill_run_id = Column(String(64), nullable=True, index=True)
-    tags = Column(ARRAY(String(50)), nullable=False, default=list)
+    tags = Column(JSON_TYPE, nullable=False, default=list)
     
     # Scoring
     importance = Column(Float, nullable=False, default=50.0)
@@ -68,10 +71,10 @@ class MemoryEntryORM(Base):
     expires_at = Column(DateTime(timezone=False), nullable=True)
     
     # Embedding for semantic search (stored as JSONB array)
-    embedding = Column(JSONB, nullable=True)
+    embedding = Column(JSON_TYPE, nullable=True)
     
     # Flexible metadata
-    entry_metadata = Column("metadata", JSONB, nullable=False, default=dict)
+    entry_metadata = Column("metadata", JSON_TYPE, nullable=False, default=dict)
 
     # Indexes for common query patterns
     __table_args__ = (
@@ -84,6 +87,7 @@ class MemoryEntryORM(Base):
         Index("idx_memory_entries_mission", "mission_id"),
         Index("idx_memory_entries_skill_run", "skill_run_id"),
         Index("idx_memory_entries_expires", "expires_at"),
+        Index("idx_memory_entries_tenant", "tenant_id"),
         # GIN index for tags array and metadata JSONB
         Index("idx_memory_entries_tags", "tags", postgresql_using="gin"),
         Index("idx_memory_entries_metadata", "metadata", postgresql_using="gin"),
@@ -154,7 +158,7 @@ class ConversationTurnORM(Base):
     role = Column(String(20), nullable=False)  # user, assistant, system
     content = Column(Text, nullable=False)
     timestamp = Column(Float, nullable=False)
-    turn_metadata = Column("metadata", JSONB, nullable=False, default=dict)
+    turn_metadata = Column("metadata", JSON_TYPE, nullable=False, default=dict)
     token_count = Column(Integer, nullable=False, default=0)
 
     __table_args__ = (
@@ -182,6 +186,7 @@ class SessionContextORM(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     session_id = Column(String(32), unique=True, nullable=False, index=True)
+    tenant_id = Column(String(64), nullable=True, index=True)
     agent_id = Column(String(100), nullable=False, index=True)
     
     started_at = Column(DateTime(timezone=False), nullable=False, default=datetime.utcnow)
@@ -191,7 +196,7 @@ class SessionContextORM(Base):
     max_tokens = Column(Integer, nullable=False, default=8000)
     
     active_mission_id = Column(String(100), nullable=True)
-    context_vars = Column(JSONB, nullable=False, default=dict)
+    context_vars = Column(JSON_TYPE, nullable=False, default=dict)
     
     compressed_summary = Column(Text, nullable=True)
     compressed_turn_count = Column(Integer, nullable=False, default=0)
@@ -200,6 +205,7 @@ class SessionContextORM(Base):
     turns = relationship("ConversationTurnORM", cascade="all, delete-orphan")
 
     __table_args__ = (
+        Index("idx_session_contexts_tenant", "tenant_id"),
         Index("idx_session_contexts_agent", "agent_id"),
         Index("idx_session_contexts_started", "started_at"),
     )
@@ -207,6 +213,7 @@ class SessionContextORM(Base):
     def to_dict(self) -> Dict[str, Any]:
         return {
             "session_id": self.session_id,
+            "tenant_id": self.tenant_id,
             "agent_id": self.agent_id,
             "started_at": self.started_at,
             "last_activity_at": self.last_activity_at,
