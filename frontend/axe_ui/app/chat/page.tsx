@@ -2,13 +2,26 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Camera, Loader2, Paperclip, Send, X } from "lucide-react";
-import { AuthGate } from "@/components/auth/AuthGate";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
 import { AdvancedCameraCapture } from "@/components/chat/AdvancedCameraCapture";
 import { WorkerRunCard } from "@/components/chat/WorkerRunCard";
-import { appendAxeSessionMessage, getAxeWorkerRun, postAxeChat, uploadAxeAttachment } from "@/lib/api";
-import { getDefaultModel } from "@/lib/config";
-import type { AxeChatRequest, AxeSessionMessage, AxeSessionMessageRole, AxeWorkerUpdate } from "@/lib/contracts";
+import {
+  appendAxeSessionMessage,
+  getAxeWorkerRun,
+  listPurposeEvaluations,
+  listRoutingDecisions,
+  postAxeChat,
+  uploadAxeAttachment,
+} from "@/lib/api";
+import { getControlDeckBase, getDefaultModel } from "@/lib/config";
+import type {
+  AxeChatRequest,
+  AxeSessionMessage,
+  AxeSessionMessageRole,
+  AxeWorkerUpdate,
+  PurposeEvaluationRecord,
+  RoutingDecisionRecord,
+} from "@/lib/contracts";
 import { useAuthSession } from "@/hooks/useAuthSession";
 import { useChatSessions } from "@/hooks/useChatSessions";
 import { pluginRegistry, initializePlugins, destroyPlugins, type PluginContext } from "../../src/plugins";
@@ -99,6 +112,10 @@ function ChatPageContent() {
   const [uploadLock, setUploadLock] = useState(false);
   const [workerUpdates, setWorkerUpdates] = useState<Record<string, AxeWorkerUpdate>>({});
   const [workerAnchors, setWorkerAnchors] = useState<Record<string, WorkerRunAnchor>>({});
+  const [purposeTrace, setPurposeTrace] = useState<PurposeEvaluationRecord[]>([]);
+  const [routingTrace, setRoutingTrace] = useState<RoutingDecisionRecord[]>([]);
+  const [traceLoading, setTraceLoading] = useState(false);
+  const [traceError, setTraceError] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -109,6 +126,7 @@ function ChatPageContent() {
   const hasFailedAttachments = attachments.some((item) => item.status === "error");
 
   const pluginSessionId = activeSessionId ?? pluginFallbackSessionId;
+  const controlDeckProviderUrl = useMemo(() => `${getControlDeckBase()}/settings/llm-providers`, []);
 
   useEffect(() => {
     setIsClient(true);
@@ -241,6 +259,28 @@ function ChatPageContent() {
 
     return () => window.clearInterval(interval);
   }, [activeSessionId, withAuthRetry, workerAnchors, workerUpdates]);
+
+  useEffect(() => {
+    const loadTrace = async () => {
+      try {
+        setTraceLoading(true);
+        setTraceError(null);
+        const [purposeData, routingData] = await withAuthRetry((token) =>
+          Promise.all([
+            listPurposeEvaluations(5, { Authorization: `Bearer ${token}` }),
+            listRoutingDecisions(5, { Authorization: `Bearer ${token}` }),
+          ])
+        );
+        setPurposeTrace(purposeData.items);
+        setRoutingTrace(routingData.items);
+      } catch (traceLoadError) {
+        setTraceError(traceLoadError instanceof Error ? traceLoadError.message : "Unable to load governance trace");
+      } finally {
+        setTraceLoading(false);
+      }
+    };
+    void loadTrace();
+  }, [activeSessionId, withAuthRetry]);
 
   const ensureActiveSessionId = async (): Promise<string | null> => {
     if (activeSessionId) {
@@ -545,6 +585,53 @@ function ChatPageContent() {
             </div>
           </div>
 
+          <div className="axe-panel mb-4 rounded-xl p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="axe-surface-title text-sm font-semibold text-white">Decision Trace</h2>
+              <a
+                href={controlDeckProviderUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-cyan-300 underline hover:text-cyan-200"
+              >
+                Manage governance in ControlDeck
+              </a>
+            </div>
+            {traceLoading && <p className="text-xs text-slate-500">Loading latest governance signals...</p>}
+            {traceError && <p className="text-xs text-rose-300">{traceError}</p>}
+            {!traceLoading && !traceError && (
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div className="rounded-lg border border-slate-700/60 bg-slate-900/70 p-3">
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-cyan-300/70">Purpose</p>
+                  {purposeTrace.length === 0 && <p className="mt-2 text-xs text-slate-500">No recent purpose outcomes.</p>}
+                  {purposeTrace.slice(0, 2).map((item) => (
+                    <div key={item.id} className="mt-2 text-xs text-slate-300">
+                      <p className="font-mono text-slate-400">{item.decision_context_id}</p>
+                      <p>
+                        outcome: <span className="text-cyan-200">{item.outcome}</span>
+                      </p>
+                      <p className="text-slate-500">mode: {String(item.governance_snapshot?.control_mode ?? "brain_first")}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="rounded-lg border border-slate-700/60 bg-slate-900/70 p-3">
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-amber-300/70">Routing</p>
+                  {routingTrace.length === 0 && <p className="mt-2 text-xs text-slate-500">No recent routing outcomes.</p>}
+                  {routingTrace.slice(0, 2).map((item) => (
+                    <div key={item.id} className="mt-2 text-xs text-slate-300">
+                      <p className="font-mono text-slate-400">{item.task_profile_id}</p>
+                      <p>
+                        worker: <span className="text-cyan-200">{item.selected_worker ?? "unassigned"}</span>
+                      </p>
+                      <p className="text-slate-500">strategy: {item.strategy}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
           {headerError && (
             <div className="mb-4 rounded-lg border border-rose-500/50 bg-rose-950/45 p-3 text-sm text-rose-200">
               ⚠️ Error: {headerError}
@@ -763,9 +850,5 @@ function ChatPageContent() {
 }
 
 export default function ChatPage() {
-  return (
-    <AuthGate>
-      <ChatPageContent />
-    </AuthGate>
-  );
+  return <ChatPageContent />;
 }

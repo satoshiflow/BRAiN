@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { getJSON } from "@/lib/api";
 
 interface MissionHistory {
   id: string;
@@ -34,13 +35,12 @@ interface MissionHistory {
   error?: string;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_BRAIN_API_BASE || "http://127.0.0.1:8001";
-
 export default function MissionHistoryPage() {
   const [missions, setMissions] = useState<MissionHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchHistory();
@@ -48,57 +48,19 @@ export default function MissionHistoryPage() {
 
   async function fetchHistory() {
     try {
-      const response = await fetch(`${API_BASE}/api/missions/events/history`);
-      if (response.ok) {
-        const data = await response.json();
-        if (Array.isArray(data)) {
-          setMissions(data);
-        } else {
-          // Use mock data if API doesn't return array
-          setMockData();
-        }
-      } else {
-        setMockData();
+      const data = await getJSON<MissionHistory[]>("/api/missions/events/history");
+      if (!Array.isArray(data)) {
+        throw new Error("Invalid mission history response");
       }
+      setMissions(data);
+      setError(null);
     } catch (error) {
-      console.error("Failed to fetch mission history:", error);
-      setMockData();
+      const message = error instanceof Error ? error.message : "Failed to fetch mission history";
+      setError(message);
+      setMissions([]);
     } finally {
       setLoading(false);
     }
-  }
-
-  function setMockData() {
-    setMissions([
-      {
-        id: "mission-001",
-        name: "System Health Check",
-        status: "COMPLETED",
-        created_at: new Date(Date.now() - 3600000).toISOString(),
-        completed_at: new Date(Date.now() - 3500000).toISOString(),
-        duration_ms: 100000,
-        agent_type: "system",
-      },
-      {
-        id: "mission-002",
-        name: "Data Processing Task",
-        status: "COMPLETED",
-        created_at: new Date(Date.now() - 7200000).toISOString(),
-        completed_at: new Date(Date.now() - 7000000).toISOString(),
-        duration_ms: 200000,
-        agent_type: "worker",
-      },
-      {
-        id: "mission-003",
-        name: "Failed Backup",
-        status: "FAILED",
-        created_at: new Date(Date.now() - 10800000).toISOString(),
-        completed_at: new Date(Date.now() - 10750000).toISOString(),
-        duration_ms: 50000,
-        agent_type: "backup",
-        error: "Connection timeout",
-      },
-    ]);
   }
 
   const filteredMissions = missions.filter((m) => {
@@ -130,6 +92,14 @@ export default function MissionHistoryPage() {
           </Button>
         </div>
       </div>
+
+      {error && (
+        <Card className="border-red-500/30 bg-red-500/10">
+          <CardContent className="pt-4 text-sm text-red-200">
+            Failed to load mission history: {error}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

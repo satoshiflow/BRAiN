@@ -1,39 +1,58 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getApiHealth } from "@/lib/api";
+import { useCallback, useEffect, useState } from "react";
+import {
+  getApiHealth,
+  listProviderPortalProviders,
+  listPurposeEvaluations,
+  listRoutingDecisions,
+} from "@/lib/api";
 import { getControlDeckBase } from "@/lib/config";
+import { useAuthSession } from "@/hooks/useAuthSession";
+import type { ProviderPortalProviderRecord, PurposeEvaluationRecord, RoutingDecisionRecord } from "@/lib/contracts";
 
 interface SystemStats {
   status: string;
-  agents: number;
-  missions: number;
-  uptime: string;
+  purposeEvaluations: number;
+  routingDecisions: number;
+  healthyProviders: number;
+  totalProviders: number;
 }
 
 export default function DashboardPage() {
+  const { withAuthRetry } = useAuthSession();
   const [stats, setStats] = useState<SystemStats | null>(null);
+  const [recentPurpose, setRecentPurpose] = useState<PurposeEvaluationRecord[]>([]);
+  const [recentRouting, setRecentRouting] = useState<RoutingDecisionRecord[]>([]);
+  const [providers, setProviders] = useState<ProviderPortalProviderRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const controlDeckAgentsUrl = `${getControlDeckBase()}/agents`;
-  const usingFallback = stats?.agents === 5 && stats?.missions === 12 && stats?.uptime === "2h 34m";
+  const controlDeckProviderUrl = `${getControlDeckBase()}/settings/llm-providers`;
 
-  useEffect(() => {
-    fetchStats();
-    const interval = setInterval(fetchStats, 10000); // Refresh every 10s
-    return () => clearInterval(interval);
-  }, []);
-
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     try {
-      const data = await getApiHealth();
+      const health = await getApiHealth();
+      const [purposeData, routingData, providerData] = await withAuthRetry((token) =>
+        Promise.all([
+          listPurposeEvaluations(6, { Authorization: `Bearer ${token}` }),
+          listRoutingDecisions(6, { Authorization: `Bearer ${token}` }),
+          listProviderPortalProviders({ Authorization: `Bearer ${token}` }),
+        ])
+      );
 
-      // Mock stats for now - replace with actual API calls
+      setRecentPurpose(purposeData.items.slice(0, 4));
+      setRecentRouting(routingData.items.slice(0, 4));
+      setProviders(providerData.items);
+
+      const healthyProviders = providerData.items.filter((item) => item.health_status === "healthy").length;
+
       setStats({
-        status: data.status || "ok",
-        agents: 5,
-        missions: 12,
-        uptime: "2h 34m",
+        status: health.status || "ok",
+        purposeEvaluations: purposeData.total,
+        routingDecisions: routingData.total,
+        healthyProviders,
+        totalProviders: providerData.total,
       });
       setError(null);
     } catch (err) {
@@ -41,7 +60,13 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [withAuthRetry]);
+
+  useEffect(() => {
+    void fetchStats();
+    const interval = setInterval(fetchStats, 10000);
+    return () => clearInterval(interval);
+  }, [fetchStats]);
 
   if (loading) {
     return (
@@ -71,37 +96,84 @@ export default function DashboardPage() {
         <p className="mt-2 text-slate-400">Live operator view of system health, mission load, and agent orchestration posture.</p>
       </div>
 
-      {usingFallback && (
-        <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-          Runtime surface is currently using compatibility telemetry. The upcoming AXE presence backend can replace these fallback values without changing this UI.
-        </div>
-      )}
+      <div className="rounded-xl border border-cyan-500/20 bg-slate-900/65 px-4 py-3 text-sm text-slate-200">
+        AXE shows live governance telemetry in read-only mode. For provider credentials, model policies, and governance edits, use ControlDeck.
+        <a href={controlDeckProviderUrl} target="_blank" rel="noreferrer" className="ml-1 text-cyan-300 underline hover:text-cyan-200">
+          Manage in ControlDeck
+        </a>
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <StatCard title="System Status" value={stats?.status === "ok" ? "Operational" : "Unknown"} icon="✓" color="green" />
+        <StatCard title="Purpose Evaluations" value={stats?.purposeEvaluations.toString() || "0"} icon="◎" color="blue" />
+        <StatCard title="Routing Decisions" value={stats?.routingDecisions.toString() || "0"} icon="⇄" color="purple" />
         <StatCard
-          title="System Status"
-          value={stats?.status === "ok" ? "Operational" : "Unknown"}
-          icon="✓"
-          color="green"
-        />
-        <StatCard
-          title="Active Agents"
-          value={stats?.agents.toString() || "0"}
-          icon="🤖"
-          color="blue"
-        />
-        <StatCard
-          title="Mission Load"
-          value={stats?.missions.toString() || "0"}
-          icon="◎"
-          color="purple"
-        />
-        <StatCard
-          title="Uptime"
-          value={stats?.uptime || "0m"}
-          icon="◌"
+          title="Provider Health"
+          value={`${stats?.healthyProviders ?? 0}/${stats?.totalProviders ?? 0}`}
+          icon="⚕"
           color="yellow"
         />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="axe-panel rounded-xl p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="axe-surface-title text-lg font-semibold text-white">Recent Purpose Outcomes</h2>
+            <span className="text-xs text-slate-400">Read-only</span>
+          </div>
+          <div className="space-y-2">
+            {recentPurpose.length === 0 && <p className="text-sm text-slate-500">No recent purpose evaluations.</p>}
+            {recentPurpose.map((item) => (
+              <div key={item.id} className="rounded-lg border border-slate-700/70 bg-slate-900/70 px-3 py-2 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-xs text-slate-400">{item.decision_context_id}</span>
+                  <span className="text-cyan-200">{item.outcome}</span>
+                </div>
+                <div className="mt-1 text-xs text-slate-400">
+                  control_mode: {String(item.governance_snapshot?.control_mode ?? "brain_first")}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="axe-panel rounded-xl p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="axe-surface-title text-lg font-semibold text-white">Recent Routing Decisions</h2>
+            <span className="text-xs text-slate-400">Read-only</span>
+          </div>
+          <div className="space-y-2">
+            {recentRouting.length === 0 && <p className="text-sm text-slate-500">No recent routing decisions.</p>}
+            {recentRouting.map((item) => (
+              <div key={item.id} className="rounded-lg border border-slate-700/70 bg-slate-900/70 px-3 py-2 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-xs text-slate-400">{item.task_profile_id}</span>
+                  <span className="text-cyan-200">{item.selected_worker ?? "unassigned"}</span>
+                </div>
+                <div className="mt-1 text-xs text-slate-400">strategy: {item.strategy}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="axe-panel rounded-xl p-6">
+        <h2 className="axe-surface-title mb-4 text-xl font-semibold text-white">Provider Read Surface</h2>
+        <div className="space-y-2">
+          {providers.length === 0 && <p className="text-sm text-slate-500">No providers available.</p>}
+          {providers.slice(0, 5).map((provider) => (
+            <div key={provider.id} className="flex items-center justify-between rounded-lg border border-slate-700/70 bg-slate-900/70 px-3 py-2 text-sm">
+              <div>
+                <p className="text-white">{provider.display_name}</p>
+                <p className="text-xs text-slate-500">{provider.slug}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-cyan-200">{provider.health_status}</p>
+                <p className="text-xs text-slate-500">secret: {provider.secret_configured ? "configured" : "missing"}</p>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="axe-panel rounded-xl p-6">

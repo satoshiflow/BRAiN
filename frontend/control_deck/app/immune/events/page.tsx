@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { getJSON } from "@/lib/api";
 
 interface ThreatEvent {
   id: string;
@@ -32,12 +33,11 @@ interface ThreatEvent {
   action_taken?: string;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_BRAIN_API_BASE || "http://127.0.0.1:8001";
-
 export default function ImmuneEventsPage() {
   const [events, setEvents] = useState<ThreatEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ total: 0, active: 0, resolved: 0 });
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchEvents();
@@ -47,65 +47,25 @@ export default function ImmuneEventsPage() {
 
   async function fetchEvents() {
     try {
-      // Try to fetch from threats API
-      const response = await fetch(`${API_BASE}/api/threats/events`);
-      if (response.ok) {
-        const data = await response.json();
-        if (Array.isArray(data)) {
-          setEvents(data);
-        } else {
-          setMockData();
-        }
-      } else {
-        setMockData();
+      const data = await getJSON<ThreatEvent[]>("/api/threats/events");
+      if (!Array.isArray(data)) {
+        throw new Error("Invalid threat event response");
       }
+      setEvents(data);
+      setStats({
+        total: data.length,
+        active: data.filter((e) => e.status === "active").length,
+        resolved: data.filter((e) => e.status === "resolved").length,
+      });
+      setError(null);
     } catch (error) {
-      console.error("Failed to fetch immune events:", error);
-      setMockData();
+      const message = error instanceof Error ? error.message : "Failed to fetch immune events";
+      setError(message);
+      setEvents([]);
+      setStats({ total: 0, active: 0, resolved: 0 });
     } finally {
       setLoading(false);
     }
-  }
-
-  function setMockData() {
-    const mockEvents: ThreatEvent[] = [
-      {
-        id: "threat-001",
-        timestamp: new Date(Date.now() - 1800000).toISOString(),
-        severity: "medium",
-        type: "rate_limit",
-        source: "api",
-        description: "API rate limit threshold reached",
-        status: "mitigated",
-        action_taken: "Rate limiting activated",
-      },
-      {
-        id: "threat-002",
-        timestamp: new Date(Date.now() - 3600000).toISOString(),
-        severity: "low",
-        type: "anomaly",
-        source: "missions",
-        description: "Unusual mission queue pattern detected",
-        status: "resolved",
-        action_taken: "Auto-scaling triggered",
-      },
-      {
-        id: "threat-003",
-        timestamp: new Date(Date.now() - 7200000).toISOString(),
-        severity: "high",
-        type: "security",
-        source: "auth",
-        description: "Multiple failed authentication attempts",
-        status: "resolved",
-        action_taken: "IP temporarily blocked",
-      },
-    ];
-    setEvents(mockEvents);
-    setStats({
-      total: mockEvents.length,
-      active: mockEvents.filter((e) => e.status === "active").length,
-      resolved: mockEvents.filter((e) => e.status === "resolved").length,
-    });
   }
 
   const activeEvents = events.filter((e) => e.status === "active");
@@ -129,6 +89,14 @@ export default function ImmuneEventsPage() {
           </Button>
         </div>
       </div>
+
+      {error && (
+        <Card className="border-red-500/30 bg-red-500/10">
+          <CardContent className="pt-4 text-sm text-red-200">
+            Failed to load immune events: {error}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

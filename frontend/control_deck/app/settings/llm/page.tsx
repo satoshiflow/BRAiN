@@ -12,6 +12,7 @@ import { ArrowLeft, Brain, Server, Globe, AlertTriangle } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { getJSON, postJSON } from "@/lib/api";
 
 interface LLMConfig {
   provider: "ollama" | "openrouter";
@@ -30,34 +31,33 @@ export default function LLMSettingsPage() {
   });
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Load current config
   useEffect(() => {
-    fetch("/api/admin/llm-config")
-      .then((res) => res.json())
+    getJSON<{ config?: LLMConfig }>("/api/admin/llm-config")
       .then((data) => {
-        if (data.config) {
+        if (data?.config) {
           setConfig(data.config);
         }
+        setError(null);
       })
-      .catch((err) => console.error("Failed to load LLM config:", err));
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : "Failed to load LLM config";
+        setError(message);
+      });
   }, []);
 
   const handleSave = async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/admin/llm-config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(config),
-      });
-
-      if (response.ok) {
-        setSaved(true);
-        setTimeout(() => setSaved(false), 3000);
-      }
+      await postJSON<{ status?: string }>("/api/admin/llm-config", config);
+      setSaved(true);
+      setError(null);
+      setTimeout(() => setSaved(false), 3000);
     } catch (error) {
-      console.error("Failed to save config:", error);
+      const message = error instanceof Error ? error.message : "Failed to save config";
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -85,6 +85,12 @@ export default function LLMSettingsPage() {
           External APIs (OpenRouter) may process sensitive data outside your infrastructure.
         </AlertDescription>
       </Alert>
+
+      {error && (
+        <Alert variant="destructive" className="border-red-500/50 bg-red-500/10">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
       {/* Provider Selection */}
       <Card className="border-border/50">

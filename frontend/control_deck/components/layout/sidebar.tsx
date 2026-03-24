@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   Rocket,
   Bot,
+  Landmark,
   Shield,
   Settings,
   Play,
@@ -72,6 +73,14 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
+    label: "Governance",
+    icon: Landmark,
+    items: [
+      { label: "Governance Overview", href: "/governance", icon: ShieldCheck },
+      { label: "Policy Rules", href: "/policy", icon: Shield },
+    ],
+  },
+  {
     label: "AXE Management",
     icon: Shield,
     items: [
@@ -83,7 +92,7 @@ const navGroups: NavGroup[] = [
     label: "System",
     icon: Shield,
     items: [
-      { label: "Core Modules", href: "/system/modules", icon: Cpu },
+      { label: "Core Modules", href: "/core/modules", icon: Cpu },
       { label: "Immune System", href: "/system/immune", icon: ShieldCheck },
       { label: "Activity Log", href: "/system/activity", icon: Activity },
     ],
@@ -92,8 +101,9 @@ const navGroups: NavGroup[] = [
     label: "Settings",
     icon: Settings,
     items: [
-      { label: "General", href: "/settings/general", icon: Settings },
-      { label: "Security", href: "/settings/security", icon: Shield },
+      { label: "LLM Providers", href: "/settings/llm-providers", icon: Settings },
+      { label: "API Keys", href: "/settings/api-keys", icon: Shield },
+      { label: "System", href: "/settings/system", icon: Activity },
     ],
   },
 ];
