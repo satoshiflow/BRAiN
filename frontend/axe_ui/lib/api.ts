@@ -1,5 +1,7 @@
 import { getApiBase } from "@/lib/config";
 import type {
+  AdminInvitation,
+  AdminUser,
   ApiHealthResponse,
   AxeAttachmentUploadResponse,
   AxeChatRequest,
@@ -13,6 +15,9 @@ import type {
   AxeSessionUpdateRequest,
   AxeProviderRuntimeResponse,
   AxeProviderRuntimeUpdateRequest,
+  ProviderPortalListResponse,
+  PurposeEvaluationListResponse,
+  RoutingDecisionListResponse,
 } from "@/lib/contracts";
 
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
@@ -181,6 +186,87 @@ export async function appendAxeSessionMessage(
   return apiRequest<AxeSessionMessage>(`/api/axe/sessions/${sessionId}/messages`, {
     method: "POST",
     body: JSON.stringify(payload),
+    headers: customHeaders,
+  });
+}
+
+export async function listAdminUsers(customHeaders?: Record<string, string>): Promise<AdminUser[]> {
+  return apiRequest<AdminUser[]>("/api/admin/users", {
+    method: "GET",
+    headers: customHeaders,
+  });
+}
+
+export async function listAdminInvitations(customHeaders?: Record<string, string>): Promise<AdminInvitation[]> {
+  return apiRequest<AdminInvitation[]>("/api/admin/invitations", {
+    method: "GET",
+    headers: customHeaders,
+  });
+}
+
+export async function createAdminInvitation(
+  payload: { email: string; role: "admin" | "operator" | "viewer" },
+  customHeaders?: Record<string, string>
+): Promise<AdminInvitation> {
+  return apiRequest<AdminInvitation>("/api/auth/invitations", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    headers: customHeaders,
+  });
+}
+
+export async function toggleAdminUserActive(
+  userId: string,
+  customHeaders?: Record<string, string>
+): Promise<AdminUser> {
+  return apiRequest<AdminUser>(`/api/admin/users/${userId}/deactivate`, {
+    method: "POST",
+    headers: customHeaders,
+  });
+}
+
+export async function changeAdminUserRole(
+  userId: string,
+  role: "admin" | "operator" | "viewer",
+  customHeaders?: Record<string, string>
+): Promise<AdminUser> {
+  return apiRequest<AdminUser>(`/api/admin/users/${userId}/role?new_role=${encodeURIComponent(role)}`, {
+    method: "PUT",
+    headers: customHeaders,
+  });
+}
+
+export async function listPurposeEvaluations(
+  limit = 5,
+  customHeaders?: Record<string, string>
+): Promise<PurposeEvaluationListResponse> {
+  return apiRequest<PurposeEvaluationListResponse>(
+    `/api/domain-agents/purpose-evaluations?limit=${limit}`,
+    {
+      method: "GET",
+      headers: customHeaders,
+    }
+  );
+}
+
+export async function listRoutingDecisions(
+  limit = 5,
+  customHeaders?: Record<string, string>
+): Promise<RoutingDecisionListResponse> {
+  return apiRequest<RoutingDecisionListResponse>(
+    `/api/domain-agents/routing-decisions?limit=${limit}`,
+    {
+      method: "GET",
+      headers: customHeaders,
+    }
+  );
+}
+
+export async function listProviderPortalProviders(
+  customHeaders?: Record<string, string>
+): Promise<ProviderPortalListResponse> {
+  return apiRequest<ProviderPortalListResponse>("/api/llm/providers", {
+    method: "GET",
     headers: customHeaders,
   });
 }

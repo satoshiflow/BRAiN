@@ -52,7 +52,7 @@ export interface AxeAttachmentUploadResponse {
   expires_at: string;
 }
 
-export type AxeProvider = "groq" | "ollama" | "mock";
+export type AxeProvider = "openai" | "groq" | "ollama" | "mock";
 export type AxeSanitizationLevel = "none" | "moderate" | "strict";
 
 export interface AxeProviderRuntimeResponse {
@@ -110,4 +110,88 @@ export interface AxeSessionAppendMessageRequest {
   content: string;
   attachments?: string[];
   metadata?: Record<string, unknown>;
+}
+
+export type AdminUserRole = "admin" | "operator" | "viewer";
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  username: string;
+  full_name?: string | null;
+  role: AdminUserRole;
+  is_active: boolean;
+  is_verified: boolean;
+  created_at: string;
+  last_login?: string | null;
+}
+
+export interface AdminInvitation {
+  id: string;
+  email: string;
+  role: AdminUserRole;
+  token: string;
+  expires_at: string;
+  invitation_url: string;
+}
+
+export type DecisionOutcome = "accept" | "reject" | "modified_accept";
+
+export interface PurposeEvaluationRecord {
+  id: string;
+  decision_context_id: string;
+  purpose_profile_id: string;
+  outcome: DecisionOutcome;
+  requires_human_review: boolean;
+  purpose_score: number;
+  sovereignty_score: number;
+  required_modifications: string[];
+  reasons: string[];
+  governance_snapshot: Record<string, unknown>;
+  mission_id?: string | null;
+  correlation_id?: string | null;
+  created_by: string;
+}
+
+export interface PurposeEvaluationListResponse {
+  items: PurposeEvaluationRecord[];
+  total: number;
+}
+
+export interface RoutingDecisionRecord {
+  id: string;
+  decision_context_id: string;
+  task_profile_id: string;
+  purpose_evaluation_id?: string | null;
+  worker_candidates: string[];
+  filtered_candidates: string[];
+  selected_worker?: string | null;
+  selected_skill_or_plan?: string | null;
+  strategy: string;
+  reasoning: string;
+  governance_snapshot: Record<string, unknown>;
+  mission_id?: string | null;
+  correlation_id?: string | null;
+  created_by: string;
+}
+
+export interface RoutingDecisionListResponse {
+  items: RoutingDecisionRecord[];
+  total: number;
+}
+
+export interface ProviderPortalProviderRecord {
+  id: string;
+  display_name: string;
+  slug: string;
+  is_enabled: boolean;
+  health_status: "healthy" | "degraded" | "failed" | "unknown";
+  secret_configured?: boolean;
+  key_hint_masked?: string | null;
+  last_health_at?: string | null;
+}
+
+export interface ProviderPortalListResponse {
+  items: ProviderPortalProviderRecord[];
+  total: number;
 }
