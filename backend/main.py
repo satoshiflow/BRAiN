@@ -125,6 +125,7 @@ from app.modules.audit_logging.router import router as audit_logging_router
 from app.modules.skills_registry.router import router as skills_registry_router
 from app.modules.capabilities_registry.router import router as capabilities_registry_router
 from app.modules.provider_bindings.router import router as provider_bindings_router
+from app.modules.provider_portal.router import router as provider_portal_router
 from app.modules.capability_runtime.router import router as capability_runtime_router
 from app.modules.skill_engine.router import router as skill_engine_router
 from app.modules.skill_evaluator.router import router as skill_evaluator_router
@@ -510,6 +511,7 @@ def create_app() -> FastAPI:
     app.include_router(skills_registry_router, tags=["skill-registry"])
     app.include_router(capabilities_registry_router, tags=["capability-registry"])
     app.include_router(provider_bindings_router, tags=["provider-bindings"])
+    app.include_router(provider_portal_router, tags=["provider-portal"])
     app.include_router(capability_runtime_router, tags=["capability-runtime"])
     app.include_router(skill_engine_router, tags=["skill-engine"])
     app.include_router(skill_evaluator_router, tags=["skill-evaluator"])
