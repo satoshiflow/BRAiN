@@ -283,6 +283,123 @@ def test_optimizer_status_update_route_uses_service(
     assert response.json()["status"] == "accepted"
 
 
+def test_optimizer_list_route_supports_status_filter(
+    evaluation_optimizer_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    principal = build_principal()
+    router_module = importlib.import_module("app.modules.skill_optimizer.router")
+
+    class FakeService:
+        async def list_for_skill_with_status(self, db, tenant_id, skill_key, status=None):  # noqa: ANN001
+            assert tenant_id in {principal.tenant_id, None}
+            assert skill_key == "demo.skill"
+            assert status is not None and status.value == "open"
+            return [
+                {
+                    "id": uuid4(),
+                    "tenant_id": tenant_id,
+                    "skill_key": skill_key,
+                    "skill_version": 2,
+                    "recommendation_type": "review_capability_sequence",
+                    "confidence": 0.6,
+                    "status": "open",
+                    "rationale": "pending",
+                    "evidence": {},
+                    "source_snapshot": {},
+                    "created_at": datetime.now(timezone.utc),
+                    "created_by": "skill_optimizer",
+                }
+            ]
+
+    monkeypatch.setattr(router_module, "get_skill_optimizer_service", lambda: FakeService())
+    with override_auth_principal(evaluation_optimizer_client, principal):
+        response = evaluation_optimizer_client.get(
+            "/api/optimizer/recommendations",
+            params={"skill_key": "demo.skill", "status": "open"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["status"] == "open"
+
+
+def test_optimizer_get_recommendation_route_uses_service(
+    evaluation_optimizer_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    principal = build_principal()
+    recommendation_id = uuid4()
+    router_module = importlib.import_module("app.modules.skill_optimizer.router")
+
+    class FakeService:
+        async def get_recommendation(self, db, recommendation_id_arg, tenant_id):  # noqa: ANN001
+            assert recommendation_id_arg == recommendation_id
+            return {
+                "id": recommendation_id_arg,
+                "tenant_id": tenant_id,
+                "skill_key": "demo.skill",
+                "skill_version": 2,
+                "recommendation_type": "tighten_cost_profile",
+                "confidence": 0.7,
+                "status": "open",
+                "rationale": "costs high",
+                "evidence": {},
+                "source_snapshot": {},
+                "created_at": datetime.now(timezone.utc),
+                "created_by": "skill_optimizer",
+            }
+
+    monkeypatch.setattr(router_module, "get_skill_optimizer_service", lambda: FakeService())
+    with override_auth_principal(evaluation_optimizer_client, principal):
+        response = evaluation_optimizer_client.get(f"/api/optimizer/recommendations/{recommendation_id}")
+
+    assert response.status_code == 200
+    assert response.json()["recommendation_type"] == "tighten_cost_profile"
+
+
+def test_optimizer_get_recommendation_route_returns_standardized_404(
+    evaluation_optimizer_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    principal = build_principal()
+    recommendation_id = uuid4()
+    router_module = importlib.import_module("app.modules.skill_optimizer.router")
+
+    class FakeService:
+        async def get_recommendation(self, db, recommendation_id_arg, tenant_id):  # noqa: ANN001
+            return None
+
+    monkeypatch.setattr(router_module, "get_skill_optimizer_service", lambda: FakeService())
+    with override_auth_principal(evaluation_optimizer_client, principal):
+        response = evaluation_optimizer_client.get(f"/api/optimizer/recommendations/{recommendation_id}")
+
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "OPT-REC-NOT-FOUND"
+
+
+def test_optimizer_status_update_route_returns_standardized_conflict(
+    evaluation_optimizer_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    principal = build_principal()
+    recommendation_id = uuid4()
+    router_module = importlib.import_module("app.modules.skill_optimizer.router")
+
+    class FakeService:
+        async def update_status(self, db, recommendation_id, tenant_id, status, actor_id, reason):  # noqa: ANN001
+            raise ValueError("Recommendation status transition not allowed: accepted -> dismissed")
+
+    monkeypatch.setattr(router_module, "get_skill_optimizer_service", lambda: FakeService())
+    with override_auth_principal(evaluation_optimizer_client, principal):
+        response = evaluation_optimizer_client.patch(
+            f"/api/optimizer/recommendations/{recommendation_id}/status",
+            json={"status": "dismissed", "reason": "late"},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "OPT-REC-STATUS-CONFLICT"
+
+
 @pytest.mark.asyncio
 async def test_optimizer_status_update_emits_transition_event() -> None:
     service = SkillOptimizerService()

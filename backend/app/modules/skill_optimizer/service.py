@@ -152,9 +152,20 @@ class SkillOptimizerService:
         return created
 
     async def list_for_skill(self, db: AsyncSession, tenant_id: str | None, skill_key: str) -> list[SkillOptimizerRecommendationModel]:
+        return await self.list_for_skill_with_status(db, tenant_id=tenant_id, skill_key=skill_key)
+
+    async def list_for_skill_with_status(
+        self,
+        db: AsyncSession,
+        tenant_id: str | None,
+        skill_key: str,
+        status: OptimizerRecommendationStatus | None = None,
+    ) -> list[SkillOptimizerRecommendationModel]:
         query = select(SkillOptimizerRecommendationModel).where(SkillOptimizerRecommendationModel.skill_key == skill_key)
         if tenant_id:
             query = query.where(SkillOptimizerRecommendationModel.tenant_id == tenant_id)
+        if status is not None:
+            query = query.where(SkillOptimizerRecommendationModel.status == status.value)
         query = query.order_by(desc(SkillOptimizerRecommendationModel.created_at))
         result = await db.execute(query)
         return list(result.scalars().all())
