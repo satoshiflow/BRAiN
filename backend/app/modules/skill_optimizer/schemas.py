@@ -39,3 +39,11 @@ class OptimizerRecommendationStatus(str, Enum):
 class SkillOptimizerRecommendationStatusUpdateRequest(BaseModel):
     status: OptimizerRecommendationStatus
     reason: str | None = Field(default=None, max_length=500)
+
+
+class SkillOptimizerRecommendationSummaryResponse(BaseModel):
+    skill_key: str
+    total: int
+    by_status: dict[str, int] = Field(default_factory=dict)
+    by_type: dict[str, int] = Field(default_factory=dict)
+    average_confidence: float | None = None

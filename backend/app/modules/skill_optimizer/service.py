@@ -15,6 +15,32 @@ from .schemas import OptimizerRecommendationStatus
 
 
 class SkillOptimizerService:
+    @staticmethod
+    def _build_summary(skill_key: str, items: list[SkillOptimizerRecommendationModel]) -> dict[str, Any]:
+        by_status = {
+            OptimizerRecommendationStatus.OPEN.value: 0,
+            OptimizerRecommendationStatus.ACCEPTED.value: 0,
+            OptimizerRecommendationStatus.DISMISSED.value: 0,
+        }
+        by_type: dict[str, int] = {}
+        confidences: list[float] = []
+
+        for item in items:
+            status_value = str(item.status)
+            by_status[status_value] = by_status.get(status_value, 0) + 1
+            rec_type = str(item.recommendation_type)
+            by_type[rec_type] = by_type.get(rec_type, 0) + 1
+            confidences.append(float(item.confidence))
+
+        average_confidence = mean(confidences) if confidences else None
+        return {
+            "skill_key": skill_key,
+            "total": len(items),
+            "by_status": by_status,
+            "by_type": by_type,
+            "average_confidence": average_confidence,
+        }
+
     async def _emit_recommendation_event(
         self,
         db: AsyncSession,
@@ -181,6 +207,15 @@ class SkillOptimizerService:
             query = query.where(SkillOptimizerRecommendationModel.tenant_id == tenant_id)
         result = await db.execute(query.limit(1))
         return result.scalar_one_or_none()
+
+    async def get_summary_for_skill(
+        self,
+        db: AsyncSession,
+        tenant_id: str | None,
+        skill_key: str,
+    ) -> dict[str, Any]:
+        items = await self.list_for_skill(db, tenant_id=tenant_id, skill_key=skill_key)
+        return self._build_summary(skill_key=skill_key, items=items)
 
     async def update_status(
         self,

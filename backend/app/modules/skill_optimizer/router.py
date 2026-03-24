@@ -12,6 +12,7 @@ from .schemas import (
     OptimizerRecommendationStatus,
     SkillOptimizerRecommendationListResponse,
     SkillOptimizerRecommendationResponse,
+    SkillOptimizerRecommendationSummaryResponse,
     SkillOptimizerRecommendationStatusUpdateRequest,
 )
 from .service import get_skill_optimizer_service
@@ -54,6 +55,21 @@ async def list_recommendations(
         status=status,
     )
     return SkillOptimizerRecommendationListResponse(items=[SkillOptimizerRecommendationResponse.model_validate(item) for item in items], total=len(items))
+
+
+@router.get("/recommendations/summary", response_model=SkillOptimizerRecommendationSummaryResponse)
+async def get_recommendation_summary(
+    skill_key: str = Query(..., min_length=1),
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+):
+    service = get_skill_optimizer_service()
+    summary = await service.get_summary_for_skill(
+        db,
+        tenant_id=principal.tenant_id,
+        skill_key=skill_key,
+    )
+    return SkillOptimizerRecommendationSummaryResponse.model_validate(summary)
 
 
 @router.get("/recommendations/{recommendation_id}", response_model=SkillOptimizerRecommendationResponse)

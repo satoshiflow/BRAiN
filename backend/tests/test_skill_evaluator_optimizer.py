@@ -323,6 +323,36 @@ def test_optimizer_list_route_supports_status_filter(
     assert response.json()["items"][0]["status"] == "open"
 
 
+def test_optimizer_summary_route_uses_service(
+    evaluation_optimizer_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    principal = build_principal()
+    router_module = importlib.import_module("app.modules.skill_optimizer.router")
+
+    class FakeService:
+        async def get_summary_for_skill(self, db, tenant_id, skill_key):  # noqa: ANN001
+            assert skill_key == "demo.skill"
+            return {
+                "skill_key": skill_key,
+                "total": 3,
+                "by_status": {"open": 2, "accepted": 1, "dismissed": 0},
+                "by_type": {"review_capability_sequence": 2, "tighten_cost_profile": 1},
+                "average_confidence": 0.75,
+            }
+
+    monkeypatch.setattr(router_module, "get_skill_optimizer_service", lambda: FakeService())
+    with override_auth_principal(evaluation_optimizer_client, principal):
+        response = evaluation_optimizer_client.get(
+            "/api/optimizer/recommendations/summary",
+            params={"skill_key": "demo.skill"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 3
+    assert response.json()["by_status"]["open"] == 2
+
+
 def test_optimizer_get_recommendation_route_uses_service(
     evaluation_optimizer_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -463,6 +493,25 @@ async def test_optimizer_status_update_emits_transition_event() -> None:
     assert updated is not None
     assert updated.status == "accepted"
     assert emitted_events == [("open", "accepted", "operator-123")]
+
+
+def test_optimizer_service_builds_summary_from_recommendations() -> None:
+    service = SkillOptimizerService()
+    summary = service._build_summary(
+        skill_key="demo.skill",
+        items=[
+            SimpleNamespace(status="open", recommendation_type="review_capability_sequence", confidence=0.9),
+            SimpleNamespace(status="open", recommendation_type="tighten_cost_profile", confidence=0.6),
+            SimpleNamespace(status="accepted", recommendation_type="review_capability_sequence", confidence=0.8),
+        ],
+    )
+
+    assert summary["skill_key"] == "demo.skill"
+    assert summary["total"] == 3
+    assert summary["by_status"]["open"] == 2
+    assert summary["by_status"]["accepted"] == 1
+    assert summary["by_type"]["review_capability_sequence"] == 2
+    assert summary["average_confidence"] == pytest.approx((0.9 + 0.6 + 0.8) / 3.0)
 
 
 def test_evaluation_get_route_uses_service(evaluation_optimizer_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
