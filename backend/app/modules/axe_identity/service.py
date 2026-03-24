@@ -183,7 +183,7 @@ class AXEIdentityService:
 
         # Increment version and update timestamp
         identity.version += 1
-        identity.updated_at = datetime.utcnow()
+        identity.updated_at = datetime.now(timezone.utc)
 
         await self.db.commit()
         await self.db.refresh(identity)
@@ -222,7 +222,7 @@ class AXEIdentityService:
             return None
 
         identity.is_active = True
-        identity.updated_at = datetime.utcnow()
+        identity.updated_at = datetime.now(timezone.utc)
 
         await self.db.commit()
         await self.db.refresh(identity)

@@ -1,5 +1,7 @@
 # Review Request: Epic 1-5 Final Validation (2026-03-23)
 
+Status note (2026-03-24): This file is the original review request artifact. Current remediation evidence and final validation results are tracked in `docs/roadmap/EPIC1_TO_EPIC5_COMPLETION_REPORT_20260323.md` and `docs/roadmap/local_ci/20260324_091900_epic1_5_validation.md`.
+
 ## Requested Reviewer Models
 
 - Claude Code (latest available)

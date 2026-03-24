@@ -11,6 +11,12 @@ from app.modules.capabilities_registry.schemas import (
     CapabilityDefinitionStatus,
 )
 from app.modules.capabilities_registry.service import get_capability_registry_service
+from app.modules.provider_bindings.schemas import (
+    ProviderBindingCreate,
+    ProviderBindingStatus,
+    ProviderType,
+)
+from app.modules.provider_bindings.service import get_provider_binding_service
 from app.modules.skills_registry.schemas import (
     CapabilityRef,
     OwnerScope,
@@ -43,7 +49,22 @@ async def seed_axe_chat_skill_contract(db: AsyncSession) -> None:
 
     principal = _system_seed_principal()
     capability_service = get_capability_registry_service()
+    provider_binding_service = get_provider_binding_service()
     skill_service = get_skill_registry_service()
+    local_llm_mode = os.getenv("LOCAL_LLM_MODE", "ollama").strip().lower()
+    provider_key = local_llm_mode if local_llm_mode in {"openai", "groq", "ollama", "mock"} else "ollama"
+    endpoint_ref_by_provider = {
+        "openai": os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+        "groq": os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
+        "ollama": os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
+        "mock": os.getenv("MOCK_BASE_URL", "http://127.0.0.1:8099"),
+    }
+    model_ref_by_provider = {
+        "openai": os.getenv("OPENAI_MODEL", "gpt-4-turbo-preview"),
+        "groq": os.getenv("GROQ_MODEL", "llama-3.1-70b-versatile"),
+        "ollama": os.getenv("OLLAMA_MODEL", "qwen2.5:0.5b"),
+        "mock": os.getenv("MOCK_MODEL", "mock-local"),
+    }
 
     # Ensure capability exists and is active
     try:
@@ -200,9 +221,54 @@ async def seed_axe_chat_skill_contract(db: AsyncSession) -> None:
             owner_scope=OwnerScope.SYSTEM.value,
         )
 
+    # Ensure at least one governed system provider binding is enabled for AXE runtime capability.
+    bindings = await provider_binding_service.list_bindings(
+        db,
+        capability_key=capability_key,
+        capability_version=1,
+        tenant_id=None,
+    )
+    selected_binding = next(
+        (
+            binding
+            for binding in bindings
+            if binding.owner_scope == OwnerScope.SYSTEM.value and binding.provider_key == provider_key
+        ),
+        None,
+    )
+
+    if selected_binding is None:
+        selected_binding = await provider_binding_service.create_binding(
+            db,
+            ProviderBindingCreate(
+                owner_scope=OwnerScope.SYSTEM,
+                capability_key=capability_key,
+                capability_version=1,
+                provider_key=provider_key,
+                provider_type=ProviderType.LLM,
+                adapter_key="llm_text_generate",
+                endpoint_ref=endpoint_ref_by_provider.get(provider_key, endpoint_ref_by_provider["ollama"]),
+                model_or_tool_ref=model_ref_by_provider.get(provider_key, model_ref_by_provider["ollama"]),
+                priority=100,
+                config={"provider": provider_key},
+            ),
+            principal,
+        )
+
+    if selected_binding.status != ProviderBindingStatus.ENABLED.value:
+        selected_binding = await provider_binding_service.transition_binding(
+            db,
+            binding_id=selected_binding.id,
+            target_status=ProviderBindingStatus.ENABLED,
+            principal=principal,
+        )
+        if selected_binding is None:
+            raise ValueError("AXE provider binding transition failed")
+
     logger.info(
-        "AXE chat bridge skill contract ready: skill_key={} version={} capability_key={}",
+        "AXE chat bridge skill contract ready: skill_key={} version={} capability_key={} provider_key={}",
         skill_key,
         skill_version,
         capability_key,
+        provider_key,
     )

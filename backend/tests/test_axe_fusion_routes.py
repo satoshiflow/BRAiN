@@ -127,6 +127,7 @@ def test_axe_fusion_chat_route_allows_dmz(client, monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(axe_fusion_router_module, "get_axe_trust_validator", lambda: _AllowDmzValidator())
     monkeypatch.setattr(axe_fusion_router_module, "get_axe_fusion_service", lambda db=None: _FusionServiceStub())
     monkeypatch.setattr(axe_fusion_router_module, "AXE_CHAT_EXECUTION_PATH", "direct")
+    monkeypatch.setattr(axe_fusion_router_module, "AXE_CHAT_ALLOW_DIRECT_EXECUTION", True)
 
     response = client.post(
         "/api/axe/chat",
@@ -183,6 +184,62 @@ def test_axe_fusion_chat_prefers_skillrun_bridge(client, monkeypatch: pytest.Mon
     body = response.json()
     assert body["text"] == "bridge response"
     assert body["raw"]["execution_path"] == "skillrun_bridge"
+
+
+def test_axe_fusion_chat_bridge_failure_fails_closed_without_direct_fallback(
+    client,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(axe_fusion_router_module, "get_axe_trust_validator", lambda: _AllowDmzValidator())
+    monkeypatch.setattr(axe_fusion_router_module, "AXE_CHAT_EXECUTION_PATH", "skillrun_bridge")
+    monkeypatch.setattr(axe_fusion_router_module, "AXE_CHAT_BRIDGE_FALLBACK_DIRECT", False)
+
+    class _FailIfCalledService(_FusionServiceStub):
+        async def chat(self, *args, **kwargs):  # noqa: ANN002, ANN003
+            raise AssertionError("direct fallback must not be called")
+
+    monkeypatch.setattr(axe_fusion_router_module, "get_axe_fusion_service", lambda db=None: _FailIfCalledService())
+
+    async def _bridge(**kwargs):  # noqa: ANN001
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "SkillRun bridge unavailable",
+                "code": "SKILLRUN_BRIDGE_UNAVAILABLE",
+            },
+        )
+
+    monkeypatch.setattr(axe_fusion_router_module, "_try_skillrun_bridge", _bridge)
+
+    response = client.post(
+        "/api/axe/chat",
+        json={
+            "model": "gpt-4o-mini",
+            "messages": [{"role": "user", "content": "hello"}],
+        },
+    )
+
+    assert response.status_code == 503
+    detail = response.json()["detail"]
+    assert detail["code"] == "SKILLRUN_BRIDGE_UNAVAILABLE"
+
+
+def test_axe_fusion_chat_direct_mode_requires_explicit_opt_in(client, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(axe_fusion_router_module, "get_axe_trust_validator", lambda: _AllowDmzValidator())
+    monkeypatch.setattr(axe_fusion_router_module, "AXE_CHAT_EXECUTION_PATH", "direct")
+    monkeypatch.setattr(axe_fusion_router_module, "AXE_CHAT_ALLOW_DIRECT_EXECUTION", False)
+
+    response = client.post(
+        "/api/axe/chat",
+        json={
+            "model": "gpt-4o-mini",
+            "messages": [{"role": "user", "content": "hello"}],
+        },
+    )
+
+    assert response.status_code == 503
+    detail = response.json()["detail"]
+    assert detail["code"] == "AXE_DIRECT_DISABLED"
 
 
 def test_axe_fusion_chat_bridge_waiting_approval_returns_409(client, monkeypatch: pytest.MonkeyPatch):

@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from app.modules.axe_fusion.provider_selector import LLMProvider, ProviderConfig
-from app.modules.axe_fusion.service import AXEFusionService, AXEllmClient
+from app.modules.axe_fusion.service import AXEFusionService, AXEllmClient, AXEllmUnavailableError
 
 
 class _FakeHttpClient:
@@ -75,3 +75,57 @@ def test_chat_completion_url_avoids_double_v1() -> None:
 
     plain = AXEllmClient(base_url="http://localhost:8081")
     assert plain._chat_completion_url() == "http://localhost:8081/v1/chat/completions"
+
+
+@pytest.mark.asyncio
+async def test_runtime_config_requires_governed_binding_when_enforced(monkeypatch: pytest.MonkeyPatch) -> None:
+    service = AXEFusionService(db=object())
+    config = ProviderConfig(
+        provider=LLMProvider.OPENAI,
+        base_url="http://127.0.0.1:8099",
+        api_key="dummy",
+        model="mock-model",
+    )
+
+    monkeypatch.setenv("AXE_ENFORCE_PROVIDER_BINDINGS", "true")
+    monkeypatch.setattr(service.selector, "get_active_provider", lambda: LLMProvider.OPENAI)
+    monkeypatch.setattr(service.selector, "get_active_config", lambda: config)
+
+    async def _probe(_config, require_chat):  # noqa: ANN001
+        return True
+
+    async def _no_binding(*args, **kwargs):  # noqa: ANN002, ANN003
+        return None
+
+    monkeypatch.setattr(service, "_probe_provider", _probe)
+    monkeypatch.setattr(service.provider_binding_service, "find_binding_by_provider", _no_binding)
+
+    with pytest.raises(AXEllmUnavailableError, match="no enabled governed ProviderBinding"):
+        await service._resolve_runtime_config(require_chat=True)
+
+
+@pytest.mark.asyncio
+async def test_runtime_config_accepts_provider_when_governed_binding_exists(monkeypatch: pytest.MonkeyPatch) -> None:
+    service = AXEFusionService(db=object())
+    config = ProviderConfig(
+        provider=LLMProvider.OPENAI,
+        base_url="http://127.0.0.1:8099",
+        api_key="dummy",
+        model="mock-model",
+    )
+
+    monkeypatch.setenv("AXE_ENFORCE_PROVIDER_BINDINGS", "true")
+    monkeypatch.setattr(service.selector, "get_active_provider", lambda: LLMProvider.OPENAI)
+    monkeypatch.setattr(service.selector, "get_active_config", lambda: config)
+
+    async def _probe(_config, require_chat):  # noqa: ANN001
+        return True
+
+    async def _has_binding(*args, **kwargs):  # noqa: ANN002, ANN003
+        return object()
+
+    monkeypatch.setattr(service, "_probe_provider", _probe)
+    monkeypatch.setattr(service.provider_binding_service, "find_binding_by_provider", _has_binding)
+
+    resolved = await service._resolve_runtime_config(require_chat=True)
+    assert resolved.provider == LLMProvider.OPENAI

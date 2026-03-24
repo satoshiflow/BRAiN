@@ -6,6 +6,16 @@ This report captures the completion review and technical validation of Epic 1 th
 
 ## Implemented Fixes During Finalization
 
+### 0) Post-review hardening remediations (blockers closed)
+
+- AXE frontdoor now runs fail-closed in SkillRun bridge mode by default in `backend/app/modules/axe_fusion/router.py`.
+- Direct AXE execution path now requires explicit opt-in (`AXE_CHAT_ALLOW_DIRECT_EXECUTION=true`) and is disabled by default.
+- Bridge failure now returns controlled `503` instead of silently falling back to direct path.
+- Capability runtime now disables implicit in-memory ProviderBinding fallback by default via `BRAIN_CAPABILITY_ALLOW_INMEMORY_FALLBACK=false` in `backend/app/core/capabilities/service.py`.
+- AXE bridge seeder now ensures a governed system `ProviderBinding` exists and is enabled for `text.generate` in `backend/app/modules/skills/axe_chat_skill_seeder.py`.
+- Fixed persistent binding snapshot normalization (`id` -> `provider_binding_id`) in capability resolution.
+- Completed timezone-aware AXE identity model/write-path hardening in `backend/app/modules/axe_identity/models.py` and `backend/app/modules/axe_identity/service.py`.
+
 ### 1) AXE chat bridge seeding and status transitions
 
 - Fixed registry resolve usage and fallback behavior in `backend/app/modules/skills/axe_chat_skill_seeder.py`.
@@ -15,12 +25,12 @@ This report captures the completion review and technical validation of Epic 1 th
 ### 2) AXE frontdoor bridge payload and runtime flow
 
 - Ensured bridge payload contains `prompt` for `text.generate` adapter execution in `backend/app/modules/axe_fusion/router.py`.
-- Preserved SkillRun-first path and controlled direct fallback behavior.
+- Enforced SkillRun-first default with fail-closed handling and explicit direct-mode opt-in.
 
 ### 3) Capability binding resolution hardening
 
 - Guarded DB binding lookup against non-UUID in-memory fallback IDs in `backend/app/core/capabilities/service.py`.
-- Added local provider selection from `LOCAL_LLM_MODE` for in-memory binding defaults.
+- Normalized persisted binding snapshots and disabled implicit in-memory fallback by default.
 
 ### 4) LLM router environment wiring
 
@@ -30,6 +40,7 @@ This report captures the completion review and technical validation of Epic 1 th
 ### 5) AXE identity fallback robustness
 
 - Added safe conversion path for identity rows with missing timestamps in `backend/app/modules/axe_identity/service.py`.
+- Made identity ORM timestamps timezone-aware and aligned update/activate write paths.
 - Added regression coverage in `backend/tests/test_axe_identity_service.py`.
 
 ### 6) CORS hardening for local validation and browser runners
@@ -85,13 +96,25 @@ This report captures the completion review and technical validation of Epic 1 th
 
 - Command:
   - `PYTHONPATH=. pytest tests/test_skill_capability_registry.py tests/test_provider_binding_service.py tests/test_skill_engine.py tests/test_evaluation_result_schema.py tests/test_experience_layer.py tests/test_knowledge_layer.py tests/test_knowledge_layer_service.py tests/test_evolution_control.py tests/test_evolution_control_service.py tests/test_axe_chat_skill_seeder.py tests/test_axe_fusion_routes.py tests/test_axe_identity_service.py -q`
-- Result: `57 passed`
+- Result: `60 passed`
 
 ### Additional focused AXE regression suite
 
 - Command:
   - `PYTHONPATH=. pytest tests/test_axe_identity_service.py tests/test_axe_chat_skill_seeder.py tests/test_axe_fusion_routes.py -q`
 - Result: `24 passed`
+
+### Post-review AXE hardening suite
+
+- Command:
+  - `PYTHONPATH=. pytest tests/test_axe_chat_skill_seeder.py tests/test_axe_fusion_routes.py tests/test_axe_identity_service.py tests/test_skill_engine.py -q`
+- Result: `32 passed`
+
+### Expanded Epic 1-5 governance enforcement suite
+
+- Command:
+  - `PYTHONPATH=. pytest tests/test_skill_capability_registry.py tests/test_provider_binding_service.py tests/test_skill_engine.py tests/test_evaluation_result_schema.py tests/test_experience_layer.py tests/test_knowledge_layer.py tests/test_knowledge_layer_service.py tests/test_evolution_control.py tests/test_evolution_control_service.py tests/test_axe_chat_skill_seeder.py tests/test_axe_fusion_routes.py tests/test_axe_fusion_service.py tests/test_axe_identity_service.py tests/test_capability_adapters.py -q`
+- Result: `71 passed`
 
 ### RC staging gate
 
@@ -105,7 +128,12 @@ This report captures the completion review and technical validation of Epic 1 th
   - `./scripts/local_ci_gate.sh backend-fast`
 - Result: PASS
 - Evidence artifact:
-  - `docs/roadmap/local_ci/20260323_203340_backend-fast.md`
+  - `docs/roadmap/local_ci/20260324_082401_backend-fast.md`
+
+### Epic 1-5 remediation evidence
+
+- Evidence artifact:
+  - `docs/roadmap/local_ci/20260324_091900_epic1_5_validation.md`
 
 ### Browser/E2E live pipeline validation
 
@@ -129,7 +157,7 @@ This report captures the completion review and technical validation of Epic 1 th
 - Epic 1-5 critical invariants hold in implemented paths:
   - SkillRun remains execution truth for AXE bridge path.
   - Direct capability execution remains blocked by default runtime flag.
-  - Provider binding resolution remains governed with controlled fallback.
+  - Provider binding resolution remains governed; implicit in-memory fallback is disabled by default.
   - Governed learning/evolution paths remain proposal/validation/approval controlled.
   - Memory/experience/knowledge chain references remain in place.
 

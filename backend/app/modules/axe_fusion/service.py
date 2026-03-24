@@ -615,7 +615,7 @@ class AXEFusionService:
 
     async def _resolve_runtime_config(self, *, require_chat: bool) -> ProviderConfig:
         provider = self.selector.get_active_provider()
-        enforce_bindings = os.getenv("AXE_ENFORCE_PROVIDER_BINDINGS", "false").strip().lower() in {
+        enforce_bindings = os.getenv("AXE_ENFORCE_PROVIDER_BINDINGS", "true").strip().lower() in {
             "1",
             "true",
             "yes",

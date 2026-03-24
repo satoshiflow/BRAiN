@@ -90,7 +90,12 @@ LEGACY_AXE_DOC_LINK = os.getenv(
 AXE_CHAT_EXECUTION_PATH = os.getenv("AXE_CHAT_EXECUTION_PATH", "skillrun_bridge").strip().lower()
 AXE_CHAT_SKILL_KEY = os.getenv("AXE_CHAT_SKILL_KEY", "axe.chat.bridge")
 AXE_CHAT_SKILL_VERSION = int(os.getenv("AXE_CHAT_SKILL_VERSION", "1"))
-AXE_CHAT_BRIDGE_FALLBACK_DIRECT = os.getenv("AXE_CHAT_BRIDGE_FALLBACK_DIRECT", "true").strip().lower() in {
+AXE_CHAT_BRIDGE_FALLBACK_DIRECT = os.getenv("AXE_CHAT_BRIDGE_FALLBACK_DIRECT", "false").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+}
+AXE_CHAT_ALLOW_DIRECT_EXECUTION = os.getenv("AXE_CHAT_ALLOW_DIRECT_EXECUTION", "false").strip().lower() in {
     "1",
     "true",
     "yes",
@@ -510,8 +515,14 @@ async def _try_skillrun_bridge(
     if AXE_CHAT_EXECUTION_PATH != "skillrun_bridge":
         return None
     if not AXE_CHAT_SKILL_KEY:
-        logger.warning("AXE skillrun bridge enabled but AXE_CHAT_SKILL_KEY is empty")
-        return None
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error": "SkillRun bridge misconfigured",
+                "message": "AXE_CHAT_SKILL_KEY must be configured for SkillRun bridge mode",
+                "code": "SKILLRUN_BRIDGE_MISCONFIGURED",
+            },
+        )
     if principal is None:
         principal = Principal(
             principal_id="axe-legacy-bridge",
@@ -553,6 +564,7 @@ async def _try_skillrun_bridge(
         if AXE_CHAT_BRIDGE_FALLBACK_DIRECT:
             logger.warning("AXE skillrun bridge unavailable, fallback to direct path: %s", exc)
             return None
+        logger.exception("AXE skillrun bridge execution failed")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={
@@ -596,6 +608,16 @@ async def _try_skillrun_bridge(
     if not text.strip() and AXE_CHAT_BRIDGE_FALLBACK_DIRECT:
         logger.warning("AXE skillrun bridge produced empty response for run=%s; using fallback", report.skill_run.id)
         return None
+    if not text.strip():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error": "SkillRun output invalid",
+                "message": "SkillRun completed without chat text output",
+                "code": "SKILLRUN_EMPTY_OUTPUT",
+                "skill_run_id": str(report.skill_run.id),
+            },
+        )
     return ChatResponse(
         text=text or "",
         raw={
@@ -680,6 +702,26 @@ async def axe_chat(
         )
         if bridged is not None:
             return bridged
+
+        if AXE_CHAT_EXECUTION_PATH == "skillrun_bridge":
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "error": "SkillRun bridge unavailable",
+                    "message": "AXE runtime is configured for SkillRun-only execution",
+                    "code": "SKILLRUN_BRIDGE_REQUIRED",
+                },
+            )
+
+        if not AXE_CHAT_ALLOW_DIRECT_EXECUTION:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "error": "Direct execution disabled",
+                    "message": "Enable AXE_CHAT_ALLOW_DIRECT_EXECUTION for direct runtime mode",
+                    "code": "AXE_DIRECT_DISABLED",
+                },
+            )
         
         result = await service.chat(
             model=chat_request.model,
@@ -1298,9 +1340,18 @@ async def axe_message_legacy(
                     "code": "AXE_LEGACY_SKILLRUN_REQUIRED",
                 },
             )
-    except Exception:
-        # Keep compatibility behavior stable even if upstream LLM is unavailable.
-        reply = "AXE received your message."
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Legacy AXE message bridge failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error": "SkillRun bridge unavailable",
+                "message": "Legacy AXE endpoint requires a healthy SkillRun bridge",
+                "code": "AXE_LEGACY_SKILLRUN_UNAVAILABLE",
+            },
+        ) from exc
 
     return {
         "mode": "compat",

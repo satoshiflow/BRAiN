@@ -9,7 +9,11 @@ from sqlalchemy import Column, String, Text, Boolean, Integer, TIMESTAMP, CheckC
 from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY
 from app.core.database import Base
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
+
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class AXEIdentityORM(Base):
@@ -42,8 +46,8 @@ class AXEIdentityORM(Base):
     version = Column(Integer, default=1)
 
     # Timestamps
-    created_at = Column(TIMESTAMP, default=datetime.utcnow, index=True)
-    updated_at = Column(TIMESTAMP, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(TIMESTAMP(timezone=True), default=utcnow, index=True)
+    updated_at = Column(TIMESTAMP(timezone=True), default=utcnow, onupdate=utcnow)
 
     # Audit
     created_by = Column(String(255))

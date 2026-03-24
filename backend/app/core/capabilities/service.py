@@ -79,6 +79,14 @@ class CapabilityExecutionService:
         self.register_adapter(LLMTextGenerateAdapter())
         self.register_adapter(ConnectorHealthAdapter())
 
+    @staticmethod
+    def _allow_in_memory_binding_fallback() -> bool:
+        return os.getenv("BRAIN_CAPABILITY_ALLOW_INMEMORY_FALLBACK", "false").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+        }
+
     def register_adapter(self, adapter: CapabilityAdapter) -> None:
         self._adapters[adapter.adapter_key] = adapter
 
@@ -154,11 +162,18 @@ class CapabilityExecutionService:
             policy_context=policy_context,
         )
         if resolved is not None:
-            binding = ProviderBindingSpec.model_validate(resolved.binding_snapshot)
+            binding_snapshot = dict(resolved.binding_snapshot)
+            if "provider_binding_id" not in binding_snapshot and binding_snapshot.get("id"):
+                binding_snapshot["provider_binding_id"] = str(binding_snapshot["id"])
+            if "enabled" not in binding_snapshot:
+                binding_snapshot["enabled"] = binding_snapshot.get("status") == "enabled"
+            binding = ProviderBindingSpec.model_validate(binding_snapshot)
             adapter = self._adapters.get(binding.adapter_key)
             if adapter is None:
                 raise ValueError(f"No adapter registered for '{binding.adapter_key}'")
             return BindingLookupResult(binding=binding, adapter=adapter), resolved
+        if not self._allow_in_memory_binding_fallback():
+            return None, None
         bindings = self.list_bindings(capability_key, capability_version)
         if not bindings:
             return None, None
@@ -185,15 +200,25 @@ class CapabilityExecutionService:
         if definition.status not in {"active", "deprecated"}:
             raise ValueError(f"Capability '{request.capability_key}' is not execution-eligible")
 
+        resolved_capability_key = str(definition.capability_key)
+        resolved_capability_version = int(definition.version)
+
         binding_result = await self._resolve_binding_from_db(
             db,
             request.tenant_id,
             request.provider_binding_id,
-            definition.capability_key,
-            definition.version,
+            resolved_capability_key,
+            resolved_capability_version,
         )
         if binding_result is None:
-            binding_result = self._resolve_binding(request.tenant_id, request.provider_binding_id, definition.capability_key, definition.version)
+            if not self._allow_in_memory_binding_fallback():
+                raise ValueError("Provider binding is missing or not enabled")
+            binding_result = self._resolve_binding(
+                request.tenant_id,
+                request.provider_binding_id,
+                resolved_capability_key,
+                resolved_capability_version,
+            )
         result = await binding_result.adapter.execute(request, binding_result.binding)
         logger.info(
             "Capability execution completed for {} via {} with status {}",
@@ -202,8 +227,8 @@ class CapabilityExecutionService:
             result.status.value,
         )
         return CapabilityExecutionResponse(
-            capability_key=definition.capability_key,
-            capability_version=definition.version,
+            capability_key=resolved_capability_key,
+            capability_version=resolved_capability_version,
             provider_binding_id=binding_result.binding.provider_binding_id,
             result=result,
         )
