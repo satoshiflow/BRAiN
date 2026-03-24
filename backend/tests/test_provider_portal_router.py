@@ -182,6 +182,20 @@ def test_provider_create_requires_admin_role(monkeypatch) -> None:
     assert response.status_code == 403
 
 
+def test_set_secret_requires_admin_role(monkeypatch) -> None:
+    fake_service = _FakeProviderPortalService()
+    monkeypatch.setattr(provider_portal_router_module, "get_provider_portal_service", lambda: fake_service)
+    client = TestClient(_build_test_app())
+
+    with _override_principal(client, _principal("operator")):
+        response = client.post(
+            f"/api/llm/providers/{fake_service.provider_id}/secret",
+            json={"api_key": "sk-live-provider-portal-test-1234", "activate": True},
+        )
+
+    assert response.status_code == 403
+
+
 def test_set_secret_masks_output_and_never_echoes_plaintext(monkeypatch) -> None:
     fake_service = _FakeProviderPortalService()
     monkeypatch.setattr(provider_portal_router_module, "get_provider_portal_service", lambda: fake_service)
