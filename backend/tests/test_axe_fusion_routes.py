@@ -144,6 +144,20 @@ def test_axe_fusion_chat_route_allows_dmz(client, monkeypatch: pytest.MonkeyPatc
     assert "x-axe-request-id" in response.headers
 
 
+def test_axe_fusion_chat_cors_preflight_allows_axe_ui_dev_origin(client):
+    response = client.options(
+        "/api/axe/chat",
+        headers={
+            "Origin": "http://127.0.0.1:3002",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type,authorization",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:3002"
+
+
 def test_axe_fusion_chat_prefers_skillrun_bridge(client, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(axe_fusion_router_module, "get_axe_trust_validator", lambda: _AllowDmzValidator())
     monkeypatch.setattr(axe_fusion_router_module, "AXE_CHAT_EXECUTION_PATH", "skillrun_bridge")

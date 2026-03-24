@@ -14,8 +14,11 @@ from app.modules.capabilities_registry.service import get_capability_registry_se
 from app.modules.skills_registry.schemas import (
     CapabilityRef,
     OwnerScope,
+    RiskTier,
     SkillDefinitionCreate,
     SkillDefinitionStatus,
+    TrustTier,
+    VersionSelector,
 )
 from app.modules.skills_registry.service import get_skill_registry_service
 
@@ -43,12 +46,24 @@ async def seed_axe_chat_skill_contract(db: AsyncSession) -> None:
     skill_service = get_skill_registry_service()
 
     # Ensure capability exists and is active
-    capability = await capability_service.resolve_definition(
-        db,
-        tenant_id=None,
-        owner_scope=OwnerScope.SYSTEM.value,
-        capability_key=capability_key,
-    )
+    try:
+        capability = await capability_service.resolve_definition(
+            db,
+            capability_key=capability_key,
+            tenant_id=None,
+        )
+    except ValueError:
+        capability = None
+
+    if capability is None:
+        capability = await capability_service.get_definition(
+            db,
+            capability_key=capability_key,
+            version=1,
+            tenant_id=None,
+            owner_scope=OwnerScope.SYSTEM.value,
+        )
+
     if capability is None:
         capability = await capability_service.create_definition(
             db,
@@ -80,19 +95,40 @@ async def seed_axe_chat_skill_contract(db: AsyncSession) -> None:
             ),
             principal,
         )
-    if capability.status == CapabilityDefinitionStatus.DRAFT.value:
-        capability = await capability_service.transition_status(
-            db, capability.id, CapabilityDefinitionStatus.ACTIVE, principal
+    capability_status = getattr(capability, "status", None)
+    if capability_status == CapabilityDefinitionStatus.DRAFT.value:
+        resolved_capability_key = str(getattr(capability, "capability_key", capability_key))
+        resolved_capability_version = int(getattr(capability, "version", 1))
+        capability = await capability_service.transition_definition(
+            db,
+            capability_key=resolved_capability_key,
+            version=resolved_capability_version,
+            target_status=CapabilityDefinitionStatus.ACTIVE,
+            principal=principal,
+            owner_scope=OwnerScope.SYSTEM.value,
         )
 
     # Ensure chat bridge skill exists and is active
-    skill = await skill_service.resolve_definition(
-        db,
-        tenant_id=None,
-        owner_scope=OwnerScope.SYSTEM.value,
-        skill_key=skill_key,
-        version_value=skill_version,
-    )
+    try:
+        skill = await skill_service.resolve_definition(
+            db,
+            skill_key=skill_key,
+            tenant_id=None,
+            selector=VersionSelector.EXACT,
+            version_value=skill_version,
+        )
+    except ValueError:
+        skill = None
+
+    if skill is None:
+        skill = await skill_service.get_definition(
+            db,
+            skill_key=skill_key,
+            version=skill_version,
+            tenant_id=None,
+            owner_scope=OwnerScope.SYSTEM.value,
+        )
+
     if skill is None:
         skill = await skill_service.create_definition(
             db,
@@ -119,25 +155,49 @@ async def seed_axe_chat_skill_contract(db: AsyncSession) -> None:
                     CapabilityRef(capability_key=capability_key)
                 ],
                 evaluation_criteria={"min_score": 0.0},
-                risk_tier="medium",
+                risk_tier=RiskTier.MEDIUM,
                 policy_pack_ref="default",
-                trust_tier_min="internal",
+                trust_tier_min=TrustTier.INTERNAL,
                 builder_role="axe_chat_bridge",
             ),
             principal,
         )
 
-    if skill.status == SkillDefinitionStatus.DRAFT.value:
-        skill = await skill_service.transition_status(
-            db, skill.id, SkillDefinitionStatus.REVIEW, principal
+    skill_status = getattr(skill, "status", None)
+    if skill_status == SkillDefinitionStatus.DRAFT.value:
+        resolved_skill_key = str(getattr(skill, "skill_key", skill_key))
+        resolved_skill_version = int(getattr(skill, "version", skill_version))
+        skill = await skill_service.transition_definition(
+            db,
+            skill_key=resolved_skill_key,
+            version=resolved_skill_version,
+            target_status=SkillDefinitionStatus.REVIEW,
+            principal=principal,
+            owner_scope=OwnerScope.SYSTEM.value,
         )
-    if skill.status == SkillDefinitionStatus.REVIEW.value:
-        skill = await skill_service.transition_status(
-            db, skill.id, SkillDefinitionStatus.APPROVED, principal
+        skill_status = getattr(skill, "status", None)
+    if skill_status == SkillDefinitionStatus.REVIEW.value:
+        resolved_skill_key = str(getattr(skill, "skill_key", skill_key))
+        resolved_skill_version = int(getattr(skill, "version", skill_version))
+        skill = await skill_service.transition_definition(
+            db,
+            skill_key=resolved_skill_key,
+            version=resolved_skill_version,
+            target_status=SkillDefinitionStatus.APPROVED,
+            principal=principal,
+            owner_scope=OwnerScope.SYSTEM.value,
         )
-    if skill.status == SkillDefinitionStatus.APPROVED.value:
-        skill = await skill_service.transition_status(
-            db, skill.id, SkillDefinitionStatus.ACTIVE, principal
+        skill_status = getattr(skill, "status", None)
+    if skill_status == SkillDefinitionStatus.APPROVED.value:
+        resolved_skill_key = str(getattr(skill, "skill_key", skill_key))
+        resolved_skill_version = int(getattr(skill, "version", skill_version))
+        skill = await skill_service.transition_definition(
+            db,
+            skill_key=resolved_skill_key,
+            version=resolved_skill_version,
+            target_status=SkillDefinitionStatus.ACTIVE,
+            principal=principal,
+            owner_scope=OwnerScope.SYSTEM.value,
         )
 
     logger.info(

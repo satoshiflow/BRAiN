@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import uuid
 from dataclasses import dataclass
 from typing import Iterable
 
@@ -29,6 +31,8 @@ class BindingLookupResult:
 
 class InMemoryProviderBindingRegistry:
     def __init__(self) -> None:
+        local_llm_mode = os.getenv("LOCAL_LLM_MODE", "ollama").strip().lower()
+        provider_key = local_llm_mode if local_llm_mode in {"openai", "groq", "ollama", "mock"} else "ollama"
         self._bindings: dict[str, ProviderBindingSpec] = {
             "binding.text.generate.ollama.v1": ProviderBindingSpec(
                 provider_binding_id="binding.text.generate.ollama.v1",
@@ -36,8 +40,8 @@ class InMemoryProviderBindingRegistry:
                 capability_key="text.generate",
                 capability_version=1,
                 adapter_key="llm_text_generate",
-                provider_key="ollama",
-                config={"provider": "ollama"},
+                provider_key=provider_key,
+                config={"provider": provider_key},
             ),
             "binding.connectors.health.default.v1": ProviderBindingSpec(
                 provider_binding_id="binding.connectors.health.default.v1",
@@ -94,7 +98,11 @@ class CapabilityExecutionService:
         return BindingLookupResult(binding=binding, adapter=adapter)
 
     async def _resolve_binding_from_db(self, db, tenant_id: str | None, provider_binding_id: str, capability_key: str, capability_version: int) -> BindingLookupResult | None:
-        binding_model = await db.get(ProviderBindingModel, provider_binding_id)
+        try:
+            binding_uuid = uuid.UUID(provider_binding_id)
+        except (TypeError, ValueError):
+            return None
+        binding_model = await db.get(ProviderBindingModel, binding_uuid)
         if binding_model is None:
             return None
         if binding_model.owner_scope == "tenant" and binding_model.tenant_id != tenant_id:

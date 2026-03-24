@@ -45,13 +45,15 @@ def upgrade() -> None:
     op.execute(
         """
         INSERT INTO module_lifecycle (
-            module_id, owner_scope, classification, lifecycle_status, canonical_path,
+            id, module_id, owner_scope, classification, lifecycle_status, canonical_path,
             active_routes, data_owner, auth_surface, event_contract_status, audit_policy,
-            migration_adapter, kill_switch, replacement_target, sunset_phase, notes
+            migration_adapter, kill_switch, replacement_target, sunset_phase, notes,
+            created_at, updated_at
         )
-        SELECT seeded.module_id, 'system', seeded.classification, seeded.lifecycle_status, seeded.canonical_path,
+        SELECT gen_random_uuid(), seeded.module_id, 'system', seeded.classification, seeded.lifecycle_status, seeded.canonical_path,
                seeded.active_routes::jsonb, seeded.data_owner, seeded.auth_surface, seeded.event_contract_status, seeded.audit_policy,
-               seeded.migration_adapter, seeded.kill_switch, seeded.replacement_target, seeded.sunset_phase, seeded.notes
+               seeded.migration_adapter, seeded.kill_switch, seeded.replacement_target, seeded.sunset_phase, seeded.notes,
+               NOW(), NOW()
         FROM (
             VALUES
                 ('course_factory', 'CONSOLIDATE', 'stable', 'backend/app/modules/course_factory', '["/api/course-factory/generate","/api/course-factory/enhance"]', 'skillrun', 'operator', 'partial', 'audit_required', 'app.modules.course_factory', NULL, NULL, 'epic11', 'Builder wrapper over SkillRun'),

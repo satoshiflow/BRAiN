@@ -64,11 +64,13 @@ def upgrade() -> None:
     op.execute(
         """
         INSERT INTO module_lifecycle (
-            module_id, owner_scope, classification, lifecycle_status, canonical_path,
+            id, module_id, owner_scope, classification, lifecycle_status, canonical_path,
             active_routes, data_owner, auth_surface, event_contract_status, audit_policy,
-            migration_adapter, kill_switch, replacement_target, sunset_phase, notes
+            migration_adapter, kill_switch, replacement_target, sunset_phase, notes,
+            created_at, updated_at
         )
         SELECT
+            gen_random_uuid(),
             'consolidation_layer',
             'system',
             'NEW',
@@ -83,7 +85,9 @@ def upgrade() -> None:
             NULL,
             NULL,
             'phase_p3',
-            'Pattern candidates consolidated from insight candidates'
+            'Pattern candidates consolidated from insight candidates',
+            NOW(),
+            NOW()
         WHERE NOT EXISTS (
             SELECT 1 FROM module_lifecycle existing WHERE existing.module_id = 'consolidation_layer'
         );
@@ -93,11 +97,13 @@ def upgrade() -> None:
     op.execute(
         """
         INSERT INTO module_lifecycle (
-            module_id, owner_scope, classification, lifecycle_status, canonical_path,
+            id, module_id, owner_scope, classification, lifecycle_status, canonical_path,
             active_routes, data_owner, auth_surface, event_contract_status, audit_policy,
-            migration_adapter, kill_switch, replacement_target, sunset_phase, notes
+            migration_adapter, kill_switch, replacement_target, sunset_phase, notes,
+            created_at, updated_at
         )
         SELECT
+            gen_random_uuid(),
             'evolution_control',
             'system',
             'NEW',
@@ -112,7 +118,9 @@ def upgrade() -> None:
             NULL,
             'skills_registry',
             'phase_p3',
-            'Governed proposal lifecycle without direct skill mutation'
+            'Governed proposal lifecycle without direct skill mutation',
+            NOW(),
+            NOW()
         WHERE NOT EXISTS (
             SELECT 1 FROM module_lifecycle existing WHERE existing.module_id = 'evolution_control'
         );

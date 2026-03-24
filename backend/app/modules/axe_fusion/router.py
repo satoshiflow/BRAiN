@@ -527,6 +527,14 @@ async def _try_skillrun_bridge(
         skill_key=AXE_CHAT_SKILL_KEY,
         version=AXE_CHAT_SKILL_VERSION,
         input_payload={
+            "prompt": next(
+                (
+                    message.content
+                    for message in reversed(chat_request.messages)
+                    if message.role == "user" and message.content.strip()
+                ),
+                chat_request.messages[-1].content,
+            ),
             "model": chat_request.model,
             "messages": [msg.model_dump() for msg in chat_request.messages],
             "temperature": chat_request.temperature or 0.7,
@@ -538,8 +546,21 @@ async def _try_skillrun_bridge(
         causation_id=request_id,
     )
 
-    run = await skill_engine.create_run(db, payload, principal)
-    report = await skill_engine.execute_run(db, run.id, principal)
+    try:
+        run = await skill_engine.create_run(db, payload, principal)
+        report = await skill_engine.execute_run(db, run.id, principal)
+    except Exception as exc:
+        if AXE_CHAT_BRIDGE_FALLBACK_DIRECT:
+            logger.warning("AXE skillrun bridge unavailable, fallback to direct path: %s", exc)
+            return None
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error": "SkillRun bridge unavailable",
+                "message": "SkillRun bridge path failed and fallback is disabled",
+                "code": "SKILLRUN_BRIDGE_UNAVAILABLE",
+            },
+        ) from exc
     state = report.skill_run.state.value
 
     if state == SkillRunState.WAITING_APPROVAL.value:

@@ -394,14 +394,19 @@ def create_app() -> FastAPI:
         "https://axe.brain.falklabs.de",
         "http://localhost:3000",  # dev only
         "http://localhost:3001",  # dev only
+        "http://localhost:3002",  # AXE UI dev
+        "http://127.0.0.1:3000",  # dev only
+        "http://127.0.0.1:3001",  # dev only
+        "http://127.0.0.1:3002",  # AXE UI dev
     ]
 
     app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins,
+        allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
         allow_credentials=True,  # Safe because origins are explicitly whitelisted
-        allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
-        allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
+        allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+        allow_headers=["*"],
     )
 
     # UTF-8 Middleware - Ensures all JSON responses have charset=utf-8

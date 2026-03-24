@@ -47,9 +47,9 @@ class SkillDefinitionModel(Base):
     created_by = Column(String(120), nullable=False)
     updated_by = Column(String(120), nullable=False)
     approved_by = Column(String(120), nullable=True)
-    approved_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, nullable=False, default=utcnow)
-    updated_at = Column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+    approved_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 
     __table_args__ = (
         Index("ix_skill_definitions_key_version_scope", "skill_key", "version", "owner_scope"),

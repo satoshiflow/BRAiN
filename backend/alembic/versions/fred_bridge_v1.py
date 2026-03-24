@@ -106,15 +106,15 @@ def upgrade():
     ''')
     
     # Create triggers
+    op.execute('DROP TRIGGER IF EXISTS trg_fred_tickets_updated_at ON fred_tickets')
     op.execute('''
-        DROP TRIGGER IF EXISTS trg_fred_tickets_updated_at ON fred_tickets;
         CREATE TRIGGER trg_fred_tickets_updated_at
         BEFORE UPDATE ON fred_tickets
         FOR EACH ROW EXECUTE FUNCTION set_updated_at();
     ''')
     
+    op.execute('DROP TRIGGER IF EXISTS trg_fred_patches_updated_at ON fred_patches')
     op.execute('''
-        DROP TRIGGER IF EXISTS trg_fred_patches_updated_at ON fred_patches;
         CREATE TRIGGER trg_fred_patches_updated_at
         BEFORE UPDATE ON fred_patches
         FOR EACH ROW EXECUTE FUNCTION set_updated_at();

@@ -43,11 +43,13 @@ def upgrade() -> None:
     op.execute(
         """
         INSERT INTO module_lifecycle (
-            module_id, owner_scope, classification, lifecycle_status, canonical_path,
+            id, module_id, owner_scope, classification, lifecycle_status, canonical_path,
             active_routes, data_owner, auth_surface, event_contract_status, audit_policy,
-            migration_adapter, kill_switch, replacement_target, sunset_phase, notes
+            migration_adapter, kill_switch, replacement_target, sunset_phase, notes,
+            created_at, updated_at
         )
         SELECT
+            gen_random_uuid(),
             'economy_layer',
             'system',
             'NEW',
@@ -62,7 +64,9 @@ def upgrade() -> None:
             NULL,
             'evolution_control',
             'phase_p7',
-            'Economy signals influence proposal and review queue prioritization only'
+            'Economy signals influence proposal and review queue prioritization only',
+            NOW(),
+            NOW()
         WHERE NOT EXISTS (
             SELECT 1 FROM module_lifecycle existing WHERE existing.module_id = 'economy_layer'
         );

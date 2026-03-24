@@ -40,11 +40,13 @@ def upgrade() -> None:
     op.execute(
         """
         INSERT INTO module_lifecycle (
-            module_id, owner_scope, classification, lifecycle_status, canonical_path,
+            id, module_id, owner_scope, classification, lifecycle_status, canonical_path,
             active_routes, data_owner, auth_surface, event_contract_status, audit_policy,
-            migration_adapter, kill_switch, replacement_target, sunset_phase, notes
+            migration_adapter, kill_switch, replacement_target, sunset_phase, notes,
+            created_at, updated_at
         )
         SELECT
+            gen_random_uuid(),
             'experience_layer',
             'system',
             'KEEP_IN_CORE',
@@ -59,7 +61,9 @@ def upgrade() -> None:
             NULL,
             NULL,
             'phase_p1',
-            'Experience layer MVP anchored to SkillRun'
+            'Experience layer MVP anchored to SkillRun',
+            NOW(),
+            NOW()
         WHERE NOT EXISTS (
             SELECT 1 FROM module_lifecycle existing WHERE existing.module_id = 'experience_layer'
         );

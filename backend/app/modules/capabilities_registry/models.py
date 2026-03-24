@@ -41,8 +41,8 @@ class CapabilityDefinitionModel(Base):
     checksum_sha256 = Column(String(64), nullable=False)
     created_by = Column(String(120), nullable=False)
     updated_by = Column(String(120), nullable=False)
-    created_at = Column(DateTime, nullable=False, default=utcnow)
-    updated_at = Column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 
     __table_args__ = (
         Index("ix_capability_definitions_key_version_scope", "capability_key", "version", "owner_scope"),
