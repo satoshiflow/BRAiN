@@ -5,6 +5,7 @@ from statistics import mean
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.control_plane_events import record_control_plane_event
 from app.modules.skill_engine.models import SkillRunModel
 from app.modules.skill_evaluator.models import EvaluationResultModel
 
@@ -12,6 +13,31 @@ from .models import SkillOptimizerRecommendationModel
 
 
 class SkillOptimizerService:
+    async def _emit_recommendation_event(
+        self,
+        db: AsyncSession,
+        recommendation: SkillOptimizerRecommendationModel,
+    ) -> None:
+        await record_control_plane_event(
+            db=db,
+            tenant_id=recommendation.tenant_id,
+            entity_type="optimizer_recommendation",
+            entity_id=str(recommendation.id),
+            event_type="optimizer.recommendation.created.v1",
+            correlation_id=None,
+            mission_id=None,
+            actor_id="skill_optimizer",
+            actor_type="system",
+            payload={
+                "skill_key": recommendation.skill_key,
+                "skill_version": recommendation.skill_version,
+                "recommendation_type": recommendation.recommendation_type,
+                "status": recommendation.status,
+                "confidence": recommendation.confidence,
+            },
+            audit_required=False,
+        )
+
     async def generate_for_skill(self, db: AsyncSession, tenant_id: str | None, skill_key: str) -> list[SkillOptimizerRecommendationModel]:
         query = select(SkillRunModel).where(SkillRunModel.skill_key == skill_key)
         if tenant_id:
@@ -83,6 +109,9 @@ class SkillOptimizerService:
             await db.commit()
             for item in created:
                 await db.refresh(item)
+            for item in created:
+                await self._emit_recommendation_event(db, item)
+            await db.commit()
         return created
 
     async def list_for_skill(self, db: AsyncSession, tenant_id: str | None, skill_key: str) -> list[SkillOptimizerRecommendationModel]:

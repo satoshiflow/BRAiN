@@ -80,6 +80,7 @@ def test_skill_evaluator_builds_failed_summary() -> None:
 @pytest.mark.asyncio
 async def test_skill_optimizer_generates_failure_recommendation() -> None:
     service = SkillOptimizerService()
+    emitted_events: list[str] = []
 
     class FakeScalarResult:
         def __init__(self, items):
@@ -122,9 +123,70 @@ async def test_skill_optimizer_generates_failure_recommendation() -> None:
             return None
 
     db = FakeDb()
+    async def _emit_event(_db, recommendation):  # noqa: ANN001
+        emitted_events.append(recommendation.recommendation_type)
+
+    service._emit_recommendation_event = _emit_event  # type: ignore[method-assign]
     recs = await service.generate_for_skill(db, "tenant-a", "demo.skill")
     assert len(recs) >= 1
     assert any(rec.recommendation_type == "review_capability_sequence" for rec in recs)
+    assert emitted_events
+
+
+@pytest.mark.asyncio
+async def test_skill_optimizer_emits_event_per_recommendation() -> None:
+    service = SkillOptimizerService()
+    emitted_events: list[str] = []
+
+    class FakeScalarResult:
+        def __init__(self, items):
+            self._items = items
+
+        def all(self):
+            return self._items
+
+    class FakeResult:
+        def __init__(self, items):
+            self._items = items
+
+        def scalars(self):
+            return FakeScalarResult(self._items)
+
+    class FakeDb:
+        def __init__(self):
+            self.added = []
+            self.calls = 0
+
+        async def execute(self, query):
+            self.calls += 1
+            if self.calls == 1:
+                return FakeResult([
+                    type("Run", (), {"id": uuid4(), "state": "failed", "cost_actual": 2.0, "cost_estimate": 1.0, "skill_version": 2, "created_at": datetime.now(timezone.utc)})(),
+                    type("Run", (), {"id": uuid4(), "state": "failed", "cost_actual": 3.0, "cost_estimate": 1.0, "skill_version": 2, "created_at": datetime.now(timezone.utc)})(),
+                ])
+            return FakeResult([
+                type("Evaluation", (), {"id": uuid4(), "overall_score": 0.0, "passed": False, "created_at": datetime.now(timezone.utc)})(),
+                type("Evaluation", (), {"id": uuid4(), "overall_score": 0.0, "passed": False, "created_at": datetime.now(timezone.utc)})(),
+            ])
+
+        def add(self, item):
+            self.added.append(item)
+
+        async def commit(self):
+            return None
+
+        async def refresh(self, item):
+            return None
+
+    async def _emit_event(_db, recommendation):  # noqa: ANN001
+        emitted_events.append(recommendation.recommendation_type)
+
+    service._emit_recommendation_event = _emit_event  # type: ignore[method-assign]
+    db = FakeDb()
+    recs = await service.generate_for_skill(db, "tenant-a", "demo.skill")
+
+    assert recs
+    assert len(emitted_events) == len(recs)
 
 
 @pytest.fixture
