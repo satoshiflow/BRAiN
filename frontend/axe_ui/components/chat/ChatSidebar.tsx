@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import { Menu, Plus } from "lucide-react";
 import type { GroupedSessions } from "@/hooks/useChatSessions";
 import { SessionGroup } from "@/components/chat/SessionGroup";
@@ -72,7 +72,7 @@ function SidebarContent({
   );
 }
 
-export function ChatSidebar(props: ChatSidebarProps) {
+function ChatSidebarComponent(props: ChatSidebarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const showMobileTrigger = props.showMobileTrigger ?? true;
   const showDesktopRail = props.showDesktopRail ?? true;
@@ -104,3 +104,5 @@ export function ChatSidebar(props: ChatSidebarProps) {
     </>
   );
 }
+
+export const ChatSidebar = memo(ChatSidebarComponent);

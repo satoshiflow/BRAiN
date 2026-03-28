@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Camera, Loader2, Paperclip, Send, X } from "lucide-react";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
 import { AdvancedCameraCapture } from "@/components/chat/AdvancedCameraCapture";
@@ -127,6 +127,45 @@ function ChatPageContent() {
 
   const pluginSessionId = activeSessionId ?? pluginFallbackSessionId;
   const controlDeckProviderUrl = useMemo(() => `${getControlDeckBase()}/settings/llm-providers`, []);
+  const activePollingAnchors = useMemo(
+    () =>
+      Object.values(workerAnchors).filter((anchor) => {
+        if (anchor.sessionId !== activeSessionId) {
+          return false;
+        }
+        const status = workerUpdates[anchor.workerRunId]?.status ?? "queued";
+        return ["queued", "running", "waiting_input"].includes(status);
+      }),
+    [activeSessionId, workerAnchors, workerUpdates]
+  );
+  const workerUpdatesByMessage = useMemo(() => {
+    const messageMap: Record<string, AxeWorkerUpdate[]> = {};
+
+    Object.values(workerAnchors).forEach((anchor) => {
+      if (anchor.sessionId !== activeSessionId) {
+        return;
+      }
+
+      const update = workerUpdates[anchor.workerRunId];
+      if (!update) {
+        return;
+      }
+
+      const keys = [
+        anchor.localMessageId ? `local:${anchor.localMessageId}` : null,
+        anchor.messageId ? `session:${anchor.messageId}` : null,
+      ].filter((value): value is string => Boolean(value));
+
+      keys.forEach((key) => {
+        if (!messageMap[key]) {
+          messageMap[key] = [];
+        }
+        messageMap[key].push(update);
+      });
+    });
+
+    return messageMap;
+  }, [activeSessionId, workerAnchors, workerUpdates]);
 
   useEffect(() => {
     setIsClient(true);
@@ -234,35 +273,51 @@ function ChatPageContent() {
   };
 
   useEffect(() => {
-    const activeAnchors = Object.values(workerAnchors).filter(
-      (anchor) =>
-        anchor.sessionId === activeSessionId &&
-        ["queued", "running", "waiting_input"].includes(workerUpdates[anchor.workerRunId]?.status ?? "queued")
-    );
-
-    if (activeAnchors.length === 0) {
+    if (activePollingAnchors.length === 0) {
       return;
     }
 
     const interval = window.setInterval(() => {
-      activeAnchors.forEach((anchor) => {
-        void withAuthRetry(async (token) => {
-          try {
-            const update = await getAxeWorkerRun(anchor.workerRunId, { Authorization: `Bearer ${token}` });
-            setWorkerUpdates((prev) => ({ ...prev, [anchor.workerRunId]: update }));
-          } catch {
-            // Fail soft until backend polling is available everywhere.
-          }
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+        return;
+      }
+
+      void withAuthRetry(async (token) => {
+        const updates = await Promise.all(
+          activePollingAnchors.map(async (anchor) => {
+            try {
+              const update = await getAxeWorkerRun(anchor.workerRunId, { Authorization: `Bearer ${token}` });
+              return [anchor.workerRunId, update] as const;
+            } catch {
+              return null;
+            }
+          })
+        );
+
+        const nextEntries = updates.filter((entry): entry is readonly [string, AxeWorkerUpdate] => entry !== null);
+        if (nextEntries.length === 0) {
+          return;
+        }
+
+        setWorkerUpdates((prev) => {
+          const merged = { ...prev };
+          nextEntries.forEach(([workerRunId, update]) => {
+            merged[workerRunId] = update;
+          });
+          return merged;
         });
       });
-    }, 2500);
+    }, 4000);
 
     return () => window.clearInterval(interval);
-  }, [activeSessionId, withAuthRetry, workerAnchors, workerUpdates]);
+  }, [activePollingAnchors, withAuthRetry]);
 
   useEffect(() => {
     const loadTrace = async () => {
       try {
+        if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+          return;
+        }
         setTraceLoading(true);
         setTraceError(null);
         const [purposeData, routingData] = await withAuthRetry((token) =>
@@ -280,7 +335,7 @@ function ChatPageContent() {
       }
     };
     void loadTrace();
-  }, [activeSessionId, withAuthRetry]);
+  }, [withAuthRetry]);
 
   const ensureActiveSessionId = async (): Promise<string | null> => {
     if (activeSessionId) {
@@ -361,6 +416,7 @@ function ChatPageContent() {
         model: DEFAULT_MODEL,
         temperature: 0.7,
         attachments: readyAttachmentIds,
+        session_id: currentSessionId || undefined,
       };
 
       const data = await withAuthRetry((token) =>
@@ -518,6 +574,25 @@ function ChatPageContent() {
   };
 
   const headerError = useMemo(() => sessionsError || error, [error, sessionsError]);
+  const handleRenameSession = useCallback(async (sessionId: string, title: string) => {
+    await renameSession(sessionId, title);
+  }, [renameSession]);
+
+  const handleDeleteSession = useCallback(async (sessionId: string) => {
+    await removeSession(sessionId);
+    await loadSessions();
+  }, [loadSessions, removeSession]);
+
+  const handleCreateSession = useCallback(async () => {
+    await createSession();
+  }, [createSession]);
+
+  const handleSelectSession = useCallback(async (sessionId: string) => {
+    if (sessionId === activeSessionId) {
+      return;
+    }
+    await selectSession(sessionId);
+  }, [activeSessionId, selectSession]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -527,21 +602,10 @@ function ChatPageContent() {
           activeSessionId={activeSessionId}
           loading={sessionsLoading}
           showMobileTrigger={false}
-          onSelectSession={selectSession}
-          onRenameSession={async (sessionId, title) => {
-            await renameSession(sessionId, title);
-            await selectSession(sessionId);
-          }}
-          onDeleteSession={async (sessionId) => {
-            await removeSession(sessionId);
-            await loadSessions();
-          }}
-          onCreateSession={async () => {
-            const created = await createSession();
-            if (created) {
-              await selectSession(created.id);
-            }
-          }}
+          onSelectSession={handleSelectSession}
+          onRenameSession={handleRenameSession}
+          onDeleteSession={handleDeleteSession}
+          onCreateSession={handleCreateSession}
         />
 
         <div className="flex min-h-0 flex-1 flex-col">
@@ -554,21 +618,10 @@ function ChatPageContent() {
               activeSessionId={activeSessionId}
               loading={sessionsLoading}
               showDesktopRail={false}
-              onSelectSession={selectSession}
-              onRenameSession={async (sessionId, title) => {
-                await renameSession(sessionId, title);
-                await selectSession(sessionId);
-              }}
-              onDeleteSession={async (sessionId) => {
-                await removeSession(sessionId);
-                await loadSessions();
-              }}
-              onCreateSession={async () => {
-                const created = await createSession();
-                if (created) {
-                  await selectSession(created.id);
-                }
-              }}
+              onSelectSession={handleSelectSession}
+              onRenameSession={handleRenameSession}
+              onDeleteSession={handleDeleteSession}
+              onCreateSession={handleCreateSession}
             />
           </header>
 
@@ -667,15 +720,17 @@ function ChatPageContent() {
                         {isClient ? formatTime(message.timestamp) : ""}
                       </p>
 
-                      {Object.values(workerAnchors)
-                        .filter((anchor) => {
-                          if (anchor.sessionId !== activeSessionId) return false;
-                          return anchor.localMessageId === message.id || anchor.messageId === message.sessionMessageId;
-                        })
-                        .map((anchor) => {
-                          const update = workerUpdates[anchor.workerRunId];
-                          return update ? <WorkerRunCard key={anchor.workerRunId} update={update} /> : null;
-                        })}
+                      {Array.from(
+                        new Map(
+                          (workerUpdatesByMessage[`local:${message.id}`] ?? [])
+                            .concat(
+                              message.sessionMessageId
+                                ? workerUpdatesByMessage[`session:${message.sessionMessageId}`] ?? []
+                                : []
+                            )
+                            .map((update) => [update.worker_run_id, update])
+                        ).values()
+                      ).map((update) => <WorkerRunCard key={update.worker_run_id} update={update} />)}
                     </div>
 
                     {message.role === "user" && (

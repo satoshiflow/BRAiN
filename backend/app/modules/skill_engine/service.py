@@ -25,6 +25,18 @@ from app.modules.skill_evaluator.service import SkillEvaluatorService, get_skill
 from .models import SkillRunModel
 from .schemas import SkillRunCreate, SkillRunExecutionReport, SkillRunResponse, SkillRunState
 
+AXE_STATE_MAP = {
+    SkillRunState.QUEUED.value: "queued",
+    SkillRunState.PLANNING.value: "planning",
+    SkillRunState.WAITING_APPROVAL.value: "waiting_approval",
+    SkillRunState.RUNNING.value: "running",
+    SkillRunState.SUCCEEDED.value: "succeeded",
+    SkillRunState.FAILED.value: "failed",
+    SkillRunState.CANCELLED.value: "cancelled",
+    SkillRunState.CANCEL_REQUESTED.value: "cancelled",
+    SkillRunState.TIMED_OUT.value: "failed",
+}
+
 
 class SkillEngineService:
     TERMINAL_STATES = {
@@ -33,6 +45,85 @@ class SkillEngineService:
         SkillRunState.CANCELLED.value,
         SkillRunState.TIMED_OUT.value,
     }
+
+    def _map_to_axe_state(self, skill_state: str) -> str:
+        return AXE_STATE_MAP.get(skill_state, "queued")
+
+    async def _emit_axe_stream_event(
+        self,
+        run_id: Any,
+        previous_state: str | None,
+        current_state: str,
+        reason: str | None = None,
+    ) -> None:
+        try:
+            from app.modules.axe_streams.service import get_axe_stream_service
+            from app.modules.axe_streams.schemas import AXERunState
+
+            stream_service = get_axe_stream_service()
+            await stream_service.emit_state_changed(
+                run_id=run_id,
+                previous_state=AXERunState(self._map_to_axe_state(previous_state)) if previous_state else None,
+                current_state=AXERunState(self._map_to_axe_state(current_state)),
+                reason=reason,
+            )
+
+            if current_state == SkillRunState.SUCCEEDED.value:
+                await stream_service.emit_run_succeeded(run_id=run_id, output={"state": "succeeded"})
+            elif current_state == SkillRunState.FAILED.value:
+                await stream_service.emit_run_failed(
+                    run_id=run_id,
+                    error_code="SKILL_RUN_FAILED",
+                    message=reason or "Skill run failed",
+                )
+        except Exception as exc:
+            logger.warning("Failed to emit AXE stream event for run {}: {}", run_id, exc)
+
+    async def _trigger_self_healing_on_failure(
+        self,
+        db: AsyncSession,
+        run: SkillRunModel,
+        principal: Principal,
+        failure_state: str,
+    ) -> None:
+        if failure_state != SkillRunState.FAILED.value:
+            return
+        try:
+            from app.modules.immune_orchestrator.schemas import IncidentSignal, SignalSeverity
+            from app.modules.immune_orchestrator.service import get_immune_orchestrator_service
+
+            severity_map = {
+                "timeout": SignalSeverity.WARNING,
+                "provider": SignalSeverity.CRITICAL,
+                "approval": SignalSeverity.WARNING,
+            }
+            failure_code = run.failure_code or ""
+            severity = SignalSeverity.CRITICAL
+            for key, sev in severity_map.items():
+                if key in failure_code.lower():
+                    severity = sev
+                    break
+
+            signal = IncidentSignal(
+                id=str(uuid4()),
+                type="skill_run_failure",
+                source="skill_engine",
+                severity=severity,
+                entity=str(run.id),
+                context={
+                    "skill_key": run.skill_key,
+                    "failure_code": run.failure_code,
+                    "failure_reason": run.failure_reason_sanitized,
+                },
+                correlation_id=run.correlation_id,
+                blast_radius=50,
+                confidence=0.8,
+                recurrence=0,
+            )
+            orchestrator = get_immune_orchestrator_service()
+            await orchestrator.ingest_signal(signal, db)
+        except Exception as exc:
+            logger.warning("Failed to trigger self-healing for run {}: {}", run.id, exc)
 
     TRANSITIONS = {
         SkillRunState.QUEUED.value: {
@@ -207,6 +298,9 @@ class SkillEngineService:
             reason=reason,
             metadata=metadata,
         )
+        await self._emit_axe_stream_event(run.id, current, target_state.value, reason)
+        if target_state == SkillRunState.FAILED:
+            await self._trigger_self_healing_on_failure(db, run, principal, target_state.value)
 
     @staticmethod
     def project_evaluation_summary(evaluation: Any) -> dict[str, Any]:
@@ -345,6 +439,12 @@ class SkillEngineService:
         capability_bindings, cost_estimate = await self._resolve_capability_bindings(db, skill_definition)
         policy_decision = await self._evaluate_policy(db, principal, skill_definition, payload)
         plan_snapshot = self.build_plan_snapshot(skill_definition, capability_bindings)
+        upstream_decision_snapshot = {
+            "decision_context_id": payload.decision_context_id,
+            "purpose_evaluation_id": payload.purpose_evaluation_id,
+            "routing_decision_id": payload.routing_decision_id,
+            "governance_snapshot": payload.governance_snapshot or {},
+        }
 
         # create lightweight plan object for deterministic traceability
         decomposition = DecompositionRequest(
@@ -357,6 +457,12 @@ class SkillEngineService:
         plan = self.planning_service.decompose_task(decomposition).plan
         plan_snapshot["planning_plan_id"] = plan.plan_id
         plan_snapshot["planning_node_count"] = len(plan.nodes)
+        plan_snapshot["upstream_decision"] = upstream_decision_snapshot
+
+        policy_snapshot = {
+            **policy_decision,
+            "upstream_decision": upstream_decision_snapshot,
+        }
 
         model = SkillRunModel(
             tenant_id=principal.tenant_id,
@@ -371,7 +477,7 @@ class SkillEngineService:
             trigger_type=payload.trigger_type.value,
             policy_decision_id=uuid4(),
             policy_decision=policy_decision,
-            policy_snapshot=policy_decision,
+            policy_snapshot=policy_snapshot,
             risk_tier=skill_definition.risk_tier,
             correlation_id=self.build_correlation_id(),
             causation_id=payload.causation_id,

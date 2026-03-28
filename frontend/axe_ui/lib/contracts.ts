@@ -10,11 +10,13 @@ export interface AxeChatRequest {
   messages: AxeChatMessage[];
   temperature?: number;
   attachments?: string[];
+  session_id?: string;
 }
 
 export interface AxeChatResponse {
   text: string;
   raw: Record<string, unknown>;
+  run_id?: string;
   worker_run_id?: string;
   session_id?: string;
   message_id?: string;

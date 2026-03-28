@@ -3,11 +3,14 @@ from __future__ import annotations
 import pytest
 
 from app.modules.domain_agents.schemas import (
+    ControlMode,
+    DecisionOutcome,
     DomainAgentConfig,
     DomainBudgetProfile,
     DomainDecompositionRequest,
     DomainResolution,
     DomainReviewOutcome,
+    SensitivityClass,
     SpecialistCandidate,
     DomainStatus,
 )
@@ -206,3 +209,82 @@ def test_decompose_with_config_accepts_resolved_specialists_override() -> None:
 
     assert len(resolution.selected_specialists) == 1
     assert resolution.selected_specialists[0].agent_id == "agent-42"
+
+
+def test_build_skill_run_drafts_carries_upstream_decision_artifacts() -> None:
+    registry = DomainAgentRegistry()
+    config = DomainAgentConfig(
+        domain_key="programming",
+        display_name="Programming",
+        status=DomainStatus.ACTIVE,
+        allowed_skill_keys=["code.implement", "code.test"],
+        allowed_capability_keys=["code.write", "code.test"],
+    )
+    service = DomainAgentService(registry)
+
+    request = DomainDecompositionRequest(
+        domain_key="programming",
+        task_name="Implement endpoint",
+        mission_id="m-1",
+        tenant_id="tenant-a",
+    )
+    resolution = DomainResolution(
+        domain_key="programming",
+        confidence=0.8,
+        selected_skill_keys=["code.implement"],
+        selected_capability_keys=["code.write"],
+        selected_specialists=[],
+        decomposition_notes=[],
+        requires_supervisor_review=False,
+    )
+
+    drafts = service.build_skill_run_drafts(
+        request=request,
+        config=config,
+        resolution=resolution,
+        trigger_type="mission",
+        mission_id="m-1",
+        causation_id="cause-1",
+        input_payload={"ticket": "ABC"},
+        tenant_id="tenant-a",
+        decision_context_id="ctx-1",
+        purpose_evaluation_id="pe-1",
+        routing_decision_id="rd-1",
+        governance_snapshot={"control_mode": "brain_first"},
+    )
+
+    assert len(drafts) == 1
+    assert drafts[0].decision_context_id == "ctx-1"
+    assert drafts[0].purpose_evaluation_id == "pe-1"
+    assert drafts[0].routing_decision_id == "rd-1"
+    assert drafts[0].governance_snapshot["control_mode"] == "brain_first"
+
+
+def test_derive_control_mode_brain_first_for_standard_accept() -> None:
+    mode = DomainAgentService._derive_control_mode(
+        sensitivity_class=SensitivityClass.STANDARD,
+        outcome=DecisionOutcome.ACCEPT,
+        policy_allowed=True,
+        policy_requires_audit=False,
+    )
+    assert mode == ControlMode.BRAIN_FIRST
+
+
+def test_derive_control_mode_human_required_for_sensitive_core() -> None:
+    mode = DomainAgentService._derive_control_mode(
+        sensitivity_class=SensitivityClass.SENSITIVE_CORE,
+        outcome=DecisionOutcome.ACCEPT,
+        policy_allowed=True,
+        policy_requires_audit=False,
+    )
+    assert mode == ControlMode.HUMAN_REQUIRED
+
+
+def test_derive_control_mode_human_optional_when_policy_audit_required() -> None:
+    mode = DomainAgentService._derive_control_mode(
+        sensitivity_class=SensitivityClass.STANDARD,
+        outcome=DecisionOutcome.ACCEPT,
+        policy_allowed=True,
+        policy_requires_audit=True,
+    )
+    assert mode == ControlMode.HUMAN_OPTIONAL

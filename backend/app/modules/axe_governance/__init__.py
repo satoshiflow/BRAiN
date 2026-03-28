@@ -78,6 +78,26 @@ class AXETrustValidator:
         "email_gateway",
     }
 
+    def _get_allowed_dev_ips(self) -> set:
+        """
+        Liest erlaubte Development IPs aus Environment Variable.
+        
+        SECURITY: Nur für lokale Entwicklung! In Produktion leer lassen.
+        
+        Environment Variable:
+            AXE_FUSION_ALLOWED_DEV_IPS=172.22.0.1,192.168.1.100
+        
+        Returns:
+            Set von erlaubten IPs
+        """
+        ips = os.getenv("AXE_FUSION_ALLOWED_DEV_IPS", "")
+        if not ips:
+            return set()
+        allowed = {ip.strip() for ip in ips.split(",") if ip.strip()}
+        if allowed:
+            logger.warning(f"AXE dev IP whitelist enabled: {allowed} (SECURITY: Only for development!)")
+        return allowed
+
     async def validate_request(
         self,
         headers: Dict[str, str],
@@ -122,8 +142,9 @@ class AXETrustValidator:
                 )
 
         # Check 2: Localhost (for admin/testing)
-        if client_host in ["127.0.0.1", "::1", "localhost"]:
-            logger.info(f"AXE request from localhost: {client_host}")
+        allowed_dev_ips = self._get_allowed_dev_ips()
+        if client_host in ["127.0.0.1", "::1", "localhost"] or client_host in allowed_dev_ips:
+            logger.info(f"AXE request from localhost/allowed dev IP: {client_host}")
 
             return AXERequestContext(
                 trust_tier=TrustTier.LOCAL,

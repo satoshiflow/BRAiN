@@ -107,6 +107,34 @@ class LogoutRequest(BaseModel):
     refresh_token: str
 
 
+class PasswordRecoveryRequest(BaseModel):
+    """Request password recovery token"""
+
+    email: EmailStr
+
+
+class PasswordRecoveryResponse(BaseModel):
+    """Password recovery request response"""
+
+    accepted: bool = True
+    message: str
+    reset_token: Optional[str] = None
+
+
+class PasswordResetRequest(BaseModel):
+    """Apply new password with recovery token"""
+
+    token: str = Field(..., min_length=20)
+    new_password: str = Field(..., min_length=8)
+
+
+class PasswordResetResponse(BaseModel):
+    """Password reset result"""
+
+    success: bool = True
+    message: str
+
+
 class TokenIntrospectionResponse(BaseModel):
     """Token introspection response (RFC 7662)"""
     active: bool

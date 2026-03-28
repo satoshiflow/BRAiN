@@ -2,7 +2,7 @@
 
 export const dynamic = "force-dynamic";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Network, RefreshCw } from "lucide-react";
 
@@ -42,6 +42,7 @@ export default function LLMProvidersSettingsPage() {
   const [providers, setProviders] = useState<ProviderAccount[]>([]);
   const [models, setModels] = useState<ProviderModel[]>([]);
   const [state, setState] = useState<AsyncState>(emptyState);
+  const [activeTab, setActiveTab] = useState("providers");
 
   const [providerForm, setProviderForm] = useState({
     slug: "",
@@ -65,22 +66,52 @@ export default function LLMProvidersSettingsPage() {
     [providers, secretForm.providerId]
   );
 
-  async function loadPortalData() {
+  const loadProviders = useCallback(async () => {
+    const providerList = await listProviders();
+    setProviders(providerList.items || []);
+    return providerList;
+  }, []);
+
+  const loadModels = useCallback(async () => {
+    const modelList = await listProviderModels();
+    setModels(modelList.items || []);
+    return modelList;
+  }, []);
+
+  const loadPortalData = useCallback(async (options?: { includeModels?: boolean }) => {
     try {
       setState((prev) => ({ ...prev, loading: true, error: null }));
-      const [providerList, modelList] = await Promise.all([listProviders(), listProviderModels()]);
-      setProviders(providerList.items || []);
-      setModels(modelList.items || []);
+      await loadProviders();
+      if (options?.includeModels) {
+        await loadModels();
+      }
       setState((prev) => ({ ...prev, loading: false, notice: null }));
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to load provider portal data";
       setState((prev) => ({ ...prev, loading: false, error: message }));
     }
-  }
+  }, [loadModels, loadProviders]);
 
   useEffect(() => {
-    void loadPortalData();
-  }, []);
+    void loadPortalData({ includeModels: false });
+  }, [loadPortalData]);
+
+  useEffect(() => {
+    if (activeTab !== "models" || models.length > 0) {
+      return;
+    }
+
+    void (async () => {
+      try {
+        setState((prev) => ({ ...prev, loading: true, error: null }));
+        await loadModels();
+        setState((prev) => ({ ...prev, loading: false }));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to load provider models";
+        setState((prev) => ({ ...prev, loading: false, error: message }));
+      }
+    })();
+  }, [activeTab, loadModels, models.length]);
 
   async function handleCreateProvider() {
     try {
@@ -100,8 +131,8 @@ export default function LLMProvidersSettingsPage() {
         base_url: "",
         auth_mode: "api_key",
       });
-      await loadPortalData();
-      setState((prev) => ({ ...prev, notice: "Provider created." }));
+      await loadProviders();
+      setState((prev) => ({ ...prev, loading: false, notice: "Provider created." }));
     } catch (error) {
       const message = error instanceof Error ? error.message : "Provider creation failed";
       setState((prev) => ({ ...prev, loading: false, error: message }));
@@ -112,9 +143,10 @@ export default function LLMProvidersSettingsPage() {
     try {
       setState((prev) => ({ ...prev, loading: true, error: null }));
       await patchProvider(provider.id, { is_enabled: !provider.is_enabled });
-      await loadPortalData();
+      await loadProviders();
       setState((prev) => ({
         ...prev,
+        loading: false,
         notice: `Provider ${provider.display_name} ${provider.is_enabled ? "disabled" : "enabled"}.`,
       }));
     } catch (error) {
@@ -129,9 +161,10 @@ export default function LLMProvidersSettingsPage() {
       setState((prev) => ({ ...prev, loading: true, error: null }));
       const result = await setProviderSecret(secretForm.providerId, secretForm.secretValue);
       setSecretForm((prev) => ({ ...prev, secretValue: "" }));
-      await loadPortalData();
+      await loadProviders();
       setState((prev) => ({
         ...prev,
+        loading: false,
         notice: `Secret updated${result.key_hint_masked ? ` (${result.key_hint_masked})` : ""}.`,
       }));
     } catch (error) {
@@ -145,8 +178,8 @@ export default function LLMProvidersSettingsPage() {
     try {
       setState((prev) => ({ ...prev, loading: true, error: null }));
       await deactivateProviderSecret(secretForm.providerId);
-      await loadPortalData();
-      setState((prev) => ({ ...prev, notice: "Secret deactivated." }));
+      await loadProviders();
+      setState((prev) => ({ ...prev, loading: false, notice: "Secret deactivated." }));
     } catch (error) {
       const message = error instanceof Error ? error.message : "Secret deactivation failed";
       setState((prev) => ({ ...prev, loading: false, error: message }));
@@ -177,8 +210,8 @@ export default function LLMProvidersSettingsPage() {
         display_name: "",
         capabilities_json: '{"modes":["chat"]}',
       });
-      await loadPortalData();
-      setState((prev) => ({ ...prev, notice: "Model created." }));
+      await Promise.all([loadProviders(), loadModels()]);
+      setState((prev) => ({ ...prev, loading: false, notice: "Model created." }));
     } catch (error) {
       const message = error instanceof Error ? error.message : "Model creation failed";
       setState((prev) => ({ ...prev, loading: false, error: message }));
@@ -189,9 +222,10 @@ export default function LLMProvidersSettingsPage() {
     try {
       setState((prev) => ({ ...prev, loading: true, error: null }));
       await patchProviderModel(model.id, { is_enabled: !model.is_enabled });
-      await loadPortalData();
+      await loadModels();
       setState((prev) => ({
         ...prev,
+        loading: false,
         notice: `Model ${model.display_name} ${model.is_enabled ? "disabled" : "enabled"}.`,
       }));
     } catch (error) {
@@ -204,9 +238,10 @@ export default function LLMProvidersSettingsPage() {
     try {
       setState((prev) => ({ ...prev, loading: true, error: null, notice: null }));
       const testResult = await testProvider(provider.id);
-      await loadPortalData();
+      await loadProviders();
       setState((prev) => ({
         ...prev,
+        loading: false,
         notice: `${provider.display_name}: ${testResult.status}${
           typeof testResult.latency_ms === "number" ? ` (${testResult.latency_ms} ms)` : ""
         }${testResult.error_code ? ` [${testResult.error_code}]` : ""}`,
@@ -228,7 +263,11 @@ export default function LLMProvidersSettingsPage() {
       </div>
 
       <div className="flex flex-wrap gap-3">
-        <Button variant="outline" onClick={() => void loadPortalData()} disabled={state.loading}>
+        <Button
+          variant="outline"
+          onClick={() => void loadPortalData({ includeModels: activeTab === "models" })}
+          disabled={state.loading}
+        >
           <RefreshCw className="h-4 w-4 mr-2" />
           Refresh
         </Button>
@@ -255,7 +294,7 @@ export default function LLMProvidersSettingsPage() {
         </Alert>
       )}
 
-      <Tabs defaultValue="providers" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList>
           <TabsTrigger value="providers">Providers</TabsTrigger>
           <TabsTrigger value="secrets">Secrets</TabsTrigger>

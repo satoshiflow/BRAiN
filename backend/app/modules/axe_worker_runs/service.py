@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import logging
+from abc import ABC, abstractmethod
 from datetime import datetime
+from typing import Any, Protocol
 from uuid import UUID, uuid4
 
 from sqlalchemy import desc, select
@@ -20,7 +23,9 @@ from app.modules.opencode_repair.schemas import (
 from app.modules.opencode_repair.service import get_opencode_repair_service
 
 from .models import AXEWorkerRunORM
-from .schemas import AXEWorkerArtifact, AXEWorkerRunCreateRequest, AXEWorkerRunResponse
+from .schemas import AXEWorkerArtifact, AXEWorkerRunCreateRequest, AXEWorkerRunResponse, WorkerType
+
+logger = logging.getLogger(__name__)
 
 
 OPENCODE_TO_AXE_STATUS = {
@@ -35,6 +40,88 @@ OPENCODE_TO_AXE_STATUS = {
 }
 
 
+class WorkerAdapter(Protocol):
+    async def dispatch(
+        self,
+        *,
+        principal: Principal,
+        payload: AXEWorkerRunCreateRequest,
+        worker_run_id: str,
+    ) -> AXEWorkerRunResponse:
+        ...
+
+
+class WorkerAdapterRegistry:
+    _adapters: dict[WorkerType, WorkerAdapter] = {}
+    _initialized: bool = False
+
+    @classmethod
+    def register(cls, worker_type: WorkerType, adapter: WorkerAdapter) -> None:
+        cls._adapters[worker_type] = adapter
+        logger.info("Registered worker adapter: %s", worker_type)
+
+    @classmethod
+    def get(cls, worker_type: WorkerType) -> WorkerAdapter | None:
+        return cls._adapters.get(worker_type)
+
+    @classmethod
+    def list_supported(cls) -> list[WorkerType]:
+        return list(cls._adapters.keys())
+
+
+class OpenCodeWorkerAdapter:
+    def __init__(self) -> None:
+        self._service = get_opencode_repair_service()
+
+    async def dispatch(
+        self,
+        *,
+        principal: Principal,
+        payload: AXEWorkerRunCreateRequest,
+        worker_run_id: str,
+    ) -> AXEWorkerRunResponse:
+        scope = OpenCodeJobScope(
+            module=payload.module or "workspace",
+            entity_id=payload.entity_id or str(payload.message_id),
+            tenant_id=principal.tenant_id or "default",
+        )
+        contract = OpenCodeJobContractCreateRequest(
+            correlation_id=f"axe-{worker_run_id}",
+            mode=OpenCodeJobMode(payload.mode),
+            scope=scope,
+            constraints=OpenCodeJobConstraints(),
+            context=OpenCodeJobContext(
+                trigger_event="axe.worker.run.requested",
+                original_request={
+                    "source": "axe",
+                    "session_id": str(payload.session_id),
+                    "message_id": str(payload.message_id),
+                    "prompt": payload.prompt,
+                    "requested_by": principal.principal_id,
+                },
+            ),
+            created_by=principal.principal_id,
+        )
+        job = await self._service.dispatch_job_contract(contract)
+        return AXEWorkerRunResponse(
+            worker_run_id=worker_run_id,
+            session_id=payload.session_id,
+            message_id=payload.message_id,
+            status="queued",
+            label="OpenCode worker queued",
+            detail=f"Job dispatched: {job.job_id}",
+            updated_at=datetime.utcnow(),
+            artifacts=[],
+        )
+
+
+def _init_adapter_registry() -> None:
+    if not WorkerAdapterRegistry._initialized:
+        WorkerAdapterRegistry.register("opencode", OpenCodeWorkerAdapter())
+        WorkerAdapterRegistry._initialized = True
+        logger.info("Worker adapter registry initialized")
+
+
 class AXEWorkerRunService:
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -46,6 +133,8 @@ class AXEWorkerRunService:
         principal: Principal,
         payload: AXEWorkerRunCreateRequest,
     ) -> AXEWorkerRunResponse:
+        _init_adapter_registry()
+
         session = await self._get_owned_session(
             principal=principal,
             session_id=payload.session_id,
@@ -68,40 +157,24 @@ class AXEWorkerRunService:
             message_id=payload.message_id,
             principal_id=principal.principal_id,
             tenant_id=principal.tenant_id,
-            backend_run_type="opencode_job",
+            backend_run_type=f"{payload.worker_type}_job",
             status="queued",
-            label="OpenCode worker queued",
+            label=f"{payload.worker_type.title()} worker queued",
             detail="Job accepted by BRAiN orchestrator",
             artifacts_json=[],
         )
         self.db.add(row)
 
-        scope = OpenCodeJobScope(
-            module=payload.module or "workspace",
-            entity_id=payload.entity_id or str(payload.message_id),
-            tenant_id=principal.tenant_id or session.tenant_id or "default",
+        adapter = WorkerAdapterRegistry.get(payload.worker_type)
+        if adapter is None:
+            raise ValueError(f"Unsupported worker type: {payload.worker_type}")
+
+        worker_response = await adapter.dispatch(
+            principal=principal,
+            payload=payload,
+            worker_run_id=worker_run_id,
         )
-        contract = OpenCodeJobContractCreateRequest(
-            correlation_id=f"axe-{worker_run_id}",
-            mode=OpenCodeJobMode(payload.mode),
-            scope=scope,
-            constraints=OpenCodeJobConstraints(),
-            context=OpenCodeJobContext(
-                trigger_event="axe.worker.run.requested",
-                original_request={
-                    "source": "axe",
-                    "session_id": str(payload.session_id),
-                    "message_id": str(payload.message_id),
-                    "prompt": payload.prompt,
-                    "requested_by": principal.principal_id,
-                },
-            ),
-            created_by=principal.principal_id,
-        )
-        job = await self.opencode.dispatch_job_contract(contract, db=self.db)
-        row.backend_run_id = job.job_id
-        if row.updated_at is None:
-            row.updated_at = datetime.utcnow()
+        row.backend_run_id = worker_response.detail.split(": ")[-1] if ": " in worker_response.detail else worker_response.worker_run_id
 
         await self.db.commit()
         await self.db.refresh(row)

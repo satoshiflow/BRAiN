@@ -47,3 +47,13 @@ class SkillOptimizerRecommendationSummaryResponse(BaseModel):
     by_status: dict[str, int] = Field(default_factory=dict)
     by_type: dict[str, int] = Field(default_factory=dict)
     average_confidence: float | None = None
+
+
+class SkillOptimizerOpsSnapshotResponse(BaseModel):
+    skill_key: str
+    recommendation_summary: SkillOptimizerRecommendationSummaryResponse
+    evaluation_total: int
+    evaluation_passed: int
+    evaluation_failed: int
+    evaluation_non_compliant: int
+    latest_evaluation_score: float | None = None

@@ -17,6 +17,7 @@ websockets==15.0.1              # ✅ Fixed: cognee requires >=15.0.1
 # --- Database ---
 sqlalchemy[asyncio]==2.0.39     # ORM with async support (cognee requires >=2.0.39)
 asyncpg==0.29.0                 # Async PostgreSQL driver
+psycopg2-binary==2.9.10         # Sync PostgreSQL driver (Alembic compatibility)
 alembic==1.13.3                 # Database migrations (cognee requires >=1.13.3)
 aiofiles==23.2.1                # Async file I/O operations
 

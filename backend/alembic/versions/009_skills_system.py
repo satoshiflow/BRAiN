@@ -65,8 +65,8 @@ def upgrade() -> None:
         $$ language 'plpgsql';
     """)
     
+    op.execute("DROP TRIGGER IF EXISTS update_skills_updated_at ON skills;")
     op.execute("""
-        DROP TRIGGER IF EXISTS update_skills_updated_at ON skills;
         CREATE TRIGGER update_skills_updated_at
             BEFORE UPDATE ON skills
             FOR EACH ROW

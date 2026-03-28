@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchCurrentUser,
   isUnauthorizedAuthError,
@@ -13,6 +13,13 @@ import {
 type AuthStatus = "loading" | "authenticated" | "unauthenticated";
 
 const E2E_BYPASS_AUTH = process.env.NEXT_PUBLIC_AXE_E2E_BYPASS_AUTH === "true";
+const AUTH_STORAGE_KEY = "axe.auth.session.v1";
+
+type PersistedAuthState = {
+  accessToken: string;
+  refreshToken: string;
+  user: AuthenticatedUser;
+};
 
 type AuthContextValue = {
   status: AuthStatus;
@@ -51,13 +58,104 @@ export function AuthSessionProvider({ children }: { children: React.ReactNode })
   const [refreshToken, setRefreshToken] = useState<string | null>(
     process.env.NODE_ENV === "test" || E2E_BYPASS_AUTH ? "test-refresh-token" : null
   );
+  const refreshInFlightRef = useRef<Promise<PersistedAuthState> | null>(null);
+
+  const persistAuthState = useCallback((next: PersistedAuthState | null) => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (!next) {
+      window.localStorage.removeItem(AUTH_STORAGE_KEY);
+      return;
+    }
+
+    window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(next));
+  }, []);
+
+  const restorePersistedAuthState = useCallback((): PersistedAuthState | null => {
+    if (typeof window === "undefined") {
+      return null;
+    }
+
+    const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(raw) as Partial<PersistedAuthState>;
+      if (!parsed.accessToken || !parsed.refreshToken || !parsed.user) {
+        return null;
+      }
+      return {
+        accessToken: parsed.accessToken,
+        refreshToken: parsed.refreshToken,
+        user: parsed.user,
+      };
+    } catch {
+      return null;
+    }
+  }, []);
 
   const clearAuthState = useCallback(() => {
     setStatus("unauthenticated");
     setUser(null);
     setAccessToken(null);
     setRefreshToken(null);
-  }, []);
+    persistAuthState(null);
+  }, [persistAuthState]);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === "test" || E2E_BYPASS_AUTH) {
+      return;
+    }
+
+    const hydrateSession = async () => {
+      const persisted = restorePersistedAuthState();
+      if (!persisted) {
+        clearAuthState();
+        return;
+      }
+
+      setStatus("loading");
+      try {
+        const profile = await fetchCurrentUser(persisted.accessToken);
+        setAccessToken(persisted.accessToken);
+        setRefreshToken(persisted.refreshToken);
+        setUser(profile);
+        setStatus("authenticated");
+        persistAuthState({
+          accessToken: persisted.accessToken,
+          refreshToken: persisted.refreshToken,
+          user: profile,
+        });
+      } catch (error) {
+        if (!isUnauthorizedAuthError(error)) {
+          clearAuthState();
+          return;
+        }
+
+        try {
+          const refreshed = await refreshAccessToken(persisted.refreshToken);
+          const profile = await fetchCurrentUser(refreshed.access_token);
+          setAccessToken(refreshed.access_token);
+          setRefreshToken(refreshed.refresh_token);
+          setUser(profile);
+          setStatus("authenticated");
+          persistAuthState({
+            accessToken: refreshed.access_token,
+            refreshToken: refreshed.refresh_token,
+            user: profile,
+          });
+        } catch {
+          clearAuthState();
+        }
+      }
+    };
+
+    void hydrateSession();
+  }, [clearAuthState, persistAuthState, restorePersistedAuthState]);
 
   const login = useCallback(async (email: string, password: string) => {
     setStatus("loading");
@@ -69,11 +167,16 @@ export function AuthSessionProvider({ children }: { children: React.ReactNode })
       setRefreshToken(pair.refresh_token);
       setUser(profile);
       setStatus("authenticated");
+      persistAuthState({
+        accessToken: pair.access_token,
+        refreshToken: pair.refresh_token,
+        user: profile,
+      });
     } catch (error) {
       clearAuthState();
       throw error;
     }
-  }, [clearAuthState]);
+  }, [clearAuthState, persistAuthState]);
 
   const logout = useCallback(async () => {
     try {
@@ -86,6 +189,40 @@ export function AuthSessionProvider({ children }: { children: React.ReactNode })
       clearAuthState();
     }
   }, [clearAuthState, refreshToken]);
+
+  const ensureRefreshedSession = useCallback(
+    async (token: string): Promise<PersistedAuthState> => {
+      if (!refreshInFlightRef.current) {
+        refreshInFlightRef.current = (async () => {
+          const refreshed = await refreshAccessToken(token);
+          const refreshedProfile = await fetchCurrentUser(refreshed.access_token);
+          const nextState: PersistedAuthState = {
+            accessToken: refreshed.access_token,
+            refreshToken: refreshed.refresh_token,
+            user: refreshedProfile,
+          };
+
+          setAccessToken(nextState.accessToken);
+          setRefreshToken(nextState.refreshToken);
+          setUser(nextState.user);
+          setStatus("authenticated");
+          persistAuthState(nextState);
+
+          return nextState;
+        })()
+          .catch((refreshError) => {
+            clearAuthState();
+            throw refreshError;
+          })
+          .finally(() => {
+            refreshInFlightRef.current = null;
+          });
+      }
+
+      return refreshInFlightRef.current;
+    },
+    [clearAuthState, persistAuthState]
+  );
 
   const withAuthRetry = useCallback(
     async <T,>(request: (token: string) => Promise<T>): Promise<T> => {
@@ -101,22 +238,14 @@ export function AuthSessionProvider({ children }: { children: React.ReactNode })
         }
 
         try {
-          const refreshed = await refreshAccessToken(refreshToken);
-          setAccessToken(refreshed.access_token);
-          setRefreshToken(refreshed.refresh_token);
-
-          const refreshedProfile = await fetchCurrentUser(refreshed.access_token);
-          setUser(refreshedProfile);
-          setStatus("authenticated");
-
-          return request(refreshed.access_token);
+          const refreshedSession = await ensureRefreshedSession(refreshToken);
+          return request(refreshedSession.accessToken);
         } catch (refreshError) {
-          clearAuthState();
           throw refreshError;
         }
       }
     },
-    [accessToken, clearAuthState, refreshToken]
+    [accessToken, ensureRefreshedSession, refreshToken]
   );
 
   const getAuthHeaders = useCallback(() => {

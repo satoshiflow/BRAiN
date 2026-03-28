@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 
 // Build-time validation: prevent localhost in production builds
-if (process.env.NODE_ENV === 'production') {
+if (process.env.NODE_ENV === 'production' && process.env.NEXT_PUBLIC_APP_ENV !== 'local') {
   const apiBase = process.env.NEXT_PUBLIC_BRAIN_API_BASE;
   
   if (apiBase && (apiBase.includes('localhost') || apiBase.includes('127.0.0.1'))) {
@@ -22,6 +22,14 @@ const nextConfig = {
     (process.env.NODE_ENV === 'development' ? '.next-dev' : '.next'),
   images: {
     unoptimized: true,
+  },
+  async rewrites() {
+    return [
+      {
+        source: '/api/:path*',
+        destination: `${process.env.NEXT_PUBLIC_BRAIN_API_BASE || 'http://brain-backend:8000'}/api/:path*`,
+      },
+    ];
   },
 }
 

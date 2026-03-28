@@ -16,7 +16,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, List, Optional, Literal
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Request, Response, UploadFile, status
 from pydantic import BaseModel, Field, field_validator
@@ -40,6 +40,8 @@ from app.modules.axe_governance import (
 )
 from app.modules.skill_engine.schemas import SkillRunCreate, SkillRunState, TriggerType
 from app.modules.skill_engine.service import get_skill_engine_service
+from app.modules.axe_worker_runs.service import AXEWorkerRunService
+from app.modules.axe_worker_runs.schemas import AXEWorkerRunCreateRequest, OpenCodeMode, WorkerType
 
 from .service import (
     get_axe_fusion_service,
@@ -48,6 +50,68 @@ from .service import (
     AXEllmError
 )
 from .provider_selector import LLMProvider, SanitizationLevel
+from .memory_bridge import get_axe_memory_bridge
+
+# Neural Core Integration (Phase 1)
+async def get_neural_context(db: AsyncSession) -> dict:
+    """
+    Holt Neural Parameter für AXE Chat Requests.
+    
+    Diese Parameter werden dem Chat als Context hinzugefügt:
+    - creativity: Wie kreativ die Antwort sein soll
+    - caution: Wie vorsichtig/sicher die Antwort sein soll
+    - speed: Bevorzugte Antwortgeschwindigkeit
+    - learning_rate: Lernbereitschaft
+    """
+    try:
+        from app.neural.core import get_neural_core
+        neural = get_neural_core(db)
+        params = await neural.get_all_parameters()
+        
+        # Filtere nur relevante Parameter
+        neural_context = {
+            "creativity": params.get("creativity", 0.7),
+            "caution": params.get("caution", 0.5),
+            "speed": params.get("speed", 0.8),
+            "learning_rate": params.get("learning_rate", 0.3),
+        }
+        
+        logger.info(f"🧠 Neural Context geladen: {neural_context}")
+        return neural_context
+    except Exception as e:
+        logger.warning(f"Neural Context nicht verfügbar: {e}")
+        return {"creativity": 0.7, "caution": 0.5, "speed": 0.8, "learning_rate": 0.3}
+
+
+def inject_neural_system_prompt(messages: List[dict], neural_context: dict) -> List[dict]:
+    """
+    Injiziert Neural Parameter als System Prompt.
+    
+    Dies beeinflusst das Verhalten von AXELLM basierend auf:
+    - creativity: Höher = mehr kreative Antworten
+    - caution: Höher = sicherere, validierte Antworten
+    - speed: Höher = schnellere Antworten
+    """
+    system_msg = messages[0] if messages and messages[0].get("role") == "system" else None
+    
+    neural_instruction = f"""
+Du operierst mit folgenden Neural-Parametern:
+- Kreativität: {neural_context.get('creativity', 0.7):.0%} (0%=konservativ, 100%=kreativ)
+- Vorsicht: {neural_context.get('caution', 0.5):.0%} (0%=risikofreudig, 100%=sicher)
+- Geschwindigkeit: {neural_context.get('speed', 0.8):.0%} (0%=langsam, 100%=schnell)
+- Lernbereitschaft: {neural_context.get('learning_rate', 0.3):.0%}
+
+Passt eure Antworten entsprechend an!
+"""
+    
+    if system_msg:
+        # Append to existing system message
+        messages[0]["content"] = system_msg.get("content", "") + "\n\n" + neural_instruction
+    else:
+        # Prepend new system message
+        messages.insert(0, {"role": "system", "content": neural_instruction})
+    
+    return messages
 
 logger = logging.getLogger(__name__)
 
@@ -249,9 +313,14 @@ async def validate_axe_trust(
             )
         return context
     except ValueError as exc:
+        logger.error(f"AXE validation error: {exc}")
+        logger.error(f"BRAIN_DMZ_GATEWAY_SECRET in env: {bool(os.environ.get('BRAIN_DMZ_GATEWAY_SECRET'))}")
+        logger.error(f"AXE_FUSION_ALLOW_LOCAL_REQUESTS: {os.environ.get('AXE_FUSION_ALLOW_LOCAL_REQUESTS')}")
+        logger.error(f"AXE_FUSION_ALLOW_LOCAL_FALLBACK: {os.environ.get('AXE_FUSION_ALLOW_LOCAL_FALLBACK')}")
         allow_local_fallback = (
             os.getenv("AXE_FUSION_ALLOW_LOCAL_FALLBACK", "false").lower() == "true"
         )
+        logger.error(f"allow_local_requests={allow_local_requests}, allow_local_fallback={allow_local_fallback}, client_host={client_host}")
         if (
             allow_local_requests
             and allow_local_fallback
@@ -319,6 +388,8 @@ class ChatRequest(BaseModel):
     messages: List[ChatMessage] = Field(..., description="Liste der Chat-Nachrichten", min_length=1, max_length=MAX_MESSAGES_PER_REQUEST)
     temperature: Optional[float] = Field(0.7, ge=0.0, le=2.0, description="Sampling Temperatur")
     attachments: Optional[List[str]] = Field(None, description="Optionale Attachment-Referenzen", max_length=MAX_ATTACHMENTS)
+    stream: Optional[bool] = Field(False, description="Enable Server-Sent Events token streaming")
+    session_id: Optional[str] = Field(None, description="Session-ID für Konversationsgedächtnis")
     
     @field_validator('model')
     @classmethod
@@ -363,6 +434,7 @@ class ChatResponse(BaseModel):
     """Chat Response Format"""
     text: str = Field(..., description="Generierter Text")
     raw: dict = Field(..., description="Rohdaten von AXEllm")
+    run_id: Optional[str] = Field(None, description="Run ID für SSE Event Streaming")
     
     class Config:
         json_schema_extra = {
@@ -370,7 +442,8 @@ class ChatResponse(BaseModel):
                 "text": "Hallo! Wie kann ich dir helfen?",
                 "raw": {
                     "choices": [{"message": {"content": "Hallo! Wie kann ich dir helfen?"}}]
-                }
+                },
+                "run_id": "550e8400-e29b-41d4-a716-446655440000"
             }
         }
 
@@ -378,7 +451,7 @@ class ChatResponse(BaseModel):
 class HealthResponse(BaseModel):
     """Health Check Response"""
     status: str
-    axellm: str
+    llm_provider: str
     error: Optional[str] = None
 
 
@@ -505,6 +578,59 @@ def _extract_text_from_skillrun_output(output_payload: dict[str, Any]) -> str:
     return fallback if isinstance(fallback, str) else ""
 
 
+async def _emit_run_created(run_id: UUID, skill_key: str) -> None:
+    try:
+        from app.modules.axe_streams.service import get_axe_stream_service
+        stream_service = get_axe_stream_service()
+        await stream_service.emit_run_created(run_id, skill_key)
+    except Exception as exc:
+        logger.warning("Failed to emit RUN_CREATED event: %s", exc)
+
+
+async def _emit_state_changed(
+    run_id: UUID,
+    previous_state: Optional[str],
+    current_state: str,
+    reason: Optional[str] = None,
+) -> None:
+    try:
+        from app.modules.axe_streams.service import get_axe_stream_service
+        from app.modules.axe_streams.schemas import AXERunState
+        
+        stream_service = get_axe_stream_service()
+        prev_state = AXERunState(previous_state) if previous_state else None
+        await stream_service.emit_state_changed(run_id, prev_state, AXERunState(current_state), reason)
+    except Exception as exc:
+        logger.warning("Failed to emit state changed event: %s", exc)
+
+
+async def _emit_run_succeeded(run_id: UUID, output: dict[str, Any]) -> None:
+    try:
+        from app.modules.axe_streams.service import get_axe_stream_service
+        stream_service = get_axe_stream_service()
+        await stream_service.emit_run_succeeded(run_id, output)
+    except Exception as exc:
+        logger.warning("Failed to emit RUN_SUCCEEDED event: %s", exc)
+
+
+async def _emit_run_failed(run_id: UUID, error_code: str, message: str) -> None:
+    try:
+        from app.modules.axe_streams.service import get_axe_stream_service
+        stream_service = get_axe_stream_service()
+        await stream_service.emit_run_failed(run_id, error_code, message)
+    except Exception as exc:
+        logger.warning("Failed to emit RUN_FAILED event: %s", exc)
+
+
+async def _emit_token_complete(run_id: UUID, text: str) -> None:
+    try:
+        from app.modules.axe_streams.service import get_axe_stream_service
+        stream_service = get_axe_stream_service()
+        await stream_service.emit_token_stream(run_id, text, finish_reason="stop")
+    except Exception as exc:
+        logger.warning("Failed to emit TOKEN_COMPLETE event: %s", exc)
+
+
 async def _try_skillrun_bridge(
     *,
     db: AsyncSession,
@@ -627,6 +753,129 @@ async def _try_skillrun_bridge(
             "evaluation_summary": report.skill_run.evaluation_summary,
             "output_payload": report.skill_run.output_payload,
         },
+        run_id=str(report.skill_run.id),
+    )
+
+
+WORKER_COMMAND_PATTERN = r"^\s*/(opencode|openclaw)\b"
+
+
+async def _try_worker_bridge(
+    *,
+    db: AsyncSession,
+    principal: Optional[Principal],
+    chat_request: ChatRequest,
+    request_id: str,
+) -> ChatResponse | None:
+    import re
+
+    last_user_message = next(
+        (
+            message.content
+            for message in reversed(chat_request.messages)
+            if message.role == "user" and message.content.strip()
+        ),
+        None,
+    )
+    if not last_user_message:
+        return None
+
+    match = re.match(WORKER_COMMAND_PATTERN, last_user_message.strip(), re.IGNORECASE)
+    if not match:
+        return None
+
+    worker_type: WorkerType = match.group(1).lower()  # type: ignore[assignment]
+    logger.info("AXE worker bridge triggered: type=%s request_id=%s", worker_type, request_id)
+
+    if principal is None:
+        principal = Principal(
+            principal_id="axe-worker-bridge",
+            principal_type=PrincipalType.SERVICE,
+            name="AXE Worker Bridge",
+            roles=[SystemRole.OPERATOR.value],
+            scopes=["read", "write"],
+            tenant_id=None,
+        )
+
+    # Extract the prompt from the current message by removing the command prefix
+    prompt_text = last_user_message.strip()
+    # Remove the /opencode or /openclaw prefix to get just the prompt
+    user_prompt = re.sub(WORKER_COMMAND_PATTERN, "", prompt_text, flags=re.IGNORECASE).strip()
+    
+    # If no prompt after the command, use a default
+    if not user_prompt:
+        user_prompt = "help"  # Default prompt
+
+    # Create session if it doesn't exist
+    from app.modules.axe_sessions.models import AXEChatSessionORM
+    from sqlalchemy import select
+    
+    session_id: UUID = chat_request.session_id or uuid4()  # type: ignore[assignment]
+    message_id: UUID = uuid4()
+    
+    # Check if session exists, if not create it
+    session_query = select(AXEChatSessionORM).where(AXEChatSessionORM.id == session_id)
+    existing_session = (await db.execute(session_query)).scalar_one_or_none()
+    
+    if existing_session is None:
+        new_session = AXEChatSessionORM(
+            id=session_id,
+            principal_id=principal.principal_id if principal else "anonymous",
+            tenant_id=principal.tenant_id if principal else None,
+            title=f"{worker_type.title()} worker session",
+            status="active",
+            message_count=1,
+        )
+        db.add(new_session)
+        await db.commit()
+        
+        # Also create the initial message
+        from app.modules.axe_sessions.models import AXEChatMessageORM
+        new_message = AXEChatMessageORM(
+            id=message_id,
+            session_id=session_id,
+            role="user",
+            content=last_user_message,
+        )
+        db.add(new_message)
+        await db.commit()
+        logger.info("Created new AXE session and message: %s, %s", session_id, message_id)
+
+    worker_service = AXEWorkerRunService(db=db)
+
+    payload = AXEWorkerRunCreateRequest(
+        session_id=session_id,
+        message_id=message_id,
+        prompt=user_prompt,
+        mode="plan",
+        worker_type=worker_type,
+    )
+
+    try:
+        worker_response = await worker_service.create_worker_run(
+            principal=principal,
+            payload=payload,
+        )
+    except Exception as exc:
+        logger.exception("AXE worker bridge failed")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error": "Worker bridge unavailable",
+                "message": f"Failed to dispatch {worker_type} worker: {exc}",
+                "code": "WORKER_BRIDGE_FAILED",
+            },
+        ) from exc
+
+    return ChatResponse(
+        text=f"[{worker_type.upper()} worker dispatched: {worker_response.worker_run_id}]\n\nStatus: {worker_response.status}\n{worker_response.detail}",
+        raw={
+            "execution_path": "worker_bridge",
+            "worker_type": worker_type,
+            "worker_run_id": worker_response.worker_run_id,
+            "worker_status": worker_response.status,
+        },
+        run_id=worker_response.worker_run_id,
     )
 
 
@@ -694,6 +943,49 @@ async def axe_chat(
         # Konvertiere Pydantic Model zu Dict für Service
         messages = [msg.model_dump() for msg in chat_request.messages]
 
+        # Phase 1: Neural Core Integration - Parameter holen und injizieren
+        neural_context = await get_neural_context(db)
+        messages = inject_neural_system_prompt(messages, neural_context)
+        logger.info(f"🧠 Neural Context injected: creativity={neural_context['creativity']}, caution={neural_context['caution']}")
+
+        # Phase 1.5: Odoo Bridge - Check for Odoo commands
+        last_user_message = next(
+            (msg.content for msg in reversed(chat_request.messages) 
+             if msg.role == "user" and msg.content.strip()),
+            ""
+        )
+        
+        # Import Odoo bridge lazily to avoid startup issues
+        try:
+            from app.modules.odoo_adapter.chat_bridge import get_odoo_chat_bridge
+            odoo_bridge = get_odoo_chat_bridge()
+            
+            if odoo_bridge.is_odoo_command(last_user_message):
+                logger.info(f"🎯 Odoo command detected: {last_user_message[:50]}...")
+                odoo_response = await odoo_bridge.handle_message(last_user_message)
+                
+                if odoo_response:
+                    logger.info(f"✅ Odoo command executed successfully")
+                    return ChatResponse(
+                        id=f"odoo-{uuid4().hex[:8]}",
+                        created=int(datetime.now(timezone.utc).timestamp()),
+                        model=chat_request.model,
+                        choices=[{"index": 0, "message": {"role": "assistant", "content": odoo_response}, "finish_reason": "stop"}],
+                        usage={"prompt_tokens": 0, "completion_tokens": len(odoo_response), "total_tokens": len(odoo_response)}
+                    )
+        except Exception as odoo_error:
+            logger.warning(f"⚠️ Odoo bridge error (continuing with LLM): {odoo_error}")
+
+        worker_bridged = await _try_worker_bridge(
+            db=db,
+            principal=principal,
+            chat_request=chat_request,
+            request_id=request_id,
+        )
+        if worker_bridged is not None:
+            logger.info("AXE worker bridge handled request_id=%s", request_id)
+            return worker_bridged
+
         bridged = await _try_skillrun_bridge(
             db=db,
             principal=principal,
@@ -701,6 +993,23 @@ async def axe_chat(
             request_id=request_id,
         )
         if bridged is not None:
+            # Store messages in memory if session_id provided
+            if chat_request.session_id:
+                memory_bridge = get_axe_memory_bridge(db)
+                tenant_id = principal.tenant_id if principal else None
+                for msg in chat_request.messages:
+                    await memory_bridge.store_message(
+                        session_id=chat_request.session_id,
+                        role=msg.role,
+                        content=msg.content,
+                        tenant_id=tenant_id
+                    )
+                await memory_bridge.store_message(
+                    session_id=chat_request.session_id,
+                    role="assistant",
+                    content=bridged.text,
+                    tenant_id=tenant_id
+                )
             return bridged
 
         if AXE_CHAT_EXECUTION_PATH == "skillrun_bridge":
@@ -723,18 +1032,94 @@ async def axe_chat(
                 },
             )
         
-        result = await service.chat(
-            model=chat_request.model,
-            messages=messages,
-            temperature=chat_request.temperature or 0.7,
-            request_id=request_id,
-            principal_id=user_id,
-        )
+        run_id = uuid4()
+        tenant_id = principal.tenant_id if principal else None
         
-        return ChatResponse(
-            text=result["text"],
-            raw={**result["raw"], "execution_path": "direct"}
-        )
+        try:
+            from app.core.redis_client import get_redis
+            redis_client = await get_redis()
+            ownership_key = f"axe:stream:ownership:{run_id}"
+            if tenant_id:
+                await redis_client.setex(ownership_key, 3600, str(tenant_id))
+            else:
+                await redis_client.setex(ownership_key, 3600, "system")
+        except Exception as exc:
+            logger.warning("Failed to store run ownership in Redis: %s", exc)
+        
+        await _emit_run_created(run_id, "axe.chat.direct")
+        await _emit_state_changed(run_id, None, "running", "Starting direct AXE chat execution")
+        
+        try:
+            if chat_request.stream:
+                result = await service.stream_chat(
+                    model=chat_request.model,
+                    messages=messages,
+                    temperature=chat_request.temperature or 0.7,
+                    request_id=request_id,
+                    principal_id=user_id,
+                    run_id=str(run_id),
+                )
+                await _emit_run_succeeded(run_id, {"text": result["text"]})
+                
+                # Store messages in memory if session_id provided
+                if chat_request.session_id:
+                    memory_bridge = get_axe_memory_bridge(db)
+                    for msg in chat_request.messages:
+                        await memory_bridge.store_message(
+                            session_id=chat_request.session_id,
+                            role=msg.role,
+                            content=msg.content,
+                            tenant_id=tenant_id
+                        )
+                
+                return ChatResponse(
+                    text=result["text"],
+                    raw={**result["raw"], "execution_path": "direct", "streamed": True},
+                    run_id=str(run_id)
+                )
+            else:
+                result = await service.chat(
+                    model=chat_request.model,
+                    messages=messages,
+                    temperature=chat_request.temperature or 0.7,
+                    request_id=request_id,
+                    principal_id=user_id,
+                )
+                
+                await _emit_run_succeeded(run_id, {"text": result["text"]})
+                await _emit_token_complete(run_id, result["text"])
+                
+                # Store messages in memory if session_id provided
+                if chat_request.session_id:
+                    memory_bridge = get_axe_memory_bridge(db)
+                    for msg in chat_request.messages:
+                        await memory_bridge.store_message(
+                            session_id=chat_request.session_id,
+                            role=msg.role,
+                            content=msg.content,
+                            tenant_id=tenant_id
+                        )
+                    await memory_bridge.store_message(
+                        session_id=chat_request.session_id,
+                        role="assistant",
+                        content=result["text"],
+                        tenant_id=tenant_id
+                    )
+                
+                return ChatResponse(
+                    text=result["text"],
+                    raw={**result["raw"], "execution_path": "direct"},
+                    run_id=str(run_id)
+                )
+            
+        except Exception as exc:
+            error_message = sanitize_error_for_user(exc)
+            error_code = "AXE_CHAT_FAILED"
+            
+            await _emit_state_changed(run_id, "running", "failed", error_message)
+            await _emit_run_failed(run_id, error_code, error_message)
+            
+            raise
         
     except AXEllmUnavailableError as e:
         logger.error("AXEllm nicht verfügbar: %s", e)
@@ -787,14 +1172,14 @@ async def axe_chat(
 @router.get(
     "/health",
     response_model=HealthResponse,
-    summary="AXEllm Health Check",
-    description="Prüft ob AXEllm erreichbar ist."
+    summary="LLM Provider Health Check",
+    description="Prüft ob der LLM Provider erreichbar ist."
 )
 async def axe_health(
     context: AXERequestContext = Depends(validate_axe_trust),
 ) -> HealthResponse:
     """
-    Health Check für AXEllm Verbindung.
+    Health Check für LLM Provider Verbindung.
     """
     logger.debug(
         "AXE health request accepted (trust_tier=%s source=%s)",
@@ -806,7 +1191,7 @@ async def axe_health(
     
     return HealthResponse(
         status=result["status"],
-        axellm=result["axellm"],
+        llm_provider=result.get("llm_provider", "unknown"),
         error=result.get("error")
     )
 
@@ -1320,6 +1705,7 @@ async def axe_message_legacy(
         messages=[ChatMessage(role="user", content=user_message)],
         temperature=0.7,
         attachments=[],
+        stream=False,
     )
 
     try:

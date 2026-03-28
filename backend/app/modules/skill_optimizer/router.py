@@ -11,6 +11,7 @@ from app.core.database import get_db
 from .schemas import (
     OptimizerRecommendationStatus,
     SkillOptimizerRecommendationListResponse,
+    SkillOptimizerOpsSnapshotResponse,
     SkillOptimizerRecommendationResponse,
     SkillOptimizerRecommendationSummaryResponse,
     SkillOptimizerRecommendationStatusUpdateRequest,
@@ -70,6 +71,21 @@ async def get_recommendation_summary(
         skill_key=skill_key,
     )
     return SkillOptimizerRecommendationSummaryResponse.model_validate(summary)
+
+
+@router.get("/ops/snapshot", response_model=SkillOptimizerOpsSnapshotResponse)
+async def get_ops_snapshot(
+    skill_key: str = Query(..., min_length=1),
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+):
+    service = get_skill_optimizer_service()
+    snapshot = await service.get_ops_snapshot_for_skill(
+        db,
+        tenant_id=principal.tenant_id,
+        skill_key=skill_key,
+    )
+    return SkillOptimizerOpsSnapshotResponse.model_validate(snapshot)
 
 
 @router.get("/recommendations/{recommendation_id}", response_model=SkillOptimizerRecommendationResponse)

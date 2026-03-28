@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 AXEWorkerStatus = Literal["queued", "running", "waiting_input", "completed", "failed"]
 OpenCodeMode = Literal["plan", "build", "heal", "evolve"]
+WorkerType = Literal["opencode", "openclaw"]
 
 
 class AXEWorkerArtifact(BaseModel):
@@ -24,6 +25,7 @@ class AXEWorkerRunCreateRequest(BaseModel):
     message_id: UUID
     prompt: str = Field(..., min_length=1, max_length=20000)
     mode: OpenCodeMode = "plan"
+    worker_type: WorkerType = "opencode"
     module: str | None = Field(default=None, min_length=1, max_length=128)
     entity_id: str | None = Field(default=None, min_length=1, max_length=256)
 

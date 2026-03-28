@@ -38,6 +38,10 @@ class SkillRunCreate(BaseModel):
     mission_id: str | None = Field(default=None, max_length=120)
     deadline_at: datetime | None = None
     causation_id: str | None = Field(default=None, max_length=160)
+    decision_context_id: str | None = Field(default=None, max_length=160)
+    purpose_evaluation_id: str | None = Field(default=None, max_length=160)
+    routing_decision_id: str | None = Field(default=None, max_length=160)
+    governance_snapshot: dict[str, Any] = Field(default_factory=dict)
 
 
 class SkillRunResponse(BaseModel):
