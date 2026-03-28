@@ -63,6 +63,7 @@ function renderHarness(request: (token: string) => Promise<string>) {
 
 describe("AuthSessionProvider", () => {
   beforeEach(() => {
+    window.localStorage.clear();
     mockedLogin.mockReset();
     mockedLogout.mockReset();
     mockedRefresh.mockReset();

@@ -353,6 +353,44 @@ def test_optimizer_summary_route_uses_service(
     assert response.json()["by_status"]["open"] == 2
 
 
+def test_optimizer_ops_snapshot_route_uses_service(
+    evaluation_optimizer_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    principal = build_principal()
+    router_module = importlib.import_module("app.modules.skill_optimizer.router")
+
+    class FakeService:
+        async def get_ops_snapshot_for_skill(self, db, tenant_id, skill_key):  # noqa: ANN001
+            assert skill_key == "demo.skill"
+            return {
+                "skill_key": skill_key,
+                "recommendation_summary": {
+                    "skill_key": skill_key,
+                    "total": 2,
+                    "by_status": {"open": 2, "accepted": 0, "dismissed": 0},
+                    "by_type": {"review_capability_sequence": 2},
+                    "average_confidence": 0.7,
+                },
+                "evaluation_total": 3,
+                "evaluation_passed": 2,
+                "evaluation_failed": 1,
+                "evaluation_non_compliant": 1,
+                "latest_evaluation_score": 0.8,
+            }
+
+    monkeypatch.setattr(router_module, "get_skill_optimizer_service", lambda: FakeService())
+    with override_auth_principal(evaluation_optimizer_client, principal):
+        response = evaluation_optimizer_client.get(
+            "/api/optimizer/ops/snapshot",
+            params={"skill_key": "demo.skill"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["evaluation_total"] == 3
+    assert response.json()["recommendation_summary"]["total"] == 2
+
+
 def test_optimizer_get_recommendation_route_uses_service(
     evaluation_optimizer_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -512,6 +550,55 @@ def test_optimizer_service_builds_summary_from_recommendations() -> None:
     assert summary["by_status"]["accepted"] == 1
     assert summary["by_type"]["review_capability_sequence"] == 2
     assert summary["average_confidence"] == pytest.approx((0.9 + 0.6 + 0.8) / 3.0)
+
+
+@pytest.mark.asyncio
+async def test_optimizer_service_builds_ops_snapshot() -> None:
+    service = SkillOptimizerService()
+
+    class FakeScalarResult:
+        def __init__(self, items):
+            self._items = items
+
+        def all(self):
+            return self._items
+
+    class FakeResult:
+        def __init__(self, items):
+            self._items = items
+
+        def scalars(self):
+            return FakeScalarResult(self._items)
+
+    class FakeDb:
+        async def execute(self, _query):
+            return FakeResult(
+                [
+                    SimpleNamespace(passed=True, policy_compliance="compliant", overall_score=1.0),
+                    SimpleNamespace(passed=False, policy_compliance="non_compliant", overall_score=0.4),
+                    SimpleNamespace(passed=True, policy_compliance="compliant", overall_score=0.9),
+                ]
+            )
+
+    async def _summary(_db, tenant_id, skill_key):  # noqa: ANN001
+        return {
+            "skill_key": skill_key,
+            "total": 1,
+            "by_status": {"open": 1, "accepted": 0, "dismissed": 0},
+            "by_type": {"review_capability_sequence": 1},
+            "average_confidence": 0.6,
+        }
+
+    service.get_summary_for_skill = _summary  # type: ignore[method-assign]
+    snapshot = await service.get_ops_snapshot_for_skill(FakeDb(), tenant_id="tenant-a", skill_key="demo.skill")
+
+    assert snapshot["skill_key"] == "demo.skill"
+    assert snapshot["recommendation_summary"]["total"] == 1
+    assert snapshot["evaluation_total"] == 3
+    assert snapshot["evaluation_passed"] == 2
+    assert snapshot["evaluation_failed"] == 1
+    assert snapshot["evaluation_non_compliant"] == 1
+    assert snapshot["latest_evaluation_score"] == 1.0
 
 
 def test_evaluation_get_route_uses_service(evaluation_optimizer_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:

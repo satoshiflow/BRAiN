@@ -65,8 +65,8 @@ async def test_health_check_marks_mock_mode_as_degraded(monkeypatch: pytest.Monk
 
     result = await service.health_check()
 
-    assert result["status"] == "degraded"
-    assert result["axellm"] == "not_reachable"
+    assert result["status"] == "unavailable"
+    assert result["llm_provider"] == "unknown"
 
 
 def test_chat_completion_url_avoids_double_v1() -> None:

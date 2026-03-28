@@ -60,7 +60,7 @@ class _FusionServiceStub:
     async def health_check(self):
         return {
             "status": "healthy",
-            "axellm": "reachable",
+            "llm_provider": "ollama",
         }
 
     def set_provider_runtime(self, provider, force_sanitization_level=None):  # noqa: ANN001
@@ -324,7 +324,7 @@ def test_axe_fusion_health_route_allows_dmz(client, monkeypatch: pytest.MonkeyPa
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "healthy"
-    assert body["axellm"] == "reachable"
+    assert body["llm_provider"] == "ollama"
 
 
 def test_axe_fusion_route_returns_503_when_governance_unconfigured(

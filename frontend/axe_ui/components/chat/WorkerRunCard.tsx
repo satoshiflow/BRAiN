@@ -1,5 +1,7 @@
 "use client";
 
+import { memo } from "react";
+
 import type { AxeWorkerUpdate } from "@/lib/contracts";
 
 const statusStyles: Record<AxeWorkerUpdate["status"], string> = {
@@ -10,7 +12,7 @@ const statusStyles: Record<AxeWorkerUpdate["status"], string> = {
   failed: "border-rose-400/35 bg-rose-500/10 text-rose-100",
 };
 
-export function WorkerRunCard({ update }: { update: AxeWorkerUpdate }) {
+function WorkerRunCardComponent({ update }: { update: AxeWorkerUpdate }) {
   const artifacts = update.artifacts ?? [];
 
   return (
@@ -44,3 +46,5 @@ export function WorkerRunCard({ update }: { update: AxeWorkerUpdate }) {
     </div>
   );
 }
+
+export const WorkerRunCard = memo(WorkerRunCardComponent);

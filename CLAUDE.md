@@ -9,6 +9,20 @@ You are Claude, a **Senior Python Developer** and **Security Expert** specializi
 - Production system hardening
 - BRAiN Core module development
 
+## Canonical Design Alignment
+
+- `DESIGN.md` is the canonical design brief for BRAiN identity, purpose,
+  routing, autonomy mode, and integration boundaries.
+- Default operating mode is `brain_first`: BRAiN acts autonomously within active
+  governance.
+- AXE is the governed human control surface for observation, explanation,
+  approval when required, and override when explicitly allowed.
+- OpenCode is a bounded execution plane under BRAiN contracts, not an
+  independent governance or runtime authority.
+- New purpose/routing/autonomy work must extend existing `domain_agents ->
+  skill_engine -> task_queue/opencode` flows rather than creating a second
+  runtime or second governance system.
+
 ## Critical Security Patterns for BRAiN
 
 ### 1. Authentication & Authorization (MANDATORY)
@@ -259,7 +273,9 @@ async def publish_event(event_type: str, payload: dict):
         )
     except Exception as e:
         logger.error(f"Failed to publish event: {e}")
-        # Don't fail the operation if event publishing fails
+        # Do not silently weaken governed flows.
+        # For mutating/sensitive operations, follow the canonical durable-first
+        # audit/outbox/event path defined by current governance/runtime specs.
 ```
 
 ### Database Session Pattern

@@ -21,6 +21,22 @@ from .schemas import (
     DomainSkillRunPlanResponse,
     DomainResolution,
     DomainReviewDecision,
+    PurposeEvaluationCreateRequest,
+    PurposeEvaluationListResponse,
+    PurposeEvaluationResponse,
+    RoutingDecisionCreateRequest,
+    RoutingDecisionListResponse,
+    RoutingDecisionResponse,
+    RoutingMemoryListResponse,
+    RoutingMemoryProjectionResponse,
+    RoutingMemoryRebuildRequest,
+    RoutingReplayComparisonResponse,
+    RoutingAdaptationProposalRequest,
+    RoutingAdaptationProposalResponse,
+    RoutingAdaptationProposalListResponse,
+    RoutingAdaptationSimulationRequest,
+    RoutingAdaptationSimulationResponse,
+    RoutingAdaptationTransitionRequest,
 )
 from .service import execute_skill_run_drafts, get_domain_agent_registry, get_domain_agent_service
 
@@ -269,6 +285,363 @@ async def register_domain(
     return registered
 
 
+@router.post(
+    "/purpose-evaluations",
+    response_model=PurposeEvaluationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_purpose_evaluation(
+    payload: PurposeEvaluationCreateRequest,
+    db: AsyncSession = Depends(_get_db),
+    principal: Principal = Depends(
+        require_role(UserRole.OPERATOR, UserRole.ADMIN, UserRole.SYSTEM_ADMIN, UserRole.SERVICE)
+    ),
+) -> PurposeEvaluationResponse:
+    service = get_domain_agent_service()
+    if (
+        payload.decision_context.tenant_id
+        and payload.decision_context.tenant_id != principal.tenant_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="decision_context tenant_id does not match authenticated tenant",
+        )
+    if (
+        payload.evaluation.decision_context_id
+        != payload.decision_context.decision_context_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="evaluation.decision_context_id must match decision_context.decision_context_id",
+        )
+
+    context = payload.decision_context.model_copy(update={"tenant_id": principal.tenant_id})
+    evaluation = payload.evaluation
+    if evaluation.outcome.value == "modified_accept" and not evaluation.required_modifications:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="modified_accept requires required_modifications",
+        )
+
+    return await service.create_purpose_evaluation(
+        db,
+        decision_context=context,
+        evaluation=evaluation,
+        principal=principal,
+    )
+
+
+@router.get("/purpose-evaluations", response_model=PurposeEvaluationListResponse)
+async def list_purpose_evaluations(
+    mission_id: str | None = None,
+    limit: int = 100,
+    db: AsyncSession = Depends(_get_db),
+    principal: Principal = Depends(require_auth),
+) -> PurposeEvaluationListResponse:
+    service = get_domain_agent_service()
+    items = await service.list_purpose_evaluations(
+        db,
+        tenant_id=principal.tenant_id,
+        mission_id=mission_id,
+        limit=limit,
+    )
+    return PurposeEvaluationListResponse(items=items, total=len(items))
+
+
+@router.get(
+    "/purpose-evaluations/{evaluation_id}",
+    response_model=PurposeEvaluationResponse,
+)
+async def get_purpose_evaluation(
+    evaluation_id: str,
+    db: AsyncSession = Depends(_get_db),
+    principal: Principal = Depends(require_auth),
+) -> PurposeEvaluationResponse:
+    service = get_domain_agent_service()
+    item = await service.get_purpose_evaluation(
+        db,
+        evaluation_id=evaluation_id,
+        tenant_id=principal.tenant_id,
+    )
+    if item is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Purpose evaluation not found",
+        )
+    return item
+
+
+@router.post(
+    "/routing-decisions",
+    response_model=RoutingDecisionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_routing_decision(
+    payload: RoutingDecisionCreateRequest,
+    db: AsyncSession = Depends(_get_db),
+    principal: Principal = Depends(
+        require_role(UserRole.OPERATOR, UserRole.ADMIN, UserRole.SYSTEM_ADMIN, UserRole.SERVICE)
+    ),
+) -> RoutingDecisionResponse:
+    service = get_domain_agent_service()
+    if (
+        payload.decision_context.tenant_id
+        and payload.decision_context.tenant_id != principal.tenant_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="decision_context tenant_id does not match authenticated tenant",
+        )
+    if (
+        payload.decision.decision_context_id
+        != payload.decision_context.decision_context_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="decision.decision_context_id must match decision_context.decision_context_id",
+        )
+    if payload.decision.task_profile_id != payload.task_profile.task_profile_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="decision.task_profile_id must match task_profile.task_profile_id",
+        )
+
+    context = payload.decision_context.model_copy(update={"tenant_id": principal.tenant_id})
+    return await service.create_routing_decision(
+        db,
+        decision_context=context,
+        decision=payload.decision,
+        principal=principal,
+    )
+
+
+@router.get("/routing-decisions", response_model=RoutingDecisionListResponse)
+async def list_routing_decisions(
+    mission_id: str | None = None,
+    limit: int = 100,
+    db: AsyncSession = Depends(_get_db),
+    principal: Principal = Depends(require_auth),
+) -> RoutingDecisionListResponse:
+    service = get_domain_agent_service()
+    items = await service.list_routing_decisions(
+        db,
+        tenant_id=principal.tenant_id,
+        mission_id=mission_id,
+        limit=limit,
+    )
+    return RoutingDecisionListResponse(items=items, total=len(items))
+
+
+@router.get("/routing-decisions/{routing_decision_id}", response_model=RoutingDecisionResponse)
+async def get_routing_decision(
+    routing_decision_id: str,
+    db: AsyncSession = Depends(_get_db),
+    principal: Principal = Depends(require_auth),
+) -> RoutingDecisionResponse:
+    service = get_domain_agent_service()
+    item = await service.get_routing_decision(
+        db,
+        routing_decision_id=routing_decision_id,
+        tenant_id=principal.tenant_id,
+    )
+    if item is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Routing decision not found",
+        )
+    return item
+
+
+@router.post(
+    "/routing-memory/rebuild",
+    response_model=RoutingMemoryProjectionResponse,
+)
+async def rebuild_routing_memory(
+    payload: RoutingMemoryRebuildRequest,
+    db: AsyncSession = Depends(_get_db),
+    principal: Principal = Depends(
+        require_role(UserRole.OPERATOR, UserRole.ADMIN, UserRole.SYSTEM_ADMIN, UserRole.SERVICE)
+    ),
+) -> RoutingMemoryProjectionResponse:
+    service = get_domain_agent_service()
+    return await service.rebuild_routing_memory_projection(
+        db,
+        tenant_id=principal.tenant_id,
+        task_profile_id=payload.task_profile_id,
+        principal=principal,
+        limit=payload.limit,
+    )
+
+
+@router.get("/routing-memory", response_model=RoutingMemoryListResponse)
+async def list_routing_memory(
+    task_profile_id: str | None = None,
+    limit: int = 100,
+    db: AsyncSession = Depends(_get_db),
+    principal: Principal = Depends(require_auth),
+) -> RoutingMemoryListResponse:
+    service = get_domain_agent_service()
+    items = await service.list_routing_memory_projections(
+        db,
+        tenant_id=principal.tenant_id,
+        task_profile_id=task_profile_id,
+        limit=limit,
+    )
+    return RoutingMemoryListResponse(items=items, total=len(items))
+
+
+@router.get("/routing-memory/{projection_id}", response_model=RoutingMemoryProjectionResponse)
+async def get_routing_memory(
+    projection_id: str,
+    db: AsyncSession = Depends(_get_db),
+    principal: Principal = Depends(require_auth),
+) -> RoutingMemoryProjectionResponse:
+    service = get_domain_agent_service()
+    item = await service.get_routing_memory_projection(
+        db,
+        projection_id=projection_id,
+        tenant_id=principal.tenant_id,
+    )
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Routing memory projection not found")
+    return item
+
+
+@router.get(
+    "/routing-memory/replay/{task_profile_id}",
+    response_model=RoutingReplayComparisonResponse,
+)
+async def replay_routing_memory(
+    task_profile_id: str,
+    db: AsyncSession = Depends(_get_db),
+    principal: Principal = Depends(require_auth),
+) -> RoutingReplayComparisonResponse:
+    service = get_domain_agent_service()
+    return await service.replay_routing_comparison(
+        db,
+        tenant_id=principal.tenant_id,
+        task_profile_id=task_profile_id,
+    )
+
+
+@router.post(
+    "/routing-adaptations/proposals",
+    response_model=RoutingAdaptationProposalResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_routing_adaptation_proposal(
+    payload: RoutingAdaptationProposalRequest,
+    db: AsyncSession = Depends(_get_db),
+    principal: Principal = Depends(
+        require_role(UserRole.ADMIN, UserRole.SYSTEM_ADMIN, UserRole.SERVICE)
+    ),
+) -> RoutingAdaptationProposalResponse:
+    service = get_domain_agent_service()
+    return await service.create_routing_adaptation_proposal(
+        db,
+        tenant_id=principal.tenant_id,
+        principal=principal,
+        task_profile_id=payload.task_profile_id,
+        routing_memory_id=payload.routing_memory_id,
+        proposed_changes=payload.proposed_changes,
+        sandbox_validated=payload.sandbox_validated,
+        validation_evidence=payload.validation_evidence,
+    )
+
+
+@router.get(
+    "/routing-adaptations/proposals",
+    response_model=RoutingAdaptationProposalListResponse,
+)
+async def list_routing_adaptation_proposals(
+    task_profile_id: str | None = None,
+    status_filter: str | None = None,
+    limit: int = 100,
+    db: AsyncSession = Depends(_get_db),
+    principal: Principal = Depends(require_auth),
+) -> RoutingAdaptationProposalListResponse:
+    service = get_domain_agent_service()
+    items = await service.list_routing_adaptation_proposals(
+        db,
+        tenant_id=principal.tenant_id,
+        task_profile_id=task_profile_id,
+        status=status_filter,
+        limit=limit,
+    )
+    return RoutingAdaptationProposalListResponse(items=items, total=len(items))
+
+
+@router.get(
+    "/routing-adaptations/proposals/{proposal_id}",
+    response_model=RoutingAdaptationProposalResponse,
+)
+async def get_routing_adaptation_proposal(
+    proposal_id: str,
+    db: AsyncSession = Depends(_get_db),
+    principal: Principal = Depends(require_auth),
+) -> RoutingAdaptationProposalResponse:
+    service = get_domain_agent_service()
+    item = await service.get_routing_adaptation_proposal(
+        db,
+        proposal_id=proposal_id,
+        tenant_id=principal.tenant_id,
+    )
+    if item is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Routing adaptation proposal not found",
+        )
+    return item
+
+
+@router.post(
+    "/routing-adaptations/proposals/{proposal_id}/transition",
+    response_model=RoutingAdaptationProposalResponse,
+)
+async def transition_routing_adaptation_proposal(
+    proposal_id: str,
+    payload: RoutingAdaptationTransitionRequest,
+    db: AsyncSession = Depends(_get_db),
+    principal: Principal = Depends(
+        require_role(UserRole.ADMIN, UserRole.SYSTEM_ADMIN, UserRole.SERVICE)
+    ),
+) -> RoutingAdaptationProposalResponse:
+    service = get_domain_agent_service()
+    try:
+        return await service.transition_routing_adaptation_proposal(
+            db,
+            proposal_id=proposal_id,
+            tenant_id=principal.tenant_id,
+            principal=principal,
+            status=payload.status,
+            block_reason=payload.block_reason,
+            validation_evidence_patch=payload.validation_evidence_patch,
+        )
+    except ValueError as exc:
+        message = str(exc)
+        if "not found" in message:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=message) from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=message) from exc
+
+
+@router.post(
+    "/routing-adaptations/simulate",
+    response_model=RoutingAdaptationSimulationResponse,
+)
+async def simulate_routing_adaptation(
+    payload: RoutingAdaptationSimulationRequest,
+    db: AsyncSession = Depends(_get_db),
+    principal: Principal = Depends(require_auth),
+) -> RoutingAdaptationSimulationResponse:
+    service = get_domain_agent_service()
+    return await service.simulate_routing_adaptation(
+        db,
+        tenant_id=principal.tenant_id,
+        task_profile_id=payload.task_profile_id,
+        proposed_changes=payload.proposed_changes,
+    )
+
+
 @router.post("/decompose", response_model=DomainResolution)
 async def decompose_domain_task(
     payload: DomainDecompositionRequest,
@@ -368,6 +741,52 @@ async def prepare_domain_skill_runs(
         )
 
     selected_specialists = await domain_service.select_specialists(db, config)
+
+    decision_context = None
+    if payload.decision_context is not None:
+        if payload.decision_context.tenant_id and payload.decision_context.tenant_id != principal.tenant_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="decision_context tenant_id does not match authenticated tenant",
+            )
+        decision_context = payload.decision_context.model_copy(update={"tenant_id": principal.tenant_id})
+
+    purpose_evaluation = None
+    if payload.purpose_evaluation_id:
+        purpose_evaluation = await domain_service.get_purpose_evaluation(
+            db,
+            evaluation_id=payload.purpose_evaluation_id,
+            tenant_id=principal.tenant_id,
+        )
+        if purpose_evaluation is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Purpose evaluation not found",
+            )
+        if decision_context and purpose_evaluation.decision_context_id != decision_context.decision_context_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="purpose_evaluation decision context does not match request decision_context",
+            )
+
+    routing_decision = None
+    if payload.routing_decision_id:
+        routing_decision = await domain_service.get_routing_decision(
+            db,
+            routing_decision_id=payload.routing_decision_id,
+            tenant_id=principal.tenant_id,
+        )
+        if routing_decision is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Routing decision not found",
+            )
+        if decision_context and routing_decision.decision_context_id != decision_context.decision_context_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="routing_decision decision context does not match request decision_context",
+            )
+
     resolution = domain_service.decompose_with_config(
         scoped_decomposition,
         config,
@@ -384,6 +803,10 @@ async def prepare_domain_skill_runs(
         causation_id=payload.causation_id,
         input_payload=payload.input_payload,
         tenant_id=principal.tenant_id,
+        decision_context_id=(decision_context.decision_context_id if decision_context else None),
+        purpose_evaluation_id=payload.purpose_evaluation_id,
+        routing_decision_id=payload.routing_decision_id,
+        governance_snapshot=(routing_decision.governance_snapshot if routing_decision else {}),
     )
 
     created_run_ids: list[str] = []
@@ -436,6 +859,17 @@ async def prepare_domain_skill_runs(
             supervisor_handoff["status"] = persisted.get("status")
 
     if payload.execute_now:
+        if routing_decision is not None:
+            control_mode = (routing_decision.governance_snapshot or {}).get("control_mode")
+            if control_mode == "human_required" and not payload.supervisor_escalation_id:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        "Execution is gated: routing decision requires human review and "
+                        "must include supervisor_escalation_id"
+                    ),
+                )
+
         if payload.supervisor_escalation_id and not approved_supervisor_escalation:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,

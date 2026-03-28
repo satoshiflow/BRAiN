@@ -31,15 +31,21 @@ export default function DashboardPage() {
   const controlDeckProviderUrl = `${getControlDeckBase()}/settings/llm-providers`;
 
   const fetchStats = useCallback(async () => {
+    if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+      return;
+    }
+
     try {
-      const health = await getApiHealth();
-      const [purposeData, routingData, providerData] = await withAuthRetry((token) =>
-        Promise.all([
-          listPurposeEvaluations(6, { Authorization: `Bearer ${token}` }),
-          listRoutingDecisions(6, { Authorization: `Bearer ${token}` }),
-          listProviderPortalProviders({ Authorization: `Bearer ${token}` }),
-        ])
-      );
+      const [health, [purposeData, routingData, providerData]] = await Promise.all([
+        getApiHealth(),
+        withAuthRetry((token) =>
+          Promise.all([
+            listPurposeEvaluations(6, { Authorization: `Bearer ${token}` }),
+            listRoutingDecisions(6, { Authorization: `Bearer ${token}` }),
+            listProviderPortalProviders({ Authorization: `Bearer ${token}` }),
+          ])
+        ),
+      ]);
 
       setRecentPurpose(purposeData.items.slice(0, 4));
       setRecentRouting(routingData.items.slice(0, 4));
@@ -64,7 +70,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     void fetchStats();
-    const interval = setInterval(fetchStats, 10000);
+    const interval = setInterval(fetchStats, 30000);
     return () => clearInterval(interval);
   }, [fetchStats]);
 

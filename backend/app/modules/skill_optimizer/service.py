@@ -217,6 +217,47 @@ class SkillOptimizerService:
         items = await self.list_for_skill(db, tenant_id=tenant_id, skill_key=skill_key)
         return self._build_summary(skill_key=skill_key, items=items)
 
+    async def get_ops_snapshot_for_skill(
+        self,
+        db: AsyncSession,
+        tenant_id: str | None,
+        skill_key: str,
+    ) -> dict[str, Any]:
+        recommendation_summary = await self.get_summary_for_skill(
+            db,
+            tenant_id=tenant_id,
+            skill_key=skill_key,
+        )
+
+        eval_query = select(EvaluationResultModel).where(EvaluationResultModel.skill_key == skill_key)
+        if tenant_id:
+            eval_query = eval_query.where(EvaluationResultModel.tenant_id == tenant_id)
+        eval_query = eval_query.order_by(desc(EvaluationResultModel.created_at)).limit(20)
+        eval_result = await db.execute(eval_query)
+        evaluations = list(eval_result.scalars().all())
+
+        evaluation_total = len(evaluations)
+        evaluation_passed = sum(1 for item in evaluations if bool(item.passed))
+        evaluation_failed = sum(1 for item in evaluations if not bool(item.passed))
+        evaluation_non_compliant = sum(
+            1 for item in evaluations if str(item.policy_compliance) == "non_compliant"
+        )
+        latest_evaluation_score = (
+            float(evaluations[0].overall_score)
+            if evaluations and evaluations[0].overall_score is not None
+            else None
+        )
+
+        return {
+            "skill_key": skill_key,
+            "recommendation_summary": recommendation_summary,
+            "evaluation_total": evaluation_total,
+            "evaluation_passed": evaluation_passed,
+            "evaluation_failed": evaluation_failed,
+            "evaluation_non_compliant": evaluation_non_compliant,
+            "latest_evaluation_score": latest_evaluation_score,
+        }
+
     async def update_status(
         self,
         db: AsyncSession,

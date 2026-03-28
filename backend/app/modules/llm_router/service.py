@@ -63,6 +63,14 @@ class LLMRouterService:
     def _load_default_config(self) -> LLMRouterConfig:
         """Load default configuration from environment"""
 
+        local_llm_mode = os.getenv("LOCAL_LLM_MODE", "ollama").strip().lower()
+        default_provider = LLMProvider.OLLAMA
+        if local_llm_mode in ("openai", "anthropic", "openrouter", "openwebui", "mock"):
+            try:
+                default_provider = LLMProvider(local_llm_mode)
+            except ValueError:
+                logger.warning(f"Invalid LOCAL_LLM_MODE '{local_llm_mode}', defaulting to Ollama")
+
         ollama_config = OllamaConfig(
             host=os.getenv("OLLAMA_HOST", "http://localhost:11434"),
             default_model=os.getenv("OLLAMA_MODEL", "llama3.2:latest"),
@@ -96,7 +104,7 @@ class LLMRouterService:
         )
 
         return LLMRouterConfig(
-            default_provider=LLMProvider.OLLAMA,
+            default_provider=default_provider,
             ollama=ollama_config,
             openrouter=openrouter_config,
             openwebui=openwebui_config,
@@ -312,8 +320,8 @@ class LLMRouterService:
         # Rule 1: AXE Agent - allow explicit provider selection
         if agent_id and "axe" in agent_id.lower():
             if requested_provider == LLMProvider.AUTO:
-                logger.debug(f"AXE Agent detected - using default provider (Ollama)")
-                return LLMProvider.OLLAMA
+                logger.debug(f"AXE Agent detected - using default provider ({self.config.default_provider})")
+                return self.config.default_provider
             else:
                 # AXE explicitly requested a provider (e.g., OpenRouter)
                 logger.debug(f"AXE Agent using explicit provider: {requested_provider}")

@@ -85,16 +85,20 @@ class AuthService:
         return user
 
     @staticmethod
+    async def get_active_user_by_email(db: AsyncSession, email: str) -> Optional[User]:
+        result = await db.execute(
+            select(User).where(User.email == email, User.is_active.is_(True))
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
     async def authenticate_user(
         db: AsyncSession,
         email: str,
         password: str
     ) -> Optional[User]:
         """Authenticate user with email and password"""
-        result = await db.execute(
-            select(User).where(User.email == email, User.is_active == True)
-        )
-        user = result.scalar_one_or_none()
+        user = await AuthService.get_active_user_by_email(db, email)
 
         if not user:
             return None

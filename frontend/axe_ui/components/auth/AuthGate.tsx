@@ -1,6 +1,6 @@
 "use client";
 
-import { LoginForm } from "@/components/auth/LoginForm";
+import { LoginGateway } from "@/components/auth/LoginGateway";
 import { useAuthSession } from "@/hooks/useAuthSession";
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
@@ -10,5 +10,5 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
-  return <LoginForm onSubmit={login} loading={status === "loading"} />;
+  return <LoginGateway onLogin={login} loading={status === "loading"} />;
 }

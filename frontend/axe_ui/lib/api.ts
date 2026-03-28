@@ -270,3 +270,51 @@ export async function listProviderPortalProviders(
     headers: customHeaders,
   });
 }
+
+export interface AXERunCreate {
+  skill_key: string;
+  session_id?: string;
+  input_payload: Record<string, unknown>;
+  stream_tokens: boolean;
+}
+
+export interface AXERunResponse {
+  id: string;
+  skill_key: string;
+  state: string;
+  skill_run_id: string | null;
+  session_id: string | null;
+  output: Record<string, unknown> | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function createAXERun(
+  payload: AXERunCreate,
+  customHeaders?: Record<string, string>
+): Promise<AXERunResponse> {
+  return apiRequest<AXERunResponse>("/api/axe/runs", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    headers: customHeaders,
+  });
+}
+
+export async function getAXERun(
+  runId: string,
+  customHeaders?: Record<string, string>
+): Promise<AXERunResponse> {
+  return apiRequest<AXERunResponse>(`/api/axe/runs/${runId}`, {
+    method: "GET",
+    headers: customHeaders,
+  });
+}
+
+export function createAXERunEventSource(runId: string): EventSource {
+  const apiBase = getApiBase();
+  const url = `${apiBase}/api/axe/runs/${runId}/events`;
+  const eventSource = new EventSource(url, { withCredentials: true });
+  eventSource.addEventListener("open", () => {});
+  return eventSource;
+}

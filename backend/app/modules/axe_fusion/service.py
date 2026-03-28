@@ -6,7 +6,8 @@ Bietet HTTP-Client zu AXEllm mit Timeout, Error Handling und Response Mapping.
 
 import logging
 import os
-from typing import Any, Dict, List, Optional, Tuple
+import json
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 import httpx
 
 from .data_sanitizer import DataSanitizer
@@ -274,6 +275,97 @@ class AXEllmClient:
         return {
             "text": text,
             "raw": raw_response
+        }
+
+    async def stream_chat(
+        self,
+        model: str,
+        messages: List[Dict[str, Any]],
+        temperature: float = 0.7,
+        on_token: Optional[Callable[[str, Optional[str]], Awaitable[None]]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Sendet streaming Chat-Request an AXEllm.
+        
+        Args:
+            model: Modell-Name
+            messages: Liste von Nachrichten (OpenAI Format)
+            temperature: Sampling Temperatur
+            on_token: Optional callback für jeden Token-Delta
+            
+        Returns:
+            Dict mit 'text' und 'raw' Feldern
+        """
+        import json as json_module
+        
+        sanitized_messages = _sanitize_messages(messages)
+        
+        payload = {
+            "model": model,
+            "messages": sanitized_messages,
+            "temperature": temperature,
+            "stream": True,
+        }
+        
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        
+        accumulated_text = ""
+        finish_reason_received = None
+        
+        try:
+            async with self.client.stream(
+                "POST",
+                self._chat_completion_url(),
+                json=payload,
+                headers=headers,
+                timeout=self.timeout,
+            ) as response:
+                response.raise_for_status()
+                
+                async for line in response.aiter_lines():
+                    if not line.strip() or not line.startswith("data:"):
+                        continue
+                    
+                    data = line[5:].strip()
+                    if data == "[DONE]":
+                        break
+                    
+                    try:
+                        chunk = json_module.loads(data)
+                        if "choices" in chunk and chunk["choices"]:
+                            choice = chunk["choices"][0]
+                            delta = choice.get("delta", {})
+                            content = delta.get("content", "")
+                            finish = choice.get("finish_reason")
+                            
+                            if content:
+                                accumulated_text += content
+                                if on_token:
+                                    await on_token(content, None)
+                            
+                            if finish and finish_reason_received is None:
+                                finish_reason_received = finish
+                                if on_token:
+                                    await on_token("", finish)
+                    except json_module.JSONDecodeError:
+                        continue
+                        
+        except httpx.TimeoutException as e:
+            logger.error(f"AXEllm Streaming Timeout: {e}")
+            raise AXEllmUnavailableError(f"AXEllm Streaming Timeout: {e}")
+        except httpx.ConnectError as e:
+            logger.error(f"AXEllm nicht erreichbar: {e}")
+            raise AXEllmUnavailableError(f"AXEllm Service nicht erreichbar unter {self.base_url}")
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 503:
+                raise AXEllmUnavailableError("AXEllm Service temporär nicht verfügbar (503)")
+            raise AXEllmError(f"AXEllm HTTP Fehler: {e.response.status_code}")
+        
+        return {
+            "text": accumulated_text,
+            "raw": {"streamed": True, "model": model, "finish_reason": finish_reason_received}
         }
     
     async def close(self):
@@ -591,10 +683,162 @@ class AXEFusionService:
                 await self.db.rollback()
 
         return result
+
+    async def stream_chat(
+        self,
+        model: str,
+        messages: List[Dict[str, Any]],
+        temperature: float = 0.7,
+        inject_identity: bool = True,
+        request_id: Optional[str] = None,
+        principal_id: Optional[str] = None,
+        run_id: Optional[str] = None,
+        on_token: Optional[Callable[[str, Optional[str]], Awaitable[None]]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Streaming Chat Methode - tokens werden via on_token callback ausgegeben.
+        
+        Args:
+            model: Modell-Name
+            messages: Liste von Nachrichten
+            temperature: Sampling Temperatur
+            inject_identity: Ob System Prompt aus AXE Identity injiziert werden soll
+            request_id: Request ID für Tracking
+            principal_id: Principal ID für Audit
+            run_id: Optional run_id für Event Emission
+            on_token: Callback für jeden Token-Delta (token: str, finish_reason: Optional[str])
+            
+        Returns:
+            {text: str, raw: object}
+        """
+        from uuid import UUID
+
+        async def emit_token_event(delta: str, finish_reason: Optional[str] = None):
+            if on_token:
+                await on_token(delta, finish_reason)
+            if run_id:
+                try:
+                    from app.modules.axe_streams.service import get_axe_stream_service
+                    stream_service = get_axe_stream_service()
+                    await stream_service.emit_token_stream(UUID(run_id), delta, finish_reason)
+                except Exception:
+                    pass
+
+        if inject_identity and self.db:
+            from .middleware import SystemPromptMiddleware
+            middleware = SystemPromptMiddleware(self.db)
+            messages = await middleware.inject_system_prompt(messages)
+
+        provider_config = await self._resolve_runtime_config(require_chat=True)
+        client = self._get_or_create_client(provider_config)
+        effective_model = self._resolve_model(model, provider_config)
+
+        sanitization_level = self.selector.get_sanitization_level(provider_config.provider)
+        if sanitization_level != SanitizationLevel.NONE:
+            outbound_messages, mapping = self.sanitizer.sanitize_messages(messages, sanitization_level)
+        else:
+            outbound_messages, mapping = messages, None
+
+        mapping_set_id: Optional[str] = None
+        if self.db and mapping and mapping.replacements and request_id:
+            try:
+                async with self.db.begin_nested():
+                    message_fingerprint = self.mapping_repo.fingerprint_messages(outbound_messages)
+                    mapping_set_id = await self.mapping_repo.record_mapping_set(
+                        self.db,
+                        request_id=request_id,
+                        provider=provider_config.provider.value,
+                        provider_model=effective_model,
+                        sanitization_level=sanitization_level.value,
+                        message_fingerprint=message_fingerprint,
+                        mapping_count=len(mapping.replacements),
+                        principal_id=principal_id,
+                    )
+                    entries = self.mapping_repo.mapping_entries_from_replacements(mapping.replacements)
+                    await self.mapping_repo.record_mapping_entries(
+                        self.db,
+                        mapping_set_id=mapping_set_id,
+                        entries=entries,
+                    )
+                await self.db.commit()
+            except Exception as exc:
+                logger.warning("Failed persisting AXE mapping metadata: %s", exc)
+                await self.db.rollback()
+
+        try:
+            result = await client.stream_chat(
+                effective_model,
+                outbound_messages,
+                temperature,
+                on_token=emit_token_event,
+            )
+        except Exception:
+            if self.db and mapping_set_id and request_id:
+                try:
+                    attempt_no = await self.mapping_repo.get_next_attempt_no(
+                        self.db,
+                        request_id=request_id,
+                        mapping_set_id=mapping_set_id,
+                    )
+                    await self.mapping_repo.record_deanonymization_attempt(
+                        self.db,
+                        request_id=request_id,
+                        mapping_set_id=mapping_set_id,
+                        attempt_no=attempt_no,
+                        status="failed",
+                        reason_code="UPSTREAM_CALL_FAILED",
+                        placeholder_count=len(mapping.replacements) if mapping else 0,
+                        restored_count=0,
+                        unresolved_placeholders=list(mapping.replacements.keys()) if mapping else [],
+                        response_fingerprint=self.mapping_repo.fingerprint_text(""),
+                    )
+                    await self.db.commit()
+                except Exception as exc:
+                    logger.warning("Failed persisting AXE failure telemetry: %s", exc)
+                    await self.db.rollback()
+            raise
+
+        restored_count = 0
+        unresolved_placeholders: List[str] = []
+        if mapping and result.get("text"):
+            raw_text = result["text"]
+            restored_count = sum(1 for p in mapping.replacements if p in raw_text)
+            result["text"] = self.sanitizer.deanonymize_text(result["text"], mapping)
+
+        if self.db and mapping_set_id and request_id:
+            try:
+                attempt_no = await self.mapping_repo.get_next_attempt_no(
+                    self.db,
+                    request_id=request_id,
+                    mapping_set_id=mapping_set_id,
+                )
+                response_text = result.get("text") or ""
+                for placeholder in (mapping.replacements.keys() if mapping else []):
+                    if placeholder in response_text:
+                        unresolved_placeholders.append(placeholder)
+                status = "success" if not unresolved_placeholders else "partial"
+                await self.mapping_repo.record_deanonymization_attempt(
+                    self.db,
+                    request_id=request_id,
+                    mapping_set_id=mapping_set_id,
+                    attempt_no=attempt_no,
+                    status=status,
+                    reason_code=None if status == "success" else "PLACEHOLDER_UNRESOLVED",
+                    placeholder_count=len(mapping.replacements) if mapping else 0,
+                    restored_count=restored_count,
+                    unresolved_placeholders=unresolved_placeholders,
+                    response_fingerprint=self.mapping_repo.fingerprint_text(result.get("text", "")),
+                )
+                await self.db.commit()
+            except Exception as exc:
+                logger.warning("Failed persisting AXE deanonymization telemetry: %s", exc)
+                await self.db.rollback()
+
+        return result
     
     async def health_check(self) -> Dict[str, Any]:
         """
-        Prüft ob AXEllm erreichbar ist
+        Prüft ob LLM Provider erreichbar ist
         
         Returns:
             Dict mit Status
@@ -603,15 +847,12 @@ class AXEFusionService:
             provider_config = await self._resolve_runtime_config(require_chat=False)
             return {
                 "status": "healthy",
-                "axellm": "reachable",
-                "provider": provider_config.provider.value,
+                "llm_provider": provider_config.provider.value,
+                "base_url": provider_config.base_url,
             }
-        except AXEllmUnavailableError as e:
-            logger.warning(f"AXEllm Health Check degraded: {e}")
-            return {"status": "degraded", "axellm": "not_reachable", "error": str(e)}
         except Exception as e:
-            logger.warning(f"AXEllm Health Check fehlgeschlagen: {e}")
-            return {"status": "unavailable", "axellm": "not_reachable", "error": str(e)}
+            logger.warning(f"LLM Provider Health Check fehlgeschlagen: {e}")
+            return {"status": "unavailable", "llm_provider": "unknown", "error": str(e)}
 
     async def _resolve_runtime_config(self, *, require_chat: bool) -> ProviderConfig:
         provider = self.selector.get_active_provider()

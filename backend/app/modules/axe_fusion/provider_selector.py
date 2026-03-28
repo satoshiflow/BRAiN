@@ -43,7 +43,7 @@ class ProviderSelector:
     """Resolves active provider and config from environment variables."""
 
     def __init__(self) -> None:
-        self._default_timeout = float(os.getenv("AXELLM_TIMEOUT_SECONDS", "60"))
+        self._default_timeout = float(os.getenv("LLM_TIMEOUT_SECONDS", "60"))
 
     def get_active_provider(self) -> LLMProvider:
         raw_mode = os.getenv("LOCAL_LLM_MODE", "auto").strip().lower()
@@ -63,14 +63,11 @@ class ProviderSelector:
     def _groq_config(self) -> ProviderConfig:
         return ProviderConfig(
             provider=LLMProvider.GROQ,
-            base_url=os.getenv(
-                "GROQ_API_URL",
-                os.getenv("AXELLM_BASE_URL", "https://api.groq.com/openai/v1"),
-            ),
-            api_key=os.getenv("GROQ_API_KEY", os.getenv("AXELLM_API_KEY", "")),
+            base_url=os.getenv("GROQ_API_URL", "https://api.groq.com/openai/v1"),
+            api_key=os.getenv("GROQ_API_KEY", ""),
             model=os.getenv(
                 "GROQ_MODEL",
-                os.getenv("AXELLM_MODEL", "llama-3.2-90b-vision-preview"),
+                os.getenv("LLM_MODEL", "llama-3.2-90b-vision-preview"),
             ),
             timeout_seconds=self._default_timeout,
         )
@@ -78,21 +75,18 @@ class ProviderSelector:
     def _ollama_config(self) -> ProviderConfig:
         return ProviderConfig(
             provider=LLMProvider.OLLAMA,
-            base_url=os.getenv(
-                "OLLAMA_BASE_URL",
-                os.getenv("AXELLM_BASE_URL", "http://localhost:11434/v1"),
-            ),
-            api_key=os.getenv("OLLAMA_API_KEY", os.getenv("AXELLM_API_KEY", "")),
-            model=os.getenv("OLLAMA_MODEL", os.getenv("AXELLM_MODEL", "qwen2.5:0.5b")),
+            base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1"),
+            api_key=os.getenv("OLLAMA_API_KEY", ""),
+            model=os.getenv("OLLAMA_MODEL", "qwen2.5:0.5b"),
             timeout_seconds=self._default_timeout,
         )
 
     def _mock_config(self) -> ProviderConfig:
         return ProviderConfig(
             provider=LLMProvider.MOCK,
-            base_url=os.getenv("MOCK_BASE_URL", os.getenv("AXELLM_BASE_URL", "http://localhost:8081")),
-            api_key=os.getenv("MOCK_API_KEY", os.getenv("AXELLM_API_KEY", "")),
-            model=os.getenv("MOCK_MODEL", os.getenv("AXELLM_MODEL", "mock-local")),
+            base_url=os.getenv("MOCK_BASE_URL", "http://localhost:8081"),
+            api_key=os.getenv("MOCK_API_KEY", ""),
+            model=os.getenv("MOCK_MODEL", "mock-local"),
             timeout_seconds=self._default_timeout,
         )
 

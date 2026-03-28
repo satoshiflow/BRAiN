@@ -643,7 +643,7 @@ class JWTAuthenticationMiddleware(BaseHTTPMiddleware):
             token = auth_header[7:]
             
             try:
-                validator = get_jwt_validator()
+                validator = get_jwt_validator(use_local_keys=True)
                 payload = await validator.validate(token)
                 request.state.token_payload = payload
                 request.state.authenticated = True
@@ -714,7 +714,7 @@ class JWTBearer(HTTPBearer):
         token = credentials.credentials
         
         try:
-            validator = get_jwt_validator()
+            validator = get_jwt_validator(use_local_keys=True)
             payload = await validator.validate(token)
             
             # Check required scopes

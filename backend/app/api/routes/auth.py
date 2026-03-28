@@ -6,14 +6,15 @@ FastAPI endpoints for authentication and user management.
 
 from typing import List, Optional
 from uuid import UUID
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import SQLAlchemyError
 from app.core.jwt_middleware import get_jwt_validator
+from app.core.jwt_middleware import create_token
 
 from app.core.database import get_db
 from app.core.config import get_settings
@@ -26,7 +27,8 @@ from app.schemas.auth import (
     FirstTimeSetupRequest, InvitationCreate, InvitationResponse,
     TokenPair, RefreshRequest, LogoutRequest, ServiceTokenRequest,
     ServiceTokenResponse, AgentTokenRequest, AgentTokenResponse,
-    JWKSResponse, DeviceInfo
+    JWKSResponse, DeviceInfo, PasswordRecoveryRequest,
+    PasswordRecoveryResponse, PasswordResetRequest, PasswordResetResponse
 )
 import logging
 
@@ -283,6 +285,75 @@ async def register(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
+
+
+@router.post("/password-recovery/request", response_model=PasswordRecoveryResponse)
+async def request_password_recovery(
+    payload: PasswordRecoveryRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    user = await AuthService.get_active_user_by_email(db, payload.email)
+    if user is None:
+        return PasswordRecoveryResponse(
+            accepted=True,
+            message="If the account exists, a recovery link has been issued.",
+        )
+
+    reset_token = create_token(
+        subject=str(user.id),
+        scopes=["auth:password_reset"],
+        roles=[str(user.role)],
+        token_type="human",
+        expires_delta=timedelta(minutes=30),
+        extra_claims={
+            "purpose": "password_reset",
+            "email": user.email,
+        },
+    )
+
+    is_dev = get_settings().environment != "production"
+    if is_dev:
+        logger.warning("[DEV] Password recovery token for %s: %s", user.email, reset_token)
+
+    return PasswordRecoveryResponse(
+        accepted=True,
+        message="If the account exists, a recovery link has been issued.",
+        reset_token=reset_token if is_dev else None,
+    )
+
+
+@router.post("/password-recovery/reset", response_model=PasswordResetResponse)
+async def reset_password_with_recovery_token(
+    payload: PasswordResetRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        validator = get_jwt_validator(use_local_keys=True)
+        token_payload = await validator.validate(payload.token)
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid recovery token") from exc
+
+    purpose = token_payload.raw_claims.get("purpose") if token_payload.raw_claims else None
+    if purpose != "password_reset" or not token_payload.has_scope("auth:password_reset"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Recovery token scope invalid")
+
+    user_id = token_payload.sub
+    result = await db.execute(select(User).where(User.id == UUID(user_id), User.is_active.is_(True)))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    token_email = token_payload.raw_claims.get("email") if token_payload.raw_claims else None
+    if token_email and token_email != user.email:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Recovery token email mismatch")
+
+    user.password_hash = AuthService.hash_password(payload.new_password)
+    user.updated_at = _utc_now_naive()
+
+    await db.execute(delete(RefreshToken).where(RefreshToken.user_id == user.id))
+    await db.commit()
+
+    return PasswordResetResponse(success=True, message="Password updated. Please sign in again.")
 
 
 @router.post("/invitations", response_model=InvitationResponse)

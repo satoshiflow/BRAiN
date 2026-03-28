@@ -5,10 +5,14 @@ services:
     # Removed ports - use Traefik routing instead
     environment:
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
-      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:5432/brain}
+      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://postgres:5432/brain}
       - ENABLE_MISSION_WORKER=${ENABLE_MISSION_WORKER:-true}
       - BRAIN_EVENTSTREAM_MODE=${BRAIN_EVENTSTREAM_MODE:-required}
       - BRAIN_LOG_LEVEL=${BRAIN_LOG_LEVEL:-info}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - LOCAL_LLM_MODE=${LOCAL_LLM_MODE:-openai}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
     env_file:
       - .env
     restart: unless-stopped

@@ -15,6 +15,7 @@ import { getApiBase, getControlDeckBase } from "@/lib/config";
 const navItems = [
   { href: "/chat", label: "Chat", icon: "💬" },
   { href: "/dashboard", label: "Dashboard", icon: "📊" },
+  { href: "/neural", label: "Neural", icon: "🧠" },
   { href: "/settings", label: "Settings", icon: "⚙️" },
 ];
 

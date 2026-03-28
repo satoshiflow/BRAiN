@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from datetime import datetime, timezone
 import importlib
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -13,6 +14,7 @@ from app.core.auth_deps import Principal, PrincipalType, require_auth
 from app.core.capabilities.schemas import CapabilityExecutionResponse, CapabilityExecutionSuccess
 from app.core.database import get_db
 from app.modules.skill_engine.router import router as skill_engine_router
+from app.modules.skill_engine.schemas import SkillRunCreate, TriggerType
 from app.modules.skill_engine.service import SkillEngineService
 
 
@@ -182,3 +184,105 @@ def test_skill_engine_execute_route_uses_service(skill_engine_client: TestClient
         response = skill_engine_client.post(f"/api/skill-runs/{run_id}/execute")
     assert response.status_code == 200
     assert response.json()["skill_run"]["state"] == "succeeded"
+
+
+@pytest.mark.asyncio
+async def test_create_run_preserves_upstream_decision_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeSkillRegistry:
+        async def resolve_definition(self, db, skill_key, tenant_id, selector, version_value):
+            _ = db
+            _ = skill_key
+            _ = tenant_id
+            _ = selector
+            _ = version_value
+            return SimpleNamespace(
+                skill_key="demo.skill",
+                version=3,
+                quality_profile="standard",
+                risk_tier="medium",
+                purpose="demo purpose",
+                required_capabilities=[{"capability_key": "text.generate", "version_selector": "active"}],
+                tenant_id="tenant-a",
+            )
+
+    class FakePlanningService:
+        def decompose_task(self, request):
+            _ = request
+            return SimpleNamespace(plan=SimpleNamespace(plan_id="plan-1", nodes=[{"id": "n1"}]))
+
+    class FakeDB:
+        def add(self, item):
+            _ = item
+
+        async def flush(self):
+            return None
+
+        async def commit(self):
+            return None
+
+        async def refresh(self, model):
+            _ = model
+            return None
+
+    service = SkillEngineService(
+        skill_registry=FakeSkillRegistry(),
+        planning_service=FakePlanningService(),
+    )
+
+    async def _fake_find_existing(*args, **kwargs):
+        _ = args
+        _ = kwargs
+        return None
+
+    async def _fake_resolve_bindings(*args, **kwargs):
+        _ = args
+        _ = kwargs
+        return (
+            [
+                {
+                    "capability_key": "text.generate",
+                    "capability_version": 1,
+                    "provider_binding_id": "binding.text.generate.ollama.v1",
+                    "selection_strategy": "priority",
+                    "selection_reason": "default",
+                    "binding_snapshot": {},
+                }
+            ],
+            0.0,
+        )
+
+    async def _fake_policy(*args, **kwargs):
+        _ = args
+        _ = kwargs
+        return {"allowed": True, "effect": "allow", "requires_audit": False}
+
+    async def _fake_event(**kwargs):
+        _ = kwargs
+        return None
+
+    monkeypatch.setattr(service, "_find_existing_by_idempotency", _fake_find_existing)
+    monkeypatch.setattr(service, "_resolve_capability_bindings", _fake_resolve_bindings)
+    monkeypatch.setattr(service, "_evaluate_policy", _fake_policy)
+
+    skill_service_module = importlib.import_module("app.modules.skill_engine.service")
+    monkeypatch.setattr(skill_service_module, "record_control_plane_event", _fake_event)
+
+    payload = SkillRunCreate(
+        skill_key="demo.skill",
+        input_payload={"x": 1},
+        idempotency_key="idem-upstream-1",
+        trigger_type=TriggerType.MISSION,
+        mission_id="m-1",
+        causation_id="cause-1",
+        decision_context_id="ctx-1",
+        purpose_evaluation_id="pe-1",
+        routing_decision_id="rd-1",
+        governance_snapshot={"control_mode": "brain_first"},
+    )
+
+    model = await service.create_run(FakeDB(), payload, build_principal())
+    upstream = model.plan_snapshot.get("upstream_decision")
+    assert upstream["decision_context_id"] == "ctx-1"
+    assert upstream["purpose_evaluation_id"] == "pe-1"
+    assert upstream["routing_decision_id"] == "rd-1"
+    assert model.policy_snapshot["upstream_decision"]["governance_snapshot"]["control_mode"] == "brain_first"

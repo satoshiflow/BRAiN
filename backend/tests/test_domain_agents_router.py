@@ -111,7 +111,7 @@ def test_domain_register_and_decompose_flow(monkeypatch) -> None:
     client = TestClient(app)
 
     from app.modules.domain_agents import service as da_service
-    from app.modules.domain_agents.schemas import DomainAgentConfig, DomainStatus
+    from app.modules.domain_agents.schemas import DomainAgentConfig
 
     async def _fake_register_db(self, db, config: DomainAgentConfig) -> DomainAgentConfig:
         # Mirror what register_db does: store in in-memory registry and return config
@@ -570,3 +570,594 @@ def test_decompose_uses_agent_management_specialists(monkeypatch) -> None:
     specialists = response.json()["selected_specialists"]
     assert len(specialists) == 1
     assert specialists[0]["agent_id"] == "agent-runtime-01"
+
+
+def test_create_purpose_evaluation_rejects_context_mismatch() -> None:
+    app = build_test_app()
+    client = TestClient(app)
+
+    payload = {
+        "decision_context": {
+            "decision_context_id": "ctx-1",
+            "tenant_id": "tenant-a",
+            "requested_by": "tester",
+            "request_channel": "api",
+            "intent_summary": "Evaluate purpose",
+            "requested_autonomy_level": "medium",
+            "sensitivity_class": "standard",
+            "context": {},
+        },
+        "evaluation": {
+            "decision_context_id": "ctx-other",
+            "purpose_profile_id": "governed_autonomous_delivery",
+            "outcome": "accept",
+            "purpose_score": 0.9,
+            "sovereignty_score": 0.95,
+            "requires_human_review": False,
+            "required_modifications": [],
+            "reasons": ["ok"],
+            "governance_snapshot": {},
+        },
+    }
+
+    with override_auth_principal(client, build_principal("operator")):
+        response = client.post("/api/domain-agents/purpose-evaluations", json=payload)
+
+    assert response.status_code == 422
+    assert "decision_context_id must match" in response.json()["detail"]
+
+
+def test_create_purpose_evaluation_success(monkeypatch) -> None:
+    app = build_test_app()
+    client = TestClient(app)
+
+    from app.modules.domain_agents import service as da_service
+
+    async def _fake_create_purpose(self, db, *, decision_context, evaluation, principal):
+        _ = self
+        _ = db
+        _ = evaluation
+        _ = principal
+        return {
+            "id": "pe-1",
+            "tenant_id": decision_context.tenant_id,
+            "decision_context_id": decision_context.decision_context_id,
+            "purpose_profile_id": "governed_autonomous_delivery",
+            "outcome": "accept",
+            "purpose_score": 0.9,
+            "sovereignty_score": 0.95,
+            "requires_human_review": False,
+            "required_modifications": [],
+            "reasons": ["ok"],
+            "governance_snapshot": {},
+            "mission_id": None,
+            "correlation_id": None,
+            "created_by": "tester",
+        }
+
+    monkeypatch.setattr(
+        da_service.DomainAgentService,
+        "create_purpose_evaluation",
+        _fake_create_purpose,
+    )
+
+    payload = {
+        "decision_context": {
+            "decision_context_id": "ctx-1",
+            "tenant_id": "tenant-a",
+            "requested_by": "tester",
+            "request_channel": "api",
+            "intent_summary": "Evaluate purpose",
+            "requested_autonomy_level": "medium",
+            "sensitivity_class": "standard",
+            "context": {},
+        },
+        "evaluation": {
+            "decision_context_id": "ctx-1",
+            "purpose_profile_id": "governed_autonomous_delivery",
+            "outcome": "accept",
+            "purpose_score": 0.9,
+            "sovereignty_score": 0.95,
+            "requires_human_review": False,
+            "required_modifications": [],
+            "reasons": ["ok"],
+            "governance_snapshot": {},
+        },
+    }
+
+    with override_auth_principal(client, build_principal("operator")):
+        response = client.post("/api/domain-agents/purpose-evaluations", json=payload)
+
+    assert response.status_code == 201
+    assert response.json()["id"] == "pe-1"
+
+
+def test_create_routing_decision_success(monkeypatch) -> None:
+    app = build_test_app()
+    client = TestClient(app)
+
+    from app.modules.domain_agents import service as da_service
+
+    async def _fake_create_routing(self, db, *, decision_context, decision, principal):
+        _ = self
+        _ = db
+        _ = principal
+        return {
+            "id": "rd-1",
+            "tenant_id": decision_context.tenant_id,
+            "decision_context_id": decision_context.decision_context_id,
+            "task_profile_id": decision.task_profile_id,
+            "purpose_evaluation_id": decision.purpose_evaluation_id,
+            "worker_candidates": decision.worker_candidates,
+            "filtered_candidates": decision.filtered_candidates,
+            "scoring_breakdown": decision.scoring_breakdown,
+            "selected_worker": decision.selected_worker,
+            "selected_skill_or_plan": decision.selected_skill_or_plan,
+            "strategy": decision.strategy,
+            "reasoning": decision.reasoning,
+            "mission_id": None,
+            "correlation_id": None,
+            "created_by": "tester",
+        }
+
+    monkeypatch.setattr(
+        da_service.DomainAgentService,
+        "create_routing_decision",
+        _fake_create_routing,
+    )
+
+    payload = {
+        "decision_context": {
+            "decision_context_id": "ctx-2",
+            "tenant_id": "tenant-a",
+            "requested_by": "tester",
+            "request_channel": "api",
+            "intent_summary": "Route task",
+            "requested_autonomy_level": "high",
+            "sensitivity_class": "sensitive",
+            "context": {},
+        },
+        "task_profile": {
+            "task_profile_id": "task-1",
+            "task_class": "delivery",
+            "description": "Ship feature",
+            "required_capabilities": ["code.write"],
+            "constraints": {},
+            "required_worker_traits": [],
+            "optimization_weights": {"capability_fit": 1.0},
+            "routing_sensitivity": "medium",
+            "split_allowed": False,
+        },
+        "decision": {
+            "routing_decision_id": "route-1",
+            "decision_context_id": "ctx-2",
+            "task_profile_id": "task-1",
+            "purpose_evaluation_id": "pe-1",
+            "worker_candidates": ["worker-a"],
+            "filtered_candidates": ["worker-a"],
+            "scoring_breakdown": {"worker-a": {"total": 0.9}},
+            "selected_worker": "worker-a",
+            "selected_skill_or_plan": "code.implement",
+            "strategy": "single_worker",
+            "reasoning": "best fit",
+        },
+    }
+
+    with override_auth_principal(client, build_principal("operator")):
+        response = client.post("/api/domain-agents/routing-decisions", json=payload)
+
+    assert response.status_code == 201
+    assert response.json()["id"] == "rd-1"
+
+
+def test_prepare_skill_runs_propagates_upstream_decision_artifacts(monkeypatch) -> None:
+    app = build_test_app()
+    client = TestClient(app)
+
+    from types import SimpleNamespace
+
+    from app.modules.domain_agents import service as da_service
+    from app.modules.domain_agents.schemas import DecisionOutcome
+
+    async def _fake_get_purpose(self, db, *, evaluation_id: str, tenant_id: str | None):
+        _ = self
+        _ = db
+        _ = evaluation_id
+        _ = tenant_id
+        return SimpleNamespace(
+            id="pe-1",
+            tenant_id="tenant-a",
+            decision_context_id="ctx-42",
+            purpose_profile_id="governed_autonomous_delivery",
+            outcome=DecisionOutcome.ACCEPT,
+            purpose_score=0.88,
+            sovereignty_score=0.93,
+            requires_human_review=False,
+            required_modifications=[],
+            reasons=["ok"],
+            governance_snapshot={},
+            mission_id="m-1",
+            correlation_id="corr-42",
+            created_by="tester",
+        )
+
+    async def _fake_get_routing(self, db, *, routing_decision_id: str, tenant_id: str | None):
+        _ = self
+        _ = db
+        _ = routing_decision_id
+        _ = tenant_id
+        return SimpleNamespace(
+            id="rd-1",
+            tenant_id="tenant-a",
+            decision_context_id="ctx-42",
+            task_profile_id="task-1",
+            purpose_evaluation_id="pe-1",
+            worker_candidates=["worker-a"],
+            filtered_candidates=["worker-a"],
+            scoring_breakdown={"worker-a": {"total": 0.9}},
+            selected_worker="worker-a",
+            selected_skill_or_plan="code.implement",
+            strategy="single_worker",
+            reasoning="best fit",
+            governance_snapshot={"control_mode": "brain_first"},
+            mission_id="m-1",
+            correlation_id="corr-42",
+            created_by="tester",
+        )
+
+    monkeypatch.setattr(da_service.DomainAgentService, "get_purpose_evaluation", _fake_get_purpose)
+    monkeypatch.setattr(da_service.DomainAgentService, "get_routing_decision", _fake_get_routing)
+
+    payload = {
+        "decomposition": {
+            "domain_key": "programming",
+            "task_name": "Build endpoint",
+            "available_capabilities": ["code.write", "code.test"],
+        },
+        "decision_context": {
+            "decision_context_id": "ctx-42",
+            "tenant_id": "tenant-a",
+            "requested_by": "tester",
+            "request_channel": "api",
+            "mission_id": "m-1",
+            "intent_summary": "Ship feature",
+            "requested_autonomy_level": "high",
+            "sensitivity_class": "standard",
+            "context": {},
+            "correlation_id": "corr-42",
+        },
+        "purpose_evaluation_id": "pe-1",
+        "routing_decision_id": "rd-1",
+        "execute_now": False,
+    }
+
+    with override_auth_principal(client, build_principal("operator")):
+        response = client.post("/api/domain-agents/prepare-skill-runs", json=payload)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["run_drafts"]) >= 1
+    draft = body["run_drafts"][0]
+    assert draft["decision_context_id"] == "ctx-42"
+    assert draft["purpose_evaluation_id"] == "pe-1"
+    assert draft["routing_decision_id"] == "rd-1"
+
+
+def test_prepare_skill_runs_gates_execute_for_human_required_routing(monkeypatch) -> None:
+    app = build_test_app()
+    client = TestClient(app)
+
+    from types import SimpleNamespace
+
+    from app.modules.domain_agents import service as da_service
+
+    async def _fake_get_routing(self, db, *, routing_decision_id: str, tenant_id: str | None):
+        _ = self
+        _ = db
+        _ = routing_decision_id
+        _ = tenant_id
+        return SimpleNamespace(
+            id="rd-1",
+            tenant_id="tenant-a",
+            decision_context_id="ctx-99",
+            task_profile_id="task-1",
+            purpose_evaluation_id="pe-1",
+            worker_candidates=["worker-a"],
+            filtered_candidates=["worker-a"],
+            scoring_breakdown={},
+            selected_worker="worker-a",
+            selected_skill_or_plan="code.implement",
+            strategy="single_worker",
+            reasoning="gated",
+            governance_snapshot={"control_mode": "human_required"},
+            mission_id="m-1",
+            correlation_id="corr-99",
+            created_by="tester",
+        )
+
+    monkeypatch.setattr(da_service.DomainAgentService, "get_routing_decision", _fake_get_routing)
+
+    payload = {
+        "decomposition": {
+            "domain_key": "programming",
+            "task_name": "Build endpoint",
+            "available_capabilities": ["code.write", "code.test"],
+        },
+        "routing_decision_id": "rd-1",
+        "execute_now": True,
+    }
+
+    with override_auth_principal(client, build_principal("operator")):
+        response = client.post("/api/domain-agents/prepare-skill-runs", json=payload)
+
+    assert response.status_code == 409
+    assert "requires human review" in response.json()["detail"]
+
+
+def test_routing_memory_rebuild_endpoint(monkeypatch) -> None:
+    app = build_test_app()
+    client = TestClient(app)
+
+    from app.modules.domain_agents import service as da_service
+
+    async def _fake_rebuild(self, db, *, tenant_id, task_profile_id, principal, limit):
+        _ = self
+        _ = db
+        _ = tenant_id
+        _ = principal
+        _ = limit
+        return {
+            "id": "rm-1",
+            "tenant_id": "tenant-a",
+            "task_profile_id": task_profile_id,
+            "task_profile_fingerprint": "task:task-1:abc",
+            "worker_outcome_history": [],
+            "summary_metrics": {"sample_size": 0},
+            "routing_lessons": ["none"],
+            "sample_size": 0,
+            "derived_from_runs": [],
+        }
+
+    monkeypatch.setattr(
+        da_service.DomainAgentService,
+        "rebuild_routing_memory_projection",
+        _fake_rebuild,
+    )
+
+    with override_auth_principal(client, build_principal("operator")):
+        response = client.post(
+            "/api/domain-agents/routing-memory/rebuild",
+            json={"task_profile_id": "task-1", "limit": 100},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["id"] == "rm-1"
+
+
+def test_routing_memory_replay_endpoint(monkeypatch) -> None:
+    app = build_test_app()
+    client = TestClient(app)
+
+    from app.modules.domain_agents import service as da_service
+
+    async def _fake_replay(self, db, *, tenant_id, task_profile_id):
+        _ = self
+        _ = db
+        _ = tenant_id
+        return {
+            "task_profile_id": task_profile_id,
+            "sample_size": 10,
+            "baseline_worker": "worker-a",
+            "recommended_worker": "worker-b",
+            "baseline_success_rate": 0.8,
+            "recommended_success_rate": 0.9,
+            "baseline_avg_cost": 1.0,
+            "recommended_avg_cost": 0.9,
+            "recommendation_reason": "better success with lower cost",
+        }
+
+    monkeypatch.setattr(
+        da_service.DomainAgentService,
+        "replay_routing_comparison",
+        _fake_replay,
+    )
+
+    with override_auth_principal(client, build_principal("operator")):
+        response = client.get("/api/domain-agents/routing-memory/replay/task-1")
+
+    assert response.status_code == 200
+    assert response.json()["recommended_worker"] == "worker-b"
+
+
+def test_routing_adaptation_proposal_endpoint(monkeypatch) -> None:
+    app = build_test_app()
+    client = TestClient(app)
+
+    from app.modules.domain_agents import service as da_service
+
+    async def _fake_proposal(
+        self,
+        db,
+        *,
+        tenant_id,
+        principal,
+        task_profile_id,
+        routing_memory_id,
+        proposed_changes,
+        sandbox_validated,
+        validation_evidence,
+    ):
+        _ = self
+        _ = db
+        _ = tenant_id
+        _ = principal
+        _ = routing_memory_id
+        _ = proposed_changes
+        _ = sandbox_validated
+        _ = validation_evidence
+        return {
+            "id": "ra-1",
+            "tenant_id": "tenant-a",
+            "task_profile_id": task_profile_id,
+            "routing_memory_id": None,
+            "proposed_changes": {"weights": {"capability_fit": 1.1}},
+            "status": "review",
+            "sandbox_validated": True,
+            "validation_evidence": {"replay": "ok"},
+            "block_reason": None,
+            "created_by": "tester",
+        }
+
+    monkeypatch.setattr(
+        da_service.DomainAgentService,
+        "create_routing_adaptation_proposal",
+        _fake_proposal,
+    )
+
+    with override_auth_principal(client, build_principal("admin")):
+        response = client.post(
+            "/api/domain-agents/routing-adaptations/proposals",
+            json={
+                "task_profile_id": "task-1",
+                "proposed_changes": {"weights": {"capability_fit": 1.1}},
+                "sandbox_validated": True,
+                "validation_evidence": {"replay": "ok"},
+            },
+        )
+
+    assert response.status_code == 201
+    assert response.json()["status"] == "review"
+
+
+def test_list_routing_adaptation_proposals_endpoint(monkeypatch) -> None:
+    app = build_test_app()
+    client = TestClient(app)
+
+    from app.modules.domain_agents import service as da_service
+
+    async def _fake_list(self, db, *, tenant_id, task_profile_id=None, status=None, limit=100):
+        _ = self
+        _ = db
+        _ = tenant_id
+        _ = task_profile_id
+        _ = status
+        _ = limit
+        return [
+            {
+                "id": "ra-1",
+                "tenant_id": "tenant-a",
+                "task_profile_id": "task-1",
+                "routing_memory_id": None,
+                "proposed_changes": {},
+                "status": "review",
+                "sandbox_validated": True,
+                "validation_evidence": {},
+                "block_reason": None,
+                "created_by": "tester",
+            }
+        ]
+
+    monkeypatch.setattr(
+        da_service.DomainAgentService,
+        "list_routing_adaptation_proposals",
+        _fake_list,
+    )
+
+    with override_auth_principal(client, build_principal("operator")):
+        response = client.get("/api/domain-agents/routing-adaptations/proposals")
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+
+
+def test_transition_routing_adaptation_proposal_endpoint(monkeypatch) -> None:
+    app = build_test_app()
+    client = TestClient(app)
+
+    from app.modules.domain_agents import service as da_service
+
+    async def _fake_transition(
+        self,
+        db,
+        *,
+        proposal_id,
+        tenant_id,
+        principal,
+        status,
+        block_reason,
+        validation_evidence_patch,
+    ):
+        _ = self
+        _ = db
+        _ = proposal_id
+        _ = tenant_id
+        _ = principal
+        _ = block_reason
+        _ = validation_evidence_patch
+        return {
+            "id": "ra-1",
+            "tenant_id": "tenant-a",
+            "task_profile_id": "task-1",
+            "routing_memory_id": None,
+            "proposed_changes": {},
+            "status": status,
+            "sandbox_validated": True,
+            "validation_evidence": {},
+            "block_reason": None,
+            "created_by": "tester",
+        }
+
+    monkeypatch.setattr(
+        da_service.DomainAgentService,
+        "transition_routing_adaptation_proposal",
+        _fake_transition,
+    )
+
+    with override_auth_principal(client, build_principal("admin")):
+        response = client.post(
+            "/api/domain-agents/routing-adaptations/proposals/ra-1/transition",
+            json={"status": "approved", "validation_evidence_patch": {"review": "ok"}},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "approved"
+
+
+def test_simulate_routing_adaptation_endpoint(monkeypatch) -> None:
+    app = build_test_app()
+    client = TestClient(app)
+
+    from app.modules.domain_agents import service as da_service
+
+    async def _fake_simulate(self, db, *, tenant_id, task_profile_id, proposed_changes):
+        _ = self
+        _ = db
+        _ = tenant_id
+        _ = proposed_changes
+        return {
+            "task_profile_id": task_profile_id,
+            "sandbox_mode": True,
+            "baseline_worker": "worker-a",
+            "recommended_worker": "worker-b",
+            "baseline_success_rate": 0.8,
+            "recommended_success_rate": 0.9,
+            "baseline_avg_cost": 1.0,
+            "recommended_avg_cost": 0.9,
+            "projected_delta": {"success_rate_gain": 0.1},
+            "notes": ["ok"],
+        }
+
+    monkeypatch.setattr(
+        da_service.DomainAgentService,
+        "simulate_routing_adaptation",
+        _fake_simulate,
+    )
+
+    with override_auth_principal(client, build_principal("operator")):
+        response = client.post(
+            "/api/domain-agents/routing-adaptations/simulate",
+            json={"task_profile_id": "task-1", "proposed_changes": {"weights": {"a": 1}}},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["projected_delta"]["success_rate_gain"] == 0.1

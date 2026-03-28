@@ -4,6 +4,7 @@ import "./globals.css";
 import { Navigation } from "@/components/Navigation";
 import { PwaInit } from "@/components/PwaInit";
 import { AuthProvider } from "@/components/auth/AuthProvider";
+import { AuthGate } from "@/components/auth/AuthGate";
 
 export const metadata: Metadata = {
   title: "BRAiN AXE UI",
@@ -37,17 +38,19 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body className="h-full overflow-hidden text-slate-50">
         <AuthProvider>
           <PwaInit />
-          <div className="axe-grid-overlay relative flex h-full">
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_10%,rgba(20,196,216,0.10),transparent_35%),radial-gradient(circle_at_82%_84%,rgba(225,122,58,0.15),transparent_30%)]" />
+          <AuthGate>
+            <div className="axe-grid-overlay relative flex h-full">
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_10%,rgba(20,196,216,0.10),transparent_35%),radial-gradient(circle_at_82%_84%,rgba(225,122,58,0.15),transparent_30%)]" />
 
-            <Navigation />
+              <Navigation />
 
-            <main className="relative flex-1 overflow-auto pt-16 lg:pt-0">
-              <div className="p-4 sm:p-6 lg:p-8">
-                {children}
-              </div>
-            </main>
-          </div>
+              <main className="relative flex-1 overflow-auto pt-16 lg:pt-0">
+                <div className="p-4 sm:p-6 lg:p-8">
+                  {children}
+                </div>
+              </main>
+            </div>
+          </AuthGate>
         </AuthProvider>
       </body>
     </html>

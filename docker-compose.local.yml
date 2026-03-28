@@ -1,0 +1,137 @@
+name: brain-local
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: brain-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: brain
+      POSTGRES_PASSWORD: brain
+      POSTGRES_DB: brain
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - brain_local
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U brain"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    container_name: brain-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - brain_local
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  qdrant:
+    image: qdrant/qdrant:v1.13.4
+    container_name: brain-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - brain_local
+
+  # ollama: Local host Ollama already running on port 11434
+  # Uncomment if you need a dedicated container:
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: brain-ollama
+  #   restart: unless-stopped
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+  #   networks:
+  #     - brain_local
+  #   environment:
+  #     - OLLAMA_HOST=0.0.0.0
+
+  backend:
+    build:
+      context: ./backend
+    container_name: brain-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env.local
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      # ollama: commented out - using local host ollama on port 11434
+      # ollama:
+      #   condition: service_started
+    networks:
+      - brain_local
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL}
+      - QDRANT_URL=${QDRANT_URL}
+      - BRAIN_RUNTIME_MODE=local
+      - BRAIN_EVENTSTREAM_MODE=${BRAIN_EVENTSTREAM_MODE}
+      - AXE_TRUST_TIER=${AXE_TRUST_TIER:-unrestricted}
+      - BRAIN_DMZ_GATEWAY_SECRET=${BRAIN_DMZ_GATEWAY_SECRET}
+      - AXE_FUSION_ALLOW_LOCAL_REQUESTS=${AXE_FUSION_ALLOW_LOCAL_REQUESTS}
+      - AXE_FUSION_ALLOW_LOCAL_FALLBACK=${AXE_FUSION_ALLOW_LOCAL_FALLBACK}
+      - AXE_FUSION_ALLOWED_DEV_IPS=${AXE_FUSION_ALLOWED_DEV_IPS}
+
+  axe_ui:
+    build:
+      context: ./frontend/axe_ui
+    container_name: axe-ui
+    restart: unless-stopped
+    ports:
+      - "3002:3000"
+    env_file:
+      - .env.local
+    depends_on:
+      - backend
+    networks:
+      - brain_local
+
+  openwebui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: openwebui
+    restart: unless-stopped
+    ports:
+      - "3000:8080"
+    env_file:
+      - .env.local
+    volumes:
+      - openwebui_data:/app/backend/data
+    # depends_on: ollama - using local host ollama
+    networks:
+      - brain_local
+    environment:
+      - OLLAMA_BASE_URL=http://localhost:11434
+      - WEBUI_SECRET_KEY=
+
+volumes:
+  postgres_data:
+  redis_data:
+  qdrant_data:
+  ollama_data:
+  openwebui_data:
+
+networks:
+  brain_local:
+    driver: bridge

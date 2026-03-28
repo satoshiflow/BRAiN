@@ -106,7 +106,18 @@ from app.modules.axe_knowledge.router import router as axe_knowledge_router
 from app.modules.axe_presence.router import router as axe_presence_router
 from app.modules.axe_sessions.router import router as axe_sessions_router
 from app.modules.axe_worker_runs.router import router as axe_worker_runs_router
+from app.modules.axe_streams.router import router as axe_streams_router
+from app.modules.axe_runs.router import router as axe_runs_router
 from app.modules.axe_widget.router import router as axe_widget_router
+
+# Domain Agents Router (Purpose & Routing)
+from app.modules.domain_agents.router import router as domain_agents_router
+
+# Neural Core Router (Brain 3.0 - Neural State Architecture)
+from app.neural.router import router as neural_router
+
+# Odoo Adapter Router (ERP Integration)
+from app.modules.odoo_adapter.router import router as odoo_adapter_router
 
 # Agent Management Router (Core Module - Phase 1)
 from app.modules.agent_management.router import router as agent_management_router
@@ -580,11 +591,26 @@ def create_app() -> FastAPI:
     # AXE Worker Runs Router (Session-scoped worker polling)
     app.include_router(axe_worker_runs_router, tags=["axe-workers"])
 
+    # AXE Streams Router (SSE event streaming for runs)
+    app.include_router(axe_streams_router, tags=["axe-streams"])
+
+    # AXE Runs Router (Async run management with 202 Accepted)
+    app.include_router(axe_runs_router, tags=["axe-runs"])
+
     # AXE Knowledge Router (Knowledge Base - TASK-003)
     app.include_router(axe_knowledge_router, tags=["axe-knowledge"])
 
     # AXE Widget Router (Embedded Chat Widget)
     app.include_router(axe_widget_router, tags=["axe-widget"])
+
+    # Domain Agents Router (Purpose & Routing)
+    app.include_router(domain_agents_router, tags=["domain-agents"])
+
+    # Neural Core Router (Brain 3.0 - Neural State Architecture)
+    app.include_router(neural_router, prefix="/api", tags=["neural-core"])
+
+    # Odoo Adapter Router (ERP Integration)
+    app.include_router(odoo_adapter_router, tags=["odoo"])
 
     # Chat Router (AXE UI Integration)
     app.include_router(chat_router, prefix="/api", tags=["chat"])
