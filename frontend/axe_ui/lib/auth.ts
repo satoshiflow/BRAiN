@@ -24,6 +24,17 @@ export interface TokenPair {
   expires_in: number;
 }
 
+export interface PasswordRecoveryRequestResponse {
+  accepted: boolean;
+  message: string;
+  reset_token?: string | null;
+}
+
+export interface PasswordResetResponse {
+  success: boolean;
+  message: string;
+}
+
 export interface AuthenticatedUser {
   id: string;
   email: string;
@@ -69,14 +80,14 @@ export function isUnauthorizedAuthError(error: unknown): boolean {
 }
 
 export async function login(credentials: LoginCredentials): Promise<TokenPair> {
-  return authRequest<TokenPair>("/api/auth/login", {
+  return authRequest<TokenPair>("/auth/login", {
     method: "POST",
     body: JSON.stringify(credentials),
   });
 }
 
 export async function fetchCurrentUser(accessToken: string): Promise<AuthenticatedUser> {
-  return authRequest<AuthenticatedUser>("/api/auth/me", {
+  return authRequest<AuthenticatedUser>("/auth/me", {
     method: "GET",
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -85,14 +96,14 @@ export async function fetchCurrentUser(accessToken: string): Promise<Authenticat
 }
 
 export async function refreshAccessToken(refreshToken: string): Promise<TokenPair> {
-  return authRequest<TokenPair>("/api/auth/refresh", {
+  return authRequest<TokenPair>("/auth/refresh", {
     method: "POST",
     body: JSON.stringify({ refresh_token: refreshToken }),
   });
 }
 
 export async function logout(refreshToken: string): Promise<void> {
-  const response = await fetch(`${getApiBase()}/api/auth/logout`, {
+  const response = await fetch(`${getApiBase()}/auth/logout`, {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -106,4 +117,18 @@ export async function logout(refreshToken: string): Promise<void> {
     const text = await response.text();
     throw new AuthApiError(response.status, text, response.statusText);
   }
+}
+
+export async function requestPasswordRecovery(email: string): Promise<PasswordRecoveryRequestResponse> {
+  return authRequest<PasswordRecoveryRequestResponse>("/auth/password-recovery/request", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function resetPassword(token: string, newPassword: string): Promise<PasswordResetResponse> {
+  return authRequest<PasswordResetResponse>("/auth/password-recovery/reset", {
+    method: "POST",
+    body: JSON.stringify({ token, new_password: newPassword }),
+  });
 }
