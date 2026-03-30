@@ -182,3 +182,58 @@ async def test_ingest_skill_run_feedback_updates_skill_value(monkeypatch) -> Non
     assert definition.value_score > 0.0
     assert definition.effort_saved_hours > 2.0
     assert definition.complexity_level in {"high", "critical"}
+
+
+@pytest.mark.asyncio
+async def test_get_marketplace_ranking_orders_by_market_score() -> None:
+    service = EconomyLayerService()
+
+    async def _analytics(db, *, tenant_id, window_days, limit):
+        _ = (db, tenant_id, window_days, limit)
+        return {
+            "summary": {
+                "total_skills": 2,
+                "total_runs": 15,
+                "avg_value_score": 0.7,
+                "avg_success_rate": 0.75,
+                "window_days": 30,
+            },
+            "items": [
+                {
+                    "skill_key": "skill.a",
+                    "latest_version": 2,
+                    "value_score": 0.8,
+                    "success_rate": 0.8,
+                    "avg_overall_score": 0.7,
+                    "total_runs": 10,
+                    "succeeded_runs": 8,
+                    "failed_runs": 2,
+                    "trend_delta": 0.1,
+                    "last_run_at": datetime.now(timezone.utc),
+                },
+                {
+                    "skill_key": "skill.b",
+                    "latest_version": 1,
+                    "value_score": 0.6,
+                    "success_rate": 0.7,
+                    "avg_overall_score": 0.65,
+                    "total_runs": 5,
+                    "succeeded_runs": 4,
+                    "failed_runs": 1,
+                    "trend_delta": -0.05,
+                    "last_run_at": datetime.now(timezone.utc),
+                },
+            ],
+        }
+
+    service.get_skill_lifecycle_analytics = _analytics  # type: ignore[method-assign]
+    ranking = await service.get_marketplace_ranking(
+        FakeDb(),
+        tenant_id="tenant-a",
+        window_days=30,
+        limit=10,
+    )
+
+    assert ranking["items"][0]["rank"] == 1
+    assert ranking["items"][0]["skill_key"] == "skill.a"
+    assert ranking["items"][0]["market_score"] >= ranking["items"][1]["market_score"]

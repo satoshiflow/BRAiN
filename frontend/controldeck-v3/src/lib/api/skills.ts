@@ -132,6 +132,49 @@ interface SkillValueHistoryResponse {
   total: number;
 }
 
+export interface SkillLifecycleAnalyticsItem {
+  skill_key: string;
+  latest_version: number;
+  value_score: number;
+  success_rate: number;
+  avg_overall_score: number;
+  total_runs: number;
+  succeeded_runs: number;
+  failed_runs: number;
+  trend_delta: number;
+  last_run_at?: string | null;
+}
+
+export interface SkillLifecycleAnalyticsResponse {
+  summary: {
+    total_skills: number;
+    total_runs: number;
+    avg_value_score: number;
+    avg_success_rate: number;
+    window_days: number;
+  };
+  items: SkillLifecycleAnalyticsItem[];
+}
+
+export interface SkillMarketplaceRankItem {
+  rank: number;
+  skill_key: string;
+  latest_version: number;
+  market_score: number;
+  value_score: number;
+  success_rate: number;
+  avg_overall_score: number;
+  run_volume_score: number;
+  trend_delta: number;
+  last_run_at?: string | null;
+}
+
+export interface SkillMarketplaceRankingResponse {
+  window_days: number;
+  generated_at: string;
+  items: SkillMarketplaceRankItem[];
+}
+
 function mapSkill(def: SkillDefinitionResponse): Skill {
   return {
     key: def.skill_key,
@@ -211,6 +254,16 @@ export const skillsApi = {
   getValueHistory: (skillKey: string, limit = 30) =>
     fetchJson<SkillValueHistoryResponse>(
       `/api/skill-definitions/${encodeURIComponent(skillKey)}/value-history?limit=${limit}`
+    ),
+
+  getLifecycleAnalytics: (windowDays = 30, limit = 100) =>
+    fetchJson<SkillLifecycleAnalyticsResponse>(
+      `/api/economy/skills/lifecycle-analytics?window_days=${windowDays}&limit=${limit}`
+    ),
+
+  getMarketplaceRanking: (windowDays = 30, limit = 25) =>
+    fetchJson<SkillMarketplaceRankingResponse>(
+      `/api/economy/skills/marketplace-ranking?window_days=${windowDays}&limit=${limit}`
     ),
 
   getRun: (runId: string) => fetchJson<SkillRunResponse>(`/api/skill-runs/${runId}`).then(mapRun),

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -168,6 +168,208 @@ class EconomyLayerService:
             "quality_impact": float(definition.quality_impact),
             "complexity_level": str(definition.complexity_level),
             "source": "skill_run_feedback",
+        }
+
+    @staticmethod
+    def _run_volume_score(total_runs: int) -> float:
+        # Saturates near 1.0 around 20 runs/window
+        return _clamp_score(min(1.0, float(total_runs) / 20.0))
+
+    def _market_score(self, item: dict[str, Any]) -> float:
+        return _clamp_score(
+            (float(item.get("value_score") or 0.0) * 0.45)
+            + (float(item.get("success_rate") or 0.0) * 0.2)
+            + (float(item.get("avg_overall_score") or 0.0) * 0.2)
+            + (self._run_volume_score(int(item.get("total_runs") or 0)) * 0.15)
+        )
+
+    async def get_skill_lifecycle_analytics(
+        self,
+        db: AsyncSession,
+        *,
+        tenant_id: str | None,
+        window_days: int = 30,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        from app.modules.skill_engine.models import SkillRunModel
+        from app.modules.skills_registry.models import SkillDefinitionModel
+
+        cutoff = datetime.now(timezone.utc) - timedelta(days=max(1, window_days))
+
+        tenant_definitions: list[Any] = []
+        if tenant_id:
+            definitions_result = await db.execute(
+                select(SkillDefinitionModel).where(
+                    SkillDefinitionModel.tenant_id == tenant_id,
+                )
+            )
+            tenant_definitions = list(definitions_result.scalars().all())
+
+        system_definitions_result = await db.execute(
+            select(SkillDefinitionModel).where(
+                SkillDefinitionModel.tenant_id.is_(None),
+            )
+        )
+        system_definitions = list(system_definitions_result.scalars().all())
+
+        latest_by_skill: dict[str, Any] = {}
+        for item in [*system_definitions, *tenant_definitions]:
+            current = latest_by_skill.get(item.skill_key)
+            if current is None or int(item.version) > int(current.version):
+                latest_by_skill[item.skill_key] = item
+
+        run_query = select(SkillRunModel).where(SkillRunModel.created_at >= cutoff)
+        if tenant_id:
+            run_query = run_query.where(SkillRunModel.tenant_id == tenant_id)
+        else:
+            run_query = run_query.where(SkillRunModel.tenant_id.is_(None))
+
+        runs_result = await db.execute(
+            run_query.order_by(desc(SkillRunModel.created_at)).limit(max(200, limit * 20))
+        )
+        runs = list(runs_result.scalars().all())
+
+        by_skill: dict[str, dict[str, Any]] = {}
+        for run in runs:
+            bucket = by_skill.setdefault(
+                run.skill_key,
+                {
+                    "total_runs": 0,
+                    "succeeded_runs": 0,
+                    "failed_runs": 0,
+                    "overall_scores": [],
+                    "history_scores": [],
+                    "last_run_at": None,
+                },
+            )
+            bucket["total_runs"] += 1
+            if run.state == "succeeded":
+                bucket["succeeded_runs"] += 1
+            if run.state in {"failed", "timed_out"}:
+                bucket["failed_runs"] += 1
+            if bucket["last_run_at"] is None:
+                bucket["last_run_at"] = run.created_at
+
+            evaluation_summary = dict(getattr(run, "evaluation_summary", {}) or {})
+            overall_score = evaluation_summary.get("overall_score")
+            if isinstance(overall_score, (int, float)):
+                bucket["overall_scores"].append(_clamp_score(float(overall_score)))
+
+            economy_feedback = dict(evaluation_summary.get("economy_feedback") or {})
+            history_value = economy_feedback.get("value_score")
+            if isinstance(history_value, (int, float)):
+                bucket["history_scores"].append(_clamp_score(float(history_value)))
+
+        items: list[dict[str, Any]] = []
+        for skill_key, definition in latest_by_skill.items():
+            run_bucket = by_skill.get(skill_key, {})
+            total_runs = int(run_bucket.get("total_runs") or 0)
+            succeeded_runs = int(run_bucket.get("succeeded_runs") or 0)
+            failed_runs = int(run_bucket.get("failed_runs") or 0)
+            success_rate = _clamp_score((succeeded_runs / total_runs) if total_runs > 0 else 0.0)
+
+            overall_scores = list(run_bucket.get("overall_scores") or [])
+            avg_overall_score = _clamp_score(
+                (sum(overall_scores) / len(overall_scores)) if overall_scores else 0.0
+            )
+
+            history_scores = list(run_bucket.get("history_scores") or [])
+            trend_delta = 0.0
+            if len(history_scores) >= 2:
+                trend_delta = round(history_scores[0] - history_scores[-1], 3)
+
+            item = {
+                "skill_key": skill_key,
+                "latest_version": int(definition.version),
+                "value_score": _clamp_score(float(getattr(definition, "value_score", 0.0) or 0.0)),
+                "success_rate": success_rate,
+                "avg_overall_score": avg_overall_score,
+                "total_runs": total_runs,
+                "succeeded_runs": succeeded_runs,
+                "failed_runs": failed_runs,
+                "trend_delta": trend_delta,
+                "last_run_at": run_bucket.get("last_run_at"),
+            }
+            items.append(item)
+
+        items.sort(key=lambda entry: (entry["value_score"], entry["total_runs"]), reverse=True)
+        items = items[:limit]
+
+        total_skills = len(items)
+        total_runs = sum(int(item["total_runs"]) for item in items)
+        avg_value_score = _clamp_score(
+            (sum(float(item["value_score"]) for item in items) / total_skills)
+            if total_skills > 0
+            else 0.0
+        )
+        avg_success_rate = _clamp_score(
+            (sum(float(item["success_rate"]) for item in items) / total_skills)
+            if total_skills > 0
+            else 0.0
+        )
+
+        return {
+            "summary": {
+                "total_skills": total_skills,
+                "total_runs": total_runs,
+                "avg_value_score": avg_value_score,
+                "avg_success_rate": avg_success_rate,
+                "window_days": int(window_days),
+            },
+            "items": items,
+        }
+
+    async def get_marketplace_ranking(
+        self,
+        db: AsyncSession,
+        *,
+        tenant_id: str | None,
+        window_days: int = 30,
+        limit: int = 25,
+    ) -> dict[str, Any]:
+        analytics = await self.get_skill_lifecycle_analytics(
+            db,
+            tenant_id=tenant_id,
+            window_days=window_days,
+            limit=max(limit, 50),
+        )
+
+        ranked = []
+        for item in analytics["items"]:
+            run_volume_score = self._run_volume_score(int(item["total_runs"]))
+            market_score = self._market_score(item)
+            ranked.append(
+                {
+                    **item,
+                    "run_volume_score": run_volume_score,
+                    "market_score": market_score,
+                }
+            )
+
+        ranked.sort(key=lambda entry: (entry["market_score"], entry["value_score"], entry["total_runs"]), reverse=True)
+        ranked = ranked[:limit]
+
+        items = []
+        for index, item in enumerate(ranked, start=1):
+            items.append(
+                {
+                    "rank": index,
+                    "skill_key": item["skill_key"],
+                    "latest_version": item["latest_version"],
+                    "market_score": item["market_score"],
+                    "value_score": item["value_score"],
+                    "success_rate": item["success_rate"],
+                    "avg_overall_score": item["avg_overall_score"],
+                    "run_volume_score": item["run_volume_score"],
+                    "trend_delta": item["trend_delta"],
+                    "last_run_at": item["last_run_at"],
+                }
+            )
+
+        return {
+            "window_days": int(window_days),
+            "generated_at": datetime.now(timezone.utc),
+            "items": items,
         }
 
     async def get_assessment_by_id(

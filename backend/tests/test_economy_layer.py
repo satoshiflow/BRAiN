@@ -91,6 +91,57 @@ def test_economy_analyze_get_queue(monkeypatch) -> None:
             assert assessment_id == assessment.id
             return SimpleNamespace(**{**assessment.__dict__, "status": "review_queued"})
 
+        async def get_skill_lifecycle_analytics(self, db, *, tenant_id, window_days, limit):
+            assert tenant_id == "tenant-a"
+            assert window_days == 30
+            assert limit == 50
+            return {
+                "summary": {
+                    "total_skills": 1,
+                    "total_runs": 7,
+                    "avg_value_score": 0.72,
+                    "avg_success_rate": 0.86,
+                    "window_days": 30,
+                },
+                "items": [
+                    {
+                        "skill_key": "demo.skill",
+                        "latest_version": 2,
+                        "value_score": 0.72,
+                        "success_rate": 0.86,
+                        "avg_overall_score": 0.8,
+                        "total_runs": 7,
+                        "succeeded_runs": 6,
+                        "failed_runs": 1,
+                        "trend_delta": 0.08,
+                        "last_run_at": now,
+                    }
+                ],
+            }
+
+        async def get_marketplace_ranking(self, db, *, tenant_id, window_days, limit):
+            assert tenant_id == "tenant-a"
+            assert window_days == 30
+            assert limit == 10
+            return {
+                "window_days": 30,
+                "generated_at": now,
+                "items": [
+                    {
+                        "rank": 1,
+                        "skill_key": "demo.skill",
+                        "latest_version": 2,
+                        "market_score": 0.77,
+                        "value_score": 0.72,
+                        "success_rate": 0.86,
+                        "avg_overall_score": 0.8,
+                        "run_volume_score": 0.35,
+                        "trend_delta": 0.08,
+                        "last_run_at": now,
+                    }
+                ],
+            }
+
     monkeypatch.setattr(
         route_module, "get_economy_layer_service", lambda: FakeService()
     )
@@ -107,6 +158,14 @@ def test_economy_analyze_get_queue(monkeypatch) -> None:
     )
     assert queue_response.status_code == 200
     assert queue_response.json()["assessment"]["status"] == "review_queued"
+
+    lifecycle_response = client.get("/api/economy/skills/lifecycle-analytics?window_days=30&limit=50")
+    assert lifecycle_response.status_code == 200
+    assert lifecycle_response.json()["summary"]["total_runs"] == 7
+
+    ranking_response = client.get("/api/economy/skills/marketplace-ranking?window_days=30&limit=10")
+    assert ranking_response.status_code == 200
+    assert ranking_response.json()["items"][0]["rank"] == 1
 
 
 def test_economy_requires_tenant_context() -> None:

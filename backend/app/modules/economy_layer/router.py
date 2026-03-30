@@ -20,6 +20,8 @@ from .schemas import (
     EconomyAnalyzeResponse,
     EconomyAssessmentResponse,
     EconomyQueueReviewResponse,
+    SkillLifecycleAnalyticsResponse,
+    SkillMarketplaceRankingResponse,
 )
 from .service import get_economy_layer_service
 
@@ -117,3 +119,41 @@ async def queue_assessment_review(
     return EconomyQueueReviewResponse(
         assessment=EconomyAssessmentResponse.model_validate(assessment)
     )
+
+
+@router.get(
+    "/skills/lifecycle-analytics",
+    response_model=SkillLifecycleAnalyticsResponse,
+)
+async def get_skill_lifecycle_analytics(
+    window_days: int = 30,
+    limit: int = 100,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+):
+    payload = await get_economy_layer_service().get_skill_lifecycle_analytics(
+        db,
+        tenant_id=principal.tenant_id,
+        window_days=max(1, min(window_days, 365)),
+        limit=max(1, min(limit, 500)),
+    )
+    return SkillLifecycleAnalyticsResponse.model_validate(payload)
+
+
+@router.get(
+    "/skills/marketplace-ranking",
+    response_model=SkillMarketplaceRankingResponse,
+)
+async def get_skill_marketplace_ranking(
+    window_days: int = 30,
+    limit: int = 25,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+):
+    payload = await get_economy_layer_service().get_marketplace_ranking(
+        db,
+        tenant_id=principal.tenant_id,
+        window_days=max(1, min(window_days, 365)),
+        limit=max(1, min(limit, 100)),
+    )
+    return SkillMarketplaceRankingResponse.model_validate(payload)

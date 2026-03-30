@@ -426,12 +426,20 @@ export default function SkillsPage() {
   return (
     <div className="space-y-6">
 
-      <div className="flex items-center gap-2">
-        <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Skills</h1>
-        {(() => {
-          const topic = getControlDeckHelpTopic("skills.catalog");
-          return topic ? <HelpHint topic={topic} /> : null;
-        })()}
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Skills</h1>
+          {(() => {
+            const topic = getControlDeckHelpTopic("skills.catalog");
+            return topic ? <HelpHint topic={topic} /> : null;
+          })()}
+        </div>
+        <Link
+          href="/skills/analytics"
+          className="rounded border border-cyan-300 bg-cyan-50 px-3 py-1.5 text-xs font-medium text-cyan-700 hover:bg-cyan-100 dark:border-cyan-800 dark:bg-cyan-900/20 dark:text-cyan-300 dark:hover:bg-cyan-900/30"
+        >
+          Lifecycle Analytics
+        </Link>
       </div>
 
       {error && (

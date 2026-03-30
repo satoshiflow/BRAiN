@@ -34,3 +34,48 @@ class EconomyAnalyzeResponse(BaseModel):
 
 class EconomyQueueReviewResponse(BaseModel):
     assessment: EconomyAssessmentResponse
+
+
+class SkillLifecycleItemResponse(BaseModel):
+    skill_key: str
+    latest_version: int
+    value_score: float
+    success_rate: float
+    avg_overall_score: float
+    total_runs: int
+    succeeded_runs: int
+    failed_runs: int
+    trend_delta: float
+    last_run_at: datetime | None = None
+
+
+class SkillLifecycleSummaryResponse(BaseModel):
+    total_skills: int
+    total_runs: int
+    avg_value_score: float
+    avg_success_rate: float
+    window_days: int
+
+
+class SkillLifecycleAnalyticsResponse(BaseModel):
+    summary: SkillLifecycleSummaryResponse
+    items: list[SkillLifecycleItemResponse] = Field(default_factory=list)
+
+
+class SkillMarketplaceRankItemResponse(BaseModel):
+    rank: int
+    skill_key: str
+    latest_version: int
+    market_score: float
+    value_score: float
+    success_rate: float
+    avg_overall_score: float
+    run_volume_score: float
+    trend_delta: float
+    last_run_at: datetime | None = None
+
+
+class SkillMarketplaceRankingResponse(BaseModel):
+    window_days: int
+    generated_at: datetime
+    items: list[SkillMarketplaceRankItemResponse] = Field(default_factory=list)

@@ -28,6 +28,12 @@ Run Alembic against a clean/local-aligned DB state.
 docker exec brain-backend sh -lc "cd /app && alembic upgrade heads"
 ```
 
+For recurring local drift, run the reconciliation helper first:
+
+```bash
+./scripts/reconcile_local_db_schema.sh
+```
+
 ## Fallback fix (local patch)
 
 Use only when migration history in local DB is inconsistent and blocks normal upgrade.
