@@ -4,13 +4,30 @@ const EMAIL = "admin@test.com";
 const PASSWORD = "admin123";
 
 test("skills governance detail shows value and trend panels", async ({ page }) => {
+  let pair: { access_token: string; refresh_token: string } | null = null;
+  for (let i = 0; i < 5; i += 1) {
+    const response = await fetch("http://127.0.0.1:8000/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: EMAIL, password: PASSWORD }),
+    });
+    if (response.ok) {
+      pair = (await response.json()) as { access_token: string; refresh_token: string };
+      break;
+    }
+    await page.waitForTimeout(1000);
+  }
+  expect(pair).toBeTruthy();
+  if (!pair) {
+    throw new Error("Login request failed after retries");
+  }
+
   await page.goto("/login");
-
-  await page.getByLabel("E-Mail").fill(EMAIL);
-  await page.getByLabel("Passwort").fill(PASSWORD);
-  await page.getByRole("button", { name: "Anmelden" }).click();
-
-  await expect(page).toHaveURL(/\/dashboard/);
+  await page.evaluate((tokens) => {
+    localStorage.setItem("access_token", tokens.access_token);
+    localStorage.setItem("refresh_token", tokens.refresh_token);
+    localStorage.setItem("user_email", "admin@test.com");
+  }, pair);
 
   await page.goto("/skills");
   await expect(page.getByText("Skill-Katalog")).toBeVisible();

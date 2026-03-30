@@ -434,12 +434,20 @@ export default function SkillsPage() {
             return topic ? <HelpHint topic={topic} /> : null;
           })()}
         </div>
-        <Link
-          href="/skills/analytics"
-          className="rounded border border-cyan-300 bg-cyan-50 px-3 py-1.5 text-xs font-medium text-cyan-700 hover:bg-cyan-100 dark:border-cyan-800 dark:bg-cyan-900/20 dark:text-cyan-300 dark:hover:bg-cyan-900/30"
-        >
-          Lifecycle Analytics
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/skills/intent"
+            className="rounded border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300 dark:hover:bg-emerald-900/30"
+          >
+            Intent Routing
+          </Link>
+          <Link
+            href="/skills/analytics"
+            className="rounded border border-cyan-300 bg-cyan-50 px-3 py-1.5 text-xs font-medium text-cyan-700 hover:bg-cyan-100 dark:border-cyan-800 dark:bg-cyan-900/20 dark:text-cyan-300 dark:hover:bg-cyan-900/30"
+          >
+            Lifecycle Analytics
+          </Link>
+        </div>
       </div>
 
       {error && (

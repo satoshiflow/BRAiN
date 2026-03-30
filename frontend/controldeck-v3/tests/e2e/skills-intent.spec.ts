@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 const EMAIL = "admin@test.com";
 const PASSWORD = "admin123";
 
-test("skills analytics page renders lifecycle and ranking views", async ({ page, request }) => {
+test("skills intent page renders and resolves request", async ({ page, request }) => {
   let loginResponse = null;
   for (let i = 0; i < 5; i += 1) {
     const attempt = await request.post("http://127.0.0.1:8000/api/auth/login", {
@@ -28,9 +28,11 @@ test("skills analytics page renders lifecycle and ranking views", async ({ page,
     localStorage.setItem("user_email", "admin@test.com");
   }, tokens);
 
-  await page.goto("/skills/analytics");
+  await page.goto("/skills/intent");
+  await expect(page.getByText("Intent to Skill")).toBeVisible();
 
-  await expect(page.getByText("Skill Value Lifecycle Analytics")).toBeVisible();
-  await expect(page.getByText("Marketplace Ranking")).toBeVisible();
-  await expect(page.getByText("Runs (Window)")).toBeVisible();
+  await page.getByPlaceholder("z.B. Search knowledge about recurring outage incidents").fill("search knowledge about outage incidents");
+  await page.getByRole("button", { name: "Intent ausfuehren" }).click();
+
+  await expect(page.getByText("Resolution")).toBeVisible();
 });

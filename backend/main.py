@@ -141,6 +141,7 @@ from app.modules.capability_runtime.router import router as capability_runtime_r
 from app.modules.skill_engine.router import router as skill_engine_router
 from app.modules.skill_evaluator.router import router as skill_evaluator_router
 from app.modules.skill_optimizer.router import router as skill_optimizer_router
+from app.modules.intent_to_skill.router import router as intent_to_skill_router
 from app.modules.memory.router import router as memory_router
 from app.modules.learning.router import router as learning_router
 from app.modules.webgenesis.router import router as webgenesis_router
@@ -539,6 +540,7 @@ def create_app() -> FastAPI:
     app.include_router(skill_engine_router, tags=["skill-engine"])
     app.include_router(skill_evaluator_router, tags=["skill-evaluator"])
     app.include_router(skill_optimizer_router, tags=["skill-optimizer"])
+    app.include_router(intent_to_skill_router, tags=["intent-to-skill"])
     app.include_router(memory_router, tags=["memory"])
     app.include_router(learning_router, tags=["learning"])
     app.include_router(webgenesis_router, tags=["webgenesis"])

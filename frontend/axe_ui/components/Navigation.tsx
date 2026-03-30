@@ -16,6 +16,7 @@ import { getAxeHelpTopic } from "@/lib/help/topics";
 
 const navItems = [
   { href: "/chat", label: "Chat", icon: "💬" },
+  { href: "/intent", label: "Intent", icon: "🎯" },
   { href: "/dashboard", label: "Dashboard", icon: "📊" },
   { href: "/neural", label: "Neural", icon: "🧠" },
   { href: "/settings", label: "Settings", icon: "⚙️" },
