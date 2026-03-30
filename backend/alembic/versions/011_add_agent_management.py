@@ -68,8 +68,8 @@ def upgrade() -> None:
     op.execute("CREATE INDEX IF NOT EXISTS idx_agents_last_heartbeat ON agents (last_heartbeat);")
     
     # Create trigger for updated_at
+    op.execute("DROP TRIGGER IF EXISTS update_agents_updated_at ON agents;")
     op.execute("""
-        DROP TRIGGER IF EXISTS update_agents_updated_at ON agents;
         CREATE TRIGGER update_agents_updated_at
             BEFORE UPDATE ON agents
             FOR EACH ROW

@@ -54,10 +54,10 @@ async def seed_axe_chat_skill_contract(db: AsyncSession) -> None:
     local_llm_mode = os.getenv("LOCAL_LLM_MODE", "ollama").strip().lower()
     provider_key = local_llm_mode if local_llm_mode in {"openai", "groq", "ollama", "mock"} else "ollama"
     endpoint_ref_by_provider = {
-        "openai": os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
-        "groq": os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
-        "ollama": os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
-        "mock": os.getenv("MOCK_BASE_URL", "http://127.0.0.1:8099"),
+        "openai": {"url": os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")},
+        "groq": {"url": os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")},
+        "ollama": {"url": os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")},
+        "mock": {"url": os.getenv("MOCK_BASE_URL", "http://127.0.0.1:8099")},
     }
     model_ref_by_provider = {
         "openai": os.getenv("OPENAI_MODEL", "gpt-4-turbo-preview"),

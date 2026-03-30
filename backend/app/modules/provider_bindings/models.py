@@ -27,7 +27,7 @@ class ProviderBindingModel(Base):
     provider_key = Column(String(120), nullable=False)
     provider_type = Column(String(32), nullable=False, default="service")
     adapter_key = Column(String(120), nullable=False)
-    endpoint_ref = Column(String(255), nullable=False)
+    endpoint_ref = Column(JSONB, nullable=False, default={})
     model_or_tool_ref = Column(String(255), nullable=True)
     region = Column(String(64), nullable=True)
     priority = Column(Integer, nullable=False, default=100)

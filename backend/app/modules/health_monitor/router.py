@@ -2,7 +2,10 @@
 Health Monitor System - API Router
 """
 
+import asyncio
+import json
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -68,3 +71,30 @@ async def get_health_history(
     """Get health check history for a specific service."""
     service = get_health_monitor_service()
     return await service.get_history(db, service_name, limit)
+
+
+@router.get("/stream")
+async def stream_health_status(
+    db: AsyncSession = Depends(get_db),
+):
+    """Stream health status updates via SSE."""
+    service = get_health_monitor_service()
+
+    async def event_generator():
+        try:
+            while True:
+                status_data = await service.get_status(db)
+                yield f"data: {json.dumps(status_data.model_dump(mode='json'))}\n\n"
+                await asyncio.sleep(30)
+        except asyncio.CancelledError:
+            pass
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

@@ -20,6 +20,10 @@ Repository guidance for autonomous coding agents working in `BRAiN`.
 - Permanent agent setup guidance is documented in `docs/core/agent_cluster_setup_guide.md`.
 - Mission deliberation and insight evolution architecture is documented in `docs/specs/mission_deliberation_insight_evolution.md`.
 - Local micro setup (resource-efficient): `.opencode/skills/brain-local-micro/SKILL.md`
+- Frontend Landschaft Analyse: `docs/roadmap/FRONTEND_LANDSCHAFT_ANALYSE.md`
+- ControlDeck v2 Neu-Konzeptionierung: `docs/roadmap/CONTROLDECK_V2_NEUKONZEPTIONIERUNG.md`
+- AXE UI Login Fix (Archiv): `docs/roadmap/AXE_UI_LOGIN_FIX_20260328.md`
+- System Dependency Analyse: `.opencode/plans/SYSTEM_DEPENDENCY_ANALYSIS.md`
 
 ### Copilot instruction highlights (applied here)
 
@@ -91,6 +95,27 @@ All commands below are from repo root unless noted.
   - `npm run lint`
 - `frontend/axe_ui` type-check:
   - `npm run typecheck`
+
+### Docker Stack (Empfohlen)
+
+Alle Frontends können über Docker Compose gestartet werden:
+
+```bash
+# Vollständiger Stack (AXE UI + Backend)
+docker compose -f docker-compose.local.yml --env-file .env.local up -d
+
+# Nur Frontend (AXE UI)
+docker compose -f docker-compose.local.yml --env-file .env.local up -d axe_ui
+
+# ControlDeck v2 (noch nicht vollständig funktionsfähig - Build-Fixes nötig)
+docker compose -f docker-compose.local.yml --env-file .env.local up -d controldeck
+
+# Ports:
+# - AXE UI:     localhost:3002
+# - ControlDeck: localhost:3003 (in Entwicklung)
+# - Backend:    localhost:8000
+# - Mock LLM:  localhost:8099
+```
 
 ## 4) Coding conventions (backend Python)
 
