@@ -98,6 +98,8 @@ def do_run_migrations(connection) -> None:
                 "ALTER TABLE alembic_version ALTER COLUMN version_num TYPE VARCHAR(128)"
             )
         )
+        if connection.in_transaction():
+            connection.commit()
 
     context.configure(connection=connection, target_metadata=target_metadata)
     with context.begin_transaction():

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -7,9 +9,14 @@ from app.core.auth_deps import Principal, SystemRole, get_current_principal, req
 from app.core.database import get_db
 
 from .schemas import (
+    MarketplaceListingState,
     OwnerScope,
+    PremiumTier,
     SkillDefinitionCreate,
     SkillDefinitionListResponse,
+    SkillDefinitionPricingResponse,
+    SkillDefinitionPromoteRequest,
+    SkillDefinitionPromotionResponse,
     SkillDefinitionResponse,
     SkillDefinitionStatus,
     SkillDefinitionTransitionResponse,
@@ -102,6 +109,56 @@ async def get_skill_definition_value_score(
         complexity_level=str(item.complexity_level or "medium"),
         risk_tier=item.risk_tier,
         breakdown=dict(value_profile["breakdown"]),
+    )
+
+
+@router.get("/skill-definitions/{skill_key}/pricing", response_model=SkillDefinitionPricingResponse)
+async def get_skill_definition_pricing(
+    skill_key: str,
+    version: int | None = Query(default=None, ge=1),
+    selector: VersionSelector = Query(default=VersionSelector.ACTIVE),
+    version_value: int | None = Query(default=None, ge=1),
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+):
+    service = get_skill_registry_service()
+    try:
+        if version is not None:
+            item = await service.get_definition(
+                db,
+                skill_key,
+                version,
+                principal.tenant_id,
+                include_system=True,
+            )
+            if item is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Skill definition '{skill_key}' version {version} not found",
+                )
+        else:
+            item = await service.resolve_definition(
+                db,
+                skill_key,
+                principal.tenant_id,
+                selector,
+                version_value,
+            )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    pricing = service.compute_internal_pricing(item)
+    return SkillDefinitionPricingResponse(
+        skill_key=item.skill_key,
+        version=item.version,
+        premium_tier=PremiumTier(str(item.premium_tier or PremiumTier.FREE.value)),
+        internal_credit_price=float(pricing["internal_credit_price"]),
+        suggested_credit_price=float(pricing["suggested_credit_price"]),
+        pricing_source=str(pricing["pricing_source"]),
+        value_score=float(pricing["value_score"]),
+        risk_tier=str(pricing["risk_tier"]),
+        complexity_level=str(pricing["complexity_level"]),
+        breakdown=dict(pricing["breakdown"]),
     )
 
 
@@ -266,6 +323,51 @@ async def retire_skill_definition(
     principal: Principal = Depends(require_role(SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN)),
 ):
     return await _transition_skill_definition(skill_key, version, SkillDefinitionStatus.RETIRED, owner_scope, db, principal)
+
+
+@router.post(
+    "/skill-definitions/{skill_key}/versions/{version}/promote",
+    response_model=SkillDefinitionPromotionResponse,
+)
+async def promote_skill_definition(
+    skill_key: str,
+    version: int,
+    payload: SkillDefinitionPromoteRequest,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_role(SystemRole.ADMIN, SystemRole.SYSTEM_ADMIN)),
+):
+    service = get_skill_registry_service()
+    try:
+        item = await service.promote_definition(
+            db,
+            skill_key=skill_key,
+            version=version,
+            premium_tier=payload.premium_tier,
+            internal_credit_price=payload.internal_credit_price,
+            marketplace_listing_state=payload.marketplace_listing_state,
+            publish_external=payload.publish_external,
+            principal=principal,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Skill definition '{skill_key}' version {version} not found")
+
+    external_enabled = os.getenv("SKILL_MARKETPLACE_EXTERNAL_ENABLED", "false").lower() == "true"
+
+    return SkillDefinitionPromotionResponse(
+        skill_key=item.skill_key,
+        version=item.version,
+        premium_tier=PremiumTier(str(item.premium_tier)),
+        internal_credit_price=float(item.internal_credit_price or 0.0),
+        marketplace_listing_state=MarketplaceListingState(str(item.marketplace_listing_state)),
+        publish_external_requested=payload.publish_external,
+        external_marketplace_enabled=external_enabled,
+        status=SkillDefinitionStatus(str(item.status)),
+    )
 
 
 @router.get("/skill-registry/resolve", response_model=SkillRegistryResolveResponse)

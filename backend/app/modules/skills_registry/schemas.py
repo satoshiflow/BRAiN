@@ -50,6 +50,18 @@ class TrustTier(str, Enum):
     SENSITIVE = "sensitive"
 
 
+class PremiumTier(str, Enum):
+    FREE = "free"
+    TRUSTED = "trusted"
+    PREMIUM = "premium"
+
+
+class MarketplaceListingState(str, Enum):
+    INTERNAL_ONLY = "internal_only"
+    CANDIDATE = "candidate"
+    PUBLISHED = "published"
+
+
 class VersionSelector(str, Enum):
     ACTIVE = "active"
     EXACT = "exact"
@@ -96,6 +108,9 @@ class SkillDefinitionCreate(BaseModel):
     effort_saved_hours: float = Field(default=0.0, ge=0.0)
     complexity_level: str = Field(default="medium", min_length=1, max_length=32)
     quality_impact: float = Field(default=0.0, ge=0.0, le=1.0)
+    premium_tier: PremiumTier = Field(default=PremiumTier.FREE)
+    internal_credit_price: float = Field(default=0.0, ge=0.0)
+    marketplace_listing_state: MarketplaceListingState = Field(default=MarketplaceListingState.INTERNAL_ONLY)
     builder_role: str = Field(default="manual", min_length=1, max_length=64)
     definition_artifact_refs: list[dict[str, Any]] = Field(default_factory=list)
     example_artifact_refs: list[dict[str, Any]] = Field(default_factory=list)
@@ -119,6 +134,9 @@ class SkillDefinitionUpdate(BaseModel):
     effort_saved_hours: float | None = Field(default=None, ge=0.0)
     complexity_level: str | None = Field(default=None, min_length=1, max_length=32)
     quality_impact: float | None = Field(default=None, ge=0.0, le=1.0)
+    premium_tier: PremiumTier | None = None
+    internal_credit_price: float | None = Field(default=None, ge=0.0)
+    marketplace_listing_state: MarketplaceListingState | None = None
     definition_artifact_refs: list[dict[str, Any]] | None = None
     example_artifact_refs: list[dict[str, Any]] | None = None
     builder_artifact_refs: list[dict[str, Any]] | None = None
@@ -147,6 +165,9 @@ class SkillDefinitionResponse(BaseModel):
     effort_saved_hours: float
     complexity_level: str
     quality_impact: float
+    premium_tier: PremiumTier
+    internal_credit_price: float
+    marketplace_listing_state: MarketplaceListingState
     builder_role: str
     definition_artifact_refs: list[dict[str, Any]]
     example_artifact_refs: list[dict[str, Any]]
@@ -213,3 +234,35 @@ class SkillValueHistoryResponse(BaseModel):
     skill_key: str
     items: list[SkillValueHistoryItem] = Field(default_factory=list)
     total: int
+
+
+class SkillDefinitionPricingResponse(BaseModel):
+    skill_key: str
+    version: int
+    premium_tier: PremiumTier
+    internal_credit_price: float
+    suggested_credit_price: float
+    pricing_source: str
+    value_score: float
+    risk_tier: str
+    complexity_level: str
+    breakdown: dict[str, Any] = Field(default_factory=dict)
+
+
+class SkillDefinitionPromoteRequest(BaseModel):
+    premium_tier: PremiumTier = Field(default=PremiumTier.TRUSTED)
+    internal_credit_price: float | None = Field(default=None, ge=0.0)
+    marketplace_listing_state: MarketplaceListingState = Field(default=MarketplaceListingState.CANDIDATE)
+    publish_external: bool = False
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+class SkillDefinitionPromotionResponse(BaseModel):
+    skill_key: str
+    version: int
+    premium_tier: PremiumTier
+    internal_credit_price: float
+    marketplace_listing_state: MarketplaceListingState
+    publish_external_requested: bool
+    external_marketplace_enabled: bool
+    status: SkillDefinitionStatus

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from typing import Any, Iterable, Sequence
 
 from loguru import logger
@@ -13,7 +14,17 @@ from app.modules.capabilities_registry.models import CapabilityDefinitionModel
 from app.modules.skill_engine.models import SkillRunModel
 
 from .models import SkillDefinitionModel
-from .schemas import CapabilityRef, OwnerScope, SkillDefinitionCreate, SkillDefinitionStatus, SkillDefinitionUpdate, SkillSortBy, VersionSelector
+from .schemas import (
+    CapabilityRef,
+    MarketplaceListingState,
+    OwnerScope,
+    PremiumTier,
+    SkillDefinitionCreate,
+    SkillDefinitionStatus,
+    SkillDefinitionUpdate,
+    SkillSortBy,
+    VersionSelector,
+)
 
 
 @dataclass(slots=True)
@@ -91,6 +102,9 @@ class SkillRegistryService:
             "effort_saved_hours": data.get("effort_saved_hours", 0.0),
             "complexity_level": data.get("complexity_level", "medium"),
             "quality_impact": data.get("quality_impact", 0.0),
+            "premium_tier": data.get("premium_tier", "free"),
+            "internal_credit_price": data.get("internal_credit_price", 0.0),
+            "marketplace_listing_state": data.get("marketplace_listing_state", "internal_only"),
             "builder_role": data.get("builder_role", "manual"),
             "definition_artifact_refs": data.get("definition_artifact_refs", []),
             "example_artifact_refs": data.get("example_artifact_refs", []),
@@ -269,6 +283,9 @@ class SkillRegistryService:
             effort_saved_hours=payload.effort_saved_hours,
             complexity_level=payload.complexity_level,
             quality_impact=payload.quality_impact,
+            premium_tier=payload.premium_tier.value,
+            internal_credit_price=payload.internal_credit_price,
+            marketplace_listing_state=payload.marketplace_listing_state.value,
             builder_role=payload.builder_role,
             definition_artifact_refs=payload.definition_artifact_refs,
             example_artifact_refs=payload.example_artifact_refs,
@@ -352,6 +369,9 @@ class SkillRegistryService:
                 "effort_saved_hours": definition.effort_saved_hours,
                 "complexity_level": definition.complexity_level,
                 "quality_impact": definition.quality_impact,
+                "premium_tier": definition.premium_tier,
+                "internal_credit_price": definition.internal_credit_price,
+                "marketplace_listing_state": definition.marketplace_listing_state,
             }
         )
         definition.checksum_sha256 = SkillDefinitionModel.build_checksum(checksum_payload)
@@ -529,6 +549,117 @@ class SkillRegistryService:
             complexity_level=definition.complexity_level,
             quality_impact=definition.quality_impact,
         )
+
+    def compute_internal_pricing(self, definition: SkillDefinitionModel) -> dict[str, Any]:
+        value_profile = self.compute_value_profile(definition)
+        value_score = float(value_profile.get("value_score") or 0.0)
+
+        complexity_factor = {
+            "low": 0.9,
+            "medium": 1.0,
+            "high": 1.2,
+            "critical": 1.45,
+        }.get(str(definition.complexity_level or "medium").lower(), 1.0)
+        risk_factor = {
+            "low": 0.9,
+            "medium": 1.0,
+            "high": 1.2,
+            "critical": 1.4,
+        }.get(str(definition.risk_tier or "medium").lower(), 1.0)
+        tier_factor = {
+            PremiumTier.FREE.value: 0.5,
+            PremiumTier.TRUSTED.value: 1.0,
+            PremiumTier.PREMIUM.value: 1.35,
+        }.get(str(definition.premium_tier or PremiumTier.FREE.value).lower(), 1.0)
+
+        suggested_credit_price = round(max(1.0, ((10.0 * max(0.2, value_score)) * complexity_factor * risk_factor * tier_factor)), 2)
+        configured_price = float(getattr(definition, "internal_credit_price", 0.0) or 0.0)
+        effective_price = configured_price if configured_price > 0 else suggested_credit_price
+
+        return {
+            "internal_credit_price": effective_price,
+            "suggested_credit_price": suggested_credit_price,
+            "pricing_source": "configured" if configured_price > 0 else "derived",
+            "value_score": value_score,
+            "risk_tier": definition.risk_tier,
+            "complexity_level": definition.complexity_level,
+            "breakdown": {
+                "complexity_factor": complexity_factor,
+                "risk_factor": risk_factor,
+                "tier_factor": tier_factor,
+            },
+        }
+
+    async def promote_definition(
+        self,
+        db: AsyncSession,
+        *,
+        skill_key: str,
+        version: int,
+        premium_tier: PremiumTier,
+        internal_credit_price: float | None,
+        marketplace_listing_state: MarketplaceListingState,
+        publish_external: bool,
+        principal: Principal,
+    ) -> SkillDefinitionModel | None:
+        definition = await self.get_definition(
+            db,
+            skill_key,
+            version,
+            principal.tenant_id,
+            include_system=principal.has_scope("platform:catalog:write"),
+        )
+        if definition is None:
+            return None
+
+        if definition.status not in {
+            SkillDefinitionStatus.APPROVED.value,
+            SkillDefinitionStatus.ACTIVE.value,
+            SkillDefinitionStatus.DEPRECATED.value,
+        }:
+            raise ValueError("Only approved/active/deprecated definitions can be promoted")
+
+        external_enabled = os.getenv("SKILL_MARKETPLACE_EXTERNAL_ENABLED", "false").lower() == "true"
+        if publish_external and not external_enabled:
+            raise PermissionError("External marketplace publication is disabled by policy")
+
+        definition.premium_tier = premium_tier.value
+        if internal_credit_price is not None:
+            definition.internal_credit_price = internal_credit_price
+
+        if publish_external:
+            definition.marketplace_listing_state = MarketplaceListingState.PUBLISHED.value
+        else:
+            definition.marketplace_listing_state = marketplace_listing_state.value
+
+        definition.updated_by = principal.principal_id
+
+        await record_control_plane_event(
+            db=db,
+            tenant_id=definition.tenant_id,
+            entity_type="skill_definition",
+            entity_id=str(definition.id),
+            event_type="skill.definition.promoted.v1",
+            correlation_id=None,
+            mission_id=None,
+            actor_id=principal.principal_id,
+            actor_type=principal.principal_type.value,
+            payload={
+                "skill_key": definition.skill_key,
+                "version": definition.version,
+                "premium_tier": definition.premium_tier,
+                "internal_credit_price": definition.internal_credit_price,
+                "marketplace_listing_state": definition.marketplace_listing_state,
+                "publish_external": publish_external,
+                "external_marketplace_enabled": external_enabled,
+            },
+            audit_required=True,
+            audit_action="skill_definition_promote",
+            audit_message="Skill definition promotion metadata updated",
+        )
+        await db.commit()
+        await db.refresh(definition)
+        return definition
 
 
 _skill_registry_service: SkillRegistryService | None = None

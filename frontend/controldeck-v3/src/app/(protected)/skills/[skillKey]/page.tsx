@@ -4,7 +4,13 @@ import Link from "next/link";
 import { useMemo, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 
-import { skillsApi, type Skill, type SkillRun } from "@/lib/api/skills";
+import {
+  skillsApi,
+  type Skill,
+  type SkillRun,
+  type SkillRunEvaluation,
+  type SkillRunExperience,
+} from "@/lib/api/skills";
 import { formatRelativeTime } from "@/lib/utils";
 
 type ValueScoreState = {
@@ -27,6 +33,13 @@ type ValueHistoryState = {
   quality_impact?: number | null;
   effort_saved_hours?: number | null;
   source?: string | null;
+};
+
+type PricingState = {
+  premium_tier: "free" | "trusted" | "premium";
+  internal_credit_price: number;
+  suggested_credit_price: number;
+  pricing_source: "configured" | "derived";
 };
 
 function scoreToPercent(value: number): number {
@@ -59,10 +72,27 @@ export default function SkillDetailPage() {
   const [runs, setRuns] = useState<SkillRun[]>([]);
   const [valueHistory, setValueHistory] = useState<ValueHistoryState[]>([]);
   const [valueScore, setValueScore] = useState<ValueScoreState | null>(null);
+  const [pricing, setPricing] = useState<PricingState | null>(null);
+  const [promotionTier, setPromotionTier] = useState<"free" | "trusted" | "premium">("trusted");
+  const [promotionPrice, setPromotionPrice] = useState<string>("");
+  const [promotionState, setPromotionState] = useState<"internal_only" | "candidate" | "published">("candidate");
+  const [promotionError, setPromotionError] = useState<string | null>(null);
+  const [isPromoting, setIsPromoting] = useState(false);
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [runInsights, setRunInsights] = useState<
+    Record<
+      string,
+      {
+        loading: boolean;
+        error?: string;
+        evaluations: SkillRunEvaluation[];
+        experience: SkillRunExperience | null;
+      }
+    >
+  >({});
 
   useEffect(() => {
     let active = true;
@@ -115,10 +145,18 @@ export default function SkillDetailPage() {
     const loadValue = async () => {
       try {
         const value = await skillsApi.getValueScore(skillKey, selectedVersion);
+        const pricingPayload = await skillsApi.getPricing(skillKey, selectedVersion);
         if (!active) {
           return;
         }
         setValueScore(value);
+        setPricing(pricingPayload);
+        setPromotionTier(pricingPayload.premium_tier || "trusted");
+        setPromotionPrice(
+          pricingPayload.internal_credit_price > 0
+            ? String(pricingPayload.internal_credit_price)
+            : String(pricingPayload.suggested_credit_price)
+        );
       } catch (err) {
         console.error("Failed to load value score", err);
       }
@@ -170,6 +208,81 @@ export default function SkillDetailPage() {
       </div>
     );
   }
+
+  const handlePromote = async () => {
+    if (!skill || !selectedVersion) {
+      return;
+    }
+    setIsPromoting(true);
+    setPromotionError(null);
+    try {
+      await skillsApi.promote(skill.key, selectedVersion, {
+        premium_tier: promotionTier,
+        internal_credit_price: Number(promotionPrice) || 0,
+        marketplace_listing_state: promotionState,
+        publish_external: promotionState === "published",
+      });
+      const [refreshedSkillList, refreshedPricing] = await Promise.all([
+        skillsApi.list("updated_at", skill.key),
+        skillsApi.getPricing(skill.key, selectedVersion),
+      ]);
+      const picked = refreshedSkillList.find((item) => item.version === selectedVersion) || refreshedSkillList[0] || null;
+      setSkill(picked);
+      setPricing(refreshedPricing);
+    } catch (err) {
+      console.error("Promotion failed", err);
+      setPromotionError("Promotion konnte nicht abgeschlossen werden");
+    } finally {
+      setIsPromoting(false);
+    }
+  };
+
+  const toggleRunInsight = async (run: SkillRun) => {
+    const shouldOpen = expandedRunId !== run.id;
+    setExpandedRunId(shouldOpen ? run.id : null);
+    if (!shouldOpen) {
+      return;
+    }
+
+    if (runInsights[run.id] && !runInsights[run.id].loading) {
+      return;
+    }
+
+    setRunInsights((prev) => ({
+      ...prev,
+      [run.id]: {
+        loading: true,
+        evaluations: prev[run.id]?.evaluations || [],
+        experience: prev[run.id]?.experience || null,
+      },
+    }));
+
+    try {
+      const [evaluations, experience] = await Promise.all([
+        skillsApi.getEvaluationsForRun(run.id),
+        skillsApi.getExperienceForRun(run.id).catch(() => null),
+      ]);
+      setRunInsights((prev) => ({
+        ...prev,
+        [run.id]: {
+          loading: false,
+          evaluations,
+          experience,
+        },
+      }));
+    } catch (err) {
+      console.error("Failed to load run provenance", err);
+      setRunInsights((prev) => ({
+        ...prev,
+        [run.id]: {
+          loading: false,
+          evaluations: prev[run.id]?.evaluations || [],
+          experience: prev[run.id]?.experience || null,
+          error: "Provenance konnte nicht geladen werden",
+        },
+      }));
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -251,6 +364,66 @@ export default function SkillDetailPage() {
             <p className="text-xs text-slate-500 dark:text-slate-400">Status</p>
             <p className="text-sm text-slate-900 dark:text-slate-100">{skill?.isEnabled ? "Aktiv" : "Deaktiviert"}</p>
           </div>
+          <div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Premium Tier</p>
+            <p className="text-sm capitalize text-slate-900 dark:text-slate-100">{skill?.premiumTier || "free"}</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Marketplace State</p>
+            <p className="text-sm capitalize text-slate-900 dark:text-slate-100">{skill?.marketplaceListingState || "internal_only"}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">Pricing & Promotion</h2>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Internal Credits</p>
+            <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+              {pricing?.internal_credit_price?.toFixed(2) || "0.00"}
+            </p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Suggested: {pricing?.suggested_credit_price?.toFixed(2) || "0.00"} ({pricing?.pricing_source || "derived"})
+            </p>
+          </div>
+          <div className="space-y-2">
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+              <select
+                value={promotionTier}
+                onChange={(event) => setPromotionTier(event.target.value as "free" | "trusted" | "premium")}
+                className="rounded border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+              >
+                <option value="free">Free</option>
+                <option value="trusted">Trusted</option>
+                <option value="premium">Premium</option>
+              </select>
+              <input
+                value={promotionPrice}
+                onChange={(event) => setPromotionPrice(event.target.value)}
+                placeholder="Credits"
+                className="rounded border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+              />
+              <select
+                value={promotionState}
+                onChange={(event) => setPromotionState(event.target.value as "internal_only" | "candidate" | "published")}
+                className="rounded border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+              >
+                <option value="internal_only">Internal only</option>
+                <option value="candidate">Candidate</option>
+                <option value="published">Published</option>
+              </select>
+            </div>
+            <button
+              type="button"
+              onClick={handlePromote}
+              disabled={isPromoting}
+              className="rounded bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+            >
+              {isPromoting ? "Promoting..." : "Apply Promotion"}
+            </button>
+            {promotionError ? <p className="text-xs text-red-600 dark:text-red-300">{promotionError}</p> : null}
+          </div>
         </div>
       </div>
 
@@ -267,7 +440,7 @@ export default function SkillDetailPage() {
                 <button
                   type="button"
                   className="flex w-full items-center justify-between gap-3 text-left"
-                  onClick={() => setExpandedRunId((current) => (current === run.id ? null : run.id))}
+                  onClick={() => void toggleRunInsight(run)}
                 >
                   <div>
                     <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{run.state}</p>
@@ -294,6 +467,47 @@ export default function SkillDetailPage() {
                         <pre className="overflow-x-auto text-xs text-red-700 dark:text-red-300">{run.error}</pre>
                       </div>
                     )}
+
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">Provenance Chain</p>
+                      {runInsights[run.id]?.loading ? (
+                        <p className="text-xs text-slate-500 dark:text-slate-400">Lade Evaluation/Experience...</p>
+                      ) : runInsights[run.id]?.error ? (
+                        <p className="text-xs text-red-600 dark:text-red-300">{runInsights[run.id].error}</p>
+                      ) : (
+                        <div className="space-y-2 text-xs">
+                          <p className="text-slate-700 dark:text-slate-200">
+                            run ({run.id.slice(0, 8)}...) -&gt; evaluation ({runInsights[run.id]?.evaluations[0]?.id?.slice(0, 8) || "n/a"}) -&gt; experience ({runInsights[run.id]?.experience?.id?.slice(0, 8) || "n/a"}) -&gt; knowledge
+                          </p>
+                          {runInsights[run.id]?.evaluations?.[0] ? (
+                            <div className="rounded border border-slate-200 bg-white px-2 py-2 dark:border-slate-700 dark:bg-slate-950">
+                              <p>
+                                Evaluation: {runInsights[run.id].evaluations[0].status}, pass={String(runInsights[run.id].evaluations[0].pass)}, score={Math.round((runInsights[run.id].evaluations[0].overall_score || 0) * 100)}%
+                              </p>
+                            </div>
+                          ) : null}
+                          {runInsights[run.id]?.experience ? (
+                            <div className="rounded border border-slate-200 bg-white px-2 py-2 dark:border-slate-700 dark:bg-slate-950">
+                              <p>Experience: {runInsights[run.id].experience?.summary}</p>
+                            </div>
+                          ) : null}
+                          <div className="flex flex-wrap gap-2">
+                            <Link
+                              href={`/knowledge?q=${encodeURIComponent(run.id)}`}
+                              className="text-blue-600 hover:underline dark:text-blue-300"
+                            >
+                              Open Knowledge for run ID
+                            </Link>
+                            <Link
+                              href={`/knowledge?q=${encodeURIComponent(run.skillKey)}`}
+                              className="text-blue-600 hover:underline dark:text-blue-300"
+                            >
+                              Open Knowledge for skill key
+                            </Link>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

@@ -15,10 +15,14 @@ Local database schema is behind current backend code and misses new columns on `
 - `effort_saved_hours`
 - `complexity_level`
 - `quality_impact`
+- `premium_tier`
+- `internal_credit_price`
+- `marketplace_listing_state`
 
 Canonical migration for these fields:
 
 - `backend/alembic/versions/048_add_skill_value_fields.py`
+- `backend/alembic/versions/049_add_skill_premium_metadata.py`
 
 ## Preferred fix
 
@@ -40,6 +44,12 @@ Use only when migration history in local DB is inconsistent and blocks normal up
 
 ```bash
 docker exec brain-postgres psql -U brain -d brain -c "ALTER TABLE IF EXISTS skill_definitions ADD COLUMN IF NOT EXISTS value_score DOUBLE PRECISION NOT NULL DEFAULT 0; ALTER TABLE IF EXISTS skill_definitions ADD COLUMN IF NOT EXISTS effort_saved_hours DOUBLE PRECISION NOT NULL DEFAULT 0; ALTER TABLE IF EXISTS skill_definitions ADD COLUMN IF NOT EXISTS complexity_level VARCHAR(32) NOT NULL DEFAULT 'medium'; ALTER TABLE IF EXISTS skill_definitions ADD COLUMN IF NOT EXISTS quality_impact DOUBLE PRECISION NOT NULL DEFAULT 0;"
+```
+
+For premium metadata drift:
+
+```bash
+docker exec brain-postgres psql -U brain -d brain -c "ALTER TABLE IF EXISTS skill_definitions ADD COLUMN IF NOT EXISTS premium_tier VARCHAR(32) NOT NULL DEFAULT 'free'; ALTER TABLE IF EXISTS skill_definitions ADD COLUMN IF NOT EXISTS internal_credit_price DOUBLE PRECISION NOT NULL DEFAULT 0; ALTER TABLE IF EXISTS skill_definitions ADD COLUMN IF NOT EXISTS marketplace_listing_state VARCHAR(32) NOT NULL DEFAULT 'internal_only';"
 ```
 
 ## Verification

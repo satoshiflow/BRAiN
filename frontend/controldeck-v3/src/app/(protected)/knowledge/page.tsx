@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { knowledgeApi, type KnowledgeItem } from "@/lib/api/knowledge";
 import { cn, formatRelativeTime } from "@/lib/utils";
 import { HelpHint } from "@/components/help/help-hint";
@@ -9,6 +10,8 @@ import { getControlDeckHelpTopic } from "@/lib/help/topics";
 const typeOptions = ["all", "note", "doc", "skill", "concept"] as const;
 
 export default function KnowledgePage() {
+  const searchParams = useSearchParams();
+  const queryFromUrl = (searchParams.get("q") || "").trim();
   const [items, setItems] = useState<KnowledgeItem[]>([]);
   const [selected, setSelected] = useState<KnowledgeItem | null>(null);
   const [related, setRelated] = useState<KnowledgeItem[]>([]);
@@ -92,6 +95,30 @@ export default function KnowledgePage() {
       setIsSearching(false);
     }
   };
+
+  useEffect(() => {
+    if (!queryFromUrl) {
+      return;
+    }
+    setQuery(queryFromUrl);
+
+    const runInitialSearch = async () => {
+      setIsSearching(true);
+      try {
+        const response = await knowledgeApi.search(queryFromUrl, type === "all" ? undefined : type, 25);
+        setItems(response.items);
+        setSelected(response.items[0] ?? null);
+        setError(null);
+      } catch (err) {
+        console.error(err);
+        setError("Suche fehlgeschlagen");
+      } finally {
+        setIsSearching(false);
+      }
+    };
+
+    void runInitialSearch();
+  }, [queryFromUrl, type]);
 
   const createItem = async () => {
     if (!newTitle.trim() || !newContent.trim()) {

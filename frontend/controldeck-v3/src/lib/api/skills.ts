@@ -12,6 +12,9 @@ export interface Skill {
   effortSavedHours: number;
   qualityImpact: number;
   complexityLevel: string;
+  premiumTier: "free" | "trusted" | "premium";
+  internalCreditPrice: number;
+  marketplaceListingState: "internal_only" | "candidate" | "published";
 }
 
 export type SkillSortBy = "skill_key" | "updated_at" | "value_score";
@@ -49,6 +52,31 @@ export interface SkillRun {
   completedAt?: string;
 }
 
+export interface SkillRunEvaluation {
+  id: string;
+  status: string;
+  pass: boolean;
+  overall_score?: number | null;
+  dimension_scores: Record<string, number>;
+  findings: Record<string, unknown>;
+  recommendations: Record<string, unknown>;
+  metrics_summary: Record<string, unknown>;
+  policy_compliance: string;
+  created_at: string;
+  completed_at?: string | null;
+}
+
+export interface SkillRunExperience {
+  id: string;
+  skill_run_id: string;
+  evaluation_result_id?: string | null;
+  state: string;
+  summary: string;
+  evaluation_summary: Record<string, unknown>;
+  signals: Record<string, unknown>;
+  created_at: string;
+}
+
 export interface SkillRunEvent {
   type: string;
   timestamp: string;
@@ -72,6 +100,41 @@ interface SkillDefinitionResponse {
   effort_saved_hours: number;
   quality_impact: number;
   complexity_level: string;
+  premium_tier: "free" | "trusted" | "premium";
+  internal_credit_price: number;
+  marketplace_listing_state: "internal_only" | "candidate" | "published";
+}
+
+interface SkillDefinitionPricingResponse {
+  skill_key: string;
+  version: number;
+  premium_tier: "free" | "trusted" | "premium";
+  internal_credit_price: number;
+  suggested_credit_price: number;
+  pricing_source: "configured" | "derived";
+  value_score: number;
+  risk_tier: string;
+  complexity_level: string;
+  breakdown: Record<string, unknown>;
+}
+
+interface SkillDefinitionPromotionRequest {
+  premium_tier: "free" | "trusted" | "premium";
+  internal_credit_price?: number;
+  marketplace_listing_state: "internal_only" | "candidate" | "published";
+  publish_external: boolean;
+  notes?: string;
+}
+
+interface SkillDefinitionPromotionResponse {
+  skill_key: string;
+  version: number;
+  premium_tier: "free" | "trusted" | "premium";
+  internal_credit_price: number;
+  marketplace_listing_state: "internal_only" | "candidate" | "published";
+  publish_external_requested: boolean;
+  external_marketplace_enabled: boolean;
+  status: string;
 }
 
 interface SkillDefinitionListResponse {
@@ -100,6 +163,11 @@ interface SkillRunListResponse {
 
 interface SkillRunExecutionReport {
   skill_run: SkillRunResponse;
+}
+
+interface EvaluationResultListResponse {
+  items: SkillRunEvaluation[];
+  total: number;
 }
 
 interface SkillValueScoreResponse {
@@ -192,6 +260,9 @@ function mapSkill(def: SkillDefinitionResponse): Skill {
     effortSavedHours: def.effort_saved_hours || 0,
     qualityImpact: def.quality_impact || 0,
     complexityLevel: def.complexity_level || "medium",
+    premiumTier: def.premium_tier || "free",
+    internalCreditPrice: def.internal_credit_price || 0,
+    marketplaceListingState: def.marketplace_listing_state || "internal_only",
   };
 }
 
@@ -254,6 +325,35 @@ export const skillsApi = {
   getValueHistory: (skillKey: string, limit = 30) =>
     fetchJson<SkillValueHistoryResponse>(
       `/api/skill-definitions/${encodeURIComponent(skillKey)}/value-history?limit=${limit}`
+    ),
+
+  getEvaluationsForRun: (runId: string) =>
+    fetchJson<EvaluationResultListResponse>(`/api/evaluation-results/skill-runs/${runId}`).then(
+      (res) => res.items
+    ),
+
+  getExperienceForRun: (runId: string) =>
+    fetchJson<SkillRunExperience>(`/api/experience/skill-runs/${runId}`),
+
+  getPricing: (skillKey: string, version?: number) => {
+    const params = new URLSearchParams();
+    if (version) {
+      params.set("version", String(version));
+    }
+    const suffix = params.toString();
+    return fetchJson<SkillDefinitionPricingResponse>(
+      `/api/skill-definitions/${encodeURIComponent(skillKey)}/pricing${suffix ? `?${suffix}` : ""}`
+    );
+  },
+
+  promote: (
+    skillKey: string,
+    version: number,
+    payload: SkillDefinitionPromotionRequest
+  ) =>
+    postJson<SkillDefinitionPromotionResponse, SkillDefinitionPromotionRequest>(
+      `/api/skill-definitions/${encodeURIComponent(skillKey)}/versions/${version}/promote`,
+      payload
     ),
 
   getLifecycleAnalytics: (windowDays = 30, limit = 100) =>

@@ -39,6 +39,7 @@ test("skills governance detail shows value and trend panels", async ({ page }) =
   await expect(page).toHaveURL(/\/skills\//);
   await expect(page.getByText("Value Breakdown")).toBeVisible();
   await expect(page.getByText("Value Trend")).toBeVisible();
+  await expect(page.getByText("Pricing & Promotion")).toBeVisible();
 
   const versionSelect = page.locator("select").first();
   await expect(versionSelect).toBeVisible();

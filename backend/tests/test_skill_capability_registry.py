@@ -206,3 +206,80 @@ def test_skill_value_history_endpoint_returns_items(client: TestClient, monkeypa
     assert payload["skill_key"] == "demo.skill"
     assert payload["total"] == 1
     assert payload["items"][0]["value_score"] == 0.74
+
+
+def test_skill_pricing_endpoint_returns_pricing_profile(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    principal = build_principal(roles=["admin"], scopes=["read", "write"], tenant_id="tenant-a")
+    route_module = __import__("app.modules.skills_registry.router", fromlist=["router"])
+
+    class FakeService:
+        async def resolve_definition(self, db, skill_key, tenant_id, selector, version_value):
+            _ = (db, selector, version_value)
+            assert skill_key == "demo.skill"
+            assert tenant_id == "tenant-a"
+            return type(
+                "SkillDef",
+                (),
+                {
+                    "skill_key": "demo.skill",
+                    "version": 4,
+                    "premium_tier": "trusted",
+                    "risk_tier": "high",
+                    "complexity_level": "high",
+                },
+            )()
+
+        def compute_internal_pricing(self, definition):
+            _ = definition
+            return {
+                "internal_credit_price": 14.0,
+                "suggested_credit_price": 12.5,
+                "pricing_source": "configured",
+                "value_score": 0.81,
+                "risk_tier": "high",
+                "complexity_level": "high",
+                "breakdown": {"risk_factor": 1.2},
+            }
+
+    monkeypatch.setattr(route_module, "get_skill_registry_service", lambda: FakeService())
+    client.app.dependency_overrides[get_current_principal] = lambda: principal
+
+    with override_auth_principal(client, principal):
+        response = client.get("/api/skill-definitions/demo.skill/pricing")
+
+    client.app.dependency_overrides.pop(get_current_principal, None)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["skill_key"] == "demo.skill"
+    assert payload["internal_credit_price"] == 14.0
+    assert payload["pricing_source"] == "configured"
+
+
+def test_skill_promote_endpoint_blocks_external_when_disabled(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    principal = build_principal(roles=["admin"], scopes=["read", "write"], tenant_id="tenant-a")
+    route_module = __import__("app.modules.skills_registry.router", fromlist=["router"])
+
+    class FakeService:
+        async def promote_definition(self, db, **kwargs):
+            _ = (db, kwargs)
+            raise PermissionError("External marketplace publication is disabled by policy")
+
+    monkeypatch.setattr(route_module, "get_skill_registry_service", lambda: FakeService())
+    client.app.dependency_overrides[get_current_principal] = lambda: principal
+
+    with override_auth_principal(client, principal):
+        response = client.post(
+            "/api/skill-definitions/demo.skill/versions/4/promote",
+            json={
+                "premium_tier": "premium",
+                "internal_credit_price": 30,
+                "marketplace_listing_state": "published",
+                "publish_external": True,
+            },
+        )
+
+    client.app.dependency_overrides.pop(get_current_principal, None)
+
+    assert response.status_code == 403
+    assert "disabled" in response.json()["detail"]
