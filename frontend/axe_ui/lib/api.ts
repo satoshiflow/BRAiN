@@ -21,8 +21,10 @@ import type {
 } from "@/lib/contracts";
 
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const useProxy = true;
   const apiBase = getApiBase();
-  const response = await fetch(`${apiBase}${path}`, {
+  const url = useProxy ? path : `${apiBase}${path}`;
+  const response = await fetch(url, {
     ...init,
     headers: {
       Accept: "application/json",
@@ -73,11 +75,10 @@ export async function uploadAxeAttachment(
   file: File,
   customHeaders?: Record<string, string>
 ): Promise<AxeAttachmentUploadResponse> {
-  const apiBase = getApiBase();
   const body = new FormData();
   body.append("file", file);
 
-  const response = await fetch(`${apiBase}/api/axe/upload`, {
+  const response = await fetch(`/api/axe/upload`, {
     method: "POST",
     body,
     headers: {
@@ -161,8 +162,7 @@ export async function deleteAxeSession(
   sessionId: string,
   customHeaders?: Record<string, string>
 ): Promise<void> {
-  const apiBase = getApiBase();
-  const response = await fetch(`${apiBase}/api/axe/sessions/${sessionId}`, {
+  const response = await fetch(`/api/axe/sessions/${sessionId}`, {
     method: "DELETE",
     headers: {
       Accept: "application/json",
@@ -312,8 +312,7 @@ export async function getAXERun(
 }
 
 export function createAXERunEventSource(runId: string): EventSource {
-  const apiBase = getApiBase();
-  const url = `${apiBase}/api/axe/runs/${runId}/events`;
+  const url = `/api/axe/runs/${runId}/events`;
   const eventSource = new EventSource(url, { withCredentials: true });
   eventSource.addEventListener("open", () => {});
   return eventSource;

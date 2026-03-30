@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { getApiBase } from "@/lib/config";
 
 export interface AXERunEvent {
   event_type: string;
@@ -45,9 +46,8 @@ export function useAXERunStream({
     disconnect();
     setError(null);
 
-    const apiBase = (window as unknown as { ENV?: { API_BASE?: string } }).ENV?.API_BASE ?? "";
-    const baseUrl = apiBase || "http://127.0.0.1:8000";
-    const eventSource = new EventSource(`${baseUrl}/api/axe/runs/${runId}/events`, {
+    const apiBase = getApiBase();
+    const eventSource = new EventSource(`${apiBase}/api/axe/runs/${runId}/events`, {
       withCredentials: true,
     });
 

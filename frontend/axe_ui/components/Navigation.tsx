@@ -61,7 +61,7 @@ function NavigationContent({
   onNavigate?: () => void;
 }) {
   const apiBase = getApiBase();
-  const controlDeckAgentsUrl = `${getControlDeckBase()}/agents`;
+  const controlDeckUrl = getControlDeckBase();
 
   return (
     <>
@@ -100,14 +100,14 @@ function NavigationContent({
       {/* Footer */}
       <div className="border-t border-cyan-500/15 p-4">
         <a
-          href={controlDeckAgentsUrl}
+          href={controlDeckUrl}
           target="_blank"
           rel="noreferrer"
           className="mb-3 flex items-center gap-2 rounded-lg border border-amber-400/30 bg-orange-500/10 px-3 py-2 text-sm text-amber-100 transition-colors hover:border-amber-300/50 hover:bg-orange-500/20"
           onClick={onNavigate}
         >
           <span className="text-base">🧭</span>
-          <span>ControlDeck Agents Relay</span>
+          <span>ControlDeck v3</span>
         </a>
         <Tooltip content={<span>{apiBase}</span>}>
           <button type="button" className="flex items-center gap-2 text-xs text-slate-500 hover:text-slate-300">

@@ -24,10 +24,11 @@ const nextConfig = {
     unoptimized: true,
   },
   async rewrites() {
+    const apiBase = process.env.NEXT_PUBLIC_BRAIN_API_BASE || 'http://127.0.0.1:8000';
     return [
       {
         source: '/api/:path*',
-        destination: `${process.env.NEXT_PUBLIC_BRAIN_API_BASE || 'http://brain-backend:8000'}/api/:path*`,
+        destination: `${apiBase}/api/:path*`,
       },
     ];
   },

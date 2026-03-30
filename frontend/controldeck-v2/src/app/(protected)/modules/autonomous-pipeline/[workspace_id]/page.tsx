@@ -260,7 +260,7 @@ export default function WorkspaceDetailPage() {
                             ? "success"
                             : project.status === "paused"
                             ? "warning"
-                            : "secondary"
+                            : "muted"
                         }
                       >
                         {project.status}
