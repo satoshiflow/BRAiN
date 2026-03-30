@@ -167,6 +167,16 @@ def test_economy_analyze_get_queue(monkeypatch) -> None:
     assert ranking_response.status_code == 200
     assert ranking_response.json()["items"][0]["rank"] == 1
 
+    lifecycle_csv_response = client.get("/api/economy/skills/lifecycle-analytics.csv?window_days=30&limit=50")
+    assert lifecycle_csv_response.status_code == 200
+    assert lifecycle_csv_response.headers["content-type"].startswith("text/csv")
+    assert "skill_key" in lifecycle_csv_response.text
+
+    ranking_csv_response = client.get("/api/economy/skills/marketplace-ranking.csv?window_days=30&limit=10")
+    assert ranking_csv_response.status_code == 200
+    assert ranking_csv_response.headers["content-type"].startswith("text/csv")
+    assert "market_score" in ranking_csv_response.text
+
 
 def test_economy_requires_tenant_context() -> None:
     app = FastAPI()

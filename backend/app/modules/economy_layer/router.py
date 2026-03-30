@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import csv
+from io import StringIO
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth_deps import (
@@ -157,3 +159,111 @@ async def get_skill_marketplace_ranking(
         limit=max(1, min(limit, 100)),
     )
     return SkillMarketplaceRankingResponse.model_validate(payload)
+
+
+@router.get("/skills/lifecycle-analytics.csv")
+async def export_skill_lifecycle_analytics_csv(
+    window_days: int = 30,
+    limit: int = 100,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+):
+    payload = await get_economy_layer_service().get_skill_lifecycle_analytics(
+        db,
+        tenant_id=principal.tenant_id,
+        window_days=max(1, min(window_days, 365)),
+        limit=max(1, min(limit, 500)),
+    )
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(
+        [
+            "skill_key",
+            "latest_version",
+            "value_score",
+            "success_rate",
+            "avg_overall_score",
+            "total_runs",
+            "succeeded_runs",
+            "failed_runs",
+            "trend_delta",
+            "last_run_at",
+        ]
+    )
+    for item in payload.get("items", []):
+        writer.writerow(
+            [
+                item.get("skill_key"),
+                item.get("latest_version"),
+                item.get("value_score"),
+                item.get("success_rate"),
+                item.get("avg_overall_score"),
+                item.get("total_runs"),
+                item.get("succeeded_runs"),
+                item.get("failed_runs"),
+                item.get("trend_delta"),
+                item.get("last_run_at"),
+            ]
+        )
+
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename=skill_lifecycle_analytics_{window_days}d.csv"
+        },
+    )
+
+
+@router.get("/skills/marketplace-ranking.csv")
+async def export_skill_marketplace_ranking_csv(
+    window_days: int = 30,
+    limit: int = 25,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+):
+    payload = await get_economy_layer_service().get_marketplace_ranking(
+        db,
+        tenant_id=principal.tenant_id,
+        window_days=max(1, min(window_days, 365)),
+        limit=max(1, min(limit, 100)),
+    )
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(
+        [
+            "rank",
+            "skill_key",
+            "latest_version",
+            "market_score",
+            "value_score",
+            "success_rate",
+            "avg_overall_score",
+            "run_volume_score",
+            "trend_delta",
+            "last_run_at",
+        ]
+    )
+    for item in payload.get("items", []):
+        writer.writerow(
+            [
+                item.get("rank"),
+                item.get("skill_key"),
+                item.get("latest_version"),
+                item.get("market_score"),
+                item.get("value_score"),
+                item.get("success_rate"),
+                item.get("avg_overall_score"),
+                item.get("run_volume_score"),
+                item.get("trend_delta"),
+                item.get("last_run_at"),
+            ]
+        )
+
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename=skill_marketplace_ranking_{window_days}d.csv"
+        },
+    )

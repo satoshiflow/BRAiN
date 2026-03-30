@@ -38,6 +38,18 @@ For recurring local drift, run the reconciliation helper first:
 ./scripts/reconcile_local_db_schema.sh
 ```
 
+Then verify Alembic head consistency:
+
+```bash
+./scripts/alembic_doctor.sh check
+```
+
+If heads are missing in `alembic_version`:
+
+```bash
+./scripts/alembic_doctor.sh reconcile
+```
+
 ## Fallback fix (local patch)
 
 Use only when migration history in local DB is inconsistent and blocks normal upgrade.

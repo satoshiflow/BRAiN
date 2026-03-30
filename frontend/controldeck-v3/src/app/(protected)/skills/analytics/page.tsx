@@ -20,6 +20,35 @@ export default function SkillsAnalyticsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const downloadCsv = async (url: string, filename: string) => {
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+      if (!token) {
+        throw new Error("Missing access token");
+      }
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        throw new Error(`CSV export failed (${response.status})`);
+      }
+      const blob = await response.blob();
+      const href = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = href;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(href);
+    } catch (err) {
+      console.error(err);
+      setError("CSV Export fehlgeschlagen");
+    }
+  };
+
   useEffect(() => {
     let active = true;
     const load = async () => {
@@ -81,6 +110,22 @@ export default function SkillsAnalyticsPage() {
           <p className="text-sm text-slate-600 dark:text-slate-400">
             Aggregierte Performance- und Value-Signale der letzten {analytics?.summary.window_days || 30} Tage.
           </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void downloadCsv("/api/economy/skills/lifecycle-analytics.csv?window_days=30&limit=500", "skill_lifecycle_analytics.csv")}
+            className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+          >
+            Export Lifecycle CSV
+          </button>
+          <button
+            type="button"
+            onClick={() => void downloadCsv("/api/economy/skills/marketplace-ranking.csv?window_days=30&limit=100", "skill_marketplace_ranking.csv")}
+            className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+          >
+            Export Ranking CSV
+          </button>
         </div>
       </div>
 

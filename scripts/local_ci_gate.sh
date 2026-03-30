@@ -60,6 +60,7 @@ run_cmd() {
 
 case "$MODE" in
   backend)
+    run_cmd "Alembic doctor check" "./scripts/alembic_doctor.sh check" "$ROOT_DIR"
     run_cmd "Backend RC gate" "./scripts/run_rc_staging_gate.sh" "$ROOT_DIR"
     ;;
   backend-fast)
@@ -77,6 +78,7 @@ case "$MODE" in
     run_cmd "AXE build" "NEXT_PUBLIC_BRAIN_API_BASE=$AXE_CI_API_BASE npm run build" "$ROOT_DIR/frontend/axe_ui"
     ;;
   all)
+    run_cmd "Alembic doctor check" "./scripts/alembic_doctor.sh check" "$ROOT_DIR"
     run_cmd "Backend RC gate" "./scripts/run_rc_staging_gate.sh" "$ROOT_DIR"
     run_cmd "AXE lint" "NEXT_PUBLIC_BRAIN_API_BASE=$AXE_CI_API_BASE npm run lint" "$ROOT_DIR/frontend/axe_ui"
     run_cmd "AXE typecheck" "NEXT_PUBLIC_BRAIN_API_BASE=$AXE_CI_API_BASE npm run typecheck" "$ROOT_DIR/frontend/axe_ui"
