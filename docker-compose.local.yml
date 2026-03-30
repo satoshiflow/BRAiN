@@ -108,6 +108,28 @@ services:
     networks:
       - brain_local
 
+  controldeck:
+    build:
+      context: ./frontend/controldeck-v3
+      args:
+        NEXT_PUBLIC_BRAIN_API_BASE: http://backend:8000
+    container_name: controldeck-v3
+    restart: unless-stopped
+    ports:
+      - "3003:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_APP_ENV=local
+      - NEXT_PUBLIC_BRAIN_API_BASE=http://backend:8000
+      - NEXT_PUBLIC_AXE_UI_BASE=http://axe_ui:3000
+    depends_on:
+      - backend
+      - axe_ui
+    networks:
+      - brain_local
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
   openwebui:
     image: ghcr.io/open-webui/open-webui:main
     container_name: openwebui

@@ -1,0 +1,39 @@
+import { test, expect } from "@playwright/test";
+
+test.describe("ControlDeck v3 E2E", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem("access_token", "test-token");
+      localStorage.setItem("refresh_token", "test-refresh");
+    });
+  });
+
+  test("dashboard loads and displays health status", async ({ page }) => {
+    await page.goto("/dashboard");
+    await expect(page.locator("h1")).toContainText(/Dashboard|Health|ControlDeck/i, { timeout: 10000 });
+  });
+
+  test("navigation to healing page works", async ({ page }) => {
+    await page.goto("/dashboard");
+    await page.click('a[href="/healing"]');
+    await expect(page).toHaveURL(/healing/, { timeout: 10000 });
+  });
+
+  test("navigation to neural page works", async ({ page }) => {
+    await page.goto("/dashboard");
+    await page.click('a[href="/neural"]');
+    await expect(page).toHaveURL(/neural/, { timeout: 10000 });
+  });
+
+  test("navigation to skills page works", async ({ page }) => {
+    await page.goto("/dashboard");
+    await page.click('a[href="/skills"]');
+    await expect(page).toHaveURL(/skills/, { timeout: 10000 });
+  });
+
+  test("navigation to settings page works", async ({ page }) => {
+    await page.goto("/dashboard");
+    await page.click('a[href="/settings"]');
+    await expect(page).toHaveURL(/settings/, { timeout: 10000 });
+  });
+});
