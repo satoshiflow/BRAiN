@@ -1,7 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { logout } from "@/lib/auth";
+import { getAxeUIBase } from "@/lib/config";
+import { HelpHint } from "@/components/help/help-hint";
+import { getControlDeckHelpTopic } from "@/lib/help/topics";
 
 interface SystemConfig {
   autoRefreshInterval: number;
@@ -20,6 +25,7 @@ const defaultConfig: SystemConfig = {
 };
 
 export default function SettingsPage() {
+  const router = useRouter();
   const [theme, setTheme] = useState<"light" | "dark" | "system">("system");
   const [config, setConfig] = useState<SystemConfig>(defaultConfig);
   const [isSaving, setIsSaving] = useState(false);
@@ -80,8 +86,50 @@ export default function SettingsPage() {
     }
   };
 
+  const handleLogout = async () => {
+    try {
+      const token = localStorage.getItem("refresh_token");
+      await logout(token || undefined);
+    } catch {
+    } finally {
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("refresh_token");
+      localStorage.removeItem("user_email");
+      router.push("/login");
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-2xl">
+      <div className="flex items-center gap-2">
+        <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Einstellungen</h1>
+        {(() => {
+          const topic = getControlDeckHelpTopic("settings.appearance");
+          return topic ? <HelpHint topic={topic} /> : null;
+        })()}
+      </div>
+      <div>
+        <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">
+          Schnellaktionen
+        </h3>
+        <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-4 flex flex-wrap gap-3">
+          <button
+            onClick={handleLogout}
+            className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600"
+          >
+            Abmelden
+          </button>
+          <a
+            href={getAxeUIBase()}
+            target="_blank"
+            rel="noreferrer"
+            className="px-4 py-2 text-sm font-medium text-cyan-700 dark:text-cyan-300 bg-cyan-50 dark:bg-cyan-900/20 rounded-lg hover:bg-cyan-100 dark:hover:bg-cyan-900/30"
+          >
+            AXE UI oeffnen
+          </a>
+        </div>
+      </div>
+
       <div>
         <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">
           Erscheinungsbild

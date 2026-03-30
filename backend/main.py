@@ -154,6 +154,7 @@ from app.modules.deliberation_layer.router import router as deliberation_layer_r
 from app.modules.discovery_layer.router import router as discovery_layer_router
 from app.modules.economy_layer.router import router as economy_layer_router
 from app.modules.module_lifecycle.router import router as module_lifecycle_router
+from app.modules.knowledge_engine.router import router as knowledge_engine_router
 from app.modules.immune_orchestrator.router import router as immune_orchestrator_router
 from app.modules.recovery_policy_engine.router import router as recovery_policy_router
 from app.modules.genetic_integrity.router import router as genetic_integrity_router
@@ -341,6 +342,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 await seed_axe_chat_skill_contract(db)
         except Exception as e:
             logger.warning(f"⚠️ Could not seed AXE chat skill contract: {e}")
+
+    # Seed canonical help documents for AXE and ControlDeck surfaces
+    if _feature_enabled("ENABLE_KNOWLEDGE_HELP_SEED", "true"):
+        try:
+            from app.modules.knowledge_engine.help_docs_seed import seed_help_documents
+            from app.core.database import AsyncSessionLocal
+
+            async with AsyncSessionLocal() as db:
+                await seed_help_documents(db)
+        except Exception as e:
+            logger.warning(f"⚠️ Could not seed knowledge help docs: {e}")
 
     logger.info("✅ All systems operational")
 
@@ -540,6 +552,7 @@ def create_app() -> FastAPI:
     app.include_router(discovery_layer_router, tags=["discovery-layer"])
     app.include_router(economy_layer_router, tags=["economy-layer"])
     app.include_router(module_lifecycle_router, tags=["module-lifecycle"])
+    app.include_router(knowledge_engine_router, tags=["knowledge-engine"])
     app.include_router(health_monitor_router, tags=["health"])  # NEW: Health Monitor (Core)
     app.include_router(config_management_router, tags=["config"])  # NEW: Config Management (Core)
     app.include_router(audit_logging_router, tags=["audit"])  # NEW: Audit Logging (Core)

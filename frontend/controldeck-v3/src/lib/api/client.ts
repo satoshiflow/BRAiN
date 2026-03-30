@@ -1,5 +1,29 @@
 import { getApiBase } from "@/lib/config";
 
+function getStoredAccessToken(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return window.localStorage.getItem("access_token");
+}
+
+function hasAuthorizationHeader(headers?: HeadersInit): boolean {
+  if (!headers) {
+    return false;
+  }
+
+  if (headers instanceof Headers) {
+    return headers.has("Authorization");
+  }
+
+  if (Array.isArray(headers)) {
+    return headers.some(([key]) => key.toLowerCase() === "authorization");
+  }
+
+  return Object.keys(headers).some((key) => key.toLowerCase() === "authorization");
+}
+
 export class ApiError extends Error {
   status: number;
   body: string;
@@ -19,14 +43,19 @@ export async function apiRequest<T>(
 ): Promise<T> {
   const apiBase = getApiBase();
   const url = useProxy ? path : `${apiBase}${path}`;
+  const accessToken = getStoredAccessToken();
+
+  const headers = new Headers(init?.headers);
+  headers.set("Accept", "application/json");
+  headers.set("Content-Type", "application/json");
+
+  if (accessToken && !hasAuthorizationHeader(init?.headers)) {
+    headers.set("Authorization", `Bearer ${accessToken}`);
+  }
 
   const response = await fetch(url, {
     ...init,
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      ...(init?.headers || {}),
-    },
+    headers,
     cache: "no-store",
     credentials: "include",
   });

@@ -9,8 +9,10 @@ import {
   SheetContent,
 } from "@/components/ui/sheet";
 import { ApiHealthIndicator } from "@/components/ApiHealthIndicator";
+import { HelpHint } from "@/components/help/HelpHint";
 import { Tooltip } from "@/components/ui/tooltip";
 import { getApiBase, getControlDeckBase } from "@/lib/config";
+import { getAxeHelpTopic } from "@/lib/help/topics";
 
 const navItems = [
   { href: "/chat", label: "Chat", icon: "💬" },
@@ -62,13 +64,17 @@ function NavigationContent({
 }) {
   const apiBase = getApiBase();
   const controlDeckUrl = getControlDeckBase();
+  const navHelpTopic = getAxeHelpTopic("axe.navigation");
 
   return (
     <>
       {/* Header */}
       <div className="border-b border-cyan-500/15 px-6 py-5">
-        <div className="mb-2 inline-flex items-center rounded-full border border-amber-300/30 bg-amber-300/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.2em] text-amber-200">
-          AXE relay interface
+        <div className="mb-2 flex items-center gap-2">
+          <div className="inline-flex items-center rounded-full border border-amber-300/30 bg-amber-300/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.2em] text-amber-200">
+            AXE relay interface
+          </div>
+          {navHelpTopic ? <HelpHint topic={navHelpTopic} /> : null}
         </div>
         <h1 className="axe-surface-title text-xl font-bold text-white">BRAiN AXE</h1>
         <p className="mt-1 text-xs text-slate-400">Auxiliary Execution Engine / Mission Surface</p>

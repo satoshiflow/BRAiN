@@ -5,6 +5,7 @@ import { Camera, Loader2, Paperclip, Send, X } from "lucide-react";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
 import { AdvancedCameraCapture } from "@/components/chat/AdvancedCameraCapture";
 import { WorkerRunCard } from "@/components/chat/WorkerRunCard";
+import { HelpHint } from "@/components/help/HelpHint";
 import {
   appendAxeSessionMessage,
   getAxeWorkerRun,
@@ -26,6 +27,7 @@ import { useAuthSession } from "@/hooks/useAuthSession";
 import { useChatSessions } from "@/hooks/useChatSessions";
 import { pluginRegistry, initializePlugins, destroyPlugins, type PluginContext } from "../../src/plugins";
 import slashCommandsPlugin from "../../src/plugins/slashCommands";
+import { getAxeHelpTopic } from "@/lib/help/topics";
 
 interface Message {
   id: number;
@@ -594,6 +596,8 @@ function ChatPageContent() {
     await selectSession(sessionId);
   }, [activeSessionId, selectSession]);
 
+  const intentHelpTopic = getAxeHelpTopic("axe.chat.intent");
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex min-h-0 flex-1 gap-4">
@@ -626,7 +630,10 @@ function ChatPageContent() {
           </header>
 
           <div className="mb-6 hidden lg:block">
-            <p className="mb-2 text-[11px] uppercase tracking-[0.2em] text-cyan-300/70">Intent Surface</p>
+            <div className="mb-2 flex items-center gap-2">
+              <p className="text-[11px] uppercase tracking-[0.2em] text-cyan-300/70">Intent Surface</p>
+              {intentHelpTopic ? <HelpHint topic={intentHelpTopic} /> : null}
+            </div>
             <h1 className="axe-surface-title text-3xl font-bold text-white">AXE Cognitive Relay</h1>
             <p className="mt-2 max-w-2xl text-slate-400">
               Formulate operator intent. BRAiN coordinates execution across internal systems, external agents, and robotic handoffs.

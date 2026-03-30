@@ -73,11 +73,6 @@ function ModuleCard({ module }: { module: ModuleHealth }) {
   );
 }
 
-interface HealthStreamEvent {
-  type: "status_update" | "module_update" | "metrics_update";
-  data: HealthStatus;
-}
-
 export default function DashboardPage() {
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -113,9 +108,17 @@ export default function DashboardPage() {
 
         eventSource.onmessage = (event) => {
           try {
-            const parsed = JSON.parse(event.data) as HealthStreamEvent;
-            if (parsed.data) {
-              setHealth(parsed.data);
+            const parsed = JSON.parse(event.data) as Record<string, unknown>;
+
+            if (parsed && "overall" in parsed) {
+              setHealth(parsed as unknown as HealthStatus);
+              setLastUpdate(new Date());
+              return;
+            }
+
+            if (parsed && "overall_status" in parsed) {
+              const mapped = healthApi.mapStreamPayload(parsed as unknown as Parameters<typeof healthApi.mapStreamPayload>[0]);
+              setHealth(mapped);
               setLastUpdate(new Date());
             }
           } catch (parseErr) {

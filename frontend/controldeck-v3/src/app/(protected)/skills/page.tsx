@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { skillsApi, type Skill, type SkillRun } from "@/lib/api/skills";
 import { cn, formatRelativeTime, formatDuration } from "@/lib/utils";
+import { HelpHint } from "@/components/help/help-hint";
+import { getControlDeckHelpTopic } from "@/lib/help/topics";
 
 function SkillStatusBadge({ isEnabled }: { isEnabled: boolean }) {
   return (
@@ -27,6 +29,9 @@ function RunStatusBadge({ state }: { state: SkillRun["state"] }) {
     succeeded: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
     failed: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
     cancelled: "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400",
+    waiting_approval: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
+    cancel_requested: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+    timed_out: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
   };
 
   const labels: Record<SkillRun["state"], string> = {
@@ -36,6 +41,9 @@ function RunStatusBadge({ state }: { state: SkillRun["state"] }) {
     succeeded: "Erfolgreich",
     failed: "Fehlgeschlagen",
     cancelled: "Abgebrochen",
+    waiting_approval: "Wartet auf Freigabe",
+    cancel_requested: "Abbruch angefragt",
+    timed_out: "Zeitlimit",
   };
 
   return (
@@ -388,6 +396,15 @@ export default function SkillsPage() {
 
   return (
     <div className="space-y-6">
+
+      <div className="flex items-center gap-2">
+        <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Skills</h1>
+        {(() => {
+          const topic = getControlDeckHelpTopic("skills.catalog");
+          return topic ? <HelpHint topic={topic} /> : null;
+        })()}
+      </div>
+
       {error && (
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
           <p className="text-sm text-red-600 dark:text-red-400">{error}</p>

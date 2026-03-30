@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { getApiHealth } from "@/lib/api";
 import { getApiBase } from "@/lib/config";
+import { HelpHint } from "@/components/help/HelpHint";
 import { Tooltip } from "@/components/ui/tooltip";
+import { getAxeHelpTopic } from "@/lib/help/topics";
 
 type ApiHealthState = {
   status: "loading" | "ok" | "error";
@@ -11,6 +13,7 @@ type ApiHealthState = {
 };
 
 export function ApiHealthIndicator() {
+  const helpTopic = getAxeHelpTopic("axe.health.indicator");
   const [apiHealth, setApiHealth] = useState<ApiHealthState>({
     status: "loading",
     error: null,
@@ -73,14 +76,17 @@ export function ApiHealthIndicator() {
   );
 
   return (
-    <Tooltip content={tooltipContent}>
-      <button
-        type="button"
-        className="axe-ring mt-3 inline-flex items-center gap-2 rounded-full border border-cyan-400/40 bg-slate-900/80 px-3 py-1"
-      >
-        <span className={`h-2 w-2 rounded-full ${indicatorColorClass} animate-pulse`} />
-        <span className="text-xs text-slate-300">{indicatorLabel}</span>
-      </button>
-    </Tooltip>
+    <div className="mt-3 flex items-center gap-2">
+      <Tooltip content={tooltipContent}>
+        <button
+          type="button"
+          className="axe-ring inline-flex items-center gap-2 rounded-full border border-cyan-400/40 bg-slate-900/80 px-3 py-1"
+        >
+          <span className={`h-2 w-2 rounded-full ${indicatorColorClass} animate-pulse`} />
+          <span className="text-xs text-slate-300">{indicatorLabel}</span>
+        </button>
+      </Tooltip>
+      {helpTopic ? <HelpHint topic={helpTopic} /> : null}
+    </div>
   );
 }

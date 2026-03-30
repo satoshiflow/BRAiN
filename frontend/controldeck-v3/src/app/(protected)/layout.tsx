@@ -91,6 +91,27 @@ const navItems: NavItem[] = [
     ),
   },
   {
+    href: "/knowledge",
+    label: "Knowledge",
+    icon: (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M12 7v14" />
+        <path d="M3 18a2 2 0 0 1 2-2h13a1 1 0 0 0 1-1V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2z" />
+        <path d="M3 6a2 2 0 0 1 2-2h13" />
+      </svg>
+    ),
+  },
+  {
     href: "/skills",
     label: "Skills",
     icon: (
@@ -157,6 +178,43 @@ export default function ProtectedLayout({
   const pathname = usePathname();
   const [isLoading, setIsLoading] = useState(true);
   const [userEmail, setUserEmail] = useState<string>("");
+
+  useEffect(() => {
+    const applyTheme = () => {
+      const savedTheme = localStorage.getItem("controldeck-theme") as
+        | "light"
+        | "dark"
+        | "system"
+        | null;
+      const theme = savedTheme || "system";
+      const root = document.documentElement;
+      const useDark =
+        theme === "dark" ||
+        (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+
+      if (useDark) {
+        root.classList.add("dark");
+      } else {
+        root.classList.remove("dark");
+      }
+    };
+
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === "controldeck-theme") {
+        applyTheme();
+      }
+    };
+
+    applyTheme();
+    mediaQuery.addEventListener("change", applyTheme);
+    window.addEventListener("storage", onStorage);
+
+    return () => {
+      mediaQuery.removeEventListener("change", applyTheme);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
 
   useEffect(() => {
     const checkAuth = async () => {
