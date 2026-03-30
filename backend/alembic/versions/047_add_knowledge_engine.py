@@ -35,6 +35,16 @@ def upgrade() -> None:
     )
 
     op.execute(
+        "ALTER TABLE IF EXISTS knowledge_items ADD COLUMN IF NOT EXISTS visibility VARCHAR(24) NOT NULL DEFAULT 'tenant'"
+    )
+    op.execute(
+        "ALTER TABLE IF EXISTS knowledge_items ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb"
+    )
+    op.execute(
+        "ALTER TABLE IF EXISTS knowledge_items ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
+    )
+
+    op.execute(
         """
         CREATE TABLE IF NOT EXISTS knowledge_chunks (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

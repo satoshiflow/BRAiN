@@ -81,8 +81,8 @@ def upgrade() -> None:
     op.execute("CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks (created_at);")
     
     # Create trigger for updated_at
+    op.execute("DROP TRIGGER IF EXISTS update_tasks_updated_at ON tasks;")
     op.execute("""
-        DROP TRIGGER IF EXISTS update_tasks_updated_at ON tasks;
         CREATE TRIGGER update_tasks_updated_at
             BEFORE UPDATE ON tasks
             FOR EACH ROW

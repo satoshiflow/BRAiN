@@ -286,3 +286,78 @@ async def test_create_run_preserves_upstream_decision_snapshot(monkeypatch: pyte
     assert upstream["purpose_evaluation_id"] == "pe-1"
     assert upstream["routing_decision_id"] == "rd-1"
     assert model.policy_snapshot["upstream_decision"]["governance_snapshot"]["control_mode"] == "brain_first"
+
+
+@pytest.mark.asyncio
+async def test_evaluate_policy_allows_guarded_fallback_when_unconfigured(monkeypatch: pytest.MonkeyPatch) -> None:
+    service = SkillEngineService()
+
+    class FakePolicyEngine:
+        async def evaluate(self, context, request_id=None):
+            _ = (context, request_id)
+            return SimpleNamespace(
+                allowed=False,
+                effect=SimpleNamespace(value="deny"),
+                matched_rule=None,
+                matched_policy=None,
+                reason="No matching policies configured - default deny",
+                requires_audit=False,
+            )
+
+    skill_engine_service_module = importlib.import_module("app.modules.skill_engine.service")
+    monkeypatch.setattr(skill_engine_service_module, "get_policy_engine", lambda db_session: FakePolicyEngine())
+
+    payload = SkillRunCreate(
+        skill_key="demo.skill",
+        input_payload={"x": 1},
+        idempotency_key="idem-policy-fallback-1",
+    )
+    skill_definition = SimpleNamespace(
+        skill_key="demo.skill",
+        version=1,
+        risk_tier="medium",
+        fallback_policy="allowed",
+    )
+
+    decision = await service._evaluate_policy(db=None, principal=build_principal(), skill_definition=skill_definition, payload=payload)
+
+    assert decision["allowed"] is True
+    assert decision["effect"] == "audit"
+    assert decision["requires_audit"] is True
+    assert decision["policy_defaulted"] is True
+    assert decision["fallback_policy"] == "allowed"
+
+
+@pytest.mark.asyncio
+async def test_evaluate_policy_keeps_deny_when_fallback_forbidden(monkeypatch: pytest.MonkeyPatch) -> None:
+    service = SkillEngineService()
+
+    class FakePolicyEngine:
+        async def evaluate(self, context, request_id=None):
+            _ = (context, request_id)
+            return SimpleNamespace(
+                allowed=False,
+                effect=SimpleNamespace(value="deny"),
+                matched_rule=None,
+                matched_policy=None,
+                reason="No matching policies configured - default deny",
+                requires_audit=False,
+            )
+
+    skill_engine_service_module = importlib.import_module("app.modules.skill_engine.service")
+    monkeypatch.setattr(skill_engine_service_module, "get_policy_engine", lambda db_session: FakePolicyEngine())
+
+    payload = SkillRunCreate(
+        skill_key="demo.skill",
+        input_payload={"x": 1},
+        idempotency_key="idem-policy-fallback-2",
+    )
+    skill_definition = SimpleNamespace(
+        skill_key="demo.skill",
+        version=1,
+        risk_tier="medium",
+        fallback_policy="forbidden",
+    )
+
+    with pytest.raises(PermissionError, match="No matching policies configured"):
+        await service._evaluate_policy(db=None, principal=build_principal(), skill_definition=skill_definition, payload=payload)

@@ -39,6 +39,8 @@ AXE_STATE_MAP = {
 
 
 class SkillEngineService:
+    _NO_POLICY_REASON_FRAGMENT = "No matching policies configured"
+
     TERMINAL_STATES = {
         SkillRunState.SUCCEEDED.value,
         SkillRunState.FAILED.value,
@@ -412,6 +414,30 @@ class SkillEngineService:
             ),
             request_id=payload.idempotency_key,
         )
+        no_policy_match = (
+            not result.allowed
+            and result.reason
+            and self._NO_POLICY_REASON_FRAGMENT in result.reason
+        )
+        fallback_policy = str(getattr(skill_definition, "fallback_policy", "allowed") or "allowed").lower()
+        if no_policy_match and fallback_policy != "forbidden":
+            logger.warning(
+                "Policy engine returned unconfigured default deny for {} v{}; "
+                "continuing with guarded audit fallback (fallback_policy={})",
+                skill_definition.skill_key,
+                skill_definition.version,
+                fallback_policy,
+            )
+            return {
+                "allowed": True,
+                "effect": "audit",
+                "matched_rule": None,
+                "matched_policy": None,
+                "reason": "No matching policies configured - guarded fallback allow",
+                "requires_audit": True,
+                "policy_defaulted": True,
+                "fallback_policy": fallback_policy,
+            }
         if not result.allowed:
             raise PermissionError(result.reason)
         return {
@@ -421,6 +447,8 @@ class SkillEngineService:
             "matched_policy": result.matched_policy,
             "reason": result.reason,
             "requires_audit": result.requires_audit,
+            "policy_defaulted": False,
+            "fallback_policy": fallback_policy,
         }
 
     async def create_run(self, db: AsyncSession, payload: SkillRunCreate, principal: Principal) -> SkillRunModel:

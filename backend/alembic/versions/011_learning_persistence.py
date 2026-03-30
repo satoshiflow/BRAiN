@@ -136,16 +136,16 @@ def upgrade() -> None:
     """)
     
     # Add triggers for updated_at
+    op.execute("DROP TRIGGER IF EXISTS update_strategies_updated_at ON learning_strategies;")
     op.execute("""
-        DROP TRIGGER IF EXISTS update_strategies_updated_at ON learning_strategies;
         CREATE TRIGGER update_strategies_updated_at
             BEFORE UPDATE ON learning_strategies
             FOR EACH ROW
             EXECUTE FUNCTION update_updated_at_column();
     """)
-    
+
+    op.execute("DROP TRIGGER IF EXISTS update_experiments_updated_at ON ab_experiments;")
     op.execute("""
-        DROP TRIGGER IF EXISTS update_experiments_updated_at ON ab_experiments;
         CREATE TRIGGER update_experiments_updated_at
             BEFORE UPDATE ON ab_experiments
             FOR EACH ROW

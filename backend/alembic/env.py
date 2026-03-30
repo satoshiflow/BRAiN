@@ -4,6 +4,7 @@ Alembic Environment Configuration
 import asyncio
 from logging.config import fileConfig
 
+import sqlalchemy as sa
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -81,6 +82,23 @@ def run_migrations_online() -> None:
 
 
 def do_run_migrations(connection) -> None:
+    dialect_name = connection.dialect.name
+    if dialect_name == "postgresql":
+        connection.execute(
+            sa.text(
+                """
+                CREATE TABLE IF NOT EXISTS alembic_version (
+                    version_num VARCHAR(128) NOT NULL PRIMARY KEY
+                )
+                """
+            )
+        )
+        connection.execute(
+            sa.text(
+                "ALTER TABLE alembic_version ALTER COLUMN version_num TYPE VARCHAR(128)"
+            )
+        )
+
     context.configure(connection=connection, target_metadata=target_metadata)
     with context.begin_transaction():
         context.run_migrations()
