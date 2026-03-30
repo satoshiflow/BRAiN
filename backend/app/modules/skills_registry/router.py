@@ -15,6 +15,8 @@ from .schemas import (
     SkillDefinitionTransitionResponse,
     SkillDefinitionUpdate,
     SkillDefinitionValueResponse,
+    SkillValueHistoryItem,
+    SkillValueHistoryResponse,
     SkillSortBy,
     SkillRegistryResolveResponse,
     VersionSelector,
@@ -100,6 +102,27 @@ async def get_skill_definition_value_score(
         complexity_level=str(item.complexity_level or "medium"),
         risk_tier=item.risk_tier,
         breakdown=dict(value_profile["breakdown"]),
+    )
+
+
+@router.get("/skill-definitions/{skill_key}/value-history", response_model=SkillValueHistoryResponse)
+async def get_skill_definition_value_history(
+    skill_key: str,
+    limit: int = Query(default=30, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+):
+    service = get_skill_registry_service()
+    items = await service.get_value_history(
+        db,
+        skill_key=skill_key,
+        tenant_id=principal.tenant_id,
+        limit=limit,
+    )
+    return SkillValueHistoryResponse(
+        skill_key=skill_key,
+        items=[SkillValueHistoryItem.model_validate(item) for item in items],
+        total=len(items),
     )
 
 

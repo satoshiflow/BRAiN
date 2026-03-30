@@ -167,3 +167,42 @@ def test_skill_value_score_endpoint_uses_registry_service(client: TestClient, mo
     assert payload["skill_key"] == "demo.skill"
     assert payload["value_score"] == 0.7
     assert payload["source"] == "explicit"
+
+
+def test_skill_value_history_endpoint_returns_items(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    principal = build_principal(roles=["admin"], scopes=["read", "write"], tenant_id="tenant-a")
+    route_module = __import__("app.modules.skills_registry.router", fromlist=["router"])
+
+    class FakeService:
+        async def get_value_history(self, db, *, skill_key, tenant_id, limit):
+            _ = db
+            assert skill_key == "demo.skill"
+            assert tenant_id == "tenant-a"
+            assert limit == 20
+            return [
+                {
+                    "run_id": "run-1",
+                    "skill_version": 3,
+                    "state": "succeeded",
+                    "created_at": "2026-03-30T12:00:00Z",
+                    "overall_score": 1.0,
+                    "value_score": 0.74,
+                    "quality_impact": 0.7,
+                    "effort_saved_hours": 14.2,
+                    "source": "skill_run_feedback",
+                }
+            ]
+
+    monkeypatch.setattr(route_module, "get_skill_registry_service", lambda: FakeService())
+    client.app.dependency_overrides[get_current_principal] = lambda: principal
+
+    with override_auth_principal(client, principal):
+        response = client.get("/api/skill-definitions/demo.skill/value-history?limit=20")
+
+    client.app.dependency_overrides.pop(get_current_principal, None)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["skill_key"] == "demo.skill"
+    assert payload["total"] == 1
+    assert payload["items"][0]["value_score"] == 0.74

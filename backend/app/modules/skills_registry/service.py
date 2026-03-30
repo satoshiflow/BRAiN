@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth_deps import Principal
 from app.core.control_plane_events import record_control_plane_event
 from app.modules.capabilities_registry.models import CapabilityDefinitionModel
+from app.modules.skill_engine.models import SkillRunModel
 
 from .models import SkillDefinitionModel
 from .schemas import CapabilityRef, OwnerScope, SkillDefinitionCreate, SkillDefinitionStatus, SkillDefinitionUpdate, SkillSortBy, VersionSelector
@@ -481,6 +482,42 @@ class SkillRegistryService:
             if item.owner_scope == picked.owner_scope and item.tenant_id == picked.tenant_id and item.version == picked.version:
                 return item
         raise ValueError(f"Unable to resolve definition for '{skill_key}'")
+
+    async def get_value_history(
+        self,
+        db: AsyncSession,
+        *,
+        skill_key: str,
+        tenant_id: str | None,
+        limit: int = 30,
+    ) -> list[dict[str, Any]]:
+        query = select(SkillRunModel).where(SkillRunModel.skill_key == skill_key)
+        if tenant_id:
+            query = query.where(SkillRunModel.tenant_id == tenant_id)
+        query = query.order_by(desc(SkillRunModel.state_changed_at)).limit(limit)
+
+        result = await db.execute(query)
+        runs = list(result.scalars().all())
+
+        history: list[dict[str, Any]] = []
+        for run in runs:
+            evaluation_summary = dict(getattr(run, "evaluation_summary", {}) or {})
+            economy_feedback = dict(evaluation_summary.get("economy_feedback") or {})
+            history.append(
+                {
+                    "run_id": str(run.id),
+                    "skill_version": int(run.skill_version),
+                    "state": str(run.state),
+                    "created_at": run.created_at,
+                    "overall_score": evaluation_summary.get("overall_score"),
+                    "value_score": economy_feedback.get("value_score"),
+                    "quality_impact": economy_feedback.get("quality_impact"),
+                    "effort_saved_hours": economy_feedback.get("effort_saved_hours"),
+                    "source": economy_feedback.get("source"),
+                }
+            )
+
+        return history
 
     def compute_value_profile(self, definition: SkillDefinitionModel) -> dict[str, Any]:
         from app.modules.economy_layer.service import get_economy_layer_service

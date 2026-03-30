@@ -114,6 +114,24 @@ interface SkillValueScoreResponse {
   breakdown: Record<string, unknown>;
 }
 
+interface SkillValueHistoryItem {
+  run_id: string;
+  skill_version: number;
+  state: string;
+  created_at: string;
+  overall_score?: number | null;
+  value_score?: number | null;
+  quality_impact?: number | null;
+  effort_saved_hours?: number | null;
+  source?: string | null;
+}
+
+interface SkillValueHistoryResponse {
+  skill_key: string;
+  items: SkillValueHistoryItem[];
+  total: number;
+}
+
 function mapSkill(def: SkillDefinitionResponse): Skill {
   return {
     key: def.skill_key,
@@ -189,6 +207,11 @@ export const skillsApi = {
       `/api/skill-definitions/${encodeURIComponent(skillKey)}/value-score${suffix ? `?${suffix}` : ""}`
     );
   },
+
+  getValueHistory: (skillKey: string, limit = 30) =>
+    fetchJson<SkillValueHistoryResponse>(
+      `/api/skill-definitions/${encodeURIComponent(skillKey)}/value-history?limit=${limit}`
+    ),
 
   getRun: (runId: string) => fetchJson<SkillRunResponse>(`/api/skill-runs/${runId}`).then(mapRun),
 

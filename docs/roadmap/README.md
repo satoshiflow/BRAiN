@@ -12,6 +12,7 @@ Frontend runbooks:
 - `docs/frontend/AXE_LOCAL_CHAT_PIPELINE_RUNBOOK.md`
 - `docs/frontend/AXE_UI_DEPLOY_ENV_RUNBOOK.md`
 - `docs/frontend/AXE_CONTROLDECK_HELP_DOCS_SEED_RUNBOOK.md`
+- `docs/frontend/SKILL_VALUE_LOCAL_DB_PATCH_RUNBOOK.md`
 
 Active companion specs:
 - `docs/specs/observer_core_mvp.md`

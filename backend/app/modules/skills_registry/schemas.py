@@ -195,3 +195,21 @@ class SkillDefinitionValueResponse(BaseModel):
     complexity_level: str
     risk_tier: str
     breakdown: dict[str, Any] = Field(default_factory=dict)
+
+
+class SkillValueHistoryItem(BaseModel):
+    run_id: str
+    skill_version: int
+    state: str
+    created_at: datetime
+    overall_score: float | None = None
+    value_score: float | None = None
+    quality_impact: float | None = None
+    effort_saved_hours: float | None = None
+    source: str | None = None
+
+
+class SkillValueHistoryResponse(BaseModel):
+    skill_key: str
+    items: list[SkillValueHistoryItem] = Field(default_factory=list)
+    total: int

@@ -17,6 +17,18 @@ type ValueScoreState = {
   breakdown?: Record<string, unknown>;
 };
 
+type ValueHistoryState = {
+  run_id: string;
+  skill_version: number;
+  state: string;
+  created_at: string;
+  overall_score?: number | null;
+  value_score?: number | null;
+  quality_impact?: number | null;
+  effort_saved_hours?: number | null;
+  source?: string | null;
+};
+
 function scoreToPercent(value: number): number {
   return Math.round(Math.max(0, Math.min(1, value || 0)) * 100);
 }
@@ -45,6 +57,7 @@ export default function SkillDetailPage() {
   const [skill, setSkill] = useState<Skill | null>(null);
   const [versions, setVersions] = useState<Skill[]>([]);
   const [runs, setRuns] = useState<SkillRun[]>([]);
+  const [valueHistory, setValueHistory] = useState<ValueHistoryState[]>([]);
   const [valueScore, setValueScore] = useState<ValueScoreState | null>(null);
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
@@ -56,9 +69,10 @@ export default function SkillDetailPage() {
 
     const load = async () => {
       try {
-        const [skills, recentRuns] = await Promise.all([
+        const [skills, recentRuns, history] = await Promise.all([
           skillsApi.list("updated_at", skillKey),
           skillsApi.getRuns(25, undefined, skillKey),
+          skillsApi.getValueHistory(skillKey, 40),
         ]);
 
         if (!active) {
@@ -71,6 +85,7 @@ export default function SkillDetailPage() {
         setSkill(initial);
         setSelectedVersion(initial?.version ?? null);
         setRuns(recentRuns);
+        setValueHistory(history.items || []);
         setError(null);
       } catch (err) {
         console.error("Failed to load skill detail", err);
@@ -125,6 +140,13 @@ export default function SkillDetailPage() {
     }
     return runs.filter((run) => run.skillVersion === selectedVersion);
   }, [runs, selectedVersion]);
+
+  const filteredHistory = useMemo(() => {
+    if (!selectedVersion) {
+      return valueHistory;
+    }
+    return valueHistory.filter((item) => item.skill_version === selectedVersion);
+  }, [valueHistory, selectedVersion]);
 
   const breakdown = valueScore?.breakdown || {};
   const effortComponent = Number(breakdown["effort_component"] || 0);
@@ -274,6 +296,42 @@ export default function SkillDetailPage() {
                     )}
                   </div>
                 )}
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
+        <div className="border-b border-slate-200 px-4 py-3 dark:border-slate-700">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">Value Trend</h2>
+        </div>
+        <div className="divide-y divide-slate-200 dark:divide-slate-700">
+          {filteredHistory.length === 0 ? (
+            <p className="p-4 text-sm text-slate-500 dark:text-slate-400">Noch keine Value-History vorhanden.</p>
+          ) : (
+            filteredHistory.slice(0, 12).map((item) => (
+              <div key={`${item.run_id}-${item.created_at}`} className="grid grid-cols-2 gap-3 px-4 py-3 text-xs sm:grid-cols-5">
+                <div>
+                  <p className="text-slate-500 dark:text-slate-400">Zeitpunkt</p>
+                  <p className="text-slate-800 dark:text-slate-100">{formatRelativeTime(item.created_at)}</p>
+                </div>
+                <div>
+                  <p className="text-slate-500 dark:text-slate-400">State</p>
+                  <p className="capitalize text-slate-800 dark:text-slate-100">{item.state}</p>
+                </div>
+                <div>
+                  <p className="text-slate-500 dark:text-slate-400">Value Score</p>
+                  <p className="text-slate-800 dark:text-slate-100">{item.value_score != null ? `${scoreToPercent(item.value_score)}%` : "-"}</p>
+                </div>
+                <div>
+                  <p className="text-slate-500 dark:text-slate-400">Overall</p>
+                  <p className="text-slate-800 dark:text-slate-100">{item.overall_score != null ? `${scoreToPercent(item.overall_score)}%` : "-"}</p>
+                </div>
+                <div>
+                  <p className="text-slate-500 dark:text-slate-400">Effort</p>
+                  <p className="text-slate-800 dark:text-slate-100">{item.effort_saved_hours != null ? `${item.effort_saved_hours.toFixed(1)}h` : "-"}</p>
+                </div>
               </div>
             ))
           )}
