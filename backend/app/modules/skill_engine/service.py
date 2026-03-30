@@ -329,6 +329,23 @@ class SkillEngineService:
         except Exception as exc:
             logger.warning("SkillRun learning ingestion failed for {}: {}", run_id, exc)
 
+    async def _ingest_economy_feedback(self, db: AsyncSession, run: SkillRunModel, evaluation) -> None:
+        try:
+            from app.modules.economy_layer.service import get_economy_layer_service
+
+            feedback = await get_economy_layer_service().ingest_skill_run_feedback(
+                db,
+                run,
+                evaluation,
+            )
+            if feedback is not None:
+                run.evaluation_summary = {
+                    **(run.evaluation_summary or {}),
+                    "economy_feedback": feedback,
+                }
+        except Exception as exc:
+            logger.warning("SkillRun economy feedback ingestion failed for {}: {}", run.id, exc)
+
     async def list_runs(self, db: AsyncSession, tenant_id: str | None, skill_key: str | None = None, state: str | None = None) -> list[SkillRunModel]:
         query = select(SkillRunModel)
         if tenant_id:
@@ -608,6 +625,7 @@ class SkillEngineService:
                 await self._transition_run(db, run, SkillRunState.FAILED, principal, reason=run.failure_code)
                 evaluation = await self.evaluator_service.create_for_run(db, run)
                 run.evaluation_summary = self.project_evaluation_summary(evaluation)
+                await self._ingest_economy_feedback(db, run, evaluation)
                 await db.commit()
                 await db.refresh(run)
                 await self._ingest_learning_artifacts(db, run.id, principal)
@@ -623,6 +641,7 @@ class SkillEngineService:
         await self._transition_run(db, run, SkillRunState.SUCCEEDED, principal)
         evaluation = await self.evaluator_service.create_for_run(db, run)
         run.evaluation_summary = self.project_evaluation_summary(evaluation)
+        await self._ingest_economy_feedback(db, run, evaluation)
         await db.commit()
         await db.refresh(run)
         await self._ingest_learning_artifacts(db, run.id, principal)

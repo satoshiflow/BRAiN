@@ -56,6 +56,12 @@ class VersionSelector(str, Enum):
     MIN = "min"
 
 
+class SkillSortBy(str, Enum):
+    SKILL_KEY = "skill_key"
+    UPDATED_AT = "updated_at"
+    VALUE_SCORE = "value_score"
+
+
 class CapabilityRef(BaseModel):
     capability_key: str = Field(..., min_length=1, max_length=120)
     version_selector: VersionSelector = Field(default=VersionSelector.ACTIVE)
@@ -86,6 +92,10 @@ class SkillDefinitionCreate(BaseModel):
     risk_tier: RiskTier = Field(default=RiskTier.MEDIUM)
     policy_pack_ref: str = Field(default="default", min_length=1, max_length=120)
     trust_tier_min: TrustTier = Field(default=TrustTier.INTERNAL)
+    value_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    effort_saved_hours: float = Field(default=0.0, ge=0.0)
+    complexity_level: str = Field(default="medium", min_length=1, max_length=32)
+    quality_impact: float = Field(default=0.0, ge=0.0, le=1.0)
     builder_role: str = Field(default="manual", min_length=1, max_length=64)
     definition_artifact_refs: list[dict[str, Any]] = Field(default_factory=list)
     example_artifact_refs: list[dict[str, Any]] = Field(default_factory=list)
@@ -105,6 +115,10 @@ class SkillDefinitionUpdate(BaseModel):
     risk_tier: RiskTier | None = None
     policy_pack_ref: str | None = Field(default=None, min_length=1, max_length=120)
     trust_tier_min: TrustTier | None = None
+    value_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    effort_saved_hours: float | None = Field(default=None, ge=0.0)
+    complexity_level: str | None = Field(default=None, min_length=1, max_length=32)
+    quality_impact: float | None = Field(default=None, ge=0.0, le=1.0)
     definition_artifact_refs: list[dict[str, Any]] | None = None
     example_artifact_refs: list[dict[str, Any]] | None = None
     builder_artifact_refs: list[dict[str, Any]] | None = None
@@ -129,6 +143,10 @@ class SkillDefinitionResponse(BaseModel):
     risk_tier: RiskTier
     policy_pack_ref: str
     trust_tier_min: TrustTier
+    value_score: float
+    effort_saved_hours: float
+    complexity_level: str
+    quality_impact: float
     builder_role: str
     definition_artifact_refs: list[dict[str, Any]]
     example_artifact_refs: list[dict[str, Any]]
@@ -165,3 +183,15 @@ class SkillDefinitionTransitionResponse(BaseModel):
     version: int
     previous_status: SkillDefinitionStatus
     status: SkillDefinitionStatus
+
+
+class SkillDefinitionValueResponse(BaseModel):
+    skill_key: str
+    version: int
+    value_score: float
+    source: str
+    effort_saved_hours: float
+    quality_impact: float
+    complexity_level: str
+    risk_tier: str
+    breakdown: dict[str, Any] = Field(default_factory=dict)

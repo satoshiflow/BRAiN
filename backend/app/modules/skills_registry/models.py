@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import Column, DateTime, Index, Integer, String, Text
+from sqlalchemy import Column, DateTime, Float, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import declarative_base
 
@@ -39,6 +39,10 @@ class SkillDefinitionModel(Base):
     risk_tier = Column(String(32), nullable=False, default="medium")
     policy_pack_ref = Column(String(120), nullable=False, default="default")
     trust_tier_min = Column(String(32), nullable=False, default="internal")
+    value_score = Column(Float, nullable=False, default=0.0)
+    effort_saved_hours = Column(Float, nullable=False, default=0.0)
+    complexity_level = Column(String(32), nullable=False, default="medium")
+    quality_impact = Column(Float, nullable=False, default=0.0)
     builder_role = Column(String(64), nullable=False, default="manual")
     definition_artifact_refs = Column(JSONB, nullable=False, default=list)
     example_artifact_refs = Column(JSONB, nullable=False, default=list)

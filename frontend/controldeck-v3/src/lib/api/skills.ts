@@ -8,7 +8,13 @@ export interface Skill {
   version: number;
   parameters: SkillParameter[];
   isEnabled: boolean;
+  valueScore: number;
+  effortSavedHours: number;
+  qualityImpact: number;
+  complexityLevel: string;
 }
+
+export type SkillSortBy = "skill_key" | "updated_at" | "value_score";
 
 export interface SkillParameter {
   name: string;
@@ -62,6 +68,10 @@ interface SkillDefinitionResponse {
   purpose: string;
   required_capabilities: Array<{ capability_key: string }>;
   risk_tier: string;
+  value_score: number;
+  effort_saved_hours: number;
+  quality_impact: number;
+  complexity_level: string;
 }
 
 interface SkillDefinitionListResponse {
@@ -92,6 +102,18 @@ interface SkillRunExecutionReport {
   skill_run: SkillRunResponse;
 }
 
+interface SkillValueScoreResponse {
+  skill_key: string;
+  version: number;
+  value_score: number;
+  source: string;
+  effort_saved_hours: number;
+  quality_impact: number;
+  complexity_level: string;
+  risk_tier: string;
+  breakdown: Record<string, unknown>;
+}
+
 function mapSkill(def: SkillDefinitionResponse): Skill {
   return {
     key: def.skill_key,
@@ -105,6 +127,10 @@ function mapSkill(def: SkillDefinitionResponse): Skill {
       required: true,
     })),
     isEnabled: def.status === "active" || def.status === "deprecated",
+    valueScore: def.value_score || 0,
+    effortSavedHours: def.effort_saved_hours || 0,
+    qualityImpact: def.quality_impact || 0,
+    complexityLevel: def.complexity_level || "medium",
   };
 }
 
@@ -130,18 +156,37 @@ function buildIdempotencyKey(skillKey: string): string {
 }
 
 export const skillsApi = {
-  list: () =>
-    fetchJson<SkillDefinitionListResponse>("/api/skill-definitions").then((res) =>
+  list: (sortBy: SkillSortBy = "value_score", skillKey?: string) => {
+    const params = new URLSearchParams({ sort_by: sortBy });
+    if (skillKey) {
+      params.set("skill_key", skillKey);
+    }
+    return fetchJson<SkillDefinitionListResponse>(`/api/skill-definitions?${params.toString()}`).then((res) =>
       res.items.map(mapSkill)
-    ),
+    );
+  },
 
-  getRuns: (limit = 50, state?: SkillRunState) => {
+  getRuns: (limit = 50, state?: SkillRunState, skillKey?: string) => {
     const params = new URLSearchParams({ limit: String(limit) });
     if (state) {
       params.append("state", state);
     }
+    if (skillKey) {
+      params.append("skill_key", skillKey);
+    }
     return fetchJson<SkillRunListResponse>(`/api/skill-runs?${params}`).then((res) =>
       res.items.map(mapRun)
+    );
+  },
+
+  getValueScore: (skillKey: string, version?: number) => {
+    const params = new URLSearchParams();
+    if (version) {
+      params.set("version", String(version));
+    }
+    const suffix = params.toString();
+    return fetchJson<SkillValueScoreResponse>(
+      `/api/skill-definitions/${encodeURIComponent(skillKey)}/value-score${suffix ? `?${suffix}` : ""}`
     );
   },
 

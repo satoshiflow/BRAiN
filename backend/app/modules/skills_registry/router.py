@@ -14,6 +14,8 @@ from .schemas import (
     SkillDefinitionStatus,
     SkillDefinitionTransitionResponse,
     SkillDefinitionUpdate,
+    SkillDefinitionValueResponse,
+    SkillSortBy,
     SkillRegistryResolveResponse,
     VersionSelector,
 )
@@ -36,6 +38,7 @@ def _transition_response(item: SkillDefinitionResponse, previous_status: SkillDe
 async def list_skill_definitions(
     skill_key: str | None = Query(default=None),
     status_filter: SkillDefinitionStatus | None = Query(default=None, alias="status"),
+    sort_by: SkillSortBy = Query(default=SkillSortBy.SKILL_KEY),
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ):
@@ -46,8 +49,58 @@ async def list_skill_definitions(
         include_system=True,
         skill_key=skill_key,
         status=status_filter.value if status_filter else None,
+        sort_by=sort_by,
     )
     return SkillDefinitionListResponse(items=[SkillDefinitionResponse.model_validate(item) for item in items], total=len(items))
+
+
+@router.get("/skill-definitions/{skill_key}/value-score", response_model=SkillDefinitionValueResponse)
+async def get_skill_definition_value_score(
+    skill_key: str,
+    version: int | None = Query(default=None, ge=1),
+    selector: VersionSelector = Query(default=VersionSelector.ACTIVE),
+    version_value: int | None = Query(default=None, ge=1),
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+):
+    service = get_skill_registry_service()
+    try:
+        if version is not None:
+            item = await service.get_definition(
+                db,
+                skill_key,
+                version,
+                principal.tenant_id,
+                include_system=True,
+            )
+            if item is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Skill definition '{skill_key}' version {version} not found",
+                )
+        else:
+            item = await service.resolve_definition(
+                db,
+                skill_key,
+                principal.tenant_id,
+                selector,
+                version_value,
+            )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    value_profile = service.compute_value_profile(item)
+    return SkillDefinitionValueResponse(
+        skill_key=item.skill_key,
+        version=item.version,
+        value_score=float(value_profile["value_score"]),
+        source=str(value_profile["source"]),
+        effort_saved_hours=float(item.effort_saved_hours or 0.0),
+        quality_impact=float(item.quality_impact or 0.0),
+        complexity_level=str(item.complexity_level or "medium"),
+        risk_tier=item.risk_tier,
+        breakdown=dict(value_profile["breakdown"]),
+    )
 
 
 @router.post("/skill-definitions", response_model=SkillDefinitionResponse, status_code=status.HTTP_201_CREATED)

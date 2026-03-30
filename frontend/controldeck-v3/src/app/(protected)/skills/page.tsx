@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { skillsApi, type Skill, type SkillRun } from "@/lib/api/skills";
+import Link from "next/link";
+import { skillsApi, type Skill, type SkillRun, type SkillSortBy } from "@/lib/api/skills";
 import { cn, formatRelativeTime, formatDuration } from "@/lib/utils";
 import { HelpHint } from "@/components/help/help-hint";
 import { getControlDeckHelpTopic } from "@/lib/help/topics";
@@ -112,6 +113,33 @@ function SkillDetailModal({
                 Kategorie
               </h3>
               <p className="text-sm text-slate-600 dark:text-slate-400">{skill.category}</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="rounded bg-slate-50 dark:bg-slate-900 p-2">
+                <p className="text-xs text-slate-500 dark:text-slate-400">Value Score</p>
+                <p className="font-semibold text-slate-900 dark:text-slate-100">
+                  {Math.round(skill.valueScore * 100)}%
+                </p>
+              </div>
+              <div className="rounded bg-slate-50 dark:bg-slate-900 p-2">
+                <p className="text-xs text-slate-500 dark:text-slate-400">Zeitersparnis</p>
+                <p className="font-semibold text-slate-900 dark:text-slate-100">
+                  {skill.effortSavedHours.toFixed(1)}h
+                </p>
+              </div>
+              <div className="rounded bg-slate-50 dark:bg-slate-900 p-2">
+                <p className="text-xs text-slate-500 dark:text-slate-400">Quality Impact</p>
+                <p className="font-semibold text-slate-900 dark:text-slate-100">
+                  {Math.round(skill.qualityImpact * 100)}%
+                </p>
+              </div>
+              <div className="rounded bg-slate-50 dark:bg-slate-900 p-2">
+                <p className="text-xs text-slate-500 dark:text-slate-400">Complexity</p>
+                <p className="font-semibold text-slate-900 dark:text-slate-100 capitalize">
+                  {skill.complexityLevel}
+                </p>
+              </div>
             </div>
 
             {skill.parameters.length > 0 && (
@@ -323,11 +351,12 @@ export default function SkillsPage() {
   const [activeTab, setActiveTab] = useState<"skills" | "runs">("skills");
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
   const [selectedRun, setSelectedRun] = useState<SkillRun | null>(null);
+  const [skillSortBy, setSkillSortBy] = useState<SkillSortBy>("value_score");
 
   const fetchData = useCallback(async () => {
     try {
       const [skillsData, runsData] = await Promise.all([
-        skillsApi.list(),
+        skillsApi.list(skillSortBy),
         skillsApi.getRuns(20),
       ]);
       setSkills(skillsData);
@@ -339,7 +368,7 @@ export default function SkillsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [skillSortBy]);
 
   useEffect(() => {
     fetchData();
@@ -437,6 +466,23 @@ export default function SkillsPage() {
       </div>
 
       {activeTab === "skills" && (
+        <div className="flex items-center justify-end">
+          <label className="text-sm text-slate-600 dark:text-slate-300 flex items-center gap-2">
+            Sortierung
+            <select
+              value={skillSortBy}
+              onChange={(event) => setSkillSortBy(event.target.value as SkillSortBy)}
+              className="rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1 text-sm"
+            >
+              <option value="value_score">Value Score</option>
+              <option value="updated_at">Zuletzt aktualisiert</option>
+              <option value="skill_key">Skill Key</option>
+            </select>
+          </label>
+        </div>
+      )}
+
+      {activeTab === "skills" && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {skills.length === 0 ? (
             <p className="col-span-full text-center text-slate-500 dark:text-slate-400 py-8">
@@ -461,6 +507,19 @@ export default function SkillsPage() {
                 <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-500">
                   <span>{skill.category}</span>
                   <span>v{skill.version}</span>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600 dark:text-slate-300">
+                  <span>Value: {Math.round(skill.valueScore * 100)}%</span>
+                  <span>Effort: {skill.effortSavedHours.toFixed(1)}h</span>
+                </div>
+                <div className="mt-3">
+                  <Link
+                    href={`/skills/${encodeURIComponent(skill.key)}`}
+                    onClick={(event) => event.stopPropagation()}
+                    className="text-xs font-medium text-blue-600 hover:underline"
+                  >
+                    Governance Details
+                  </Link>
                 </div>
               </div>
             ))

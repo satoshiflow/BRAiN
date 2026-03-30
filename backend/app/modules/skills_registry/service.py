@@ -12,7 +12,7 @@ from app.core.control_plane_events import record_control_plane_event
 from app.modules.capabilities_registry.models import CapabilityDefinitionModel
 
 from .models import SkillDefinitionModel
-from .schemas import CapabilityRef, OwnerScope, SkillDefinitionCreate, SkillDefinitionStatus, SkillDefinitionUpdate, VersionSelector
+from .schemas import CapabilityRef, OwnerScope, SkillDefinitionCreate, SkillDefinitionStatus, SkillDefinitionUpdate, SkillSortBy, VersionSelector
 
 
 @dataclass(slots=True)
@@ -86,6 +86,10 @@ class SkillRegistryService:
             "risk_tier": data["risk_tier"],
             "policy_pack_ref": data["policy_pack_ref"],
             "trust_tier_min": data["trust_tier_min"],
+            "value_score": data.get("value_score", 0.0),
+            "effort_saved_hours": data.get("effort_saved_hours", 0.0),
+            "complexity_level": data.get("complexity_level", "medium"),
+            "quality_impact": data.get("quality_impact", 0.0),
             "builder_role": data.get("builder_role", "manual"),
             "definition_artifact_refs": data.get("definition_artifact_refs", []),
             "example_artifact_refs": data.get("example_artifact_refs", []),
@@ -162,6 +166,7 @@ class SkillRegistryService:
         include_system: bool = True,
         skill_key: str | None = None,
         status: str | None = None,
+        sort_by: SkillSortBy = SkillSortBy.SKILL_KEY,
     ) -> list[SkillDefinitionModel]:
         query: Select[Any] = select(SkillDefinitionModel)
         if tenant_id:
@@ -175,7 +180,23 @@ class SkillRegistryService:
             query = query.where(SkillDefinitionModel.skill_key == skill_key)
         if status:
             query = query.where(SkillDefinitionModel.status == status)
-        query = query.order_by(SkillDefinitionModel.skill_key.asc(), SkillDefinitionModel.version.desc())
+        if sort_by == SkillSortBy.VALUE_SCORE:
+            query = query.order_by(
+                SkillDefinitionModel.value_score.desc(),
+                SkillDefinitionModel.skill_key.asc(),
+                SkillDefinitionModel.version.desc(),
+            )
+        elif sort_by == SkillSortBy.UPDATED_AT:
+            query = query.order_by(
+                SkillDefinitionModel.updated_at.desc(),
+                SkillDefinitionModel.skill_key.asc(),
+                SkillDefinitionModel.version.desc(),
+            )
+        else:
+            query = query.order_by(
+                SkillDefinitionModel.skill_key.asc(),
+                SkillDefinitionModel.version.desc(),
+            )
         result = await db.execute(query)
         return list(result.scalars().all())
 
@@ -243,6 +264,10 @@ class SkillRegistryService:
             risk_tier=payload.risk_tier.value,
             policy_pack_ref=payload.policy_pack_ref,
             trust_tier_min=payload.trust_tier_min.value,
+            value_score=payload.value_score,
+            effort_saved_hours=payload.effort_saved_hours,
+            complexity_level=payload.complexity_level,
+            quality_impact=payload.quality_impact,
             builder_role=payload.builder_role,
             definition_artifact_refs=payload.definition_artifact_refs,
             example_artifact_refs=payload.example_artifact_refs,
@@ -322,6 +347,10 @@ class SkillRegistryService:
                 "risk_tier": definition.risk_tier,
                 "policy_pack_ref": definition.policy_pack_ref,
                 "trust_tier_min": definition.trust_tier_min,
+                "value_score": definition.value_score,
+                "effort_saved_hours": definition.effort_saved_hours,
+                "complexity_level": definition.complexity_level,
+                "quality_impact": definition.quality_impact,
             }
         )
         definition.checksum_sha256 = SkillDefinitionModel.build_checksum(checksum_payload)
@@ -452,6 +481,17 @@ class SkillRegistryService:
             if item.owner_scope == picked.owner_scope and item.tenant_id == picked.tenant_id and item.version == picked.version:
                 return item
         raise ValueError(f"Unable to resolve definition for '{skill_key}'")
+
+    def compute_value_profile(self, definition: SkillDefinitionModel) -> dict[str, Any]:
+        from app.modules.economy_layer.service import get_economy_layer_service
+
+        return get_economy_layer_service().calculate_skill_value(
+            risk_tier=definition.risk_tier,
+            value_score=definition.value_score,
+            effort_saved_hours=definition.effort_saved_hours,
+            complexity_level=definition.complexity_level,
+            quality_impact=definition.quality_impact,
+        )
 
 
 _skill_registry_service: SkillRegistryService | None = None

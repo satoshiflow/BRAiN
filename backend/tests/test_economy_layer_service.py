@@ -111,3 +111,74 @@ async def test_queue_for_review_requires_assessment(monkeypatch) -> None:
 
     with pytest.raises(ValueError, match="Economy assessment not found"):
         await service.queue_for_review(FakeDb(), uuid4(), _principal())
+
+
+def test_calculate_skill_value_prefers_explicit_score() -> None:
+    service = EconomyLayerService()
+
+    value = service.calculate_skill_value(
+        risk_tier="high",
+        value_score=0.82,
+        effort_saved_hours=5.0,
+        complexity_level="medium",
+        quality_impact=0.2,
+    )
+
+    assert value["value_score"] == 0.82
+    assert value["source"] == "explicit"
+    assert value["breakdown"]["computed_score"] <= 1.0
+
+
+def test_calculate_skill_value_derives_when_no_explicit_score() -> None:
+    service = EconomyLayerService()
+
+    value = service.calculate_skill_value(
+        risk_tier="critical",
+        value_score=0.0,
+        effort_saved_hours=32.0,
+        complexity_level="high",
+        quality_impact=0.8,
+    )
+
+    assert value["source"] == "derived"
+    assert value["value_score"] > 0.0
+    assert value["breakdown"]["risk_weight"] == 1.1
+
+
+@pytest.mark.asyncio
+async def test_ingest_skill_run_feedback_updates_skill_value(monkeypatch) -> None:
+    service = EconomyLayerService()
+
+    definition = SimpleNamespace(
+        risk_tier="medium",
+        value_score=0.0,
+        effort_saved_hours=2.0,
+        complexity_level="low",
+        quality_impact=0.1,
+        updated_at=datetime.now(timezone.utc),
+    )
+    run = SimpleNamespace(
+        id=uuid4(),
+        tenant_id="tenant-a",
+        skill_key="demo.skill",
+        skill_version=2,
+        risk_tier="medium",
+    )
+    evaluation = SimpleNamespace(
+        overall_score=0.9,
+        metrics_summary={"capability_count": 6, "latency_ms": 2400.0},
+    )
+
+    async def _resolve(db, run_arg):
+        _ = (db, run_arg)
+        return definition
+
+    service._resolve_skill_definition_for_run = _resolve  # type: ignore[method-assign]
+
+    payload = await service.ingest_skill_run_feedback(FakeDb(), run, evaluation)
+
+    assert payload is not None
+    assert payload["source"] == "skill_run_feedback"
+    assert definition.value_score > 0.0
+    assert definition.effort_saved_hours > 2.0
+    assert definition.complexity_level in {"high", "critical"}
