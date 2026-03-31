@@ -22,6 +22,25 @@ type IntentResponse = {
     rationale: string;
     recommended_capabilities: string[];
   } | null;
+  cognitive_assessment?: {
+    assessment_id: string;
+    perception: {
+      normalized_intent: string;
+      intent_modes: string[];
+      risk_hints: string[];
+    };
+    association: {
+      total_cases: number;
+      memory_cases: Array<{ source_id: string; title: string; summary: string }>;
+      knowledge_cases: Array<{ source_id: string; title: string; summary: string }>;
+    };
+    evaluation: {
+      confidence: number;
+      novelty_score: number;
+      impact_score: number;
+      governance_hints: string[];
+    };
+  } | null;
   skill_run?: {
     id: string;
     state: string;
@@ -117,6 +136,41 @@ export default function IntentPage() {
             <p>
               SkillRun: <strong>{result.skill_run.id}</strong>
             </p>
+          ) : null}
+          {result.cognitive_assessment ? (
+            <div className="space-y-3 rounded border border-cyan-500/25 bg-slate-950/60 px-3 py-3">
+              <p className="text-xs uppercase tracking-wide text-cyan-300/80">Cognitive Assessment</p>
+              <div className="grid grid-cols-2 gap-3 text-xs md:grid-cols-4">
+                <div>
+                  <p className="text-slate-400">Confidence</p>
+                  <p>{Math.round(result.cognitive_assessment.evaluation.confidence * 100)}%</p>
+                </div>
+                <div>
+                  <p className="text-slate-400">Novelty</p>
+                  <p>{Math.round(result.cognitive_assessment.evaluation.novelty_score * 100)}%</p>
+                </div>
+                <div>
+                  <p className="text-slate-400">Impact</p>
+                  <p>{Math.round(result.cognitive_assessment.evaluation.impact_score * 100)}%</p>
+                </div>
+                <div>
+                  <p className="text-slate-400">Cases</p>
+                  <p>{result.cognitive_assessment.association.total_cases}</p>
+                </div>
+              </div>
+              <div className="text-xs text-slate-300">
+                {result.cognitive_assessment.perception.normalized_intent}
+              </div>
+              {result.cognitive_assessment.evaluation.governance_hints.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {result.cognitive_assessment.evaluation.governance_hints.map((hint) => (
+                    <span key={hint} className="rounded-full border border-cyan-500/30 px-2 py-0.5 text-[11px] text-cyan-200">
+                      {hint}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+            </div>
           ) : null}
           {(result.candidates || []).length > 0 ? (
             <div className="space-y-2">

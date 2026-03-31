@@ -5,6 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from app.modules.cognitive_assessment.schemas import CognitiveAssessmentResponse
 from app.modules.skill_engine.schemas import SkillRunExecutionReport, SkillRunResponse, TriggerType
 
 
@@ -47,5 +48,6 @@ class IntentExecuteResponse(BaseModel):
     matched_skill_version: int | None = None
     candidates: list[IntentCandidateSkill] = Field(default_factory=list)
     draft_suggestion: IntentDraftSuggestion | None = None
+    cognitive_assessment: CognitiveAssessmentResponse | None = None
     skill_run: SkillRunResponse | None = None
     execution_report: SkillRunExecutionReport | None = None

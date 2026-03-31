@@ -13,6 +13,43 @@ export interface IntentDraftSuggestion {
   recommended_capabilities: string[];
 }
 
+export interface CognitiveAssociationCase {
+  source_type: string;
+  source_id: string;
+  title: string;
+  score: number;
+  summary: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface CognitiveAssessment {
+  assessment_id: string;
+  tenant_id?: string | null;
+  mission_id?: string | null;
+  perception: {
+    normalized_intent: string;
+    intent_keywords: string[];
+    intent_modes: string[];
+    risk_hints: string[];
+    impact_hints: string[];
+    novelty_hints: string[];
+  };
+  association: {
+    memory_cases: CognitiveAssociationCase[];
+    knowledge_cases: CognitiveAssociationCase[];
+    total_cases: number;
+  };
+  evaluation: {
+    confidence: number;
+    novelty_score: number;
+    impact_score: number;
+    governance_hints: string[];
+    risk_hints: string[];
+  };
+  recommended_skill_candidates: IntentCandidateSkill[];
+  created_at: string;
+}
+
 export interface IntentExecuteRequest {
   intent_text?: string;
   source_url?: string;
@@ -33,6 +70,7 @@ export interface IntentExecuteResponse {
   matched_skill_version?: number | null;
   candidates: IntentCandidateSkill[];
   draft_suggestion?: IntentDraftSuggestion | null;
+  cognitive_assessment?: CognitiveAssessment | null;
   skill_run?: {
     id: string;
     state: string;

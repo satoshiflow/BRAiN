@@ -35,4 +35,6 @@ test("skills intent page renders and resolves request", async ({ page, request }
   await page.getByRole("button", { name: "Intent ausfuehren" }).click();
 
   await expect(page.getByText("Resolution")).toBeVisible();
+  await expect(page.getByText("Cognitive Assessment")).toBeVisible();
+  await expect(page.getByText("Associated Cases")).toBeVisible();
 });

@@ -158,6 +158,86 @@ export default function SkillsIntentPage() {
               </div>
             </div>
           )}
+
+          {result.cognitive_assessment && (
+            <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50/70 p-4 dark:border-emerald-900/60 dark:bg-emerald-950/20">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+                Cognitive Assessment
+              </h2>
+              <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
+                <div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Confidence</p>
+                  <p className="font-medium text-slate-900 dark:text-slate-100">
+                    {Math.round(result.cognitive_assessment.evaluation.confidence * 100)}%
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Novelty</p>
+                  <p className="font-medium text-slate-900 dark:text-slate-100">
+                    {Math.round(result.cognitive_assessment.evaluation.novelty_score * 100)}%
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Impact</p>
+                  <p className="font-medium text-slate-900 dark:text-slate-100">
+                    {Math.round(result.cognitive_assessment.evaluation.impact_score * 100)}%
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Associated Cases</p>
+                  <p className="font-medium text-slate-900 dark:text-slate-100">
+                    {result.cognitive_assessment.association.total_cases}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <div>
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">Perception</p>
+                  <p className="text-sm text-slate-700 dark:text-slate-200">
+                    {result.cognitive_assessment.perception.normalized_intent}
+                  </p>
+                </div>
+                <div>
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">Governance Hints</p>
+                  <div className="flex flex-wrap gap-2">
+                    {(result.cognitive_assessment.evaluation.governance_hints.length > 0
+                      ? result.cognitive_assessment.evaluation.governance_hints
+                      : ["none"]).map((hint) => (
+                      <span key={hint} className="rounded-full bg-white px-2 py-0.5 text-xs text-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                        {hint}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">Memory Cases</p>
+                  <div className="space-y-2">
+                    {(result.cognitive_assessment.association.memory_cases || []).slice(0, 3).map((item) => (
+                      <div key={item.source_id} className="rounded border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
+                        <p className="font-medium text-slate-900 dark:text-slate-100">{item.title}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">{item.summary}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">Knowledge Cases</p>
+                  <div className="space-y-2">
+                    {(result.cognitive_assessment.association.knowledge_cases || []).slice(0, 3).map((item) => (
+                      <div key={item.source_id} className="rounded border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
+                        <p className="font-medium text-slate-900 dark:text-slate-100">{item.title}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">{item.summary}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

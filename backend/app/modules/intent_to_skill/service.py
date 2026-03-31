@@ -7,6 +7,8 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth_deps import Principal
+from app.modules.cognitive_assessment.schemas import CognitiveAssessmentRequest, CognitiveAssessmentResponse
+from app.modules.cognitive_assessment.service import get_cognitive_assessment_service
 from app.modules.skill_engine.schemas import SkillRunCreate
 from app.modules.skill_engine.service import get_skill_engine_service
 from app.modules.skills_registry.schemas import SkillSortBy, VersionSelector
@@ -108,6 +110,21 @@ class IntentToSkillService:
         normalized_intent = self._normalize_intent(payload)
         intent_tokens = _tokenize(normalized_intent)
 
+        cognitive_assessment = await get_cognitive_assessment_service().assess(
+            db,
+            CognitiveAssessmentRequest(
+                intent_text=payload.intent_text,
+                problem_statement=payload.problem_statement,
+                source_url=payload.source_url,
+                mission_id=payload.mission_id,
+                context=payload.context,
+                min_confidence=payload.min_confidence,
+            ),
+            principal,
+        )
+        if not isinstance(cognitive_assessment, CognitiveAssessmentResponse):
+            cognitive_assessment = CognitiveAssessmentResponse.model_validate(cognitive_assessment)
+
         registry_service = get_skill_registry_service()
         skill_engine_service = get_skill_engine_service()
 
@@ -139,6 +156,16 @@ class IntentToSkillService:
         candidates: list[IntentCandidateSkill] = []
         for item in latest_by_key.values():
             score = self._score_definition(intent_tokens=intent_tokens, definition=item)
+            assessment_candidate = next(
+                (
+                    candidate
+                    for candidate in cognitive_assessment.recommended_skill_candidates
+                    if candidate.skill_key == item.skill_key and candidate.version == item.version
+                ),
+                None,
+            )
+            if assessment_candidate is not None:
+                score = round(max(score, assessment_candidate.score), 3)
             if score <= 0:
                 continue
             candidates.append(
@@ -161,6 +188,7 @@ class IntentToSkillService:
                 reason="No matching active skill exceeded minimum confidence",
                 candidates=candidates[:5],
                 draft_suggestion=self._draft_suggestion(normalized_intent),
+                cognitive_assessment=cognitive_assessment,
             )
 
         response = IntentExecuteResponse(
@@ -171,6 +199,7 @@ class IntentToSkillService:
             matched_skill_key=best.skill_key,
             matched_skill_version=best.version,
             candidates=candidates[:5],
+            cognitive_assessment=cognitive_assessment,
         )
 
         if not payload.auto_execute:
@@ -194,11 +223,34 @@ class IntentToSkillService:
                 "origin": "intent_to_skill",
                 "resolution_confidence": best.score,
                 "selector": VersionSelector.ACTIVE.value,
+                "cognitive_assessment_id": str(cognitive_assessment.assessment_id),
+                "cognitive_confidence": cognitive_assessment.evaluation.confidence,
+                "cognitive_governance_hints": cognitive_assessment.evaluation.governance_hints,
             },
         )
 
         run = await skill_engine_service.create_run(db, run_payload, principal)
         report = await skill_engine_service.execute_run(db, run.id, principal)
+
+        overall_score = None
+        evaluation_summary = getattr(report.skill_run, "evaluation_summary", None) or {}
+        if isinstance(evaluation_summary, dict):
+            raw_score = evaluation_summary.get("overall_score")
+            if isinstance(raw_score, (int, float)):
+                overall_score = float(raw_score)
+        await get_cognitive_assessment_service().write_learning_feedback(
+            db,
+            assessment_id=cognitive_assessment.assessment_id,
+            skill_run_id=run.id,
+            outcome_state=str(report.skill_run.state),
+            overall_score=overall_score,
+            success=str(report.skill_run.state).lower() == "succeeded",
+            metadata={
+                "matched_skill_key": best.skill_key,
+                "matched_skill_version": best.version,
+                "intent_resolution_confidence": best.score,
+            },
+        )
 
         response.skill_run = report.skill_run
         response.execution_report = report
