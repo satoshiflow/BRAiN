@@ -1,6 +1,6 @@
 # AXE Miniworker Pilot
 
-Status: Pilot implementation
+Status: Production-ready implementation (local-verified)
 
 ## Purpose
 
@@ -228,10 +228,16 @@ Blocked examples include:
 
 Requests violating these rules fail closed before execution.
 
-## Follow-up Work
+## Operational Notes
 
-Planned next steps after pilot validation:
-- stronger routing rules from Domain Agent / RoutingDecision
-- optional `bounded_apply` behind policy gate
-- more precise token and memory accounting
-- richer AXE rendering for inline patch artifacts
+- `openclaw` remains a TaskLease/SkillRun runtime path and is rendered as an external source in AXE.
+- `miniworker` and `opencode` remain direct `axe_worker_runs` activity source.
+- bounded apply requires explicit approval and role-based authorization (`operator/admin/service`).
+- bounded apply also enforces path governance before execution.
+
+## Verification Evidence
+
+Recent full local gates for production readiness:
+- `docs/roadmap/local_ci/20260331_211705_all.md`
+- `docs/roadmap/local_ci/20260331_224616_all.md`
+- `docs/roadmap/local_ci/20260331_230929_all.md`
