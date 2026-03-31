@@ -36,7 +36,7 @@ export interface AxeWorkerUpdate {
   worker_run_id: string;
   session_id: string;
   message_id: string;
-  worker_type: "auto" | "opencode" | "miniworker";
+  worker_type: "auto" | "opencode" | "miniworker" | "openclaw";
   status: AxeWorkerStatus;
   label: string;
   detail: string;

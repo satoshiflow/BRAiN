@@ -182,4 +182,63 @@ describe("chat upload flow", () => {
     expect(await screen.findByText("BRAiN worker queued")).toBeInTheDocument();
     expect(screen.getByText("BRAiN delegated this request to a worker. Awaiting status updates.")).toBeInTheDocument();
   });
+
+  it("renders openclaw worker activity as non-polling external worker update", async () => {
+    mockedChat.mockResolvedValue({
+      text: "[OPENCLAW via SkillRun/TaskLease]",
+      raw: {
+        worker_type: "openclaw",
+        task_id: "task-openclaw-1",
+        skill_run_id: "sr-openclaw-1",
+      },
+      session_id: "session-1",
+      message_id: "msg-1",
+    });
+
+    render(<ChatPage />);
+
+    fireEvent.change(screen.getByPlaceholderText("Type your message..."), {
+      target: { value: "/openclaw run test" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+    expect(await screen.findByText("OpenClaw task dispatched")).toBeInTheDocument();
+    expect(screen.getByText("openclaw (1)")).toBeInTheDocument();
+    expect(mockedGetWorkerRun).not.toHaveBeenCalled();
+  });
+
+  it("allows filtering worker cards by status", async () => {
+    mockedChat.mockResolvedValue({
+      text: "ok",
+      raw: {},
+      worker_run_id: "worker-1",
+      session_id: "session-1",
+      message_id: "msg-1",
+    });
+
+    mockedGetWorkerRun.mockResolvedValue({
+      worker_run_id: "worker-1",
+      session_id: "session-1",
+      message_id: "msg-1",
+      worker_type: "opencode",
+      status: "completed",
+      label: "OpenCode worker completed",
+      detail: "Finished successfully",
+      updated_at: new Date().toISOString(),
+      artifacts: [],
+    });
+
+    render(<ChatPage />);
+
+    fireEvent.change(screen.getByPlaceholderText("Type your message..."), {
+      target: { value: "Run worker" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+    expect(await screen.findByText("BRAiN worker queued")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /failed \(/i }));
+    expect(screen.queryByText("BRAiN worker queued")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /queued \(/i }));
+    expect(screen.getByText("BRAiN worker queued")).toBeInTheDocument();
+  });
 });

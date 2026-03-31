@@ -44,6 +44,7 @@ interface WorkerRunAnchor {
   sessionId: string;
   messageId?: string;
   localMessageId: number;
+  pollable: boolean;
 }
 
 interface PendingAttachment {
@@ -55,6 +56,7 @@ interface PendingAttachment {
 }
 
 type WorkerTypeFilter = "all" | AxeWorkerUpdate["worker_type"];
+type WorkerStatusFilter = "all" | AxeWorkerUpdate["status"];
 
 const DEFAULT_MODEL = getDefaultModel();
 
@@ -119,6 +121,7 @@ function ChatPageContent() {
   const [workerUpdates, setWorkerUpdates] = useState<Record<string, AxeWorkerUpdate>>({});
   const [workerAnchors, setWorkerAnchors] = useState<Record<string, WorkerRunAnchor>>({});
   const [workerTypeFilter, setWorkerTypeFilter] = useState<WorkerTypeFilter>("all");
+  const [workerStatusFilter, setWorkerStatusFilter] = useState<WorkerStatusFilter>("all");
   const [purposeTrace, setPurposeTrace] = useState<PurposeEvaluationRecord[]>([]);
   const [routingTrace, setRoutingTrace] = useState<RoutingDecisionRecord[]>([]);
   const [traceLoading, setTraceLoading] = useState(false);
@@ -138,6 +141,9 @@ function ChatPageContent() {
     () =>
       Object.values(workerAnchors).filter((anchor) => {
         if (anchor.sessionId !== activeSessionId) {
+          return false;
+        }
+        if (!anchor.pollable) {
           return false;
         }
         const status = workerUpdates[anchor.workerRunId]?.status ?? "queued";
@@ -179,6 +185,15 @@ function ChatPageContent() {
       auto: 0,
       opencode: 0,
       miniworker: 0,
+      openclaw: 0,
+    };
+    const statusStats: Record<WorkerStatusFilter, number> = {
+      all: 0,
+      queued: 0,
+      running: 0,
+      waiting_input: 0,
+      completed: 0,
+      failed: 0,
     };
 
     Object.values(workerAnchors).forEach((anchor) => {
@@ -191,14 +206,20 @@ function ChatPageContent() {
       }
       stats.all += 1;
       stats[update.worker_type] += 1;
+      statusStats.all += 1;
+      statusStats[update.status] += 1;
     });
-    return stats;
+    return { type: stats, status: statusStats };
   }, [activeSessionId, workerAnchors, workerUpdates]);
 
   const filterWorkerUpdates = useCallback(
     (updates: AxeWorkerUpdate[]) =>
-      updates.filter((update) => (workerTypeFilter === "all" ? true : update.worker_type === workerTypeFilter)),
-    [workerTypeFilter],
+      updates.filter((update) => {
+        const byType = workerTypeFilter === "all" ? true : update.worker_type === workerTypeFilter;
+        const byStatus = workerStatusFilter === "all" ? true : update.status === workerStatusFilter;
+        return byType && byStatus;
+      }),
+    [workerStatusFilter, workerTypeFilter],
   );
 
   useEffect(() => {
@@ -491,12 +512,14 @@ function ChatPageContent() {
         postAxeChat(requestBody, { Authorization: `Bearer ${token}` })
       );
 
+      const rawWorkerType = (data.raw?.worker_type as AxeWorkerUpdate["worker_type"] | undefined) ?? "auto";
+
       if (data.worker_run_id) {
         const initialUpdate: AxeWorkerUpdate = {
           worker_run_id: data.worker_run_id,
           session_id: data.session_id ?? currentSessionId,
           message_id: data.message_id ?? userMessageId,
-          worker_type: (data.raw?.worker_type as AxeWorkerUpdate["worker_type"]) ?? "auto",
+          worker_type: rawWorkerType,
           status: "queued",
           label: "BRAiN worker queued",
           detail: "BRAiN delegated this request to a worker. Awaiting status updates.",
@@ -511,6 +534,41 @@ function ChatPageContent() {
             sessionId: data.session_id ?? currentSessionId,
             messageId: data.message_id ?? userMessageId,
             localMessageId: userMessage.id,
+            pollable: true,
+          },
+        }));
+      } else if (rawWorkerType === "openclaw") {
+        const syntheticWorkerRunId = `openclaw:${String(data.raw?.task_id ?? Date.now())}`;
+        const initialUpdate: AxeWorkerUpdate = {
+          worker_run_id: syntheticWorkerRunId,
+          session_id: data.session_id ?? currentSessionId,
+          message_id: data.message_id ?? userMessageId,
+          worker_type: "openclaw",
+          status: "completed",
+          label: "OpenClaw task dispatched",
+          detail: "OpenClaw uses the SkillRun/TaskLease runtime path and is tracked as external worker activity.",
+          updated_at: new Date().toISOString(),
+          artifacts: [
+            {
+              type: "runtime_source",
+              label: "Runtime source",
+              metadata: {
+                source: "skillrun_tasklease",
+                task_id: data.raw?.task_id,
+                skill_run_id: data.raw?.skill_run_id,
+              },
+            },
+          ],
+        };
+        setWorkerUpdates((prev) => ({ ...prev, [syntheticWorkerRunId]: initialUpdate }));
+        setWorkerAnchors((prev) => ({
+          ...prev,
+          [syntheticWorkerRunId]: {
+            workerRunId: syntheticWorkerRunId,
+            sessionId: data.session_id ?? currentSessionId,
+            messageId: data.message_id ?? userMessageId,
+            localMessageId: userMessage.id,
+            pollable: false,
           },
         }));
       }
@@ -772,7 +830,7 @@ function ChatPageContent() {
                   Active Thread: <span className="text-cyan-200">{activeSession?.title ?? "New Intent Thread"}</span>
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {(["all", "miniworker", "opencode", "auto"] as WorkerTypeFilter[]).map((filter) => {
+                  {(["all", "miniworker", "opencode", "openclaw", "auto"] as WorkerTypeFilter[]).map((filter) => {
                     const selected = workerTypeFilter === filter;
                     return (
                       <button
@@ -785,7 +843,26 @@ function ChatPageContent() {
                             : "border-slate-500/40 bg-slate-800/40 text-slate-300"
                         }`}
                       >
-                        {filter} ({workerFilterStats[filter]})
+                        {filter} ({workerFilterStats.type[filter]})
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {(["all", "waiting_input", "failed", "running", "queued", "completed"] as WorkerStatusFilter[]).map((filter) => {
+                    const selected = workerStatusFilter === filter;
+                    return (
+                      <button
+                        key={filter}
+                        type="button"
+                        onClick={() => setWorkerStatusFilter(filter)}
+                        className={`rounded-full border px-2.5 py-1 text-[11px] uppercase tracking-[0.14em] ${
+                          selected
+                            ? "border-amber-300/60 bg-amber-500/20 text-amber-100"
+                            : "border-slate-500/40 bg-slate-800/40 text-slate-300"
+                        }`}
+                      >
+                        {filter} ({workerFilterStats.status[filter]})
                       </button>
                     );
                   })}
