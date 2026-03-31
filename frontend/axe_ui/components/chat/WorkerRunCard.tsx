@@ -67,11 +67,45 @@ function WorkerRunCardComponent({ update }: { update: AxeWorkerUpdate }) {
           {inlineArtifacts.map((artifact) => (
             <div key={`${artifact.type}-${artifact.label}-inline`} className="rounded-lg border border-current/15 bg-black/10 p-3">
               <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] opacity-75">{artifact.label}</p>
-              <pre className="overflow-x-auto whitespace-pre-wrap break-words text-xs leading-5 opacity-95">{artifact.content}</pre>
+              {artifact.type === "patch" ? (
+                <DiffArtifactView content={artifact.content ?? ""} />
+              ) : (
+                <pre className="overflow-x-auto whitespace-pre-wrap break-words text-xs leading-5 opacity-95">{artifact.content}</pre>
+              )}
             </div>
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function DiffArtifactView({ content }: { content: string }) {
+  const lines = content.split("\n");
+
+  return (
+    <div className="overflow-x-auto rounded-md border border-current/10 bg-slate-950/70">
+      <div className="min-w-full font-mono text-xs leading-5">
+        {lines.map((line, index) => {
+          const isAddition = line.startsWith("+");
+          const isRemoval = line.startsWith("-");
+          const isHunk = line.startsWith("@@");
+          const rowClass = isAddition
+            ? "bg-emerald-500/10 text-emerald-100"
+            : isRemoval
+              ? "bg-rose-500/10 text-rose-100"
+              : isHunk
+                ? "bg-cyan-500/10 text-cyan-100"
+                : "text-slate-200";
+
+          return (
+            <div key={`${index}-${line}`} className={`grid grid-cols-[3rem_1fr] gap-3 px-3 py-1 ${rowClass}`}>
+              <span className="select-none text-right opacity-40">{index + 1}</span>
+              <span className="whitespace-pre-wrap break-words">{line || " "}</span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -11,6 +11,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth_deps import Principal
+from app.core.control_plane_events import record_control_plane_event
 from app.modules.axe_miniworker.service import AXEMiniworkerService
 from app.modules.axe_sessions.models import AXEChatMessageORM, AXEChatSessionORM
 from app.modules.domain_agents.service import get_domain_agent_service
@@ -203,6 +204,17 @@ class AXEWorkerRunService:
                     },
                 }
             )
+
+        approval_gate_response = await self._handle_bounded_apply_gate(
+            principal=principal,
+            payload=payload,
+            worker_run_id=worker_run_id,
+            effective_worker_type=effective_worker_type,
+            routing_artifacts=routing_artifacts,
+        )
+        if approval_gate_response is not None:
+            return approval_gate_response
+
         row = AXEWorkerRunORM(
             worker_run_id=worker_run_id,
             session_id=payload.session_id,
@@ -397,6 +409,90 @@ class AXEWorkerRunService:
             updated_at=row.updated_at or datetime.utcnow(),
             artifacts=artifacts,
         )
+
+    async def _handle_bounded_apply_gate(
+        self,
+        *,
+        principal: Principal,
+        payload: AXEWorkerRunCreateRequest,
+        worker_run_id: str,
+        effective_worker_type: WorkerType,
+        routing_artifacts: list[dict],
+    ) -> AXEWorkerRunResponse | None:
+        if payload.execution_mode != "bounded_apply" or effective_worker_type != "miniworker":
+            return None
+
+        if not payload.approval_confirmed:
+            await record_control_plane_event(
+                db=self.db,
+                tenant_id=principal.tenant_id,
+                entity_type="axe_worker_run",
+                entity_id=worker_run_id,
+                event_type="axe.miniworker.bounded_apply.approval_required.v1",
+                correlation_id=worker_run_id,
+                mission_id=None,
+                actor_id=principal.principal_id,
+                actor_type=principal.principal_type.value,
+                payload={
+                    "worker_type": effective_worker_type,
+                    "execution_mode": payload.execution_mode,
+                    "file_scope": payload.file_scope,
+                },
+                audit_required=True,
+                audit_action="axe_miniworker_bounded_apply_gate",
+                audit_message="AXE miniworker bounded apply requires explicit approval",
+                severity="warning",
+            )
+            row = AXEWorkerRunORM(
+                worker_run_id=worker_run_id,
+                session_id=payload.session_id,
+                message_id=payload.message_id,
+                principal_id=principal.principal_id,
+                tenant_id=principal.tenant_id,
+                backend_run_type=f"{effective_worker_type}_job",
+                status="waiting_input",
+                label="AXE miniworker waiting for approval",
+                detail="bounded_apply requires approval_confirmed=true and an approval_reason before execution.",
+                artifacts_json=[
+                    *routing_artifacts,
+                    {
+                        "type": "approval",
+                        "label": "Approval required",
+                        "url": "inline://approval",
+                        "metadata": {
+                            "approval_required": True,
+                            "execution_mode": payload.execution_mode,
+                            "worker_type": effective_worker_type,
+                        },
+                    },
+                ],
+            )
+            self.db.add(row)
+            await self.db.commit()
+            await self.db.refresh(row)
+            return self._to_response(row)
+
+        await record_control_plane_event(
+            db=self.db,
+            tenant_id=principal.tenant_id,
+            entity_type="axe_worker_run",
+            entity_id=worker_run_id,
+            event_type="axe.miniworker.bounded_apply.approved.v1",
+            correlation_id=worker_run_id,
+            mission_id=None,
+            actor_id=principal.principal_id,
+            actor_type=principal.principal_type.value,
+            payload={
+                "worker_type": effective_worker_type,
+                "execution_mode": payload.execution_mode,
+                "file_scope": payload.file_scope,
+                "approval_reason": payload.approval_reason,
+            },
+            audit_required=True,
+            audit_action="axe_miniworker_bounded_apply_approve",
+            audit_message="AXE miniworker bounded apply approved",
+        )
+        return None
 
     async def _resolve_routing_decision(
         self,

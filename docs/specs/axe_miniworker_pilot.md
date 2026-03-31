@@ -158,6 +158,7 @@ The AXE chat worker card now renders:
 - inline patch artifacts
 - inline analysis artifacts
 - lightweight execution metrics such as estimated credits and RSS delta
+- patch artifacts in diff-style row rendering for additions/removals/hunks
 
 This keeps the pilot useful without requiring a heavier worker dashboard first.
 
@@ -176,6 +177,12 @@ If any requirement is missing, the request fails closed.
 Current guardrail:
 - automatic routing never selects `miniworker` for `bounded_apply`
 - callers must request `miniworker` explicitly if they want that path
+
+Approval flow:
+- if `bounded_apply` is requested on `miniworker` without `approval_confirmed=true`, the worker run is created in `waiting_input`
+- the run returns an approval artifact explaining the missing approval
+- a control-plane event and audit entry are written for the approval-required gate
+- when `approval_confirmed=true`, BRAiN records an approval audit event before dispatching the bounded execution
 
 ## Follow-up Work
 

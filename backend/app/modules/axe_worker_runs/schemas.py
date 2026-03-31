@@ -32,6 +32,8 @@ class AXEWorkerRunCreateRequest(BaseModel):
     worker_type: WorkerType = "auto"
     execution_mode: MiniworkerExecutionMode = "proposal"
     expected_output: MiniworkerExpectedOutput = "patch"
+    approval_confirmed: bool = False
+    approval_reason: str | None = Field(default=None, min_length=1, max_length=1000)
     module: str | None = Field(default=None, min_length=1, max_length=128)
     entity_id: str | None = Field(default=None, min_length=1, max_length=256)
     file_scope: list[str] = Field(default_factory=list, max_length=20)

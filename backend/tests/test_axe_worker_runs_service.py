@@ -295,3 +295,101 @@ async def test_create_worker_run_auto_routes_broad_scope_to_opencode(monkeypatch
     response = await service.create_worker_run(principal=_principal(), payload=payload)
 
     assert response.worker_type == "opencode"
+
+
+@pytest.mark.asyncio
+async def test_create_worker_run_bounded_apply_waits_for_approval(monkeypatch):
+    db = _FakeDB()
+    service = AXEWorkerRunService(db=db)  # type: ignore[arg-type]
+
+    async def _owned_session(**kwargs):
+        _ = kwargs
+        return SimpleNamespace(tenant_id="tenant-a")
+
+    async def _owned_message(**kwargs):
+        _ = kwargs
+        return SimpleNamespace(id=uuid4())
+
+    events: list[str] = []
+
+    async def _record_event(**kwargs):  # noqa: ANN001
+        events.append(kwargs["event_type"])
+        return None
+
+    monkeypatch.setattr(service, "_get_owned_session", _owned_session)
+    monkeypatch.setattr(service, "_get_owned_message", _owned_message)
+    monkeypatch.setattr("app.modules.axe_worker_runs.service.record_control_plane_event", _record_event)
+
+    payload = AXEWorkerRunCreateRequest(
+        session_id=uuid4(),
+        message_id=uuid4(),
+        prompt="Replace line 3 with a guarded return",
+        worker_type="miniworker",
+        execution_mode="bounded_apply",
+        file_scope=["backend/app/modules/axe_worker_runs/service.py"],
+    )
+
+    response = await service.create_worker_run(principal=_principal(), payload=payload)
+
+    assert response.status == "waiting_input"
+    assert response.label == "AXE miniworker waiting for approval"
+    assert "approval_required" in response.artifacts[0].metadata
+    assert events == ["axe.miniworker.bounded_apply.approval_required.v1"]
+
+
+@pytest.mark.asyncio
+async def test_create_worker_run_bounded_apply_records_approval_before_dispatch(monkeypatch):
+    db = _FakeDB()
+    service = AXEWorkerRunService(db=db)  # type: ignore[arg-type]
+
+    async def _owned_session(**kwargs):
+        _ = kwargs
+        return SimpleNamespace(tenant_id="tenant-a")
+
+    async def _owned_message(**kwargs):
+        _ = kwargs
+        return SimpleNamespace(id=uuid4())
+
+    events: list[str] = []
+
+    async def _record_event(**kwargs):  # noqa: ANN001
+        events.append(kwargs["event_type"])
+        return None
+
+    class _MiniworkerStub:
+        async def dispatch(self, *, db, principal, payload, worker_run_id):  # noqa: ANN001
+            _ = db, principal
+            assert payload.approval_confirmed is True
+            return SimpleNamespace(
+                worker_run_id=worker_run_id,
+                session_id=payload.session_id,
+                message_id=payload.message_id,
+                worker_type="miniworker",
+                status="completed",
+                label="AXE miniworker completed",
+                detail="Patch applied within bounded scope",
+                updated_at=None,
+                artifacts=[],
+            )
+
+    monkeypatch.setattr(service, "_get_owned_session", _owned_session)
+    monkeypatch.setattr(service, "_get_owned_message", _owned_message)
+    monkeypatch.setattr("app.modules.axe_worker_runs.service.record_control_plane_event", _record_event)
+    WorkerAdapterRegistry._adapters = {"miniworker": _MiniworkerStub()}  # type: ignore[assignment]
+    WorkerAdapterRegistry._initialized = True
+
+    payload = AXEWorkerRunCreateRequest(
+        session_id=uuid4(),
+        message_id=uuid4(),
+        prompt="Replace line 3 with a guarded return",
+        worker_type="miniworker",
+        execution_mode="bounded_apply",
+        approval_confirmed=True,
+        approval_reason="Operator approved exact scoped edit",
+        file_scope=["backend/app/modules/axe_worker_runs/service.py"],
+    )
+
+    response = await service.create_worker_run(principal=_principal(), payload=payload)
+
+    assert response.status == "completed"
+    assert events == ["axe.miniworker.bounded_apply.approved.v1"]
