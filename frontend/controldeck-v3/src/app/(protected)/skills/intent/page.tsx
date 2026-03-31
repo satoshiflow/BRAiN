@@ -168,19 +168,19 @@ export default function SkillsIntentPage() {
                 <div>
                   <p className="text-xs text-slate-500 dark:text-slate-400">Confidence</p>
                   <p className="font-medium text-slate-900 dark:text-slate-100">
-                    {Math.round(result.cognitive_assessment.evaluation.confidence * 100)}%
+                    {Math.round(result.cognitive_assessment.result.confidence * 100)}%
                   </p>
                 </div>
                 <div>
                   <p className="text-xs text-slate-500 dark:text-slate-400">Novelty</p>
                   <p className="font-medium text-slate-900 dark:text-slate-100">
-                    {Math.round(result.cognitive_assessment.evaluation.novelty_score * 100)}%
+                    {Math.round(result.cognitive_assessment.result.novelty * 100)}%
                   </p>
                 </div>
                 <div>
                   <p className="text-xs text-slate-500 dark:text-slate-400">Impact</p>
                   <p className="font-medium text-slate-900 dark:text-slate-100">
-                    {Math.round(result.cognitive_assessment.evaluation.impact_score * 100)}%
+                    {Math.round(result.cognitive_assessment.result.impact * 100)}%
                   </p>
                 </div>
                 <div>
@@ -202,7 +202,7 @@ export default function SkillsIntentPage() {
                   <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">Governance Hints</p>
                   <div className="flex flex-wrap gap-2">
                     {(result.cognitive_assessment.evaluation.governance_hints.length > 0
-                      ? result.cognitive_assessment.evaluation.governance_hints
+                      ? result.cognitive_assessment.result.governance_flags
                       : ["none"]).map((hint) => (
                       <span key={hint} className="rounded-full bg-white px-2 py-0.5 text-xs text-slate-700 dark:bg-slate-900 dark:text-slate-200">
                         {hint}

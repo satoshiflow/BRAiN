@@ -1,9 +1,11 @@
 import { expect, test } from "@playwright/test";
+import { waitForBackendReady } from "./helpers/auth";
 
 const EMAIL = "admin@test.com";
 const PASSWORD = "admin123";
 
-test("login persists across reload and logout works", async ({ page }) => {
+test("login persists across reload and logout works", async ({ page, request }) => {
+  await waitForBackendReady(request);
   await page.goto("/login");
 
   await page.getByLabel("E-Mail").fill(EMAIL);

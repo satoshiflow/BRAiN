@@ -48,6 +48,15 @@ async def test_execute_intent_matches_existing_skill(monkeypatch) -> None:
             "governance_hints": ["novel_request_check"],
             "risk_hints": [],
         },
+        "result": {
+            "result_version": "v1",
+            "confidence": 0.7,
+            "risk": [],
+            "impact": 0.5,
+            "novelty": 0.3,
+            "governance_flags": ["novel_request_check"],
+            "routing_hint": None,
+        },
         "recommended_skill_candidates": [
             {"skill_key": "knowledge.search", "version": 1, "score": 0.74, "reason": "match"}
         ],
@@ -132,6 +141,15 @@ async def test_execute_intent_returns_draft_for_low_confidence(monkeypatch) -> N
             "impact_score": 0.2,
             "governance_hints": ["low_confidence_resolution"],
             "risk_hints": [],
+        },
+        "result": {
+            "result_version": "v1",
+            "confidence": 0.1,
+            "risk": [],
+            "impact": 0.2,
+            "novelty": 0.9,
+            "governance_flags": ["low_confidence_resolution"],
+            "routing_hint": None,
         },
         "recommended_skill_candidates": [],
         "created_at": "2026-03-31T00:00:00Z",

@@ -60,6 +60,15 @@ def test_cognitive_assessment_router_assess(monkeypatch) -> None:
                     "governance_hints": [],
                     "risk_hints": [],
                 },
+                "result": {
+                    "result_version": "v1",
+                    "confidence": 0.6,
+                    "risk": [],
+                    "impact": 0.5,
+                    "novelty": 0.4,
+                    "governance_flags": [],
+                    "routing_hint": None,
+                },
                 "recommended_skill_candidates": [],
                 "created_at": datetime.now(timezone.utc),
             }

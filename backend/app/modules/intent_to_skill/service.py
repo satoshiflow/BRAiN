@@ -156,16 +156,6 @@ class IntentToSkillService:
         candidates: list[IntentCandidateSkill] = []
         for item in latest_by_key.values():
             score = self._score_definition(intent_tokens=intent_tokens, definition=item)
-            assessment_candidate = next(
-                (
-                    candidate
-                    for candidate in cognitive_assessment.recommended_skill_candidates
-                    if candidate.skill_key == item.skill_key and candidate.version == item.version
-                ),
-                None,
-            )
-            if assessment_candidate is not None:
-                score = round(max(score, assessment_candidate.score), 3)
             if score <= 0:
                 continue
             candidates.append(
@@ -224,8 +214,8 @@ class IntentToSkillService:
                 "resolution_confidence": best.score,
                 "selector": VersionSelector.ACTIVE.value,
                 "cognitive_assessment_id": str(cognitive_assessment.assessment_id),
-                "cognitive_confidence": cognitive_assessment.evaluation.confidence,
-                "cognitive_governance_hints": cognitive_assessment.evaluation.governance_hints,
+                "cognitive_confidence": cognitive_assessment.result.confidence,
+                "cognitive_governance_hints": cognitive_assessment.result.governance_flags,
             },
         )
 

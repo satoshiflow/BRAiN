@@ -10,6 +10,14 @@ normalized input and final routing/execution. It does not replace `SkillRun`,
 policy, or governance. It produces advisory signals that improve perception,
 association, and evaluation before routing.
 
+## Merge guardrails
+
+- advisory-only is mandatory
+- no implicit routing control
+- no second routing system
+- governor/policy remain the only authoritative decision surface
+- `CognitiveAssessmentResult` is the stable, versioned context object for downstream propagation
+
 ## Non-goals
 
 - no biological brain simulation
@@ -46,8 +54,19 @@ Learning path:
 - `perception`
 - `association`
 - `evaluation`
+- `result`
 - `recommended_skill_candidates`
 - `governance_hints`
+
+### CognitiveAssessmentResult
+
+- `result_version`
+- `confidence`
+- `risk`
+- `impact`
+- `novelty`
+- `governance_flags`
+- `routing_hint` (reserved, not active in v1)
 
 ### LearningFeedbackRecord
 
@@ -88,3 +107,13 @@ Both tables are durable, auditable, and tenant-bounded.
 - advisory-only in v1
 - first integrated into `intent_to_skill`
 - surfaced in ControlDeck and AXE before broader routing adoption
+
+## Follow-up ticket
+
+Create directly after merge:
+
+- `feat(audit): add full provenance chain for cognitive assessment`
+
+Target chain:
+
+`session_id -> agent_id -> assessment_id -> intent_id -> skill_run_id -> outcome_id -> feedback_event_id`

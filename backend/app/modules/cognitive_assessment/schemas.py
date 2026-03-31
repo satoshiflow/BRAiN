@@ -48,6 +48,16 @@ class EvaluationSignal(BaseModel):
     risk_hints: list[str] = Field(default_factory=list)
 
 
+class CognitiveAssessmentResult(BaseModel):
+    result_version: str = "v1"
+    confidence: float
+    risk: list[str] = Field(default_factory=list)
+    impact: float
+    novelty: float
+    governance_flags: list[str] = Field(default_factory=list)
+    routing_hint: str | None = None
+
+
 class CognitiveSkillCandidate(BaseModel):
     skill_key: str
     version: int
@@ -62,6 +72,7 @@ class CognitiveAssessmentResponse(BaseModel):
     perception: PerceptionSnapshot
     association: AssociationTrace
     evaluation: EvaluationSignal
+    result: CognitiveAssessmentResult
     recommended_skill_candidates: list[CognitiveSkillCandidate] = Field(default_factory=list)
     created_at: datetime
 

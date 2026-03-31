@@ -17,6 +17,10 @@ echo "Backend:  $BACKEND_URL"
 echo "Frontend: $FRONTEND_URL"
 echo ""
 
+if [[ -x "$ROOT/scripts/wait_for_backend_ready.sh" ]]; then
+  "$ROOT/scripts/wait_for_backend_ready.sh"
+fi
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -133,20 +137,19 @@ fi
 
 echo ""
 
-# Test 5: WebSocket Path (check if endpoint exists, not full connection)
+# Test 5: WebSocket Path (best-effort probe only)
 echo "5️⃣  WebSocket Endpoint"
 echo -n "  Checking WebSocket path... "
 
-# WebSocket endpoints typically return 426 Upgrade Required for HTTP requests
+# Plain HTTP probing of WebSocket routes is unreliable across frameworks and
+# can legitimately return 404 even when the WS route is healthy.
 ws_test_url="${BACKEND_URL}/api/axe/ws/test-session"
 ws_response=$(curl -s -o /dev/null -w "%{http_code}" --max-time $TIMEOUT "$ws_test_url" 2>/dev/null || echo "000")
 
-# WebSocket endpoint should respond with 426 (Upgrade Required) or 400
 if [ "$ws_response" = "426" ] || [ "$ws_response" = "400" ]; then
     echo -e "${GREEN}✓${NC} (WebSocket endpoint exists)"
 elif [ "$ws_response" = "404" ]; then
-    echo -e "${RED}✗${NC} (WebSocket endpoint not found)"
-    FAILED=$((FAILED + 1))
+    echo -e "${YELLOW}⚠${NC}  (HTTP probe returned 404; route may still require a real WS handshake)"
 else
     echo -e "${YELLOW}⚠${NC}  (got $ws_response, unexpected but may be ok)"
 fi

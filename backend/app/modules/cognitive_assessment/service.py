@@ -15,6 +15,7 @@ from app.modules.cognitive_assessment.schemas import (
     AssociationCase,
     AssociationTrace,
     CognitiveAssessmentRequest,
+    CognitiveAssessmentResult,
     CognitiveAssessmentResponse,
     CognitiveLearningFeedbackResponse,
     CognitiveSkillCandidate,
@@ -235,6 +236,16 @@ class CognitiveAssessmentService:
             risk_hints=risk_hints,
         )
 
+    def _build_result(self, evaluation: EvaluationSignal) -> CognitiveAssessmentResult:
+        return CognitiveAssessmentResult(
+            confidence=evaluation.confidence,
+            risk=evaluation.risk_hints,
+            impact=evaluation.impact_score,
+            novelty=evaluation.novelty_score,
+            governance_flags=evaluation.governance_hints,
+            routing_hint=None,
+        )
+
     async def assess(
         self,
         db: AsyncSession,
@@ -289,6 +300,7 @@ class CognitiveAssessmentService:
             association=association,
             recommended_skill_candidates=candidates,
         )
+        result_payload = self._build_result(evaluation)
 
         result = await db.execute(
             text(
@@ -348,6 +360,7 @@ class CognitiveAssessmentService:
             perception=perception,
             association=association,
             evaluation=evaluation,
+            result=result_payload,
             recommended_skill_candidates=candidates,
             created_at=row["created_at"],
         )
@@ -374,6 +387,7 @@ class CognitiveAssessmentService:
             perception=PerceptionSnapshot.model_validate(row["perception"] or {}),
             association=AssociationTrace.model_validate(row["association_trace"] or {}),
             evaluation=EvaluationSignal.model_validate(row["evaluation_signal"] or {}),
+            result=self._build_result(EvaluationSignal.model_validate(row["evaluation_signal"] or {})),
             recommended_skill_candidates=[
                 CognitiveSkillCandidate.model_validate(item)
                 for item in (row["recommended_skill_candidates"] or [])

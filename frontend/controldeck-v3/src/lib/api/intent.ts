@@ -26,6 +26,15 @@ export interface CognitiveAssessment {
   assessment_id: string;
   tenant_id?: string | null;
   mission_id?: string | null;
+  result: {
+    result_version: string;
+    confidence: number;
+    risk: string[];
+    impact: number;
+    novelty: number;
+    governance_flags: string[];
+    routing_hint?: string | null;
+  };
   perception: {
     normalized_intent: string;
     intent_keywords: string[];

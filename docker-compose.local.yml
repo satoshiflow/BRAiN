@@ -93,6 +93,18 @@ services:
       - AXE_FUSION_ALLOW_LOCAL_REQUESTS=${AXE_FUSION_ALLOW_LOCAL_REQUESTS}
       - AXE_FUSION_ALLOW_LOCAL_FALLBACK=${AXE_FUSION_ALLOW_LOCAL_FALLBACK}
       - AXE_FUSION_ALLOWED_DEV_IPS=${AXE_FUSION_ALLOWED_DEV_IPS}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=5).getcode()==200 else sys.exit(1)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
 
   axe_ui:
     build:
@@ -104,7 +116,8 @@ services:
     env_file:
       - .env.local
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - brain_local
 
@@ -123,8 +136,10 @@ services:
       - NEXT_PUBLIC_BRAIN_API_BASE=http://backend:8000
       - NEXT_PUBLIC_AXE_UI_BASE=http://axe_ui:3000
     depends_on:
-      - backend
-      - axe_ui
+      backend:
+        condition: service_healthy
+      axe_ui:
+        condition: service_started
     networks:
       - brain_local
     extra_hosts:

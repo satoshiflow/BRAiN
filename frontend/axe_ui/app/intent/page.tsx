@@ -24,6 +24,15 @@ type IntentResponse = {
   } | null;
   cognitive_assessment?: {
     assessment_id: string;
+    result: {
+      result_version: string;
+      confidence: number;
+      novelty: number;
+      impact: number;
+      governance_flags: string[];
+      risk: string[];
+      routing_hint?: string | null;
+    };
     perception: {
       normalized_intent: string;
       intent_modes: string[];
@@ -143,15 +152,15 @@ export default function IntentPage() {
               <div className="grid grid-cols-2 gap-3 text-xs md:grid-cols-4">
                 <div>
                   <p className="text-slate-400">Confidence</p>
-                  <p>{Math.round(result.cognitive_assessment.evaluation.confidence * 100)}%</p>
+                  <p>{Math.round(result.cognitive_assessment.result.confidence * 100)}%</p>
                 </div>
                 <div>
                   <p className="text-slate-400">Novelty</p>
-                  <p>{Math.round(result.cognitive_assessment.evaluation.novelty_score * 100)}%</p>
+                  <p>{Math.round(result.cognitive_assessment.result.novelty * 100)}%</p>
                 </div>
                 <div>
                   <p className="text-slate-400">Impact</p>
-                  <p>{Math.round(result.cognitive_assessment.evaluation.impact_score * 100)}%</p>
+                  <p>{Math.round(result.cognitive_assessment.result.impact * 100)}%</p>
                 </div>
                 <div>
                   <p className="text-slate-400">Cases</p>
@@ -161,9 +170,9 @@ export default function IntentPage() {
               <div className="text-xs text-slate-300">
                 {result.cognitive_assessment.perception.normalized_intent}
               </div>
-              {result.cognitive_assessment.evaluation.governance_hints.length > 0 ? (
+              {result.cognitive_assessment.result.governance_flags.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
-                  {result.cognitive_assessment.evaluation.governance_hints.map((hint) => (
+                  {result.cognitive_assessment.result.governance_flags.map((hint) => (
                     <span key={hint} className="rounded-full border border-cyan-500/30 px-2 py-0.5 text-[11px] text-cyan-200">
                       {hint}
                     </span>
