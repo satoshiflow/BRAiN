@@ -68,5 +68,36 @@ describe("WorkerRunCard", () => {
 
     expect(onApprove).toHaveBeenCalledWith("wr-2", "approved because scoped");
     expect(onReject).toHaveBeenCalledWith("wr-2", "rejected because unsafe");
+    expect(screen.getByText("Approval Panel")).toBeInTheDocument();
+    expect(screen.getByText("Policy: approve only if the requested edit is narrow, reviewable, and expected.")).toBeInTheDocument();
+    expect(screen.getByText("Risk: bounded_apply can change repository files immediately after approval.")).toBeInTheDocument();
+  });
+
+  it("renders approval history when a decision was already recorded", () => {
+    render(
+      <WorkerRunCard
+        update={{
+          worker_run_id: "wr-3",
+          session_id: "session-1",
+          message_id: "message-1",
+          worker_type: "miniworker",
+          status: "completed",
+          label: "AXE miniworker completed",
+          detail: "Patch applied",
+          updated_at: new Date().toISOString(),
+          artifacts: [
+            {
+              type: "approval_history",
+              label: "Approval recorded",
+              metadata: { approved: true, approval_reason: "Reviewed and approved" },
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Approval history")).toBeInTheDocument();
+    expect(screen.getByText("Approved")).toBeInTheDocument();
+    expect(screen.getByText("Reviewed and approved")).toBeInTheDocument();
   });
 });

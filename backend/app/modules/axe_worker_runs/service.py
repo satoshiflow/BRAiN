@@ -332,6 +332,17 @@ class AXEWorkerRunService:
         row.backend_run_type = f"{worker_response.worker_type}_job"
         row.artifacts_json = [
             *(row.artifacts_json or []),
+            {
+                "type": "approval_history",
+                "label": "Approval recorded",
+                "url": "inline://approval-history",
+                "metadata": {
+                    "approved": True,
+                    "approval_reason": approval_reason,
+                    "worker_type": payload.worker_type,
+                    "execution_mode": payload.execution_mode,
+                },
+            },
             *[artifact.model_dump(mode="json") for artifact in worker_response.artifacts],
         ]
 
@@ -375,7 +386,7 @@ class AXEWorkerRunService:
         row.artifacts_json = [
             *self._without_pending_approval_artifacts(row.artifacts_json or []),
             {
-                "type": "approval",
+                "type": "approval_history",
                 "label": "Approval rejected",
                 "url": "inline://approval-rejected",
                 "metadata": {"rejected": True, "rejection_reason": rejection_reason},
