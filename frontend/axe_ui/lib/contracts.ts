@@ -28,12 +28,15 @@ export interface AxeWorkerArtifact {
   type: string;
   label: string;
   url?: string;
+  content?: string | null;
+  metadata?: Record<string, unknown>;
 }
 
 export interface AxeWorkerUpdate {
   worker_run_id: string;
   session_id: string;
   message_id: string;
+  worker_type: "auto" | "opencode" | "miniworker";
   status: AxeWorkerStatus;
   label: string;
   detail: string;

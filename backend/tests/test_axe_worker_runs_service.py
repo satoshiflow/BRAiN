@@ -62,6 +62,7 @@ async def test_create_worker_run_dispatches_opencode_and_persists_backend_job_id
                 worker_run_id=worker_run_id,
                 session_id=payload.session_id,
                 message_id=payload.message_id,
+                worker_type="opencode",
                 status="queued",
                 label="OpenCode worker queued",
                 detail="Job dispatched: job_123",
@@ -163,6 +164,7 @@ async def test_create_worker_run_persists_miniworker_completed_payload(monkeypat
                 worker_run_id=worker_run_id,
                 session_id=payload.session_id,
                 message_id=payload.message_id,
+                worker_type="miniworker",
                 status="completed",
                 label="AXE miniworker completed",
                 detail="Patch proposal ready",
@@ -188,3 +190,96 @@ async def test_create_worker_run_persists_miniworker_completed_payload(monkeypat
     assert db.added is not None
     assert db.added.label == "AXE miniworker completed"
     assert db.added.detail == "Patch proposal ready"
+
+
+@pytest.mark.asyncio
+async def test_create_worker_run_auto_routes_small_scope_to_miniworker(monkeypatch):
+    db = _FakeDB()
+    service = AXEWorkerRunService(db=db)  # type: ignore[arg-type]
+
+    async def _owned_session(**kwargs):
+        _ = kwargs
+        return SimpleNamespace(tenant_id="tenant-a")
+
+    async def _owned_message(**kwargs):
+        _ = kwargs
+        return SimpleNamespace(id=uuid4())
+
+    class _MiniworkerStub:
+        async def dispatch(self, *, db, principal, payload, worker_run_id):  # noqa: ANN001
+            _ = db, principal, worker_run_id
+            assert payload.worker_type == "miniworker"
+            return SimpleNamespace(
+                worker_run_id=worker_run_id,
+                session_id=payload.session_id,
+                message_id=payload.message_id,
+                worker_type="miniworker",
+                status="completed",
+                label="AXE miniworker completed",
+                detail="Patch proposal ready",
+                updated_at=None,
+                artifacts=[],
+            )
+
+    monkeypatch.setattr(service, "_get_owned_session", _owned_session)
+    monkeypatch.setattr(service, "_get_owned_message", _owned_message)
+    WorkerAdapterRegistry._adapters = {"miniworker": _MiniworkerStub()}  # type: ignore[assignment]
+    WorkerAdapterRegistry._initialized = True
+
+    payload = AXEWorkerRunCreateRequest(
+        session_id=uuid4(),
+        message_id=uuid4(),
+        prompt="Delete line 3 and replace it with a guarded return",
+        worker_type="auto",
+        file_scope=["backend/app/modules/axe_worker_runs/service.py"],
+    )
+
+    response = await service.create_worker_run(principal=_principal(), payload=payload)
+
+    assert response.worker_type == "miniworker"
+
+
+@pytest.mark.asyncio
+async def test_create_worker_run_auto_routes_broad_scope_to_opencode(monkeypatch):
+    db = _FakeDB()
+    service = AXEWorkerRunService(db=db)  # type: ignore[arg-type]
+
+    async def _owned_session(**kwargs):
+        _ = kwargs
+        return SimpleNamespace(tenant_id="tenant-a")
+
+    async def _owned_message(**kwargs):
+        _ = kwargs
+        return SimpleNamespace(id=uuid4())
+
+    class _OpenCodeStub:
+        async def dispatch(self, *, db, principal, payload, worker_run_id):  # noqa: ANN001
+            _ = db, principal, worker_run_id
+            assert payload.worker_type == "opencode"
+            return SimpleNamespace(
+                worker_run_id=worker_run_id,
+                session_id=payload.session_id,
+                message_id=payload.message_id,
+                worker_type="opencode",
+                status="queued",
+                label="OpenCode worker queued",
+                detail="Job dispatched: job_456",
+                updated_at=None,
+                artifacts=[],
+            )
+
+    monkeypatch.setattr(service, "_get_owned_session", _owned_session)
+    monkeypatch.setattr(service, "_get_owned_message", _owned_message)
+    WorkerAdapterRegistry._adapters = {"opencode": _OpenCodeStub()}  # type: ignore[assignment]
+    WorkerAdapterRegistry._initialized = True
+
+    payload = AXEWorkerRunCreateRequest(
+        session_id=uuid4(),
+        message_id=uuid4(),
+        prompt="Run a security review across auth, secrets, infra and deployment paths",
+        worker_type="auto",
+    )
+
+    response = await service.create_worker_run(principal=_principal(), payload=payload)
+
+    assert response.worker_type == "opencode"

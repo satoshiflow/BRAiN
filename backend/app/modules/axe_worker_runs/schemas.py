@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 AXEWorkerStatus = Literal["queued", "running", "waiting_input", "completed", "failed"]
 OpenCodeMode = Literal["plan", "build", "heal", "evolve"]
-WorkerType = Literal["opencode", "miniworker"]
+WorkerType = Literal["auto", "opencode", "miniworker"]
 MiniworkerExecutionMode = Literal["proposal", "bounded_apply"]
 MiniworkerExpectedOutput = Literal["patch", "analysis", "tests", "mixed"]
 
@@ -29,7 +29,7 @@ class AXEWorkerRunCreateRequest(BaseModel):
     message_id: UUID
     prompt: str = Field(..., min_length=1, max_length=20000)
     mode: OpenCodeMode = "plan"
-    worker_type: WorkerType = "opencode"
+    worker_type: WorkerType = "auto"
     execution_mode: MiniworkerExecutionMode = "proposal"
     expected_output: MiniworkerExpectedOutput = "patch"
     module: str | None = Field(default=None, min_length=1, max_length=128)
@@ -42,6 +42,7 @@ class AXEWorkerRunResponse(BaseModel):
     worker_run_id: str
     session_id: UUID
     message_id: UUID
+    worker_type: WorkerType
     status: AXEWorkerStatus
     label: str
     detail: str

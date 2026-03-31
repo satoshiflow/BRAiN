@@ -27,6 +27,8 @@ from .schemas import AXEWorkerArtifact, AXEWorkerRunCreateRequest, AXEWorkerRunR
 
 logger = logging.getLogger(__name__)
 
+AUTO_WORKER_TYPE = "auto"
+
 
 OPENCODE_TO_AXE_STATUS = {
     "requested": "queued",
@@ -110,6 +112,7 @@ class OpenCodeWorkerAdapter:
             worker_run_id=worker_run_id,
             session_id=payload.session_id,
             message_id=payload.message_id,
+            worker_type="opencode",
             status="queued",
             label="OpenCode worker queued",
             detail=f"Job dispatched: {job.job_id}",
@@ -181,6 +184,8 @@ class AXEWorkerRunService:
         if message is None:
             raise LookupError("Message not found")
 
+        effective_worker_type = self._select_worker_type(payload)
+
         worker_run_id = f"wr_{uuid4().hex[:16]}"
         row = AXEWorkerRunORM(
             worker_run_id=worker_run_id,
@@ -188,17 +193,20 @@ class AXEWorkerRunService:
             message_id=payload.message_id,
             principal_id=principal.principal_id,
             tenant_id=principal.tenant_id,
-            backend_run_type=f"{payload.worker_type}_job",
+            backend_run_type=f"{effective_worker_type}_job",
             status="queued",
-            label=f"{payload.worker_type.title()} worker queued",
+            label=f"{effective_worker_type.title()} worker queued",
             detail="Job accepted by BRAiN orchestrator",
             artifacts_json=[],
         )
         self.db.add(row)
 
-        adapter = WorkerAdapterRegistry.get(payload.worker_type)
+        adapter = WorkerAdapterRegistry.get(effective_worker_type)
         if adapter is None:
-            raise ValueError(f"Unsupported worker type: {payload.worker_type}")
+            raise ValueError(f"Unsupported worker type: {effective_worker_type}")
+
+        if effective_worker_type != payload.worker_type:
+            payload = payload.model_copy(update={"worker_type": effective_worker_type})
 
         worker_response = await adapter.dispatch(
             db=self.db,
@@ -210,6 +218,7 @@ class AXEWorkerRunService:
         row.status = worker_response.status
         row.label = worker_response.label
         row.detail = worker_response.detail
+        row.backend_run_type = f"{worker_response.worker_type}_job"
         row.artifacts_json = [artifact.model_dump(mode="json") for artifact in worker_response.artifacts]
 
         await self.db.commit()
@@ -362,12 +371,41 @@ class AXEWorkerRunService:
             worker_run_id=row.worker_run_id,
             session_id=row.session_id,
             message_id=row.message_id,
+            worker_type=_worker_type_from_backend_run_type(row.backend_run_type),
             status=row.status,
             label=row.label,
             detail=row.detail,
             updated_at=row.updated_at or datetime.utcnow(),
             artifacts=artifacts,
         )
+
+    @staticmethod
+    def _select_worker_type(payload: AXEWorkerRunCreateRequest) -> WorkerType:
+        if payload.worker_type != AUTO_WORKER_TYPE:
+            return payload.worker_type
+
+        prompt = payload.prompt.lower()
+        scope_size = len(payload.file_scope)
+        high_risk_terms = (
+            "deploy",
+            "migration",
+            "database",
+            "infra",
+            "production",
+            "secret",
+            "credential",
+            "auth",
+            "security",
+            "multi-file",
+            "refactor entire",
+        )
+        broad_scope = scope_size == 0 or scope_size > 3 or payload.max_files > 3
+        asks_for_large_work = any(term in prompt for term in high_risk_terms)
+        if payload.execution_mode == "bounded_apply":
+            return "opencode"
+        if broad_scope or asks_for_large_work or len(payload.prompt) > 1200:
+            return "opencode"
+        return "miniworker"
 
 
 def _status_label(status: str) -> str:
@@ -390,3 +428,11 @@ def _status_detail(status: str) -> str:
         "failed": "Worker execution failed",
     }
     return details.get(status, "Worker status updated")
+
+
+def _worker_type_from_backend_run_type(backend_run_type: str | None) -> WorkerType:
+    if backend_run_type == "miniworker_job":
+        return "miniworker"
+    if backend_run_type == "opencode_job":
+        return "opencode"
+    return "auto"

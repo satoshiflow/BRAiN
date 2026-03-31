@@ -14,6 +14,9 @@ const statusStyles: Record<AxeWorkerUpdate["status"], string> = {
 
 function WorkerRunCardComponent({ update }: { update: AxeWorkerUpdate }) {
   const artifacts = update.artifacts ?? [];
+  const inlineArtifacts = artifacts.filter((artifact) => artifact.content);
+  const metricArtifact = artifacts.find((artifact) => artifact.type === "report");
+  const metrics = metricArtifact?.metadata ?? {};
 
   return (
     <div className={`mt-3 rounded-xl border p-3 ${statusStyles[update.status]}`}>
@@ -22,9 +25,14 @@ function WorkerRunCardComponent({ update }: { update: AxeWorkerUpdate }) {
           <p className="text-[11px] uppercase tracking-[0.18em] opacity-70">Worker status</p>
           <p className="text-sm font-semibold">{update.label}</p>
         </div>
-        <span className="rounded-full border border-current/25 px-2.5 py-1 text-[11px] uppercase tracking-[0.14em]">
-          {update.status}
-        </span>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <span className="rounded-full border border-current/25 px-2.5 py-1 text-[11px] uppercase tracking-[0.14em]">
+            {update.worker_type}
+          </span>
+          <span className="rounded-full border border-current/25 px-2.5 py-1 text-[11px] uppercase tracking-[0.14em]">
+            {update.status}
+          </span>
+        </div>
       </div>
 
       <p className="mt-2 text-sm opacity-90">{update.detail}</p>
@@ -32,6 +40,16 @@ function WorkerRunCardComponent({ update }: { update: AxeWorkerUpdate }) {
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs opacity-75">
         <span>{new Date(update.updated_at).toLocaleTimeString()}</span>
         <span className="rounded-full border border-current/15 px-2 py-1">{update.worker_run_id}</span>
+        {typeof metrics.estimated_cost_credits === "number" && (
+          <span className="rounded-full border border-current/15 px-2 py-1">
+            {metrics.estimated_cost_credits.toFixed(2)} credits
+          </span>
+        )}
+        {typeof metrics.approx_peak_rss_mb === "number" && (
+          <span className="rounded-full border border-current/15 px-2 py-1">
+            {metrics.approx_peak_rss_mb.toFixed(1)} MB rss
+          </span>
+        )}
       </div>
 
       {artifacts.length > 0 && (
@@ -40,6 +58,17 @@ function WorkerRunCardComponent({ update }: { update: AxeWorkerUpdate }) {
             <span key={`${artifact.type}-${artifact.label}`} className="rounded-full border border-current/15 px-2.5 py-1 text-xs">
               {artifact.label}
             </span>
+          ))}
+        </div>
+      )}
+
+      {inlineArtifacts.length > 0 && (
+        <div className="mt-3 space-y-3">
+          {inlineArtifacts.map((artifact) => (
+            <div key={`${artifact.type}-${artifact.label}-inline`} className="rounded-lg border border-current/15 bg-black/10 p-3">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] opacity-75">{artifact.label}</p>
+              <pre className="overflow-x-auto whitespace-pre-wrap break-words text-xs leading-5 opacity-95">{artifact.content}</pre>
+            </div>
           ))}
         </div>
       )}

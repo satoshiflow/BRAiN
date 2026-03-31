@@ -213,6 +213,7 @@ async def test_miniworker_command_dispatches_session_scoped_worker(monkeypatch):
             assert payload.prompt == "replace line 3"
             return SimpleNamespace(
                 worker_run_id="wr-mini-1",
+                worker_type="miniworker",
                 status="completed",
                 detail="Patch proposal ready",
             )
@@ -234,3 +235,41 @@ async def test_miniworker_command_dispatches_session_scoped_worker(monkeypatch):
     assert response is not None
     assert response.raw["worker_type"] == "miniworker"
     assert response.raw["worker_run_id"] == "wr-mini-1"
+
+
+@pytest.mark.asyncio
+async def test_worker_command_uses_auto_routing_result(monkeypatch):
+    db = _FakeDB()
+    router_module = importlib.import_module("app.modules.axe_fusion.router")
+
+    class _WorkerServiceStub:
+        def __init__(self, db):  # noqa: ANN001
+            _ = db
+
+        async def create_worker_run(self, *, principal, payload):  # noqa: ANN001
+            assert principal.principal_id == "axe-user"
+            assert payload.worker_type == "auto"
+            return SimpleNamespace(
+                worker_run_id="wr-auto-1",
+                worker_type="miniworker",
+                status="completed",
+                detail="Patch proposal ready",
+            )
+
+    monkeypatch.setattr(router_module, "AXEWorkerRunService", _WorkerServiceStub)
+
+    request = ChatRequest(
+        model="gpt-4",
+        messages=[ChatMessage(role="user", content="/worker replace line 3")],
+    )
+
+    response = await _try_worker_bridge(
+        db=db,  # type: ignore[arg-type]
+        principal=_principal(),
+        chat_request=request,
+        request_id="req-worker-1",
+    )
+
+    assert response is not None
+    assert response.raw["worker_type"] == "miniworker"
+    assert response.raw["requested_worker_type"] == "auto"

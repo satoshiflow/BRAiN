@@ -83,6 +83,7 @@ async def test_miniworker_dispatch_returns_completed_patch(monkeypatch):
     )
 
     assert result["status"] == "completed"
+    assert result["worker_type"] == "miniworker"
     assert result["label"] == "AXE miniworker completed"
     assert result["artifacts"][0]["type"] == "report"
     assert consumed
@@ -143,4 +144,42 @@ async def test_miniworker_dispatch_creates_repair_ticket_on_failure(monkeypatch)
     )
 
     assert result["status"] == "failed"
+    assert result["worker_type"] == "miniworker"
     assert tickets
+
+
+@pytest.mark.asyncio
+async def test_miniworker_bounded_apply_requires_scope_and_concrete_instruction(monkeypatch):
+    service = AXEMiniworkerService()
+
+    values = {
+        "AXE_MINIWORKER_ENABLED": "true",
+        "AXE_MINIWORKER_COMMAND": "pi",
+        "AXE_MINIWORKER_WORKDIR": "/home/oli/dev/brain-v2",
+        "AXE_MINIWORKER_TIMEOUT_SECONDS": "30",
+        "AXE_MINIWORKER_MAX_FILES": "3",
+        "AXE_MINIWORKER_MAX_LLM_TOKENS": "6000",
+        "AXE_MINIWORKER_MAX_COST_CREDITS": "30",
+        "AXE_MINIWORKER_ALLOW_BOUNDED_APPLY": "true",
+    }
+
+    async def _resolve_effective_value(_db, key, **kwargs):
+        return values.get(key, kwargs.get("default"))
+
+    monkeypatch.setattr(service.config_service, "resolve_effective_value", _resolve_effective_value)
+
+    payload = AXEWorkerRunCreateRequest(
+        session_id=uuid4(),
+        message_id=uuid4(),
+        prompt="Please improve this function",
+        worker_type="miniworker",
+        execution_mode="bounded_apply",
+    )
+
+    with pytest.raises(ValueError, match="requires explicit file_scope"):
+        await service.dispatch(
+            db=_FakeDB(),  # type: ignore[arg-type]
+            principal=_principal(),
+            payload=payload,
+            worker_run_id="wr_testmini_3",
+        )

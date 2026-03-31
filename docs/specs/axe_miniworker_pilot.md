@@ -120,7 +120,53 @@ This keeps small failures observable without escalating every case to the heavy 
 
 Current pilot entry points:
 - `POST /api/axe/workers` with `worker_type="miniworker"`
+- `POST /api/axe/workers` with `worker_type="auto"` for BRAiN-side executor selection
 - AXE slash command bridge: `/miniworker ...`
+- AXE slash command bridge: `/worker ...` for automatic routing
+
+## Automatic Routing
+
+When `worker_type="auto"`, BRAiN resolves the execution path before dispatch.
+
+Current heuristics prefer `miniworker` when the request is:
+- low-risk
+- small in prompt size
+- constrained to a few files
+- proposal-only
+
+Current heuristics prefer `opencode` when the request is:
+- broad or unscoped
+- sensitive or security-adjacent
+- likely multi-file or infrastructure-oriented
+- `bounded_apply`
+
+This is intentionally conservative and may be replaced later by richer Domain Agent / RoutingDecision logic.
+
+## AXE UI Surface
+
+The AXE chat worker card now renders:
+- resolved worker type
+- inline patch artifacts
+- inline analysis artifacts
+- lightweight execution metrics such as estimated credits and RSS delta
+
+This keeps the pilot useful without requiring a heavier worker dashboard first.
+
+## Bounded Apply Gate
+
+`bounded_apply` is now wired but remains gated by config.
+
+Requirements:
+- `AXE_MINIWORKER_ALLOW_BOUNDED_APPLY=true`
+- explicit `file_scope`
+- maximum 3 scoped files
+- concrete edit instructions in the prompt
+
+If any requirement is missing, the request fails closed.
+
+Current guardrail:
+- automatic routing never selects `miniworker` for `bounded_apply`
+- callers must request `miniworker` explicitly if they want that path
 
 ## Follow-up Work
 

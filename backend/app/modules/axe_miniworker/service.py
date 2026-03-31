@@ -31,6 +31,7 @@ DEFAULT_MAX_FILES = 3
 DEFAULT_MAX_LLM_TOKENS = 6000
 DEFAULT_MAX_COST_CREDITS = 30.0
 READ_ONLY_TOOLS = "read,grep,find,ls"
+APPLY_TOOLS = "read,grep,find,ls,edit,write"
 ENV_PASSTHROUGH_KEYS = (
     "OPENAI_API_KEY",
     "OPENROUTER_API_KEY",
@@ -180,6 +181,8 @@ class AXEMiniworkerService:
             raise ValueError("AXE miniworker is disabled. Set AXE_MINIWORKER_ENABLED to true.")
         if payload.execution_mode == "bounded_apply" and not config.allow_bounded_apply:
             raise ValueError("AXE miniworker bounded_apply is disabled for this environment")
+        if payload.execution_mode == "bounded_apply":
+            self._validate_bounded_apply(payload)
 
         scoped_paths = self._resolve_scope(config, payload.file_scope, payload.max_files)
         prompt = self._build_prompt(payload, scoped_paths)
@@ -268,6 +271,7 @@ class AXEMiniworkerService:
             "worker_run_id": worker_run_id,
             "session_id": payload.session_id,
             "message_id": payload.message_id,
+            "worker_type": "miniworker",
             "status": "completed" if success else "failed",
             "label": "AXE miniworker completed" if success else "AXE miniworker failed",
             "detail": self._build_detail(parsed, stderr, success, timed_out),
@@ -335,17 +339,35 @@ class AXEMiniworkerService:
 
     def _build_prompt(self, payload: Any, scoped_paths: list[Path]) -> str:
         scope_text = "\n".join(f"- {path.relative_to(REPO_ROOT)}" for path in scoped_paths) or "- no explicit file scope supplied"
+        execution_instructions = (
+            "Apply only the explicitly requested edit inside the scoped files. "
+            "Do not create unrelated changes. Return JSON only describing what was changed and why."
+            if payload.execution_mode == "bounded_apply"
+            else "Do not claim to have edited files. Return JSON only with a proposal."
+        )
         return (
-            "You are AXE miniworker running in proposal mode for BRAiN.\n"
+            "You are AXE miniworker running in a bounded mode for BRAiN.\n"
             "Stay bounded, minimal, and repository-aware.\n"
             f"Execution mode: {payload.execution_mode}\n"
             f"Expected output: {payload.expected_output}\n"
             f"Scoped paths:\n{scope_text}\n"
-            "Do not claim to have edited files. Return JSON only with keys: "
+            f"{execution_instructions}\n"
+            "Return JSON only with keys: "
             "status, summary, analysis, patch, tests_recommended, affected_paths, risks, should_escalate.\n"
             "status must be one of: patch_proposal, analysis_only, test_proposal, cannot_comply.\n"
             f"User task:\n{payload.prompt.strip()}"
         )
+
+    @staticmethod
+    def _validate_bounded_apply(payload: Any) -> None:
+        if not payload.file_scope:
+            raise ValueError("AXE miniworker bounded_apply requires explicit file_scope")
+        if payload.max_files > 3 or len(payload.file_scope) > 3:
+            raise ValueError("AXE miniworker bounded_apply is limited to 3 files")
+        prompt = payload.prompt.lower()
+        concrete_terms = ("replace", "delete", "insert", "change", "update", "rename")
+        if not any(term in prompt for term in concrete_terms):
+            raise ValueError("AXE miniworker bounded_apply requires concrete edit instructions")
 
     def _build_command(
         self,
@@ -357,7 +379,8 @@ class AXEMiniworkerService:
         args = shlex.split(config.command)
         if not args:
             raise ValueError("AXE miniworker command is empty")
-        args.extend(["--no-session", "--tools", READ_ONLY_TOOLS, "-p"])
+        tools = APPLY_TOOLS if payload.execution_mode == "bounded_apply" else READ_ONLY_TOOLS
+        args.extend(["--no-session", "--tools", tools, "-p"])
         if config.provider:
             args.extend(["--provider", config.provider])
         if config.model:
@@ -365,8 +388,6 @@ class AXEMiniworkerService:
         for scoped_path in scoped_paths:
             args.append(f"@{scoped_path.relative_to(config.workdir)}")
         args.append(prompt)
-        if payload.execution_mode == "bounded_apply":
-            raise ValueError("AXE miniworker bounded_apply is not enabled in proposal-first runtime")
         return args
 
     async def _run_command(

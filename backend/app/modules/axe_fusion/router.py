@@ -764,8 +764,8 @@ async def _try_skillrun_bridge(
     )
 
 
-WORKER_COMMAND_PATTERN = r"^\s*/(opencode|openclaw|miniworker)\b"
-WorkerCommandType = Literal["opencode", "openclaw", "miniworker"]
+WORKER_COMMAND_PATTERN = r"^\s*/(worker|opencode|openclaw|miniworker)\b"
+WorkerCommandType = Literal["worker", "opencode", "openclaw", "miniworker"]
 
 
 async def _try_worker_bridge(
@@ -959,12 +959,14 @@ async def _try_worker_bridge(
 
     worker_service = AXEWorkerRunService(db=db)
 
+    requested_worker_type = "auto" if worker_type == "worker" else worker_type
+
     payload = AXEWorkerRunCreateRequest(
         session_id=session_id,
         message_id=message_id,
         prompt=user_prompt,
         mode="plan",
-        worker_type=worker_type,
+        worker_type=requested_worker_type,
         execution_mode="proposal",
         expected_output="patch",
     )
@@ -986,10 +988,11 @@ async def _try_worker_bridge(
         ) from exc
 
     return ChatResponse(
-        text=f"[{worker_type.upper()} worker dispatched: {worker_response.worker_run_id}]\n\nStatus: {worker_response.status}\n{worker_response.detail}",
+        text=f"[{worker_response.worker_type.upper()} worker dispatched: {worker_response.worker_run_id}]\n\nStatus: {worker_response.status}\n{worker_response.detail}",
         raw={
             "execution_path": "worker_bridge",
-            "worker_type": worker_type,
+            "worker_type": worker_response.worker_type,
+            "requested_worker_type": requested_worker_type,
             "worker_run_id": worker_response.worker_run_id,
             "worker_status": worker_response.status,
         },
@@ -1126,7 +1129,7 @@ async def axe_chat(
                 odoo_response = await odoo_bridge.handle_message(last_user_message)
                 
                 if odoo_response:
-                    logger.info(f"✅ Odoo command executed successfully")
+                    logger.info("✅ Odoo command executed successfully")
                     return ChatResponse(
                         id=f"odoo-{uuid4().hex[:8]}",
                         created=int(datetime.now(timezone.utc).timestamp()),

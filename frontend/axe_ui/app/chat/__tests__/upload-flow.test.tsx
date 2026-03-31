@@ -87,6 +87,7 @@ describe("chat upload flow", () => {
       worker_run_id: "worker-1",
       session_id: "session-1",
       message_id: "msg-1",
+      worker_type: "opencode",
       status: "completed",
       label: "OpenCode worker completed",
       detail: "Finished successfully",
@@ -178,7 +179,7 @@ describe("chat upload flow", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Send message" }));
 
-    expect(await screen.findByText("OpenCode worker queued")).toBeInTheDocument();
+    expect(await screen.findByText("BRAiN worker queued")).toBeInTheDocument();
     expect(screen.getByText("BRAiN delegated this request to a worker. Awaiting status updates.")).toBeInTheDocument();
   });
 });
