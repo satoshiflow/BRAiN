@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { WorkerRunCard } from "@/components/chat/WorkerRunCard";
 
@@ -32,7 +32,7 @@ describe("WorkerRunCard", () => {
     expect(screen.getByText("+new line")).toBeInTheDocument();
   });
 
-  it("renders approval actions for waiting_input approval artifacts", () => {
+  it("renders approval actions for waiting_input approval artifacts", async () => {
     const onApprove = jest.fn();
     const onReject = jest.fn();
 
@@ -66,6 +66,7 @@ describe("WorkerRunCard", () => {
     fireEvent.change(textareas[1], { target: { value: "rejected because unsafe" } });
 
     fireEvent.click(screen.getByRole("button", { name: "Approve apply" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Reject apply" })).not.toBeDisabled());
     fireEvent.click(screen.getByRole("button", { name: "Reject apply" }));
 
     expect(onApprove).toHaveBeenCalledWith("wr-2", "approved because scoped");

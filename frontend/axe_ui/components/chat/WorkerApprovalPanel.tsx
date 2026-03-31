@@ -8,8 +8,8 @@ interface WorkerApprovalPanelProps {
   workerRunId: string;
   approvalArtifact?: AxeWorkerArtifact;
   pendingRequestArtifact?: AxeWorkerArtifact;
-  onApprove?: (workerRunId: string, reason: string) => void;
-  onReject?: (workerRunId: string, reason: string) => void;
+  onApprove?: (workerRunId: string, reason: string) => Promise<void> | void;
+  onReject?: (workerRunId: string, reason: string) => Promise<void> | void;
 }
 
 export function WorkerApprovalPanel({
@@ -21,6 +21,7 @@ export function WorkerApprovalPanel({
 }: WorkerApprovalPanelProps) {
   const [approvalReason, setApprovalReason] = useState("Operator approved exact scoped edit");
   const [rejectionReason, setRejectionReason] = useState("Operator rejected bounded apply request");
+  const [submittingAction, setSubmittingAction] = useState<"approve" | "reject" | null>(null);
 
   const approvalMeta = approvalArtifact?.metadata ?? {};
   const pendingMeta = pendingRequestArtifact?.metadata ?? {};
@@ -40,6 +41,30 @@ export function WorkerApprovalPanel({
     ],
     [executionMode, fileScope.length, workerType],
   );
+
+  const handleApprove = async () => {
+    if (!onApprove || !approvalReason.trim() || submittingAction !== null) {
+      return;
+    }
+    try {
+      setSubmittingAction("approve");
+      await onApprove(workerRunId, approvalReason.trim());
+    } finally {
+      setSubmittingAction(null);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!onReject || !rejectionReason.trim() || submittingAction !== null) {
+      return;
+    }
+    try {
+      setSubmittingAction("reject");
+      await onReject(workerRunId, rejectionReason.trim());
+    } finally {
+      setSubmittingAction(null);
+    }
+  };
 
   return (
     <div className="mt-3 rounded-lg border border-current/15 bg-black/10 p-3">
@@ -83,11 +108,11 @@ export function WorkerApprovalPanel({
           <div className="mt-2 flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => onApprove?.(workerRunId, approvalReason.trim())}
-              disabled={!approvalReason.trim()}
+              onClick={handleApprove}
+              disabled={!approvalReason.trim() || submittingAction !== null}
               className="rounded-lg border border-emerald-300/35 bg-emerald-500/15 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-emerald-100 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Approve apply
+              {submittingAction === "approve" ? "Approving..." : "Approve apply"}
             </button>
           </div>
         </div>
@@ -103,11 +128,11 @@ export function WorkerApprovalPanel({
           <div className="mt-2 flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => onReject?.(workerRunId, rejectionReason.trim())}
-              disabled={!rejectionReason.trim()}
+              onClick={handleReject}
+              disabled={!rejectionReason.trim() || submittingAction !== null}
               className="rounded-lg border border-rose-300/35 bg-rose-500/15 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-rose-100 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Reject apply
+              {submittingAction === "reject" ? "Rejecting..." : "Reject apply"}
             </button>
           </div>
         </div>

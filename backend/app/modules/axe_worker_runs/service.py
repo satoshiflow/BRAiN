@@ -283,6 +283,8 @@ class AXEWorkerRunService:
             raise PermissionError("Worker run not found")
         if row.status != "waiting_input":
             raise ValueError("Worker run is not waiting for approval")
+        if not _principal_can_approve_bounded_apply(principal):
+            raise ValueError("bounded_apply approval requires operator/admin role")
 
         pending_payload = self._extract_pending_payload(row)
         if pending_payload is None:
@@ -564,6 +566,9 @@ class AXEWorkerRunService:
         if payload.execution_mode != "bounded_apply" or effective_worker_type != "miniworker":
             return None
 
+        if not _principal_can_approve_bounded_apply(principal):
+            raise ValueError("bounded_apply approval requires operator/admin role")
+
         if payload.approval_confirmed and not (payload.approval_reason or "").strip():
             raise ValueError("bounded_apply with approval_confirmed=true requires non-empty approval_reason")
 
@@ -727,3 +732,8 @@ def _worker_type_from_backend_run_type(backend_run_type: str | None) -> WorkerTy
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _principal_can_approve_bounded_apply(principal: Principal) -> bool:
+    roles = {str(role).strip().lower() for role in (principal.roles or [])}
+    return bool(roles.intersection({"operator", "admin", "service"}))

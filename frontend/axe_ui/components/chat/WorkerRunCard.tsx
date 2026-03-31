@@ -19,8 +19,8 @@ function WorkerRunCardComponent({
   onReject,
 }: {
   update: AxeWorkerUpdate;
-  onApprove?: (workerRunId: string, reason: string) => void;
-  onReject?: (workerRunId: string, reason: string) => void;
+  onApprove?: (workerRunId: string, reason: string) => Promise<void> | void;
+  onReject?: (workerRunId: string, reason: string) => Promise<void> | void;
 }) {
   const artifacts = update.artifacts ?? [];
   const inlineArtifacts = artifacts.filter((artifact) => artifact.content);
@@ -164,6 +164,8 @@ function ApprovalHistoryBlock({ artifact }: { artifact: AxeWorkerArtifact }) {
   const approved = metadata.approved === true;
   const decidedBy = typeof metadata.decided_by === "string" ? metadata.decided_by : null;
   const decidedAt = typeof metadata.decided_at === "string" ? metadata.decided_at : null;
+  const routingDecisionId = typeof metadata.routing_decision_id === "string" ? metadata.routing_decision_id : null;
+  const purposeEvaluationId = typeof metadata.purpose_evaluation_id === "string" ? metadata.purpose_evaluation_id : null;
   const reason = typeof metadata.reason === "string"
     ? metadata.reason
     : typeof metadata.approval_reason === "string"
@@ -187,6 +189,12 @@ function ApprovalHistoryBlock({ artifact }: { artifact: AxeWorkerArtifact }) {
               Time: {new Date(decidedAt).toLocaleString()}
             </span>
           )}
+        </div>
+      )}
+      {(routingDecisionId || purposeEvaluationId) && (
+        <div className="mt-2 flex flex-wrap gap-2 text-[11px] opacity-75">
+          {routingDecisionId && <span className="rounded-full border border-current/15 px-2 py-1">Routing: {routingDecisionId}</span>}
+          {purposeEvaluationId && <span className="rounded-full border border-current/15 px-2 py-1">Purpose: {purposeEvaluationId}</span>}
         </div>
       )}
     </div>
