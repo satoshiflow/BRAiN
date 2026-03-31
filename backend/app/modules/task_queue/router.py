@@ -43,6 +43,11 @@ def _to_model_status(status: Optional[TaskStatus]) -> Optional[TaskModelStatus]:
     return TaskModelStatus(status.value)
 
 
+def _has_cross_tenant_task_read(principal: Principal) -> bool:
+    roles = {str(role).strip().lower() for role in (principal.roles or [])}
+    return bool(roles.intersection({"admin", "service"}))
+
+
 async def _ensure_task_queue_writable(db: AsyncSession) -> None:
     if db is None:
         return
@@ -163,7 +168,14 @@ async def get_task(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Task {task_id} not found"
         )
-    
+
+    if not _has_cross_tenant_task_read(principal):
+        if principal.tenant_id and task.tenant_id and principal.tenant_id != task.tenant_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Task {task_id} not found"
+            )
+
     return task_to_response(task)
 
 

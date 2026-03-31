@@ -17,7 +17,7 @@ from .schemas import (
     AXEWorkerRunRejectionRequest,
     AXEWorkerRunResponse,
 )
-from .service import AXEWorkerRunService
+from .service import AXEWorkerRunService, BoundedApplyPermissionError
 
 
 router = APIRouter(
@@ -39,6 +39,8 @@ async def create_worker_run(
 ) -> AXEWorkerRunResponse:
     try:
         return await service.create_worker_run(principal=principal, payload=payload)
+    except BoundedApplyPermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found") from exc
     except LookupError as exc:
@@ -72,6 +74,8 @@ async def approve_worker_run(
             worker_run_id=worker_run_id,
             approval_reason=payload.approval_reason,
         )
+    except BoundedApplyPermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Worker run not found") from exc
     except LookupError as exc:
@@ -94,6 +98,8 @@ async def reject_worker_run(
             worker_run_id=worker_run_id,
             rejection_reason=payload.rejection_reason,
         )
+    except BoundedApplyPermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Worker run not found") from exc
     except ValueError as exc:

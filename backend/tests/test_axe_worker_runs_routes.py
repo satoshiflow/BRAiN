@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from app.core.auth_deps import Principal, PrincipalType, require_auth
 from app.modules.axe_worker_runs.router import get_service
 from app.modules.axe_worker_runs.schemas import AXEWorkerRunResponse
+from app.modules.axe_worker_runs.service import BoundedApplyPermissionError
 
 
 class _FakeWorkerService:
@@ -215,3 +216,16 @@ def test_create_worker_run_route_rejects_openclaw_parallel_path(client, test_app
     test_app.dependency_overrides.pop(get_service, None)
 
     assert response.status_code == 422
+
+
+def test_approve_worker_run_route_returns_403_on_bounded_apply_permission_error(client, test_app):
+    class _RejectingService(_FakeWorkerService):
+        async def approve_worker_run(self, *, principal, worker_run_id, approval_reason):  # noqa: ANN001
+            _ = principal, worker_run_id, approval_reason
+            raise BoundedApplyPermissionError("bounded_apply approval requires operator/admin role")
+
+    test_app.dependency_overrides[get_service] = lambda: _RejectingService()
+    response = client.post(f"/api/axe/workers/wr_waiting/approve", json={"approval_reason": "approved"})
+    test_app.dependency_overrides.pop(get_service, None)
+
+    assert response.status_code == 403

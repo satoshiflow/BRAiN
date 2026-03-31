@@ -374,7 +374,7 @@ async def test_create_worker_run_bounded_apply_requires_operator_role(monkeypatc
         file_scope=["backend/app/modules/axe_worker_runs/service.py"],
     )
 
-    with pytest.raises(ValueError, match="requires operator/admin role"):
+    with pytest.raises(PermissionError, match="requires operator/admin role"):
         await service.create_worker_run(principal=_viewer_principal(), payload=payload)
 
 
@@ -574,7 +574,7 @@ async def test_approve_worker_run_requires_operator_role(monkeypatch):
 
     monkeypatch.setattr(service, "_get_owned_worker_run", _get_owned_worker_run)
 
-    with pytest.raises(ValueError, match="requires operator/admin role"):
+    with pytest.raises(PermissionError, match="requires operator/admin role"):
         await service.approve_worker_run(
             principal=_viewer_principal(),
             worker_run_id="wr-approve-2",

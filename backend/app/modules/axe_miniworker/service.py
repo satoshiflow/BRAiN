@@ -353,6 +353,13 @@ class AXEMiniworkerService:
                 raise ValueError(f"AXE miniworker scope escapes workdir: {raw}") from exc
             if not candidate.exists():
                 raise ValueError(f"AXE miniworker scoped path does not exist: {raw}")
+
+            normalized = candidate.relative_to(config.workdir).as_posix().lower()
+            if any(marker in normalized for marker in BLOCKED_BOUNDED_APPLY_PATH_MARKERS):
+                raise ValueError(f"AXE miniworker bounded_apply blocked by governance path policy: {raw}")
+            if any(normalized.endswith(suffix) for suffix in BLOCKED_BOUNDED_APPLY_SUFFIXES):
+                raise ValueError(f"AXE miniworker bounded_apply blocked by governance file policy: {raw}")
+
             resolved.append(candidate)
         return resolved
 
@@ -387,12 +394,6 @@ class AXEMiniworkerService:
         concrete_terms = ("replace", "delete", "insert", "change", "update", "rename")
         if not any(term in prompt for term in concrete_terms):
             raise ValueError("AXE miniworker bounded_apply requires concrete edit instructions")
-        for raw_path in payload.file_scope:
-            lowered = str(raw_path).strip().lower()
-            if any(marker in lowered for marker in BLOCKED_BOUNDED_APPLY_PATH_MARKERS):
-                raise ValueError(f"AXE miniworker bounded_apply blocked by governance path policy: {raw_path}")
-            if any(lowered.endswith(suffix) for suffix in BLOCKED_BOUNDED_APPLY_SUFFIXES):
-                raise ValueError(f"AXE miniworker bounded_apply blocked by governance file policy: {raw_path}")
 
     def _build_command(
         self,

@@ -29,6 +29,10 @@ from .schemas import AXEWorkerArtifact, AXEWorkerRunCreateRequest, AXEWorkerRunR
 
 logger = logging.getLogger(__name__)
 
+
+class BoundedApplyPermissionError(PermissionError):
+    """Raised when principal lacks bounded_apply governance permissions."""
+
 OPENCODE_TO_AXE_STATUS = {
     "requested": "queued",
     "queued": "queued",
@@ -284,7 +288,7 @@ class AXEWorkerRunService:
         if row.status != "waiting_input":
             raise ValueError("Worker run is not waiting for approval")
         if not _principal_can_approve_bounded_apply(principal):
-            raise ValueError("bounded_apply approval requires operator/admin role")
+            raise BoundedApplyPermissionError("bounded_apply approval requires operator/admin role")
 
         pending_payload = self._extract_pending_payload(row)
         if pending_payload is None:
@@ -372,6 +376,8 @@ class AXEWorkerRunService:
             raise PermissionError("Worker run not found")
         if row.status != "waiting_input":
             raise ValueError("Worker run is not waiting for approval")
+        if not _principal_can_approve_bounded_apply(principal):
+            raise BoundedApplyPermissionError("bounded_apply rejection requires operator/admin role")
 
         await record_control_plane_event(
             db=self.db,
@@ -567,7 +573,7 @@ class AXEWorkerRunService:
             return None
 
         if not _principal_can_approve_bounded_apply(principal):
-            raise ValueError("bounded_apply approval requires operator/admin role")
+            raise BoundedApplyPermissionError("bounded_apply approval requires operator/admin role")
 
         if payload.approval_confirmed and not (payload.approval_reason or "").strip():
             raise ValueError("bounded_apply with approval_confirmed=true requires non-empty approval_reason")
