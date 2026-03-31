@@ -89,7 +89,12 @@ describe("WorkerRunCard", () => {
             {
               type: "approval_history",
               label: "Approval recorded",
-              metadata: { approved: true, approval_reason: "Reviewed and approved" },
+              metadata: {
+                approved: true,
+                approval_reason: "Reviewed and approved",
+                decided_by: "axe-user",
+                decided_at: "2026-03-31T19:00:00+00:00",
+              },
             },
           ],
         }}
@@ -99,5 +104,7 @@ describe("WorkerRunCard", () => {
     expect(screen.getByText("Approval history")).toBeInTheDocument();
     expect(screen.getByText("Approved")).toBeInTheDocument();
     expect(screen.getByText("Reviewed and approved")).toBeInTheDocument();
+    expect(screen.getByText("Actor: axe-user")).toBeInTheDocument();
+    expect(screen.getByText(/^Time:/)).toBeInTheDocument();
   });
 });

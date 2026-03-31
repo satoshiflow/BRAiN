@@ -113,6 +113,8 @@ function ApprovalHistoryBlock({ artifact }: { artifact: AxeWorkerArtifact }) {
   const metadata = artifact?.metadata ?? {};
   const isRejected = metadata.rejected === true;
   const approved = metadata.approved === true;
+  const decidedBy = typeof metadata.decided_by === "string" ? metadata.decided_by : null;
+  const decidedAt = typeof metadata.decided_at === "string" ? metadata.decided_at : null;
   const reason = typeof metadata.reason === "string"
     ? metadata.reason
     : typeof metadata.approval_reason === "string"
@@ -128,6 +130,16 @@ function ApprovalHistoryBlock({ artifact }: { artifact: AxeWorkerArtifact }) {
         {approved ? "Approved" : isRejected ? "Rejected" : artifact.label}
       </p>
       {reason && <p className="mt-2 text-xs leading-5 opacity-80">{reason}</p>}
+      {(decidedBy || decidedAt) && (
+        <div className="mt-2 flex flex-wrap gap-2 text-[11px] opacity-75">
+          {decidedBy && <span className="rounded-full border border-current/15 px-2 py-1">Actor: {decidedBy}</span>}
+          {decidedAt && (
+            <span className="rounded-full border border-current/15 px-2 py-1">
+              Time: {new Date(decidedAt).toLocaleString()}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

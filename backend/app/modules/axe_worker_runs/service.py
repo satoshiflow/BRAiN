@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Protocol
 from uuid import UUID, uuid4
 
@@ -339,6 +339,9 @@ class AXEWorkerRunService:
                 "metadata": {
                     "approved": True,
                     "approval_reason": approval_reason,
+                    "decided_by": principal.principal_id,
+                    "decided_by_type": principal.principal_type.value,
+                    "decided_at": _utc_now_iso(),
                     "worker_type": payload.worker_type,
                     "execution_mode": payload.execution_mode,
                 },
@@ -389,7 +392,13 @@ class AXEWorkerRunService:
                 "type": "approval_history",
                 "label": "Approval rejected",
                 "url": "inline://approval-rejected",
-                "metadata": {"rejected": True, "rejection_reason": rejection_reason},
+                "metadata": {
+                    "rejected": True,
+                    "rejection_reason": rejection_reason,
+                    "decided_by": principal.principal_id,
+                    "decided_by_type": principal.principal_type.value,
+                    "decided_at": _utc_now_iso(),
+                },
             },
         ]
         await self.db.commit()
@@ -696,3 +705,7 @@ def _worker_type_from_backend_run_type(backend_run_type: str | None) -> WorkerTy
     if backend_run_type == "opencode_job":
         return "opencode"
     return "auto"
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()

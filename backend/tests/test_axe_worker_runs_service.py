@@ -461,7 +461,10 @@ async def test_approve_worker_run_dispatches_pending_bounded_apply(monkeypatch):
     assert response.status == "completed"
     assert row.detail == "Patch applied within bounded scope"
     assert events == ["axe.miniworker.bounded_apply.approved.v1"]
-    assert any(artifact.get("type") == "approval_history" for artifact in row.artifacts_json)
+    approval_history = next((artifact for artifact in row.artifacts_json if artifact.get("type") == "approval_history"), None)
+    assert approval_history is not None
+    assert approval_history["metadata"]["decided_by"] == "axe-user"
+    assert isinstance(approval_history["metadata"]["decided_at"], str)
 
 
 @pytest.mark.asyncio
@@ -504,3 +507,5 @@ async def test_reject_worker_run_marks_failed(monkeypatch):
     assert row.detail == "not approved"
     assert events == ["axe.miniworker.bounded_apply.rejected.v1"]
     assert row.artifacts_json[0]["type"] == "approval_history"
+    assert row.artifacts_json[0]["metadata"]["decided_by"] == "axe-user"
+    assert isinstance(row.artifacts_json[0]["metadata"]["decided_at"], str)
