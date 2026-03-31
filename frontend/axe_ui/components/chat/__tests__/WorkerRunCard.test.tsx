@@ -59,10 +59,14 @@ describe("WorkerRunCard", () => {
       />,
     );
 
+    const textareas = screen.getAllByRole("textbox");
+    fireEvent.change(textareas[0], { target: { value: "approved because scoped" } });
+    fireEvent.change(textareas[1], { target: { value: "rejected because unsafe" } });
+
     fireEvent.click(screen.getByRole("button", { name: "Approve apply" }));
     fireEvent.click(screen.getByRole("button", { name: "Reject apply" }));
 
-    expect(onApprove).toHaveBeenCalledWith("wr-2");
-    expect(onReject).toHaveBeenCalledWith("wr-2");
+    expect(onApprove).toHaveBeenCalledWith("wr-2", "approved because scoped");
+    expect(onReject).toHaveBeenCalledWith("wr-2", "rejected because unsafe");
   });
 });

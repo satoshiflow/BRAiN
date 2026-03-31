@@ -1,6 +1,6 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useState } from "react";
 
 import type { AxeWorkerUpdate } from "@/lib/contracts";
 
@@ -18,8 +18,8 @@ function WorkerRunCardComponent({
   onReject,
 }: {
   update: AxeWorkerUpdate;
-  onApprove?: (workerRunId: string) => void;
-  onReject?: (workerRunId: string) => void;
+  onApprove?: (workerRunId: string, reason: string) => void;
+  onReject?: (workerRunId: string, reason: string) => void;
 }) {
   const artifacts = update.artifacts ?? [];
   const inlineArtifacts = artifacts.filter((artifact) => artifact.content);
@@ -27,6 +27,8 @@ function WorkerRunCardComponent({
   const metrics = metricArtifact?.metadata ?? {};
   const approvalArtifact = artifacts.find((artifact) => artifact.type === "approval");
   const approvalRequired = approvalArtifact?.metadata?.approval_required === true && update.status === "waiting_input";
+  const [approvalReason, setApprovalReason] = useState("Operator approved exact scoped edit");
+  const [rejectionReason, setRejectionReason] = useState("Operator rejected bounded apply request");
 
   return (
     <div className={`mt-3 rounded-xl border p-3 ${statusStyles[update.status]}`}>
@@ -88,21 +90,45 @@ function WorkerRunCardComponent({
       )}
 
       {approvalRequired && (
-        <div className="mt-3 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => onApprove?.(update.worker_run_id)}
-            className="rounded-lg border border-emerald-300/35 bg-emerald-500/15 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-emerald-100"
-          >
-            Approve apply
-          </button>
-          <button
-            type="button"
-            onClick={() => onReject?.(update.worker_run_id)}
-            className="rounded-lg border border-rose-300/35 bg-rose-500/15 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-rose-100"
-          >
-            Reject apply
-          </button>
+        <div className="mt-3 space-y-3 rounded-lg border border-current/15 bg-black/10 p-3">
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] opacity-75">Approval reason</p>
+            <textarea
+              value={approvalReason}
+              onChange={(event) => setApprovalReason(event.target.value)}
+              className="min-h-20 w-full rounded-md border border-current/15 bg-slate-950/70 px-3 py-2 text-sm text-current outline-none placeholder:text-current/40"
+              placeholder="Explain why this bounded apply is approved"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => onApprove?.(update.worker_run_id, approvalReason.trim())}
+              disabled={!approvalReason.trim()}
+              className="rounded-lg border border-emerald-300/35 bg-emerald-500/15 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-emerald-100 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Approve apply
+            </button>
+          </div>
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] opacity-75">Rejection reason</p>
+            <textarea
+              value={rejectionReason}
+              onChange={(event) => setRejectionReason(event.target.value)}
+              className="min-h-20 w-full rounded-md border border-current/15 bg-slate-950/70 px-3 py-2 text-sm text-current outline-none placeholder:text-current/40"
+              placeholder="Explain why this bounded apply is rejected"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => onReject?.(update.worker_run_id, rejectionReason.trim())}
+              disabled={!rejectionReason.trim()}
+              className="rounded-lg border border-rose-300/35 bg-rose-500/15 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-rose-100 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Reject apply
+            </button>
+          </div>
         </div>
       )}
     </div>

@@ -349,12 +349,8 @@ function ChatPageContent() {
     return created?.id ?? null;
   };
 
-  const handleApproveWorkerRun = async (workerRunId: string) => {
-    const approvalReason = window.prompt(
-      "Approval reason for bounded apply:",
-      "Operator approved exact scoped edit"
-    );
-    if (!approvalReason?.trim()) {
+  const handleApproveWorkerRun = async (workerRunId: string, approvalReason: string) => {
+    if (!approvalReason.trim()) {
       return;
     }
 
@@ -370,12 +366,8 @@ function ChatPageContent() {
     }
   };
 
-  const handleRejectWorkerRun = async (workerRunId: string) => {
-    const rejectionReason = window.prompt(
-      "Reason for rejecting bounded apply:",
-      "Operator rejected bounded apply request"
-    );
-    if (!rejectionReason?.trim()) {
+  const handleRejectWorkerRun = async (workerRunId: string, rejectionReason: string) => {
+    if (!rejectionReason.trim()) {
       return;
     }
 
