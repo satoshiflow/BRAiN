@@ -14,8 +14,10 @@ from loguru import logger
 from sqlalchemy import select, func, and_, or_, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth_deps import Principal
+from app.core.auth_deps import Principal, PrincipalType
 from app.modules.skill_engine.models import SkillRunModel
+from app.modules.skill_engine.schemas import SkillRunState
+from app.modules.skill_engine.service import get_skill_engine_service
 
 from .models import TaskModel, TaskStatus, TaskPriority
 from .schemas import (
@@ -46,6 +48,158 @@ class TaskQueueService:
         self.event_stream = event_stream
         self.recovery_policy_service = get_recovery_policy_service() if get_recovery_policy_service else None
         logger.info("📋 Task Queue Service initialized")
+
+    @staticmethod
+    def _utc_now_naive() -> datetime:
+        return datetime.now(timezone.utc).replace(tzinfo=None)
+
+    @staticmethod
+    def _principal_for_task(task: TaskModel) -> Principal:
+        principal_type_raw = str(task.created_by_type or "service").lower()
+        principal_type = PrincipalType.SERVICE
+        if principal_type_raw == PrincipalType.HUMAN.value:
+            principal_type = PrincipalType.HUMAN
+        elif principal_type_raw == PrincipalType.AGENT.value:
+            principal_type = PrincipalType.AGENT
+
+        return Principal(
+            principal_id=task.created_by or "task-queue",
+            principal_type=principal_type,
+            roles=["service"],
+            scopes=["read", "write"],
+            tenant_id=task.tenant_id,
+        )
+
+    async def _finalize_linked_skill_run(
+        self,
+        *,
+        db: AsyncSession,
+        task: TaskModel,
+        success: bool,
+        output_payload: Dict[str, Any] | None = None,
+        failure_code: str | None = None,
+        failure_reason_sanitized: str | None = None,
+    ) -> None:
+        skill_run_id = task.skill_run_id
+        if not skill_run_id:
+            return
+        task_id = str(task.task_id)
+        principal = self._principal_for_task(task)
+        try:
+            await get_skill_engine_service().finalize_external_run(
+                db,
+                skill_run_id,
+                principal,
+                success=success,
+                output_payload=output_payload or {},
+                failure_code=failure_code,
+                failure_reason_sanitized=failure_reason_sanitized,
+            )
+        except Exception as exc:
+            logger.warning(
+                "SkillRun finalize_external_run failed for task {} / run {}. Falling back to direct terminal update: {}",
+                task_id,
+                skill_run_id,
+                exc,
+            )
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+            await self._fallback_finalize_linked_skill_run(
+                db=db,
+                task_id=task_id,
+                skill_run_id=skill_run_id,
+                success=success,
+                output_payload=output_payload,
+                failure_code=failure_code,
+                failure_reason_sanitized=failure_reason_sanitized,
+            )
+
+    async def _fallback_finalize_linked_skill_run(
+        self,
+        *,
+        db: AsyncSession,
+        task_id: str,
+        skill_run_id,
+        success: bool,
+        output_payload: Dict[str, Any] | None = None,
+        failure_code: str | None = None,
+        failure_reason_sanitized: str | None = None,
+    ) -> None:
+        fallback_completed_at = self._utc_now_naive()
+
+        task_result = await db.execute(select(TaskModel).where(TaskModel.task_id == task_id))
+        queue_task = task_result.scalar_one_or_none()
+        if queue_task is not None:
+            queue_task.completed_at = fallback_completed_at
+            if success:
+                queue_task.status = TaskStatus.COMPLETED
+                queue_task.result = output_payload or {}
+            else:
+                queue_task.status = TaskStatus.FAILED
+                queue_task.error_message = failure_reason_sanitized or failure_code or "External execution failed"
+                queue_task.error_details = {
+                    "fallback_finalize": True,
+                    "failure_code": failure_code or "EXTERNAL-FAIL",
+                }
+
+            started_at = getattr(queue_task, "started_at", None)
+            if started_at:
+                started_at_naive = (
+                    started_at.replace(tzinfo=None)
+                    if getattr(started_at, "tzinfo", None) is not None
+                    else started_at
+                )
+                queue_task.execution_time_ms = (
+                    fallback_completed_at - started_at_naive
+                ).total_seconds() * 1000
+
+        result = await db.execute(select(SkillRunModel).where(SkillRunModel.id == skill_run_id))
+        run = result.scalar_one_or_none()
+        if run is None:
+            logger.warning("Fallback SkillRun finalize skipped: run not found {}", skill_run_id)
+            return
+
+        now = datetime.now(timezone.utc)
+        run.state_sequence = (run.state_sequence or 0) + 1
+        run.state_changed_at = now
+        run.started_at = run.started_at or now
+        run.finished_at = now
+        run.output_payload = output_payload or {}
+        run.cost_actual = 0.0
+
+        if success:
+            run.state = SkillRunState.SUCCEEDED.value
+            run.failure_code = None
+            run.failure_reason_sanitized = None
+            run.evaluation_summary = {
+                "overall_score": 1.0,
+                "external_execution": True,
+                "fallback_finalize": True,
+            }
+        else:
+            run.state = SkillRunState.FAILED.value
+            run.failure_code = failure_code or "EXTERNAL-FAIL"
+            run.failure_reason_sanitized = failure_reason_sanitized or "External execution failed"
+            run.evaluation_summary = {
+                "overall_score": 0.0,
+                "external_execution": True,
+                "fallback_finalize": True,
+                "issues_detected": [run.failure_code],
+                "error_classification": "execution_error",
+            }
+
+        if queue_task is not None:
+            db.add(queue_task)
+        db.add(run)
+        await db.commit()
+        logger.warning(
+            "Fallback SkillRun terminal update applied for task {} / run {} with state {}",
+            task_id,
+            skill_run_id,
+            run.state,
+        )
     
     async def _publish_event(self, event_type: str, task_id: str, data: Dict[str, Any] = None):
         """Publish event to EventStream if available"""
@@ -97,7 +251,7 @@ class TaskQueueService:
         
         # Determine initial status based on scheduling
         initial_status = TaskStatus.PENDING
-        if task_data.scheduled_at and task_data.scheduled_at > datetime.now(timezone.utc):
+        if task_data.scheduled_at and task_data.scheduled_at > self._utc_now_naive():
             initial_status = TaskStatus.SCHEDULED
         
         task = TaskModel(
@@ -201,7 +355,7 @@ class TaskQueueService:
         Returns:
             Claimed task or None if no tasks available
         """
-        now = datetime.now(timezone.utc)
+        now = self._utc_now_naive()
         
         # Build query for available tasks
         query = select(TaskModel).where(
@@ -300,7 +454,7 @@ class TaskQueueService:
             raise ValueError(f"Task {task_id} is not in CLAIMED state")
         
         task.status = TaskStatus.RUNNING
-        task.started_at = datetime.now(timezone.utc)
+        task.started_at = self._utc_now_naive()
         
         await db.commit()
         await db.refresh(task)
@@ -347,7 +501,7 @@ class TaskQueueService:
         if task.claimed_by != agent_id:
             raise ValueError(f"Task {task_id} was claimed by {task.claimed_by}, not {agent_id}")
         
-        now = datetime.now(timezone.utc)
+        now = self._utc_now_naive()
         task.status = TaskStatus.COMPLETED
         task.completed_at = now
         task.result = complete_data.result
@@ -357,7 +511,16 @@ class TaskQueueService:
         elif task.started_at:
             task.execution_time_ms = (now - task.started_at).total_seconds() * 1000
         
-        await db.commit()
+        if task.skill_run_id:
+            await self._finalize_linked_skill_run(
+                db=db,
+                task=task,
+                success=True,
+                output_payload=task.result or {},
+            )
+        else:
+            await db.commit()
+
         await db.refresh(task)
         
         logger.info(f"✅ Task {task_id} completed by {agent_id}")
@@ -429,7 +592,7 @@ class TaskQueueService:
         if allow_retry:
             # Schedule retry
             task.status = TaskStatus.RETRYING
-            task.scheduled_at = datetime.now(timezone.utc) + timedelta(seconds=task.retry_delay_seconds)
+            task.scheduled_at = self._utc_now_naive() + timedelta(seconds=task.retry_delay_seconds)
             task.claimed_by = None
             task.claimed_at = None
             task.started_at = None
@@ -448,12 +611,22 @@ class TaskQueueService:
         else:
             # No more retries
             task.status = TaskStatus.FAILED
-            task.completed_at = datetime.now(timezone.utc)
+            task.completed_at = self._utc_now_naive()
             
             if task.started_at:
                 task.execution_time_ms = (task.completed_at - task.started_at).total_seconds() * 1000
             
-            await db.commit()
+            if task.skill_run_id:
+                await self._finalize_linked_skill_run(
+                    db=db,
+                    task=task,
+                    success=False,
+                    output_payload={},
+                    failure_code="EXTERNAL-FAIL",
+                    failure_reason_sanitized=fail_data.error_message,
+                )
+            else:
+                await db.commit()
             await db.refresh(task)
             
             logger.error(f"❌ Task {task_id} failed permanently after {task.retry_count} retries")
@@ -496,7 +669,7 @@ class TaskQueueService:
             raise ValueError(f"Cannot cancel task in {task.status.value} state")
         
         task.status = TaskStatus.CANCELLED
-        task.completed_at = datetime.now(timezone.utc)
+        task.completed_at = self._utc_now_naive()
         
         await db.commit()
         
@@ -647,7 +820,7 @@ class TaskQueueService:
         Returns:
             List of tasks that were activated
         """
-        now = datetime.now(timezone.utc)
+        now = self._utc_now_naive()
         
         result = await db.execute(
             select(TaskModel).where(

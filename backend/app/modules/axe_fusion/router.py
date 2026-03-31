@@ -38,10 +38,13 @@ from app.modules.axe_governance import (
     TrustTier,
     get_axe_trust_validator,
 )
+from app.modules.skill_engine.models import SkillRunModel
 from app.modules.skill_engine.schemas import SkillRunCreate, SkillRunState, TriggerType
 from app.modules.skill_engine.service import get_skill_engine_service
+from app.modules.task_queue.schemas import TaskCreate, TaskPriority
+from app.modules.task_queue.service import get_task_queue_service
 from app.modules.axe_worker_runs.service import AXEWorkerRunService
-from app.modules.axe_worker_runs.schemas import AXEWorkerRunCreateRequest, OpenCodeMode, WorkerType
+from app.modules.axe_worker_runs.schemas import AXEWorkerRunCreateRequest
 
 from .service import (
     get_axe_fusion_service,
@@ -80,6 +83,10 @@ async def get_neural_context(db: AsyncSession) -> dict:
         return neural_context
     except Exception as e:
         logger.warning(f"Neural Context nicht verfügbar: {e}")
+        try:
+            await db.rollback()
+        except Exception:
+            pass
         return {"creativity": 0.7, "caution": 0.5, "speed": 0.8, "learning_rate": 0.3}
 
 
@@ -758,6 +765,7 @@ async def _try_skillrun_bridge(
 
 
 WORKER_COMMAND_PATTERN = r"^\s*/(opencode|openclaw)\b"
+WorkerCommandType = Literal["opencode", "openclaw"]
 
 
 async def _try_worker_bridge(
@@ -784,7 +792,7 @@ async def _try_worker_bridge(
     if not match:
         return None
 
-    worker_type: WorkerType = match.group(1).lower()  # type: ignore[assignment]
+    worker_type: WorkerCommandType = match.group(1).lower()  # type: ignore[assignment]
     logger.info("AXE worker bridge triggered: type=%s request_id=%s", worker_type, request_id)
 
     if principal is None:
@@ -813,33 +821,141 @@ async def _try_worker_bridge(
     session_id: UUID = chat_request.session_id or uuid4()  # type: ignore[assignment]
     message_id: UUID = uuid4()
     
-    # Check if session exists, if not create it
-    session_query = select(AXEChatSessionORM).where(AXEChatSessionORM.id == session_id)
-    existing_session = (await db.execute(session_query)).scalar_one_or_none()
-    
-    if existing_session is None:
-        new_session = AXEChatSessionORM(
-            id=session_id,
-            principal_id=principal.principal_id if principal else "anonymous",
-            tenant_id=principal.tenant_id if principal else None,
-            title=f"{worker_type.title()} worker session",
-            status="active",
-            message_count=1,
+    # Check if session exists, if not create it. If the local schema is not aligned,
+    # continue in stateless mode so worker dispatch can still proceed.
+    try:
+        session_query = select(AXEChatSessionORM).where(AXEChatSessionORM.id == session_id)
+        existing_session = (await db.execute(session_query)).scalar_one_or_none()
+
+        if existing_session is None:
+            new_session = AXEChatSessionORM(
+                id=session_id,
+                principal_id=principal.principal_id if principal else "anonymous",
+                tenant_id=principal.tenant_id if principal else None,
+                title=f"{worker_type.title()} worker session",
+                status="active",
+                message_count=1,
+            )
+            db.add(new_session)
+            await db.commit()
+
+            # Also create the initial message
+            from app.modules.axe_sessions.models import AXEChatMessageORM
+
+            new_message = AXEChatMessageORM(
+                id=message_id,
+                session_id=session_id,
+                role="user",
+                content=last_user_message,
+            )
+            db.add(new_message)
+            await db.commit()
+            logger.info("Created new AXE session and message: %s, %s", session_id, message_id)
+    except Exception as exc:
+        logger.warning(
+            "AXE worker bridge session persistence unavailable; continuing stateless: %s",
+            exc,
         )
-        db.add(new_session)
-        await db.commit()
-        
-        # Also create the initial message
-        from app.modules.axe_sessions.models import AXEChatMessageORM
-        new_message = AXEChatMessageORM(
-            id=message_id,
-            session_id=session_id,
-            role="user",
-            content=last_user_message,
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+
+    if worker_type == "openclaw":
+        worker_skill_key = os.getenv("AXE_WORKER_SKILL_KEY", AXE_CHAT_SKILL_KEY)
+        skill_payload = SkillRunCreate(
+            skill_key=worker_skill_key,
+            input_payload={
+                "worker_type": worker_type,
+                "prompt": user_prompt,
+                "mode": "plan",
+                "session_id": str(session_id),
+                "message_id": str(message_id),
+                "request_id": request_id,
+            },
+            idempotency_key=f"axe-worker-{worker_type}-{session_id}-{message_id}",
+            trigger_type=TriggerType.API,
+            causation_id=request_id,
+            governance_snapshot={
+                "source": "axe_worker_bridge",
+                "request_id": request_id,
+                "worker_type": worker_type,
+            },
         )
-        db.add(new_message)
-        await db.commit()
-        logger.info("Created new AXE session and message: %s, %s", session_id, message_id)
+
+        try:
+            try:
+                skill_run = await get_skill_engine_service().create_run(db, skill_payload, principal)
+            except ValueError as exc:
+                if "No matching definition found" not in str(exc):
+                    raise
+                logger.warning(
+                    "AXE openclaw bridge missing skill definition for %s; creating fallback external SkillRun",
+                    worker_skill_key,
+                )
+                skill_run = await _create_fallback_external_skill_run(
+                    db=db,
+                    principal=principal,
+                    skill_key=worker_skill_key,
+                    input_payload=skill_payload.input_payload,
+                    request_id=request_id,
+                    idempotency_key=skill_payload.idempotency_key,
+                    worker_type=worker_type,
+                )
+            task = await get_task_queue_service().create_task(
+                db=db,
+                task_data=TaskCreate(
+                    name=f"OpenClaw TaskLease {skill_run.id}",
+                    description="External OpenClaw worker lease for SkillRun execution",
+                    task_type="openclaw_work",
+                    category="skill_engine",
+                    tags=["tasklease", "skillrun", "openclaw"],
+                    priority=TaskPriority.HIGH,
+                    payload={
+                        "skill_run_id": str(skill_run.id),
+                        "skill_key": skill_run.skill_key,
+                        "skill_version": skill_run.skill_version,
+                        "worker_type": worker_type,
+                        "prompt": user_prompt,
+                        "mode": "plan",
+                        "request_id": request_id,
+                    },
+                    config={"lease_only": True, "worker_target": "openclaw"},
+                    tenant_id=skill_run.tenant_id,
+                    mission_id=skill_run.mission_id,
+                    skill_run_id=skill_run.id,
+                    correlation_id=skill_run.correlation_id,
+                    deadline_at=skill_run.deadline_at,
+                ),
+                created_by=principal.principal_id,
+                created_by_type=principal.principal_type.value,
+            )
+        except Exception as exc:
+            logger.exception("AXE openclaw tasklease dispatch failed")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "error": "Worker bridge unavailable",
+                    "message": f"Failed to dispatch {worker_type} worker: {exc}",
+                    "code": "WORKER_BRIDGE_FAILED",
+                },
+            ) from exc
+
+        return ChatResponse(
+            text=(
+                f"[{worker_type.upper()} worker dispatched: {task.task_id}]\n\n"
+                f"Status: queued\nTaskLease created for SkillRun {skill_run.id}"
+            ),
+            raw={
+                "execution_path": "worker_bridge_tasklease",
+                "worker_type": worker_type,
+                "worker_run_id": task.task_id,
+                "worker_status": "queued",
+                "task_id": task.task_id,
+                "skill_run_id": str(skill_run.id),
+            },
+            run_id=str(skill_run.id),
+        )
 
     worker_service = AXEWorkerRunService(db=db)
 
@@ -877,6 +993,49 @@ async def _try_worker_bridge(
         },
         run_id=worker_response.worker_run_id,
     )
+
+
+async def _create_fallback_external_skill_run(
+    *,
+    db: AsyncSession,
+    principal: Principal,
+    skill_key: str,
+    input_payload: dict[str, Any],
+    request_id: str,
+    idempotency_key: str,
+    worker_type: str,
+) -> SkillRunModel:
+    model = SkillRunModel(
+        id=uuid4(),
+        tenant_id=principal.tenant_id,
+        skill_key=skill_key,
+        skill_version=1,
+        state=SkillRunState.QUEUED.value,
+        input_payload=input_payload,
+        plan_snapshot={
+            "external_worker": worker_type,
+            "mode": "fallback_skill_definition_missing",
+            "request_id": request_id,
+        },
+        provider_selection_snapshot={"bindings": []},
+        requested_by=principal.principal_id,
+        requested_by_type=principal.principal_type.value,
+        trigger_type=TriggerType.API.value,
+        policy_decision={"allowed": True, "effect": "audit", "reason": "fallback_external_worker"},
+        policy_snapshot={"fallback": "missing_skill_definition", "request_id": request_id},
+        risk_tier="medium",
+        correlation_id=f"fallback-{uuid4().hex}",
+        causation_id=request_id,
+        idempotency_key=idempotency_key,
+        mission_id=None,
+        deadline_at=None,
+        cost_estimate=0.0,
+        state_changed_at=datetime.now(timezone.utc),
+    )
+    db.add(model)
+    await db.commit()
+    await db.refresh(model)
+    return model
 
 
 # === Endpoints ===

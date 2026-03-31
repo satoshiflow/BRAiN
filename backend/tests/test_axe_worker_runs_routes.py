@@ -127,3 +127,25 @@ def test_worker_routes_require_auth(client, test_app):
         response = client.get("/api/axe/workers/wr_any")
 
     assert response.status_code == 401
+
+
+def test_create_worker_run_route_rejects_openclaw_parallel_path(client, test_app):
+    class _RejectingService(_FakeWorkerService):
+        async def create_worker_run(self, *, principal, payload):  # noqa: ANN001
+            _ = principal
+            _ = payload
+            raise ValueError("openclaw worker runs must use SkillRun/TaskLease runtime path")
+
+    test_app.dependency_overrides[get_service] = lambda: _RejectingService()
+    payload = {
+        "session_id": str(uuid4()),
+        "message_id": str(uuid4()),
+        "prompt": "Use openclaw",
+        "mode": "plan",
+        "worker_type": "openclaw",
+    }
+
+    response = client.post("/api/axe/workers", json=payload)
+    test_app.dependency_overrides.pop(get_service, None)
+
+    assert response.status_code == 422

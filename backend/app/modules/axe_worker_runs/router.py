@@ -37,6 +37,8 @@ async def create_worker_run(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found") from exc
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 @router.get("/workers/{worker_run_id}", response_model=AXEWorkerRunResponse)

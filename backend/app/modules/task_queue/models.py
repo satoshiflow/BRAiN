@@ -20,6 +20,10 @@ from sqlalchemy.orm import declarative_base
 Base = declarative_base()
 
 
+def _utc_now_naive() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 class TaskStatus(str, Enum):
     """Task lifecycle states"""
     PENDING = "pending"           # Waiting in queue
@@ -107,8 +111,8 @@ class TaskModel(Base):
     depends_on = Column(JSONB, nullable=False, default=list)  # List of task_ids
     
     # Timestamps
-    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, nullable=False, default=_utc_now_naive)
+    updated_at = Column(DateTime, nullable=False, default=_utc_now_naive, onupdate=_utc_now_naive)
     
     def __repr__(self) -> str:
         return f"<Task(id={self.id}, task_id={self.task_id}, status={self.status}, priority={self.priority})>"

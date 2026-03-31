@@ -11,6 +11,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Request
 from loguru import logger
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -45,7 +46,11 @@ def _to_model_status(status: Optional[TaskStatus]) -> Optional[TaskModelStatus]:
 async def _ensure_task_queue_writable(db: AsyncSession) -> None:
     if db is None:
         return
-    item = await get_module_lifecycle_service().get_module(db, "task_queue")
+    try:
+        item = await get_module_lifecycle_service().get_module(db, "task_queue")
+    except ProgrammingError:
+        logger.warning("module_lifecycle table missing; skipping task_queue lifecycle write check")
+        return
     if item and item.lifecycle_status in {"deprecated", "retired"}:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -76,7 +81,7 @@ async def create_task(
             db=db,
             task_data=task_data,
             created_by=principal.principal_id,
-            created_by_type=principal.principal_type
+            created_by_type=principal.principal_type.value,
         )
         return task_to_response(task)
     except ValueError as e:
@@ -220,11 +225,10 @@ async def delete_task(
 @limiter.limit(RateLimits.TASKS_CLAIM)
 async def claim_task(
     request: Request,
-    claim: TaskClaim,
-    task_types: Optional[List[str]] = Query(None, description="Filter by task types"),
-    min_priority: Optional[int] = Query(None, ge=10, le=100, description="Minimum priority"),
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(require_role(UserRole.AGENT, UserRole.SERVICE, UserRole.OPERATOR, UserRole.ADMIN)),
+    task_types: Optional[List[str]] = Query(None, description="Filter by task types"),
+    min_priority: Optional[int] = Query(None, ge=10, le=100, description="Minimum priority"),
 ):
     """
     Claim the next available task for execution.
@@ -233,6 +237,9 @@ async def claim_task(
     Rate limited to prevent flooding.
     """
     service = get_task_queue_service()
+    body = await request.json()
+    claim_payload = body.get("claim", body)
+    claim = TaskClaim.model_validate(claim_payload)
     
     if principal.agent_id and principal.agent_id != claim.agent_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Agent identity mismatch")
@@ -258,8 +265,8 @@ async def claim_task(
 
 @router.post("/{task_id}/start", response_model=TaskResponse)
 async def start_task(
+    request: Request,
     task_id: str,
-    claim: TaskClaim,
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(require_role(UserRole.AGENT, UserRole.SERVICE, UserRole.OPERATOR, UserRole.ADMIN)),
 ):
@@ -269,6 +276,9 @@ async def start_task(
     Called by worker after receiving task via claim endpoint.
     """
     service = get_task_queue_service()
+    body = await request.json()
+    claim_payload = body.get("claim", body)
+    claim = TaskClaim.model_validate(claim_payload)
     
     try:
         if principal.agent_id and principal.agent_id != claim.agent_id:
@@ -289,9 +299,8 @@ async def start_task(
 
 @router.post("/{task_id}/complete", response_model=TaskResponse)
 async def complete_task(
+    request: Request,
     task_id: str,
-    claim: TaskClaim,
-    complete_data: TaskComplete,
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(require_role(UserRole.AGENT, UserRole.SERVICE, UserRole.OPERATOR, UserRole.ADMIN)),
 ):
@@ -301,6 +310,11 @@ async def complete_task(
     Called by worker after successful execution.
     """
     service = get_task_queue_service()
+    body = await request.json()
+    claim_payload = body.get("claim", body)
+    complete_payload = body.get("complete_data", body)
+    claim = TaskClaim.model_validate(claim_payload)
+    complete_data = TaskComplete.model_validate(complete_payload)
     
     try:
         if principal.agent_id and principal.agent_id != claim.agent_id:
@@ -321,9 +335,8 @@ async def complete_task(
 
 @router.post("/{task_id}/fail", response_model=TaskResponse)
 async def fail_task(
+    request: Request,
     task_id: str,
-    claim: TaskClaim,
-    fail_data: TaskFail,
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(require_role(UserRole.AGENT, UserRole.SERVICE, UserRole.OPERATOR, UserRole.ADMIN)),
 ):
@@ -333,6 +346,11 @@ async def fail_task(
     Task may be retried based on retry configuration.
     """
     service = get_task_queue_service()
+    body = await request.json()
+    claim_payload = body.get("claim", body)
+    fail_payload = body.get("fail_data", body)
+    claim = TaskClaim.model_validate(claim_payload)
+    fail_data = TaskFail.model_validate(fail_payload)
     
     try:
         if principal.agent_id and principal.agent_id != claim.agent_id:

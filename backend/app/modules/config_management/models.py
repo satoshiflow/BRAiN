@@ -8,6 +8,10 @@ from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
 
+
+def _utc_now_naive() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
 class ConfigEntryModel(Base):
     __tablename__ = "config_entries"
     
@@ -22,8 +26,8 @@ class ConfigEntryModel(Base):
     version = Column(Integer, nullable=False, default=1)
     created_by = Column(String(100), nullable=True)
     updated_by = Column(String(100), nullable=True)
-    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, nullable=False, default=_utc_now_naive)
+    updated_at = Column(DateTime, nullable=False, default=_utc_now_naive, onupdate=_utc_now_naive)
     
     def to_dict(self, include_secrets=False):
         result = {

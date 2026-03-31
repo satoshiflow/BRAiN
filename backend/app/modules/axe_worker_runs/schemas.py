@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 AXEWorkerStatus = Literal["queued", "running", "waiting_input", "completed", "failed"]
 OpenCodeMode = Literal["plan", "build", "heal", "evolve"]
-WorkerType = Literal["opencode", "openclaw"]
+WorkerType = Literal["opencode"]
 
 
 class AXEWorkerArtifact(BaseModel):

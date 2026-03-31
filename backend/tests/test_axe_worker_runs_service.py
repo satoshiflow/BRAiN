@@ -5,10 +5,11 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
+from pydantic import ValidationError
 
 from app.core.auth_deps import Principal, PrincipalType
 from app.modules.axe_worker_runs.schemas import AXEWorkerRunCreateRequest
-from app.modules.axe_worker_runs.service import AXEWorkerRunService
+from app.modules.axe_worker_runs.service import AXEWorkerRunService, WorkerAdapterRegistry
 
 
 @dataclass
@@ -53,14 +54,24 @@ async def test_create_worker_run_dispatches_opencode_and_persists_backend_job_id
         return SimpleNamespace(id=uuid4())
 
     class _OpenCodeStub:
-        async def dispatch_job_contract(self, contract, db=None):  # noqa: ANN001
-            _ = contract
-            _ = db
-            return SimpleNamespace(job_id="job_123")
+        async def dispatch(self, *, principal, payload, worker_run_id):  # noqa: ANN001
+            _ = principal
+            _ = payload
+            return SimpleNamespace(
+                worker_run_id=worker_run_id,
+                session_id=payload.session_id,
+                message_id=payload.message_id,
+                status="queued",
+                label="OpenCode worker queued",
+                detail="Job dispatched: job_123",
+                updated_at=None,
+                artifacts=[],
+            )
 
     monkeypatch.setattr(service, "_get_owned_session", _owned_session)
     monkeypatch.setattr(service, "_get_owned_message", _owned_message)
-    service.opencode = _OpenCodeStub()  # type: ignore[assignment]
+    WorkerAdapterRegistry._adapters = {"opencode": _OpenCodeStub()}  # type: ignore[assignment]
+    WorkerAdapterRegistry._initialized = True
 
     payload = AXEWorkerRunCreateRequest(
         session_id=uuid4(),
@@ -99,3 +110,32 @@ async def test_sync_backend_status_maps_to_completed(monkeypatch):
 
     assert row.status == "completed"
     assert db.commit_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_create_worker_run_rejects_openclaw_parallel_path():
+    db = _FakeDB()
+    service = AXEWorkerRunService(db=db)  # type: ignore[arg-type]
+
+    with pytest.raises(ValidationError):
+        AXEWorkerRunCreateRequest(
+            session_id=uuid4(),
+            message_id=uuid4(),
+            prompt="run openclaw task",
+            worker_type="openclaw",
+        )
+
+    payload = AXEWorkerRunCreateRequest.model_construct(
+        session_id=uuid4(),
+        message_id=uuid4(),
+        prompt="run openclaw task",
+        mode="plan",
+        worker_type="openclaw",
+        module=None,
+        entity_id=None,
+    )
+
+    with pytest.raises(ValueError, match="SkillRun/TaskLease runtime path"):
+        await service.create_worker_run(principal=_principal(), payload=payload)
+
+    assert db.commit_calls == 0

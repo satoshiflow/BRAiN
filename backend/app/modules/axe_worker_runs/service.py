@@ -133,6 +133,12 @@ class AXEWorkerRunService:
         principal: Principal,
         payload: AXEWorkerRunCreateRequest,
     ) -> AXEWorkerRunResponse:
+        if str(payload.worker_type) == "openclaw":
+            raise ValueError(
+                "openclaw worker runs must use SkillRun/TaskLease runtime path; "
+                "direct axe_worker_runs dispatch is disabled"
+            )
+
         _init_adapter_registry()
 
         session = await self._get_owned_session(
