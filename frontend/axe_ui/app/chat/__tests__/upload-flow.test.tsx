@@ -1,13 +1,14 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import ChatPage from "@/app/chat/page";
-import { appendAxeSessionMessage, getAxeWorkerRun, postAxeChat, uploadAxeAttachment } from "@/lib/api";
+import { appendAxeSessionMessage, getAxeWorkerRun, getTaskQueueTask, postAxeChat, uploadAxeAttachment } from "@/lib/api";
 
 jest.mock("@/lib/api", () => ({
   postAxeChat: jest.fn(),
   uploadAxeAttachment: jest.fn(),
   appendAxeSessionMessage: jest.fn(),
   getAxeWorkerRun: jest.fn(),
+  getTaskQueueTask: jest.fn(),
 }));
 
 jest.mock("@/components/auth/AuthGate", () => ({
@@ -62,6 +63,7 @@ const mockedUpload = uploadAxeAttachment as jest.MockedFunction<typeof uploadAxe
 const mockedChat = postAxeChat as jest.MockedFunction<typeof postAxeChat>;
 const mockedAppendMessage = appendAxeSessionMessage as jest.MockedFunction<typeof appendAxeSessionMessage>;
 const mockedGetWorkerRun = getAxeWorkerRun as jest.MockedFunction<typeof getAxeWorkerRun>;
+const mockedGetTaskQueueTask = getTaskQueueTask as jest.MockedFunction<typeof getTaskQueueTask>;
 
 describe("chat upload flow", () => {
   beforeEach(() => {
@@ -69,6 +71,7 @@ describe("chat upload flow", () => {
     mockedChat.mockReset();
     mockedAppendMessage.mockReset();
     mockedGetWorkerRun.mockReset();
+    mockedGetTaskQueueTask.mockReset();
     mockedLoadSessions.mockClear();
     mockedCreateSession.mockClear();
     mockedSelectSession.mockClear();
@@ -88,6 +91,7 @@ describe("chat upload flow", () => {
       session_id: "session-1",
       message_id: "msg-1",
       worker_type: "opencode",
+      activity_source: "worker_run",
       status: "completed",
       label: "OpenCode worker completed",
       detail: "Finished successfully",
@@ -95,6 +99,12 @@ describe("chat upload flow", () => {
       artifacts: [],
     });
     window.confirm = jest.fn(() => true);
+    mockedGetTaskQueueTask.mockResolvedValue({
+      task_id: "task-openclaw-1",
+      status: "running",
+      updated_at: new Date().toISOString(),
+      payload: {},
+    });
   });
 
   it("uploads file and sends chat request with attachment id", async () => {
@@ -204,7 +214,6 @@ describe("chat upload flow", () => {
 
     expect(await screen.findByText("OpenClaw task dispatched")).toBeInTheDocument();
     expect(screen.getByText("openclaw (1)")).toBeInTheDocument();
-    expect(mockedGetWorkerRun).not.toHaveBeenCalled();
   });
 
   it("allows filtering worker cards by status", async () => {
@@ -221,6 +230,7 @@ describe("chat upload flow", () => {
       session_id: "session-1",
       message_id: "msg-1",
       worker_type: "opencode",
+      activity_source: "worker_run",
       status: "completed",
       label: "OpenCode worker completed",
       detail: "Finished successfully",

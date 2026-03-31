@@ -396,6 +396,37 @@ async def test_create_worker_run_bounded_apply_records_approval_before_dispatch(
 
 
 @pytest.mark.asyncio
+async def test_create_worker_run_bounded_apply_requires_reason_when_preapproved(monkeypatch):
+    db = _FakeDB()
+    service = AXEWorkerRunService(db=db)  # type: ignore[arg-type]
+
+    async def _owned_session(**kwargs):
+        _ = kwargs
+        return SimpleNamespace(tenant_id="tenant-a")
+
+    async def _owned_message(**kwargs):
+        _ = kwargs
+        return SimpleNamespace(id=uuid4())
+
+    monkeypatch.setattr(service, "_get_owned_session", _owned_session)
+    monkeypatch.setattr(service, "_get_owned_message", _owned_message)
+
+    payload = AXEWorkerRunCreateRequest(
+        session_id=uuid4(),
+        message_id=uuid4(),
+        prompt="Replace line 3 with a guarded return",
+        worker_type="miniworker",
+        execution_mode="bounded_apply",
+        approval_confirmed=True,
+        approval_reason=None,
+        file_scope=["backend/app/modules/axe_worker_runs/service.py"],
+    )
+
+    with pytest.raises(ValueError, match="requires non-empty approval_reason"):
+        await service.create_worker_run(principal=_principal(), payload=payload)
+
+
+@pytest.mark.asyncio
 async def test_approve_worker_run_dispatches_pending_bounded_apply(monkeypatch):
     db = _FakeDB()
     service = AXEWorkerRunService(db=db)  # type: ignore[arg-type]
@@ -416,7 +447,10 @@ async def test_approve_worker_run_dispatches_pending_bounded_apply(monkeypatch):
         status="waiting_input",
         label="AXE miniworker waiting for approval",
         detail="Needs approval",
-        artifacts_json=[{"type": "pending_request", "metadata": pending_payload}],
+        artifacts_json=[
+            {"type": "routing_decision", "metadata": {"routing_decision_id": "route-1", "purpose_evaluation_id": "purpose-1"}},
+            {"type": "pending_request", "metadata": pending_payload},
+        ],
         updated_at=None,
     )
 
@@ -465,6 +499,8 @@ async def test_approve_worker_run_dispatches_pending_bounded_apply(monkeypatch):
     assert approval_history is not None
     assert approval_history["metadata"]["decided_by"] == "axe-user"
     assert isinstance(approval_history["metadata"]["decided_at"], str)
+    assert approval_history["metadata"]["routing_decision_id"] == "route-1"
+    assert approval_history["metadata"]["purpose_evaluation_id"] == "purpose-1"
 
 
 @pytest.mark.asyncio

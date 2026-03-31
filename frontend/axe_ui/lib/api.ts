@@ -18,6 +18,7 @@ import type {
   ProviderPortalListResponse,
   PurposeEvaluationListResponse,
   RoutingDecisionListResponse,
+  TaskQueueTaskResponse,
 } from "@/lib/contracts";
 
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
@@ -87,6 +88,16 @@ export async function rejectAxeWorkerRun(
   return apiRequest<AxeWorkerUpdate>(`/api/axe/workers/${workerRunId}/reject`, {
     method: "POST",
     body: JSON.stringify({ rejection_reason: rejectionReason }),
+    headers: customHeaders,
+  });
+}
+
+export async function getTaskQueueTask(
+  taskId: string,
+  customHeaders?: Record<string, string>
+): Promise<TaskQueueTaskResponse> {
+  return apiRequest<TaskQueueTaskResponse>(`/api/tasks/${taskId}`, {
+    method: "GET",
     headers: customHeaders,
   });
 }

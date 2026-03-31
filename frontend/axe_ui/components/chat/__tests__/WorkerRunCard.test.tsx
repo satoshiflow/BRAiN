@@ -11,6 +11,7 @@ describe("WorkerRunCard", () => {
           session_id: "session-1",
           message_id: "message-1",
           worker_type: "miniworker",
+          activity_source: "worker_run",
           status: "completed",
           label: "AXE miniworker completed",
           detail: "Patch proposal ready",
@@ -42,6 +43,7 @@ describe("WorkerRunCard", () => {
           session_id: "session-1",
           message_id: "message-1",
           worker_type: "miniworker",
+          activity_source: "worker_run",
           status: "waiting_input",
           label: "AXE miniworker waiting for approval",
           detail: "Awaiting approval",
@@ -81,6 +83,7 @@ describe("WorkerRunCard", () => {
           session_id: "session-1",
           message_id: "message-1",
           worker_type: "miniworker",
+          activity_source: "worker_run",
           status: "completed",
           label: "AXE miniworker completed",
           detail: "Patch applied",
@@ -116,6 +119,7 @@ describe("WorkerRunCard", () => {
           session_id: "session-1",
           message_id: "message-1",
           worker_type: "miniworker",
+          activity_source: "worker_run",
           status: "queued",
           label: "BRAiN worker queued",
           detail: "Job accepted by BRAiN orchestrator",
@@ -139,5 +143,39 @@ describe("WorkerRunCard", () => {
     expect(screen.getByText("ID: route-123")).toBeInTheDocument();
     expect(screen.getByText("Selected: miniworker")).toBeInTheDocument();
     expect(screen.getByText("Strategy: single_worker")).toBeInTheDocument();
+  });
+
+  it("renders runtime source details for openclaw activity", () => {
+    render(
+      <WorkerRunCard
+        update={{
+          worker_run_id: "openclaw:task-1",
+          session_id: "session-1",
+          message_id: "message-1",
+          worker_type: "openclaw",
+          activity_source: "skillrun_tasklease",
+          status: "running",
+          label: "OpenClaw task running",
+          detail: "Lease active",
+          updated_at: new Date().toISOString(),
+          artifacts: [
+            {
+              type: "runtime_source",
+              label: "Runtime source",
+              metadata: {
+                source: "skillrun_tasklease",
+                task_id: "task-1",
+                skill_run_id: "sr-1",
+              },
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getAllByText("Runtime source")).toHaveLength(2);
+    expect(screen.getByText("Source: skillrun_tasklease")).toBeInTheDocument();
+    expect(screen.getByText("Task: task-1")).toBeInTheDocument();
+    expect(screen.getByText("SkillRun: sr-1")).toBeInTheDocument();
   });
 });

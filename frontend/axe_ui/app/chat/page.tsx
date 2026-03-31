@@ -10,6 +10,7 @@ import {
   approveAxeWorkerRun,
   appendAxeSessionMessage,
   getAxeWorkerRun,
+  getTaskQueueTask,
   listPurposeEvaluations,
   listRoutingDecisions,
   postAxeChat,
@@ -45,6 +46,8 @@ interface WorkerRunAnchor {
   messageId?: string;
   localMessageId: number;
   pollable: boolean;
+  source: "worker_run" | "skillrun_tasklease";
+  taskId?: string;
 }
 
 interface PendingAttachment {
@@ -59,6 +62,23 @@ type WorkerTypeFilter = "all" | AxeWorkerUpdate["worker_type"];
 type WorkerStatusFilter = "all" | AxeWorkerUpdate["status"];
 
 const DEFAULT_MODEL = getDefaultModel();
+
+const FILTERS_STORAGE_PREFIX = "axe.chat.workerFilters";
+
+function mapTaskStatusToWorkerStatus(
+  status: "pending" | "scheduled" | "claimed" | "running" | "completed" | "failed" | "cancelled" | "timeout" | "retrying"
+): AxeWorkerUpdate["status"] {
+  if (status === "pending" || status === "scheduled" || status === "claimed" || status === "retrying") {
+    return "queued";
+  }
+  if (status === "running") {
+    return "running";
+  }
+  if (status === "completed") {
+    return "completed";
+  }
+  return "failed";
+}
 
 function formatTime(date: Date): string {
   if (typeof window === "undefined") return "";
@@ -179,6 +199,14 @@ function ChatPageContent() {
 
     return messageMap;
   }, [activeSessionId, workerAnchors, workerUpdates]);
+  const totalWorkerUpdatesInSession = useMemo(() => {
+    return Object.values(workerAnchors).filter((anchor) => {
+      if (anchor.sessionId !== activeSessionId) {
+        return false;
+      }
+      return Boolean(workerUpdates[anchor.workerRunId]);
+    }).length;
+  }, [activeSessionId, workerAnchors, workerUpdates]);
   const workerFilterStats = useMemo(() => {
     const stats: Record<WorkerTypeFilter, number> = {
       all: 0,
@@ -221,10 +249,50 @@ function ChatPageContent() {
       }),
     [workerStatusFilter, workerTypeFilter],
   );
+  const visibleWorkerUpdatesInSession = useMemo(() => {
+    const sessionUpdates = Object.values(workerAnchors)
+      .filter((anchor) => anchor.sessionId === activeSessionId)
+      .map((anchor) => workerUpdates[anchor.workerRunId])
+      .filter((update): update is AxeWorkerUpdate => Boolean(update));
+    return filterWorkerUpdates(sessionUpdates).length;
+  }, [activeSessionId, filterWorkerUpdates, workerAnchors, workerUpdates]);
 
   useEffect(() => {
     setIsClient(true);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const key = `${FILTERS_STORAGE_PREFIX}.${activeSessionId ?? "global"}`;
+    const raw = window.localStorage.getItem(key);
+    if (!raw) {
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw) as { workerType?: WorkerTypeFilter; workerStatus?: WorkerStatusFilter };
+      if (parsed.workerType) {
+        setWorkerTypeFilter(parsed.workerType);
+      }
+      if (parsed.workerStatus) {
+        setWorkerStatusFilter(parsed.workerStatus);
+      }
+    } catch {
+      // ignore corrupted persisted filter state
+    }
+  }, [activeSessionId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const key = `${FILTERS_STORAGE_PREFIX}.${activeSessionId ?? "global"}`;
+    window.localStorage.setItem(
+      key,
+      JSON.stringify({ workerType: workerTypeFilter, workerStatus: workerStatusFilter }),
+    );
+  }, [activeSessionId, workerStatusFilter, workerTypeFilter]);
 
   useEffect(() => {
     const bootstrap = async () => {
@@ -341,8 +409,26 @@ function ChatPageContent() {
         const updates = await Promise.all(
           activePollingAnchors.map(async (anchor) => {
             try {
+              if (anchor.source === "skillrun_tasklease" && anchor.taskId) {
+                const task = await getTaskQueueTask(anchor.taskId, { Authorization: `Bearer ${token}` });
+                const current = workerUpdates[anchor.workerRunId];
+                const mappedUpdate: AxeWorkerUpdate = {
+                  worker_run_id: anchor.workerRunId,
+                  session_id: current?.session_id ?? anchor.sessionId,
+                  message_id: current?.message_id ?? anchor.messageId ?? "",
+                  worker_type: "openclaw",
+                  activity_source: "skillrun_tasklease",
+                  status: mapTaskStatusToWorkerStatus(task.status),
+                  label: `OpenClaw task ${task.status}`,
+                  detail: task.error_message || "OpenClaw TaskLease status update",
+                  updated_at: task.updated_at,
+                  artifacts: current?.artifacts ?? [],
+                };
+                return [anchor.workerRunId, mappedUpdate] as const;
+              }
+
               const update = await getAxeWorkerRun(anchor.workerRunId, { Authorization: `Bearer ${token}` });
-              return [anchor.workerRunId, update] as const;
+              return [anchor.workerRunId, { ...update, activity_source: update.activity_source ?? "worker_run" }] as const;
             } catch {
               return null;
             }
@@ -365,7 +451,7 @@ function ChatPageContent() {
     }, 4000);
 
     return () => window.clearInterval(interval);
-  }, [activePollingAnchors, withAuthRetry]);
+  }, [activePollingAnchors, workerUpdates, withAuthRetry]);
 
   useEffect(() => {
     const loadTrace = async () => {
@@ -411,8 +497,18 @@ function ChatPageContent() {
           Authorization: `Bearer ${token}`,
         })
       );
-      setWorkerUpdates((prev) => ({ ...prev, [workerRunId]: update }));
+      setWorkerUpdates((prev) => ({ ...prev, [workerRunId]: { ...update, activity_source: update.activity_source ?? "worker_run" } }));
     } catch (approvalError) {
+      try {
+        const update = await withAuthRetry((token) =>
+          getAxeWorkerRun(workerRunId, {
+            Authorization: `Bearer ${token}`,
+          })
+        );
+        setWorkerUpdates((prev) => ({ ...prev, [workerRunId]: { ...update, activity_source: update.activity_source ?? "worker_run" } }));
+      } catch {
+        // ignore refresh failure
+      }
       setError(approvalError instanceof Error ? approvalError.message : "Unable to approve worker run");
     }
   };
@@ -428,8 +524,18 @@ function ChatPageContent() {
           Authorization: `Bearer ${token}`,
         })
       );
-      setWorkerUpdates((prev) => ({ ...prev, [workerRunId]: update }));
+      setWorkerUpdates((prev) => ({ ...prev, [workerRunId]: { ...update, activity_source: update.activity_source ?? "worker_run" } }));
     } catch (rejectionError) {
+      try {
+        const update = await withAuthRetry((token) =>
+          getAxeWorkerRun(workerRunId, {
+            Authorization: `Bearer ${token}`,
+          })
+        );
+        setWorkerUpdates((prev) => ({ ...prev, [workerRunId]: { ...update, activity_source: update.activity_source ?? "worker_run" } }));
+      } catch {
+        // ignore refresh failure
+      }
       setError(rejectionError instanceof Error ? rejectionError.message : "Unable to reject worker run");
     }
   };
@@ -520,6 +626,7 @@ function ChatPageContent() {
           session_id: data.session_id ?? currentSessionId,
           message_id: data.message_id ?? userMessageId,
           worker_type: rawWorkerType,
+          activity_source: "worker_run",
           status: "queued",
           label: "BRAiN worker queued",
           detail: "BRAiN delegated this request to a worker. Awaiting status updates.",
@@ -535,16 +642,19 @@ function ChatPageContent() {
             messageId: data.message_id ?? userMessageId,
             localMessageId: userMessage.id,
             pollable: true,
+            source: "worker_run",
           },
         }));
       } else if (rawWorkerType === "openclaw") {
-        const syntheticWorkerRunId = `openclaw:${String(data.raw?.task_id ?? Date.now())}`;
+        const taskId = typeof data.raw?.task_id === "string" ? data.raw.task_id : undefined;
+        const syntheticWorkerRunId = `openclaw:${String(taskId ?? Date.now())}`;
         const initialUpdate: AxeWorkerUpdate = {
           worker_run_id: syntheticWorkerRunId,
           session_id: data.session_id ?? currentSessionId,
           message_id: data.message_id ?? userMessageId,
           worker_type: "openclaw",
-          status: "completed",
+          activity_source: "skillrun_tasklease",
+          status: "queued",
           label: "OpenClaw task dispatched",
           detail: "OpenClaw uses the SkillRun/TaskLease runtime path and is tracked as external worker activity.",
           updated_at: new Date().toISOString(),
@@ -568,7 +678,9 @@ function ChatPageContent() {
             sessionId: data.session_id ?? currentSessionId,
             messageId: data.message_id ?? userMessageId,
             localMessageId: userMessage.id,
-            pollable: false,
+            pollable: Boolean(taskId),
+            source: "skillrun_tasklease",
+            taskId,
           },
         }));
       }
@@ -851,6 +963,12 @@ function ChatPageContent() {
                 <div className="flex flex-wrap gap-2">
                   {(["all", "waiting_input", "failed", "running", "queued", "completed"] as WorkerStatusFilter[]).map((filter) => {
                     const selected = workerStatusFilter === filter;
+                    const priorityClass =
+                      filter === "waiting_input"
+                        ? "border-amber-300/50 bg-amber-500/15 text-amber-100"
+                        : filter === "failed"
+                          ? "border-rose-300/50 bg-rose-500/15 text-rose-100"
+                          : "border-slate-500/40 bg-slate-800/40 text-slate-300";
                     return (
                       <button
                         key={filter}
@@ -859,7 +977,7 @@ function ChatPageContent() {
                         className={`rounded-full border px-2.5 py-1 text-[11px] uppercase tracking-[0.14em] ${
                           selected
                             ? "border-amber-300/60 bg-amber-500/20 text-amber-100"
-                            : "border-slate-500/40 bg-slate-800/40 text-slate-300"
+                            : priorityClass
                         }`}
                       >
                         {filter} ({workerFilterStats.status[filter]})
@@ -868,6 +986,11 @@ function ChatPageContent() {
                   })}
                 </div>
               </div>
+              {totalWorkerUpdatesInSession > 0 && visibleWorkerUpdatesInSession === 0 && (
+                <p className="mt-2 text-xs text-amber-200/90">
+                  No worker updates match current filters (`{workerTypeFilter}` + `{workerStatusFilter}`).
+                </p>
+              )}
             </div>
 
             <div className="flex-1 space-y-3 overflow-y-auto p-3 sm:space-y-4 sm:p-6">

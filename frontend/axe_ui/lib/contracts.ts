@@ -37,11 +37,29 @@ export interface AxeWorkerUpdate {
   session_id: string;
   message_id: string;
   worker_type: "auto" | "opencode" | "miniworker" | "openclaw";
+  activity_source: "worker_run" | "skillrun_tasklease";
   status: AxeWorkerStatus;
   label: string;
   detail: string;
   updated_at: string;
   artifacts?: AxeWorkerArtifact[];
+}
+
+export interface TaskQueueTaskResponse {
+  task_id: string;
+  status:
+    | "pending"
+    | "scheduled"
+    | "claimed"
+    | "running"
+    | "completed"
+    | "failed"
+    | "cancelled"
+    | "timeout"
+    | "retrying";
+  error_message?: string | null;
+  updated_at: string;
+  payload?: Record<string, unknown>;
 }
 
 export interface ApiHealthResponse {

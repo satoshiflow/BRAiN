@@ -112,6 +112,7 @@ class OpenCodeWorkerAdapter:
             session_id=payload.session_id,
             message_id=payload.message_id,
             worker_type="opencode",
+            activity_source="worker_run",
             status="queued",
             label="OpenCode worker queued",
             detail=f"Job dispatched: {job.job_id}",
@@ -201,6 +202,7 @@ class AXEWorkerRunService:
                         "routing_decision_id": routing_decision.id,
                         "selected_worker": routing_decision.selected_worker,
                         "strategy": routing_decision.strategy,
+                        "purpose_evaluation_id": getattr(routing_decision, "purpose_evaluation_id", None),
                     },
                 }
             )
@@ -289,6 +291,7 @@ class AXEWorkerRunService:
         payload = AXEWorkerRunCreateRequest(**pending_payload).model_copy(
             update={"approval_confirmed": True, "approval_reason": approval_reason}
         )
+        routing_metadata = self._extract_routing_metadata(row)
         adapter = WorkerAdapterRegistry.get(payload.worker_type)
         if adapter is None:
             raise ValueError(f"Unsupported worker type: {payload.worker_type}")
@@ -344,6 +347,8 @@ class AXEWorkerRunService:
                     "decided_at": _utc_now_iso(),
                     "worker_type": payload.worker_type,
                     "execution_mode": payload.execution_mode,
+                    "routing_decision_id": routing_metadata.get("routing_decision_id"),
+                    "purpose_evaluation_id": routing_metadata.get("purpose_evaluation_id"),
                 },
             },
             *[artifact.model_dump(mode="json") for artifact in worker_response.artifacts],
@@ -539,6 +544,7 @@ class AXEWorkerRunService:
             session_id=row.session_id,
             message_id=row.message_id,
             worker_type=_worker_type_from_backend_run_type(row.backend_run_type),
+            activity_source="worker_run",
             status=row.status,
             label=row.label,
             detail=row.detail,
@@ -557,6 +563,9 @@ class AXEWorkerRunService:
     ) -> AXEWorkerRunResponse | None:
         if payload.execution_mode != "bounded_apply" or effective_worker_type != "miniworker":
             return None
+
+        if payload.approval_confirmed and not (payload.approval_reason or "").strip():
+            raise ValueError("bounded_apply with approval_confirmed=true requires non-empty approval_reason")
 
         if not payload.approval_confirmed:
             await record_control_plane_event(
@@ -644,6 +653,15 @@ class AXEWorkerRunService:
                 if isinstance(metadata, dict):
                     return metadata
         return None
+
+    @staticmethod
+    def _extract_routing_metadata(row: AXEWorkerRunORM) -> dict[str, object]:
+        for artifact in row.artifacts_json or []:
+            if isinstance(artifact, dict) and artifact.get("type") == "routing_decision":
+                metadata = artifact.get("metadata")
+                if isinstance(metadata, dict):
+                    return metadata
+        return {}
 
     @staticmethod
     def _without_pending_approval_artifacts(artifacts: list[dict]) -> list[dict]:

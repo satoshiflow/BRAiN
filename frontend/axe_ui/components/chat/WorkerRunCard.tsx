@@ -8,9 +8,9 @@ import type { AxeWorkerArtifact, AxeWorkerUpdate } from "@/lib/contracts";
 const statusStyles: Record<AxeWorkerUpdate["status"], string> = {
   queued: "border-slate-600 bg-slate-900/80 text-slate-200",
   running: "border-cyan-400/35 bg-cyan-500/10 text-cyan-100",
-  waiting_input: "border-amber-400/35 bg-amber-500/10 text-amber-100",
+  waiting_input: "border-amber-300/60 bg-amber-500/15 text-amber-100",
   completed: "border-emerald-400/35 bg-emerald-500/10 text-emerald-100",
-  failed: "border-rose-400/35 bg-rose-500/10 text-rose-100",
+  failed: "border-rose-300/60 bg-rose-500/15 text-rose-100",
 };
 
 function WorkerRunCardComponent({
@@ -26,6 +26,7 @@ function WorkerRunCardComponent({
   const inlineArtifacts = artifacts.filter((artifact) => artifact.content);
   const metricArtifact = artifacts.find((artifact) => artifact.type === "report");
   const metrics = metricArtifact?.metadata ?? {};
+  const runtimeSourceArtifact = artifacts.find((artifact) => artifact.type === "runtime_source");
   const routingArtifact = artifacts.find((artifact) => artifact.type === "routing_decision");
   const approvalArtifact = artifacts.find((artifact) => artifact.type === "approval");
   const pendingRequestArtifact = artifacts.find((artifact) => artifact.type === "pending_request");
@@ -44,6 +45,9 @@ function WorkerRunCardComponent({
         <div className="flex flex-wrap items-center justify-end gap-2">
           <span className="rounded-full border border-current/25 px-2.5 py-1 text-[11px] uppercase tracking-[0.14em]">
             {update.worker_type}
+          </span>
+          <span className="rounded-full border border-current/25 px-2.5 py-1 text-[11px] uppercase tracking-[0.14em]">
+            {update.activity_source}
           </span>
           <span className="rounded-full border border-current/25 px-2.5 py-1 text-[11px] uppercase tracking-[0.14em]">
             {update.status}
@@ -66,6 +70,11 @@ function WorkerRunCardComponent({
             {metrics.approx_peak_rss_mb.toFixed(1)} MB rss
           </span>
         )}
+        {metrics.should_escalate === true && (
+          <span className="rounded-full border border-amber-300/50 bg-amber-500/10 px-2 py-1 text-amber-100">
+            escalation recommended
+          </span>
+        )}
       </div>
 
       {artifacts.length > 0 && (
@@ -79,6 +88,7 @@ function WorkerRunCardComponent({
       )}
 
       {routingArtifact && <RoutingDecisionBlock artifact={routingArtifact} />}
+      {runtimeSourceArtifact && <RuntimeSourceBlock artifact={runtimeSourceArtifact} />}
 
       {inlineArtifacts.length > 0 && (
         <div className="mt-3 space-y-3">
@@ -108,6 +118,24 @@ function WorkerRunCardComponent({
       {approvalHistoryArtifact && !approvalRequired && (
         <ApprovalHistoryBlock artifact={approvalHistoryArtifact} />
       )}
+    </div>
+  );
+}
+
+function RuntimeSourceBlock({ artifact }: { artifact: AxeWorkerArtifact }) {
+  const metadata = artifact?.metadata ?? {};
+  const source = typeof metadata.source === "string" ? metadata.source : null;
+  const taskId = typeof metadata.task_id === "string" ? metadata.task_id : null;
+  const skillRunId = typeof metadata.skill_run_id === "string" ? metadata.skill_run_id : null;
+
+  return (
+    <div className="mt-3 rounded-lg border border-current/15 bg-black/10 p-3">
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] opacity-75">Runtime source</p>
+      <div className="mt-2 flex flex-wrap gap-2 text-[11px] opacity-85">
+        {source && <span className="rounded-full border border-current/15 px-2 py-1">Source: {source}</span>}
+        {taskId && <span className="rounded-full border border-current/15 px-2 py-1">Task: {taskId}</span>}
+        {skillRunId && <span className="rounded-full border border-current/15 px-2 py-1">SkillRun: {skillRunId}</span>}
+      </div>
     </div>
   );
 }

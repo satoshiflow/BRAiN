@@ -153,14 +153,38 @@ This is still intentionally conservative, but it now lives in the Domain Agent /
 RoutingDecision path so later routing-memory and policy improvements can build on
 the same contract instead of replacing a side heuristic.
 
+## Unified Activity Surface
+
+AXE chat now uses a unified worker activity display model with explicit source tagging:
+- `activity_source=worker_run` for `miniworker` and `opencode`
+- `activity_source=skillrun_tasklease` for `openclaw`
+
+`openclaw` remains on the TaskLease/SkillRun runtime path, but is rendered in the
+same chat worker surface for operator usability.
+
+## OpenClaw Runtime Sync
+
+`openclaw` status is now refreshed via Task Queue source data:
+- `GET /api/tasks/{task_id}`
+- mapped into AXE worker statuses (`queued/running/completed/failed`)
+
+This keeps runtime boundaries intact while giving live status in the unified feed.
+
 ## AXE UI Surface
 
 The AXE chat worker card now renders:
 - resolved worker type
+- worker activity source
 - inline patch artifacts
 - inline analysis artifacts
 - lightweight execution metrics such as estimated credits and RSS delta
 - patch artifacts in diff-style row rendering for additions/removals/hunks
+
+The chat header includes persistent filters:
+- worker type (`all/miniworker/opencode/openclaw/auto`)
+- status (`all/waiting_input/failed/running/queued/completed`)
+
+Filter state is persisted per session in local storage.
 
 This keeps the pilot useful without requiring a heavier worker dashboard first.
 
@@ -186,6 +210,23 @@ Approval flow:
 - a control-plane event and audit entry are written for the approval-required gate
 - when `approval_confirmed=true`, BRAiN records an approval audit event before dispatching the bounded execution
 - AXE UI can now continue the waiting run through explicit approve/reject actions instead of recreating the request
+
+Approval history metadata now includes:
+- actor id/type
+- timestamp
+- `routing_decision_id`
+- optional `purpose_evaluation_id`
+
+## Governance Hardening (bounded_apply)
+
+In addition to approval gating, bounded apply now enforces path-level governance checks.
+
+Blocked examples include:
+- security/auth core paths
+- config/provider binding surfaces
+- infra/workflow and sensitive secret-like file suffixes
+
+Requests violating these rules fail closed before execution.
 
 ## Follow-up Work
 

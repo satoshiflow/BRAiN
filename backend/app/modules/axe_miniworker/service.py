@@ -32,6 +32,24 @@ DEFAULT_MAX_LLM_TOKENS = 6000
 DEFAULT_MAX_COST_CREDITS = 30.0
 READ_ONLY_TOOLS = "read,grep,find,ls"
 APPLY_TOOLS = "read,grep,find,ls,edit,write"
+BLOCKED_BOUNDED_APPLY_PATH_MARKERS = (
+    "backend/app/core/security",
+    "backend/app/core/auth",
+    "backend/app/modules/config_management",
+    "backend/app/modules/provider_bindings",
+    "backend/app/modules/odoo_adapter",
+    "backend/app/modules/task_queue",
+    "infra/",
+    ".github/workflows",
+)
+BLOCKED_BOUNDED_APPLY_SUFFIXES = (
+    ".env",
+    ".pem",
+    ".key",
+    ".crt",
+    ".yml",
+    ".yaml",
+)
 ENV_PASSTHROUGH_KEYS = (
     "OPENAI_API_KEY",
     "OPENROUTER_API_KEY",
@@ -272,6 +290,7 @@ class AXEMiniworkerService:
             "session_id": payload.session_id,
             "message_id": payload.message_id,
             "worker_type": "miniworker",
+            "activity_source": "worker_run",
             "status": "completed" if success else "failed",
             "label": "AXE miniworker completed" if success else "AXE miniworker failed",
             "detail": self._build_detail(parsed, stderr, success, timed_out),
@@ -368,6 +387,12 @@ class AXEMiniworkerService:
         concrete_terms = ("replace", "delete", "insert", "change", "update", "rename")
         if not any(term in prompt for term in concrete_terms):
             raise ValueError("AXE miniworker bounded_apply requires concrete edit instructions")
+        for raw_path in payload.file_scope:
+            lowered = str(raw_path).strip().lower()
+            if any(marker in lowered for marker in BLOCKED_BOUNDED_APPLY_PATH_MARKERS):
+                raise ValueError(f"AXE miniworker bounded_apply blocked by governance path policy: {raw_path}")
+            if any(lowered.endswith(suffix) for suffix in BLOCKED_BOUNDED_APPLY_SUFFIXES):
+                raise ValueError(f"AXE miniworker bounded_apply blocked by governance file policy: {raw_path}")
 
     def _build_command(
         self,

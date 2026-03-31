@@ -14,6 +14,7 @@ OpenCodeMode = Literal["plan", "build", "heal", "evolve"]
 WorkerType = Literal["auto", "opencode", "miniworker"]
 MiniworkerExecutionMode = Literal["proposal", "bounded_apply"]
 MiniworkerExpectedOutput = Literal["patch", "analysis", "tests", "mixed"]
+AXEWorkerActivitySource = Literal["worker_run", "skillrun_tasklease"]
 
 
 class AXEWorkerArtifact(BaseModel):
@@ -45,6 +46,7 @@ class AXEWorkerRunResponse(BaseModel):
     session_id: UUID
     message_id: UUID
     worker_type: WorkerType
+    activity_source: AXEWorkerActivitySource = "worker_run"
     status: AXEWorkerStatus
     label: str
     detail: str
