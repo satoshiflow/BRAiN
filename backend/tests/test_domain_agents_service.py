@@ -5,20 +5,24 @@ import pytest
 from app.modules.domain_agents.schemas import (
     ControlMode,
     DecisionOutcome,
+    DecisionContext,
     DomainAgentConfig,
     DomainBudgetProfile,
     DomainDecompositionRequest,
     DomainResolution,
     DomainReviewOutcome,
+    RoutingDecisionResponse,
     SensitivityClass,
     SpecialistCandidate,
     DomainStatus,
+    TaskProfile,
 )
 from app.modules.domain_agents.service import (
     DomainAgentRegistry,
     DomainAgentService,
     get_domain_agent_service,
 )
+from app.core.auth_deps import Principal, PrincipalType
 
 
 def test_domain_agent_service_decompose_selects_allowed_capabilities() -> None:
@@ -258,6 +262,80 @@ def test_build_skill_run_drafts_carries_upstream_decision_artifacts() -> None:
     assert drafts[0].purpose_evaluation_id == "pe-1"
     assert drafts[0].routing_decision_id == "rd-1"
     assert drafts[0].governance_snapshot["control_mode"] == "brain_first"
+
+
+@pytest.mark.asyncio
+async def test_route_programming_worker_prefers_miniworker_for_small_scoped_task(monkeypatch):
+    service = get_domain_agent_service()
+
+    async def _create_routing_decision(db, *, decision_context, decision, principal):  # noqa: ANN001
+        _ = db, principal
+        return RoutingDecisionResponse(
+            id="route-1",
+            tenant_id="tenant-a",
+            decision_context_id=decision_context.decision_context_id,
+            task_profile_id=decision.task_profile_id,
+            purpose_evaluation_id=decision.purpose_evaluation_id,
+            worker_candidates=decision.worker_candidates,
+            filtered_candidates=decision.filtered_candidates,
+            scoring_breakdown=decision.scoring_breakdown,
+            selected_worker=decision.selected_worker,
+            selected_skill_or_plan=decision.selected_skill_or_plan,
+            strategy=decision.strategy,
+            reasoning=decision.reasoning,
+            governance_snapshot={},
+            mission_id=None,
+            correlation_id=None,
+            created_by=principal.principal_id,
+        )
+
+    monkeypatch.setattr(service, "create_routing_decision", _create_routing_decision)
+
+    decision = await service.route_programming_worker(
+        db=None,  # type: ignore[arg-type]
+        principal=Principal(
+            principal_id="axe-user",
+            principal_type=PrincipalType.HUMAN,
+            name="AXE User",
+            email="axe@example.com",
+            roles=["operator"],
+            scopes=["read", "write"],
+            tenant_id="tenant-a",
+        ),
+        intent_summary="Replace line 3 with a guarded return",
+        file_scope=["backend/app/modules/axe_worker_runs/service.py"],
+        execution_mode="proposal",
+        message_id="msg-1",
+        session_id="sess-1",
+        tenant_id="tenant-a",
+    )
+
+    assert decision.selected_worker == "miniworker"
+
+
+def test_decide_programming_worker_prefers_opencode_for_sensitive_bounded_apply() -> None:
+    service = get_domain_agent_service()
+
+    decision = service._decide_programming_worker(
+        decision_context=DecisionContext(
+            decision_context_id="ctx-1",
+            tenant_id="tenant-a",
+            requested_by="axe-user",
+            intent_summary="Apply security fix across auth and secrets paths",
+            sensitivity_class=SensitivityClass.SENSITIVE,
+            context={},
+        ),
+        task_profile=TaskProfile(
+            task_profile_id="task-1",
+            task_class="programming.worker_dispatch",
+            description="Apply security fix across auth and secrets paths",
+            constraints={"file_scope_count": 4, "execution_mode": "bounded_apply"},
+        ),
+        worker_pool=service._default_programming_worker_pool(),
+        purpose_evaluation_id=None,
+    )
+
+    assert decision.selected_worker == "opencode"
 
 
 def test_derive_control_mode_brain_first_for_standard_accept() -> None:

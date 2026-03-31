@@ -32,6 +32,9 @@ from .schemas import (
     SensitivityClass,
     DomainReviewOutcome,
     SpecialistCandidate,
+    TaskProfile,
+    RequestedAutonomyLevel,
+    WorkerProfileProjection,
 )
 from .models import PurposeEvaluationModel, RoutingDecisionModel
 from .models import RoutingAdaptationProposalModel, RoutingMemoryProjectionModel
@@ -172,6 +175,74 @@ class DomainAgentService:
     def resolve_domain(self, domain_key: str) -> Optional[DomainAgentConfig]:
         return self.registry.get(domain_key)
 
+    async def route_programming_worker(
+        self,
+        db: AsyncSession,
+        *,
+        principal: Principal,
+        intent_summary: str,
+        file_scope: list[str],
+        execution_mode: str,
+        message_id: str,
+        session_id: str,
+        purpose_evaluation_id: str | None = None,
+        tenant_id: str | None = None,
+        correlation_id: str | None = None,
+        causation_id: str | None = None,
+    ) -> RoutingDecisionResponse:
+        decision_context = DecisionContext(
+            decision_context_id=f"ctx-worker-{message_id}",
+            tenant_id=tenant_id,
+            requested_by=principal.principal_id,
+            request_channel="axe_worker",
+            intent_summary=intent_summary,
+            requested_autonomy_level=RequestedAutonomyLevel.MEDIUM,
+            sensitivity_class=(
+                SensitivityClass.SENSITIVE
+                if _contains_sensitive_worker_markers(intent_summary)
+                else SensitivityClass.STANDARD
+            ),
+            correlation_id=correlation_id,
+            causation_id=causation_id,
+            context={
+                "file_scope": file_scope,
+                "execution_mode": execution_mode,
+                "session_id": session_id,
+                "message_id": message_id,
+            },
+        )
+        task_profile = TaskProfile(
+            task_profile_id=f"task-worker-{message_id}",
+            task_class="programming.worker_dispatch",
+            description=intent_summary,
+            required_capabilities=["code.write", "code.test"],
+            constraints={
+                "file_scope_count": len(file_scope),
+                "execution_mode": execution_mode,
+            },
+            required_worker_traits=["bounded_execution"],
+            optimization_weights={
+                "cost_efficiency": 0.35,
+                "speed": 0.3,
+                "context_capacity": 0.2,
+                "trust": 0.15,
+            },
+            routing_sensitivity="high" if execution_mode == "bounded_apply" else "medium",
+            split_allowed=False,
+        )
+        decision = self._decide_programming_worker(
+            decision_context=decision_context,
+            task_profile=task_profile,
+            worker_pool=self._default_programming_worker_pool(),
+            purpose_evaluation_id=purpose_evaluation_id,
+        )
+        return await self.create_routing_decision(
+            db,
+            decision_context=decision_context,
+            decision=decision,
+            principal=principal,
+        )
+
     def decompose(self, request: DomainDecompositionRequest) -> DomainResolution:
         config = self.resolve_domain(request.domain_key)
         if config is None:
@@ -274,6 +345,111 @@ class DomainAgentService:
             ],
             requires_supervisor_review=requires_supervisor_review,
         )
+
+    def _decide_programming_worker(
+        self,
+        *,
+        decision_context: DecisionContext,
+        task_profile: TaskProfile,
+        worker_pool: list[WorkerProfileProjection],
+        purpose_evaluation_id: str | None,
+    ) -> RoutingDecision:
+        text = f"{decision_context.intent_summary} {task_profile.description}".lower()
+        scope_count = int(task_profile.constraints.get("file_scope_count") or 0)
+        execution_mode = str(task_profile.constraints.get("execution_mode") or "proposal")
+
+        worker_candidates = [worker.worker_id for worker in worker_pool]
+        filtered_candidates = [worker.worker_id for worker in worker_pool if worker.status == "active"]
+        scoring_breakdown: dict[str, dict[str, float]] = {}
+        selected_worker = "opencode"
+        best_score = float("-inf")
+
+        for worker in worker_pool:
+            score_parts = {
+                "cost_efficiency": worker.cost_efficiency * 0.35,
+                "speed": worker.speed * 0.25,
+                "context_capacity": worker.context_capacity * 0.2,
+                "trust": worker.trust * 0.2,
+            }
+            if worker.worker_id == "miniworker":
+                if execution_mode == "bounded_apply":
+                    score_parts["bounded_apply_penalty"] = -0.9
+                if scope_count == 0:
+                    score_parts["scope_penalty"] = -0.6
+                elif scope_count <= 3:
+                    score_parts["scope_bonus"] = 0.25
+                else:
+                    score_parts["scope_penalty"] = -0.5
+                if len(text) > 1200:
+                    score_parts["context_penalty"] = -0.4
+                if _contains_sensitive_worker_markers(text):
+                    score_parts["sensitivity_penalty"] = -0.45
+            else:
+                if execution_mode == "bounded_apply":
+                    score_parts["bounded_apply_bonus"] = 0.25
+                if scope_count == 0 or scope_count > 3:
+                    score_parts["scope_bonus"] = 0.2
+                if _contains_sensitive_worker_markers(text):
+                    score_parts["sensitivity_bonus"] = 0.2
+
+            total = sum(score_parts.values())
+            score_parts["total"] = round(total, 6)
+            scoring_breakdown[worker.worker_id] = score_parts
+            if total > best_score and worker.worker_id in filtered_candidates:
+                best_score = total
+                selected_worker = worker.worker_id
+
+        return RoutingDecision(
+            routing_decision_id=f"route-worker-{decision_context.decision_context_id}",
+            decision_context_id=decision_context.decision_context_id,
+            task_profile_id=task_profile.task_profile_id,
+            purpose_evaluation_id=purpose_evaluation_id,
+            worker_candidates=worker_candidates,
+            filtered_candidates=filtered_candidates,
+            scoring_breakdown=scoring_breakdown,
+            selected_worker=selected_worker,
+            selected_skill_or_plan="axe.worker.auto_route",
+            strategy="single_worker",
+            reasoning=(
+                "Programming worker routing selected the highest-scoring executor "
+                f"for execution_mode={execution_mode}, file_scope_count={scope_count}."
+            ),
+        )
+
+    @staticmethod
+    def _default_programming_worker_pool() -> list[WorkerProfileProjection]:
+        return [
+            WorkerProfileProjection(
+                worker_id="miniworker",
+                worker_class="lightweight_executor",
+                label="AXE Miniworker",
+                capabilities=["code.read", "code.propose", "code.quick_fix"],
+                sovereignty=0.45,
+                trust=0.72,
+                cost_efficiency=0.92,
+                speed=0.88,
+                context_capacity=0.35,
+                autonomy_level=0.4,
+                supports_sensitive_core=False,
+                requires_sandbox=True,
+                status="active",
+            ),
+            WorkerProfileProjection(
+                worker_id="opencode",
+                worker_class="full_executor",
+                label="OpenCode",
+                capabilities=["code.read", "code.write", "code.verify", "code.repair"],
+                sovereignty=0.72,
+                trust=0.82,
+                cost_efficiency=0.55,
+                speed=0.58,
+                context_capacity=0.9,
+                autonomy_level=0.75,
+                supports_sensitive_core=True,
+                requires_sandbox=True,
+                status="active",
+            ),
+        ]
 
     async def select_specialists(
         self,
@@ -1621,6 +1797,23 @@ def get_domain_agent_service() -> DomainAgentService:
     if _service is None:
         _service = DomainAgentService(registry=get_domain_agent_registry())
     return _service
+
+
+def _contains_sensitive_worker_markers(text: str) -> bool:
+    haystack = text.lower()
+    markers = (
+        "security",
+        "auth",
+        "credential",
+        "secret",
+        "production",
+        "deploy",
+        "migration",
+        "database",
+        "infra",
+        "payment",
+    )
+    return any(marker in haystack for marker in markers)
 
 
 async def execute_skill_run_drafts(

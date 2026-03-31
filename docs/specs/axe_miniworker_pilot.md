@@ -128,19 +128,28 @@ Current pilot entry points:
 
 When `worker_type="auto"`, BRAiN resolves the execution path before dispatch.
 
-Current heuristics prefer `miniworker` when the request is:
+The current implementation now routes through the Domain Agent layer and persists a
+`RoutingDecision` artifact before worker dispatch.
+
+That means `auto` selection is no longer a local worker-service heuristic only.
+The worker run now carries a routing artifact that points back to the chosen
+control-plane decision.
+
+Current programming-worker routing prefers `miniworker` when the request is:
 - low-risk
 - small in prompt size
 - constrained to a few files
 - proposal-only
 
-Current heuristics prefer `opencode` when the request is:
+Current programming-worker routing prefers `opencode` when the request is:
 - broad or unscoped
 - sensitive or security-adjacent
 - likely multi-file or infrastructure-oriented
 - `bounded_apply`
 
-This is intentionally conservative and may be replaced later by richer Domain Agent / RoutingDecision logic.
+This is still intentionally conservative, but it now lives in the Domain Agent /
+RoutingDecision path so later routing-memory and policy improvements can build on
+the same contract instead of replacing a side heuristic.
 
 ## AXE UI Surface
 

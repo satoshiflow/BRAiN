@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth_deps import Principal
 from app.modules.axe_miniworker.service import AXEMiniworkerService
 from app.modules.axe_sessions.models import AXEChatMessageORM, AXEChatSessionORM
+from app.modules.domain_agents.service import get_domain_agent_service
 from app.modules.opencode_repair.schemas import (
     OpenCodeJobConstraints,
     OpenCodeJobContext,
@@ -26,9 +27,6 @@ from .models import AXEWorkerRunORM
 from .schemas import AXEWorkerArtifact, AXEWorkerRunCreateRequest, AXEWorkerRunResponse, WorkerType
 
 logger = logging.getLogger(__name__)
-
-AUTO_WORKER_TYPE = "auto"
-
 
 OPENCODE_TO_AXE_STATUS = {
     "requested": "queued",
@@ -184,9 +182,27 @@ class AXEWorkerRunService:
         if message is None:
             raise LookupError("Message not found")
 
-        effective_worker_type = self._select_worker_type(payload)
+        routing_decision = await self._resolve_routing_decision(
+            principal=principal,
+            payload=payload,
+        )
+        effective_worker_type = routing_decision.selected_worker if routing_decision is not None else payload.worker_type
 
         worker_run_id = f"wr_{uuid4().hex[:16]}"
+        routing_artifacts = []
+        if routing_decision is not None:
+            routing_artifacts.append(
+                {
+                    "type": "routing_decision",
+                    "label": "BRAiN routing decision",
+                    "url": f"inline://routing/{routing_decision.id}",
+                    "metadata": {
+                        "routing_decision_id": routing_decision.id,
+                        "selected_worker": routing_decision.selected_worker,
+                        "strategy": routing_decision.strategy,
+                    },
+                }
+            )
         row = AXEWorkerRunORM(
             worker_run_id=worker_run_id,
             session_id=payload.session_id,
@@ -197,7 +213,7 @@ class AXEWorkerRunService:
             status="queued",
             label=f"{effective_worker_type.title()} worker queued",
             detail="Job accepted by BRAiN orchestrator",
-            artifacts_json=[],
+            artifacts_json=routing_artifacts,
         )
         self.db.add(row)
 
@@ -219,7 +235,10 @@ class AXEWorkerRunService:
         row.label = worker_response.label
         row.detail = worker_response.detail
         row.backend_run_type = f"{worker_response.worker_type}_job"
-        row.artifacts_json = [artifact.model_dump(mode="json") for artifact in worker_response.artifacts]
+        row.artifacts_json = [
+            *(row.artifacts_json or []),
+            *[artifact.model_dump(mode="json") for artifact in worker_response.artifacts],
+        ]
 
         await self.db.commit()
         await self.db.refresh(row)
@@ -379,33 +398,25 @@ class AXEWorkerRunService:
             artifacts=artifacts,
         )
 
-    @staticmethod
-    def _select_worker_type(payload: AXEWorkerRunCreateRequest) -> WorkerType:
-        if payload.worker_type != AUTO_WORKER_TYPE:
-            return payload.worker_type
+    async def _resolve_routing_decision(
+        self,
+        *,
+        principal: Principal,
+        payload: AXEWorkerRunCreateRequest,
+    ):
+        if payload.worker_type != "auto":
+            return None
 
-        prompt = payload.prompt.lower()
-        scope_size = len(payload.file_scope)
-        high_risk_terms = (
-            "deploy",
-            "migration",
-            "database",
-            "infra",
-            "production",
-            "secret",
-            "credential",
-            "auth",
-            "security",
-            "multi-file",
-            "refactor entire",
+        return await get_domain_agent_service().route_programming_worker(
+            self.db,
+            principal=principal,
+            intent_summary=payload.prompt,
+            file_scope=payload.file_scope,
+            execution_mode=payload.execution_mode,
+            message_id=str(payload.message_id),
+            session_id=str(payload.session_id),
+            tenant_id=principal.tenant_id,
         )
-        broad_scope = scope_size == 0 or scope_size > 3 or payload.max_files > 3
-        asks_for_large_work = any(term in prompt for term in high_risk_terms)
-        if payload.execution_mode == "bounded_apply":
-            return "opencode"
-        if broad_scope or asks_for_large_work or len(payload.prompt) > 1200:
-            return "opencode"
-        return "miniworker"
 
 
 def _status_label(status: str) -> str:

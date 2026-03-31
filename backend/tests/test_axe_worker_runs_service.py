@@ -79,6 +79,7 @@ async def test_create_worker_run_dispatches_opencode_and_persists_backend_job_id
         session_id=uuid4(),
         message_id=uuid4(),
         prompt="Please repair test failures",
+        worker_type="opencode",
     )
 
     response = await service.create_worker_run(principal=_principal(), payload=payload)
@@ -223,6 +224,11 @@ async def test_create_worker_run_auto_routes_small_scope_to_miniworker(monkeypat
 
     monkeypatch.setattr(service, "_get_owned_session", _owned_session)
     monkeypatch.setattr(service, "_get_owned_message", _owned_message)
+    async def _resolve_routing_decision(*, principal, payload):  # noqa: ANN001
+        _ = principal, payload
+        return SimpleNamespace(id="route-1", selected_worker="miniworker", strategy="single_worker")
+
+    monkeypatch.setattr(service, "_resolve_routing_decision", _resolve_routing_decision)
     WorkerAdapterRegistry._adapters = {"miniworker": _MiniworkerStub()}  # type: ignore[assignment]
     WorkerAdapterRegistry._initialized = True
 
@@ -237,6 +243,7 @@ async def test_create_worker_run_auto_routes_small_scope_to_miniworker(monkeypat
     response = await service.create_worker_run(principal=_principal(), payload=payload)
 
     assert response.worker_type == "miniworker"
+    assert response.artifacts[0].metadata["selected_worker"] == "miniworker"
 
 
 @pytest.mark.asyncio
@@ -270,6 +277,11 @@ async def test_create_worker_run_auto_routes_broad_scope_to_opencode(monkeypatch
 
     monkeypatch.setattr(service, "_get_owned_session", _owned_session)
     monkeypatch.setattr(service, "_get_owned_message", _owned_message)
+    async def _resolve_routing_decision(*, principal, payload):  # noqa: ANN001
+        _ = principal, payload
+        return SimpleNamespace(id="route-2", selected_worker="opencode", strategy="single_worker")
+
+    monkeypatch.setattr(service, "_resolve_routing_decision", _resolve_routing_decision)
     WorkerAdapterRegistry._adapters = {"opencode": _OpenCodeStub()}  # type: ignore[assignment]
     WorkerAdapterRegistry._initialized = True
 
