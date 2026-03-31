@@ -54,6 +54,8 @@ interface PendingAttachment {
   error?: string;
 }
 
+type WorkerTypeFilter = "all" | AxeWorkerUpdate["worker_type"];
+
 const DEFAULT_MODEL = getDefaultModel();
 
 function formatTime(date: Date): string {
@@ -116,6 +118,7 @@ function ChatPageContent() {
   const [uploadLock, setUploadLock] = useState(false);
   const [workerUpdates, setWorkerUpdates] = useState<Record<string, AxeWorkerUpdate>>({});
   const [workerAnchors, setWorkerAnchors] = useState<Record<string, WorkerRunAnchor>>({});
+  const [workerTypeFilter, setWorkerTypeFilter] = useState<WorkerTypeFilter>("all");
   const [purposeTrace, setPurposeTrace] = useState<PurposeEvaluationRecord[]>([]);
   const [routingTrace, setRoutingTrace] = useState<RoutingDecisionRecord[]>([]);
   const [traceLoading, setTraceLoading] = useState(false);
@@ -170,6 +173,33 @@ function ChatPageContent() {
 
     return messageMap;
   }, [activeSessionId, workerAnchors, workerUpdates]);
+  const workerFilterStats = useMemo(() => {
+    const stats: Record<WorkerTypeFilter, number> = {
+      all: 0,
+      auto: 0,
+      opencode: 0,
+      miniworker: 0,
+    };
+
+    Object.values(workerAnchors).forEach((anchor) => {
+      if (anchor.sessionId !== activeSessionId) {
+        return;
+      }
+      const update = workerUpdates[anchor.workerRunId];
+      if (!update) {
+        return;
+      }
+      stats.all += 1;
+      stats[update.worker_type] += 1;
+    });
+    return stats;
+  }, [activeSessionId, workerAnchors, workerUpdates]);
+
+  const filterWorkerUpdates = useCallback(
+    (updates: AxeWorkerUpdate[]) =>
+      updates.filter((update) => (workerTypeFilter === "all" ? true : update.worker_type === workerTypeFilter)),
+    [workerTypeFilter],
+  );
 
   useEffect(() => {
     setIsClient(true);
@@ -737,7 +767,30 @@ function ChatPageContent() {
 
           <div className="axe-panel flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl">
             <div className="border-b border-cyan-500/10 px-4 py-3 text-xs text-slate-400 sm:px-6">
-              Active Thread: <span className="text-cyan-200">{activeSession?.title ?? "New Intent Thread"}</span>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p>
+                  Active Thread: <span className="text-cyan-200">{activeSession?.title ?? "New Intent Thread"}</span>
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {(["all", "miniworker", "opencode", "auto"] as WorkerTypeFilter[]).map((filter) => {
+                    const selected = workerTypeFilter === filter;
+                    return (
+                      <button
+                        key={filter}
+                        type="button"
+                        onClick={() => setWorkerTypeFilter(filter)}
+                        className={`rounded-full border px-2.5 py-1 text-[11px] uppercase tracking-[0.14em] ${
+                          selected
+                            ? "border-cyan-300/60 bg-cyan-500/20 text-cyan-100"
+                            : "border-slate-500/40 bg-slate-800/40 text-slate-300"
+                        }`}
+                      >
+                        {filter} ({workerFilterStats[filter]})
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
 
             <div className="flex-1 space-y-3 overflow-y-auto p-3 sm:space-y-4 sm:p-6">
@@ -764,7 +817,8 @@ function ChatPageContent() {
                         {isClient ? formatTime(message.timestamp) : ""}
                       </p>
 
-                      {Array.from(
+                      {filterWorkerUpdates(
+                        Array.from(
                         new Map(
                           (workerUpdatesByMessage[`local:${message.id}`] ?? [])
                             .concat(
@@ -774,7 +828,7 @@ function ChatPageContent() {
                             )
                             .map((update) => [update.worker_run_id, update])
                         ).values()
-                      ).map((update) => (
+                      )).map((update) => (
                         <WorkerRunCard
                           key={update.worker_run_id}
                           update={update}
