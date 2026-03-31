@@ -26,6 +26,7 @@ function WorkerRunCardComponent({
   const inlineArtifacts = artifacts.filter((artifact) => artifact.content);
   const metricArtifact = artifacts.find((artifact) => artifact.type === "report");
   const metrics = metricArtifact?.metadata ?? {};
+  const routingArtifact = artifacts.find((artifact) => artifact.type === "routing_decision");
   const approvalArtifact = artifacts.find((artifact) => artifact.type === "approval");
   const pendingRequestArtifact = artifacts.find((artifact) => artifact.type === "pending_request");
   const approvalHistoryArtifact = artifacts.find(
@@ -77,6 +78,8 @@ function WorkerRunCardComponent({
         </div>
       )}
 
+      {routingArtifact && <RoutingDecisionBlock artifact={routingArtifact} />}
+
       {inlineArtifacts.length > 0 && (
         <div className="mt-3 space-y-3">
           {inlineArtifacts.map((artifact) => (
@@ -105,6 +108,24 @@ function WorkerRunCardComponent({
       {approvalHistoryArtifact && !approvalRequired && (
         <ApprovalHistoryBlock artifact={approvalHistoryArtifact} />
       )}
+    </div>
+  );
+}
+
+function RoutingDecisionBlock({ artifact }: { artifact: AxeWorkerArtifact }) {
+  const metadata = artifact?.metadata ?? {};
+  const routingDecisionId = typeof metadata.routing_decision_id === "string" ? metadata.routing_decision_id : null;
+  const selectedWorker = typeof metadata.selected_worker === "string" ? metadata.selected_worker : null;
+  const strategy = typeof metadata.strategy === "string" ? metadata.strategy : null;
+
+  return (
+    <div className="mt-3 rounded-lg border border-current/15 bg-black/10 p-3">
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] opacity-75">Routing decision</p>
+      <div className="mt-2 flex flex-wrap gap-2 text-[11px] opacity-85">
+        {routingDecisionId && <span className="rounded-full border border-current/15 px-2 py-1">ID: {routingDecisionId}</span>}
+        {selectedWorker && <span className="rounded-full border border-current/15 px-2 py-1">Selected: {selectedWorker}</span>}
+        {strategy && <span className="rounded-full border border-current/15 px-2 py-1">Strategy: {strategy}</span>}
+      </div>
     </div>
   );
 }

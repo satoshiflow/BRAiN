@@ -107,4 +107,37 @@ describe("WorkerRunCard", () => {
     expect(screen.getByText("Actor: axe-user")).toBeInTheDocument();
     expect(screen.getByText(/^Time:/)).toBeInTheDocument();
   });
+
+  it("renders routing decision metadata when present", () => {
+    render(
+      <WorkerRunCard
+        update={{
+          worker_run_id: "wr-4",
+          session_id: "session-1",
+          message_id: "message-1",
+          worker_type: "miniworker",
+          status: "queued",
+          label: "BRAiN worker queued",
+          detail: "Job accepted by BRAiN orchestrator",
+          updated_at: new Date().toISOString(),
+          artifacts: [
+            {
+              type: "routing_decision",
+              label: "BRAiN routing decision",
+              metadata: {
+                routing_decision_id: "route-123",
+                selected_worker: "miniworker",
+                strategy: "single_worker",
+              },
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Routing decision")).toBeInTheDocument();
+    expect(screen.getByText("ID: route-123")).toBeInTheDocument();
+    expect(screen.getByText("Selected: miniworker")).toBeInTheDocument();
+    expect(screen.getByText("Strategy: single_worker")).toBeInTheDocument();
+  });
 });
