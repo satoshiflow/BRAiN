@@ -45,6 +45,20 @@ class _FakeWorkerService:
             raise PermissionError("Session not found")
         return [item for item in self.items.values() if str(item.session_id) == str(session_id)]
 
+    async def approve_worker_run(self, *, principal, worker_run_id, approval_reason):  # noqa: ANN001
+        _ = principal, approval_reason
+        item = self.items.get(worker_run_id)
+        if item is None:
+            raise PermissionError("Worker run not found")
+        return item.model_copy(update={"status": "completed", "detail": "approved"})
+
+    async def reject_worker_run(self, *, principal, worker_run_id, rejection_reason):  # noqa: ANN001
+        _ = principal, rejection_reason
+        item = self.items.get(worker_run_id)
+        if item is None:
+            raise PermissionError("Worker run not found")
+        return item.model_copy(update={"status": "failed", "detail": "rejected"})
+
 
 def _principal() -> Principal:
     return Principal(
@@ -129,6 +143,52 @@ def test_worker_routes_require_auth(client, test_app):
         response = client.get("/api/axe/workers/wr_any")
 
     assert response.status_code == 401
+
+
+def test_approve_worker_run_route(client, test_app):
+    service = _FakeWorkerService()
+    run = AXEWorkerRunResponse(
+        worker_run_id="wr_waiting",
+        session_id=uuid4(),
+        message_id=uuid4(),
+        worker_type="miniworker",
+        status="waiting_input",
+        label="Waiting",
+        detail="Awaiting approval",
+        updated_at=datetime.now(timezone.utc),
+        artifacts=[],
+    )
+    service.items[run.worker_run_id] = run
+    test_app.dependency_overrides[get_service] = lambda: service
+
+    response = client.post(f"/api/axe/workers/{run.worker_run_id}/approve", json={"approval_reason": "approved"})
+    test_app.dependency_overrides.pop(get_service, None)
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "completed"
+
+
+def test_reject_worker_run_route(client, test_app):
+    service = _FakeWorkerService()
+    run = AXEWorkerRunResponse(
+        worker_run_id="wr_waiting",
+        session_id=uuid4(),
+        message_id=uuid4(),
+        worker_type="miniworker",
+        status="waiting_input",
+        label="Waiting",
+        detail="Awaiting approval",
+        updated_at=datetime.now(timezone.utc),
+        artifacts=[],
+    )
+    service.items[run.worker_run_id] = run
+    test_app.dependency_overrides[get_service] = lambda: service
+
+    response = client.post(f"/api/axe/workers/{run.worker_run_id}/reject", json={"rejection_reason": "rejected"})
+    test_app.dependency_overrides.pop(get_service, None)
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "failed"
 
 
 def test_create_worker_run_route_rejects_openclaw_parallel_path(client, test_app):

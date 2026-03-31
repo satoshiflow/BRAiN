@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 
 import { WorkerRunCard } from "@/components/chat/WorkerRunCard";
 
@@ -29,5 +29,40 @@ describe("WorkerRunCard", () => {
     expect(screen.getAllByText("AXE miniworker patch proposal")).toHaveLength(2);
     expect(screen.getByText("-old line")).toBeInTheDocument();
     expect(screen.getByText("+new line")).toBeInTheDocument();
+  });
+
+  it("renders approval actions for waiting_input approval artifacts", () => {
+    const onApprove = jest.fn();
+    const onReject = jest.fn();
+
+    render(
+      <WorkerRunCard
+        update={{
+          worker_run_id: "wr-2",
+          session_id: "session-1",
+          message_id: "message-1",
+          worker_type: "miniworker",
+          status: "waiting_input",
+          label: "AXE miniworker waiting for approval",
+          detail: "Awaiting approval",
+          updated_at: new Date().toISOString(),
+          artifacts: [
+            {
+              type: "approval",
+              label: "Approval required",
+              metadata: { approval_required: true },
+            },
+          ],
+        }}
+        onApprove={onApprove}
+        onReject={onReject}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve apply" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reject apply" }));
+
+    expect(onApprove).toHaveBeenCalledWith("wr-2");
+    expect(onReject).toHaveBeenCalledWith("wr-2");
   });
 });

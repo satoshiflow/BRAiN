@@ -121,6 +121,8 @@ This keeps small failures observable without escalating every case to the heavy 
 Current pilot entry points:
 - `POST /api/axe/workers` with `worker_type="miniworker"`
 - `POST /api/axe/workers` with `worker_type="auto"` for BRAiN-side executor selection
+- `POST /api/axe/workers/{worker_run_id}/approve` for bounded-apply approval continuation
+- `POST /api/axe/workers/{worker_run_id}/reject` for bounded-apply rejection
 - AXE slash command bridge: `/miniworker ...`
 - AXE slash command bridge: `/worker ...` for automatic routing
 
@@ -183,6 +185,7 @@ Approval flow:
 - the run returns an approval artifact explaining the missing approval
 - a control-plane event and audit entry are written for the approval-required gate
 - when `approval_confirmed=true`, BRAiN records an approval audit event before dispatching the bounded execution
+- AXE UI can now continue the waiting run through explicit approve/reject actions instead of recreating the request
 
 ## Follow-up Work
 

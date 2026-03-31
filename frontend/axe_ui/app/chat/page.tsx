@@ -7,11 +7,13 @@ import { AdvancedCameraCapture } from "@/components/chat/AdvancedCameraCapture";
 import { WorkerRunCard } from "@/components/chat/WorkerRunCard";
 import { HelpHint } from "@/components/help/HelpHint";
 import {
+  approveAxeWorkerRun,
   appendAxeSessionMessage,
   getAxeWorkerRun,
   listPurposeEvaluations,
   listRoutingDecisions,
   postAxeChat,
+  rejectAxeWorkerRun,
   uploadAxeAttachment,
 } from "@/lib/api";
 import { getControlDeckBase, getDefaultModel } from "@/lib/config";
@@ -345,6 +347,48 @@ function ChatPageContent() {
     }
     const created = await createSession();
     return created?.id ?? null;
+  };
+
+  const handleApproveWorkerRun = async (workerRunId: string) => {
+    const approvalReason = window.prompt(
+      "Approval reason for bounded apply:",
+      "Operator approved exact scoped edit"
+    );
+    if (!approvalReason?.trim()) {
+      return;
+    }
+
+    try {
+      const update = await withAuthRetry((token) =>
+        approveAxeWorkerRun(workerRunId, approvalReason.trim(), {
+          Authorization: `Bearer ${token}`,
+        })
+      );
+      setWorkerUpdates((prev) => ({ ...prev, [workerRunId]: update }));
+    } catch (approvalError) {
+      setError(approvalError instanceof Error ? approvalError.message : "Unable to approve worker run");
+    }
+  };
+
+  const handleRejectWorkerRun = async (workerRunId: string) => {
+    const rejectionReason = window.prompt(
+      "Reason for rejecting bounded apply:",
+      "Operator rejected bounded apply request"
+    );
+    if (!rejectionReason?.trim()) {
+      return;
+    }
+
+    try {
+      const update = await withAuthRetry((token) =>
+        rejectAxeWorkerRun(workerRunId, rejectionReason.trim(), {
+          Authorization: `Bearer ${token}`,
+        })
+      );
+      setWorkerUpdates((prev) => ({ ...prev, [workerRunId]: update }));
+    } catch (rejectionError) {
+      setError(rejectionError instanceof Error ? rejectionError.message : "Unable to reject worker run");
+    }
   };
 
   const handleSend = async () => {
@@ -738,7 +782,14 @@ function ChatPageContent() {
                             )
                             .map((update) => [update.worker_run_id, update])
                         ).values()
-                      ).map((update) => <WorkerRunCard key={update.worker_run_id} update={update} />)}
+                      ).map((update) => (
+                        <WorkerRunCard
+                          key={update.worker_run_id}
+                          update={update}
+                          onApprove={handleApproveWorkerRun}
+                          onReject={handleRejectWorkerRun}
+                        />
+                      ))}
                     </div>
 
                     {message.role === "user" && (

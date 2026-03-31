@@ -12,11 +12,21 @@ const statusStyles: Record<AxeWorkerUpdate["status"], string> = {
   failed: "border-rose-400/35 bg-rose-500/10 text-rose-100",
 };
 
-function WorkerRunCardComponent({ update }: { update: AxeWorkerUpdate }) {
+function WorkerRunCardComponent({
+  update,
+  onApprove,
+  onReject,
+}: {
+  update: AxeWorkerUpdate;
+  onApprove?: (workerRunId: string) => void;
+  onReject?: (workerRunId: string) => void;
+}) {
   const artifacts = update.artifacts ?? [];
   const inlineArtifacts = artifacts.filter((artifact) => artifact.content);
   const metricArtifact = artifacts.find((artifact) => artifact.type === "report");
   const metrics = metricArtifact?.metadata ?? {};
+  const approvalArtifact = artifacts.find((artifact) => artifact.type === "approval");
+  const approvalRequired = approvalArtifact?.metadata?.approval_required === true && update.status === "waiting_input";
 
   return (
     <div className={`mt-3 rounded-xl border p-3 ${statusStyles[update.status]}`}>
@@ -74,6 +84,25 @@ function WorkerRunCardComponent({ update }: { update: AxeWorkerUpdate }) {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {approvalRequired && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => onApprove?.(update.worker_run_id)}
+            className="rounded-lg border border-emerald-300/35 bg-emerald-500/15 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-emerald-100"
+          >
+            Approve apply
+          </button>
+          <button
+            type="button"
+            onClick={() => onReject?.(update.worker_run_id)}
+            className="rounded-lg border border-rose-300/35 bg-rose-500/15 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-rose-100"
+          >
+            Reject apply
+          </button>
         </div>
       )}
     </div>

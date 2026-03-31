@@ -333,7 +333,7 @@ async def test_create_worker_run_bounded_apply_waits_for_approval(monkeypatch):
 
     assert response.status == "waiting_input"
     assert response.label == "AXE miniworker waiting for approval"
-    assert "approval_required" in response.artifacts[0].metadata
+    assert any(artifact.metadata.get("approval_required") is True for artifact in response.artifacts)
     assert events == ["axe.miniworker.bounded_apply.approval_required.v1"]
 
 
@@ -393,3 +393,112 @@ async def test_create_worker_run_bounded_apply_records_approval_before_dispatch(
 
     assert response.status == "completed"
     assert events == ["axe.miniworker.bounded_apply.approved.v1"]
+
+
+@pytest.mark.asyncio
+async def test_approve_worker_run_dispatches_pending_bounded_apply(monkeypatch):
+    db = _FakeDB()
+    service = AXEWorkerRunService(db=db)  # type: ignore[arg-type]
+    pending_payload = AXEWorkerRunCreateRequest(
+        session_id=uuid4(),
+        message_id=uuid4(),
+        prompt="Replace line 3 with a guarded return",
+        worker_type="miniworker",
+        execution_mode="bounded_apply",
+        file_scope=["backend/app/modules/axe_worker_runs/service.py"],
+    ).model_dump(mode="json")
+    row = SimpleNamespace(
+        worker_run_id="wr-approve-1",
+        session_id=uuid4(),
+        message_id=uuid4(),
+        backend_run_id=None,
+        backend_run_type="miniworker_job",
+        status="waiting_input",
+        label="AXE miniworker waiting for approval",
+        detail="Needs approval",
+        artifacts_json=[{"type": "pending_request", "metadata": pending_payload}],
+        updated_at=None,
+    )
+
+    async def _get_owned_worker_run(**kwargs):
+        _ = kwargs
+        return row
+
+    events: list[str] = []
+
+    async def _record_event(**kwargs):  # noqa: ANN001
+        events.append(kwargs["event_type"])
+        return None
+
+    class _MiniworkerStub:
+        async def dispatch(self, *, db, principal, payload, worker_run_id):  # noqa: ANN001
+            _ = db, principal
+            assert payload.approval_confirmed is True
+            assert payload.approval_reason == "approved"
+            return SimpleNamespace(
+                worker_run_id=worker_run_id,
+                session_id=payload.session_id,
+                message_id=payload.message_id,
+                worker_type="miniworker",
+                status="completed",
+                label="AXE miniworker completed",
+                detail="Patch applied within bounded scope",
+                updated_at=None,
+                artifacts=[],
+            )
+
+    monkeypatch.setattr(service, "_get_owned_worker_run", _get_owned_worker_run)
+    monkeypatch.setattr("app.modules.axe_worker_runs.service.record_control_plane_event", _record_event)
+    WorkerAdapterRegistry._adapters = {"miniworker": _MiniworkerStub()}  # type: ignore[assignment]
+    WorkerAdapterRegistry._initialized = True
+
+    response = await service.approve_worker_run(
+        principal=_principal(),
+        worker_run_id="wr-approve-1",
+        approval_reason="approved",
+    )
+
+    assert response.status == "completed"
+    assert row.detail == "Patch applied within bounded scope"
+    assert events == ["axe.miniworker.bounded_apply.approved.v1"]
+
+
+@pytest.mark.asyncio
+async def test_reject_worker_run_marks_failed(monkeypatch):
+    db = _FakeDB()
+    service = AXEWorkerRunService(db=db)  # type: ignore[arg-type]
+    row = SimpleNamespace(
+        worker_run_id="wr-reject-1",
+        session_id=uuid4(),
+        message_id=uuid4(),
+        backend_run_id=None,
+        backend_run_type="miniworker_job",
+        status="waiting_input",
+        label="AXE miniworker waiting for approval",
+        detail="Needs approval",
+        artifacts_json=[],
+        updated_at=None,
+    )
+
+    async def _get_owned_worker_run(**kwargs):
+        _ = kwargs
+        return row
+
+    events: list[str] = []
+
+    async def _record_event(**kwargs):  # noqa: ANN001
+        events.append(kwargs["event_type"])
+        return None
+
+    monkeypatch.setattr(service, "_get_owned_worker_run", _get_owned_worker_run)
+    monkeypatch.setattr("app.modules.axe_worker_runs.service.record_control_plane_event", _record_event)
+
+    response = await service.reject_worker_run(
+        principal=_principal(),
+        worker_run_id="wr-reject-1",
+        rejection_reason="not approved",
+    )
+
+    assert response.status == "failed"
+    assert row.detail == "not approved"
+    assert events == ["axe.miniworker.bounded_apply.rejected.v1"]

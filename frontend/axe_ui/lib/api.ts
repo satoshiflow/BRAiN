@@ -67,6 +67,30 @@ export async function getAxeWorkerRun(
   });
 }
 
+export async function approveAxeWorkerRun(
+  workerRunId: string,
+  approvalReason: string,
+  customHeaders?: Record<string, string>
+): Promise<AxeWorkerUpdate> {
+  return apiRequest<AxeWorkerUpdate>(`/api/axe/workers/${workerRunId}/approve`, {
+    method: "POST",
+    body: JSON.stringify({ approval_reason: approvalReason }),
+    headers: customHeaders,
+  });
+}
+
+export async function rejectAxeWorkerRun(
+  workerRunId: string,
+  rejectionReason: string,
+  customHeaders?: Record<string, string>
+): Promise<AxeWorkerUpdate> {
+  return apiRequest<AxeWorkerUpdate>(`/api/axe/workers/${workerRunId}/reject`, {
+    method: "POST",
+    body: JSON.stringify({ rejection_reason: rejectionReason }),
+    headers: customHeaders,
+  });
+}
+
 export async function getApiHealth(): Promise<ApiHealthResponse> {
   return apiRequest<ApiHealthResponse>("/api/health");
 }

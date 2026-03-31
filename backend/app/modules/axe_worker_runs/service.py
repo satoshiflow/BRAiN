@@ -269,6 +269,122 @@ class AXEWorkerRunService:
         await self._sync_backend_status(row)
         return self._to_response(row)
 
+    async def approve_worker_run(
+        self,
+        *,
+        principal: Principal,
+        worker_run_id: str,
+        approval_reason: str,
+    ) -> AXEWorkerRunResponse:
+        row = await self._get_owned_worker_run(principal=principal, worker_run_id=worker_run_id)
+        if row is None:
+            raise PermissionError("Worker run not found")
+        if row.status != "waiting_input":
+            raise ValueError("Worker run is not waiting for approval")
+
+        pending_payload = self._extract_pending_payload(row)
+        if pending_payload is None:
+            raise LookupError("Pending approval payload missing")
+
+        payload = AXEWorkerRunCreateRequest(**pending_payload).model_copy(
+            update={"approval_confirmed": True, "approval_reason": approval_reason}
+        )
+        adapter = WorkerAdapterRegistry.get(payload.worker_type)
+        if adapter is None:
+            raise ValueError(f"Unsupported worker type: {payload.worker_type}")
+
+        await record_control_plane_event(
+            db=self.db,
+            tenant_id=principal.tenant_id,
+            entity_type="axe_worker_run",
+            entity_id=row.worker_run_id,
+            event_type="axe.miniworker.bounded_apply.approved.v1",
+            correlation_id=row.worker_run_id,
+            mission_id=None,
+            actor_id=principal.principal_id,
+            actor_type=principal.principal_type.value,
+            payload={
+                "worker_type": payload.worker_type,
+                "execution_mode": payload.execution_mode,
+                "file_scope": payload.file_scope,
+                "approval_reason": approval_reason,
+            },
+            audit_required=True,
+            audit_action="axe_miniworker_bounded_apply_approve",
+            audit_message="AXE miniworker bounded apply approved",
+        )
+
+        row.status = "queued"
+        row.label = f"{payload.worker_type.title()} worker queued"
+        row.detail = "Approval confirmed. Dispatching bounded execution."
+        row.artifacts_json = self._without_pending_approval_artifacts(row.artifacts_json or [])
+
+        worker_response = await adapter.dispatch(
+            db=self.db,
+            principal=principal,
+            payload=payload,
+            worker_run_id=row.worker_run_id,
+        )
+        row.backend_run_id = worker_response.detail.split(": ")[-1] if ": " in worker_response.detail else worker_response.worker_run_id
+        row.status = worker_response.status
+        row.label = worker_response.label
+        row.detail = worker_response.detail
+        row.backend_run_type = f"{worker_response.worker_type}_job"
+        row.artifacts_json = [
+            *(row.artifacts_json or []),
+            *[artifact.model_dump(mode="json") for artifact in worker_response.artifacts],
+        ]
+
+        await self.db.commit()
+        await self.db.refresh(row)
+        return self._to_response(row)
+
+    async def reject_worker_run(
+        self,
+        *,
+        principal: Principal,
+        worker_run_id: str,
+        rejection_reason: str,
+    ) -> AXEWorkerRunResponse:
+        row = await self._get_owned_worker_run(principal=principal, worker_run_id=worker_run_id)
+        if row is None:
+            raise PermissionError("Worker run not found")
+        if row.status != "waiting_input":
+            raise ValueError("Worker run is not waiting for approval")
+
+        await record_control_plane_event(
+            db=self.db,
+            tenant_id=principal.tenant_id,
+            entity_type="axe_worker_run",
+            entity_id=row.worker_run_id,
+            event_type="axe.miniworker.bounded_apply.rejected.v1",
+            correlation_id=row.worker_run_id,
+            mission_id=None,
+            actor_id=principal.principal_id,
+            actor_type=principal.principal_type.value,
+            payload={"rejection_reason": rejection_reason},
+            audit_required=True,
+            audit_action="axe_miniworker_bounded_apply_reject",
+            audit_message="AXE miniworker bounded apply rejected",
+            severity="warning",
+        )
+
+        row.status = "failed"
+        row.label = "AXE miniworker approval rejected"
+        row.detail = rejection_reason
+        row.artifacts_json = [
+            *self._without_pending_approval_artifacts(row.artifacts_json or []),
+            {
+                "type": "approval",
+                "label": "Approval rejected",
+                "url": "inline://approval-rejected",
+                "metadata": {"rejected": True, "rejection_reason": rejection_reason},
+            },
+        ]
+        await self.db.commit()
+        await self.db.refresh(row)
+        return self._to_response(row)
+
     async def list_worker_runs_for_session(
         self,
         *,
@@ -456,6 +572,12 @@ class AXEWorkerRunService:
                 artifacts_json=[
                     *routing_artifacts,
                     {
+                        "type": "pending_request",
+                        "label": "Pending bounded apply request",
+                        "url": "inline://pending-request",
+                        "metadata": payload.model_dump(mode="json"),
+                    },
+                    {
                         "type": "approval",
                         "label": "Approval required",
                         "url": "inline://approval",
@@ -493,6 +615,26 @@ class AXEWorkerRunService:
             audit_message="AXE miniworker bounded apply approved",
         )
         return None
+
+    @staticmethod
+    def _extract_pending_payload(row: AXEWorkerRunORM) -> dict | None:
+        for artifact in row.artifacts_json or []:
+            if isinstance(artifact, dict) and artifact.get("type") == "pending_request":
+                metadata = artifact.get("metadata")
+                if isinstance(metadata, dict):
+                    return metadata
+        return None
+
+    @staticmethod
+    def _without_pending_approval_artifacts(artifacts: list[dict]) -> list[dict]:
+        filtered: list[dict] = []
+        for artifact in artifacts:
+            if not isinstance(artifact, dict):
+                continue
+            if artifact.get("type") in {"pending_request", "approval"}:
+                continue
+            filtered.append(artifact)
+        return filtered
 
     async def _resolve_routing_decision(
         self,

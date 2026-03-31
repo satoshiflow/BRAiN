@@ -52,5 +52,13 @@ class AXEWorkerRunResponse(BaseModel):
     artifacts: list[AXEWorkerArtifact] = Field(default_factory=list)
 
 
+class AXEWorkerRunApprovalRequest(BaseModel):
+    approval_reason: str = Field(..., min_length=1, max_length=1000)
+
+
+class AXEWorkerRunRejectionRequest(BaseModel):
+    rejection_reason: str = Field(..., min_length=1, max_length=1000)
+
+
 class AXEWorkerRunListResponse(BaseModel):
     items: list[AXEWorkerRunResponse] = Field(default_factory=list)
