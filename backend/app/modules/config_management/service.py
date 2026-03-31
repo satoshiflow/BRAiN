@@ -87,6 +87,16 @@ class ConfigManagementService:
             ManagedConfigDefinition("REFRESH_TOKEN_EXPIRE_DAYS", "Refresh Token TTL", "Refresh token validity in days", "sensitive", "integer", validation={"min": 1, "max": 365}),
             ManagedConfigDefinition("AGENT_TOKEN_EXPIRE_HOURS", "Agent Token TTL", "Agent token validity in hours", "sensitive", "integer", validation={"min": 1, "max": 720}),
             ManagedConfigDefinition("LOCAL_LLM_MODE", "Local LLM Mode", "Default provider routing mode", "sensitive", "string"),
+            ManagedConfigDefinition("AXE_MINIWORKER_ENABLED", "AXE Miniworker Enabled", "Enable Pi-backed AXE miniworker executor", "sensitive", "boolean"),
+            ManagedConfigDefinition("AXE_MINIWORKER_COMMAND", "AXE Miniworker Command", "Command used to launch the Pi miniworker runtime", "sensitive", "string"),
+            ManagedConfigDefinition("AXE_MINIWORKER_PROVIDER", "AXE Miniworker Provider", "Provider override passed to Pi", "sensitive", "string"),
+            ManagedConfigDefinition("AXE_MINIWORKER_MODEL", "AXE Miniworker Model", "Model override passed to Pi", "sensitive", "string"),
+            ManagedConfigDefinition("AXE_MINIWORKER_WORKDIR", "AXE Miniworker Workdir", "Repository workdir used by Pi miniworker", "sensitive", "string"),
+            ManagedConfigDefinition("AXE_MINIWORKER_TIMEOUT_SECONDS", "AXE Miniworker Timeout", "Hard timeout for Pi miniworker execution", "sensitive", "integer", validation={"min": 5, "max": 900}),
+            ManagedConfigDefinition("AXE_MINIWORKER_MAX_FILES", "AXE Miniworker Max Files", "Maximum files included in one miniworker run", "sensitive", "integer", validation={"min": 1, "max": 20}),
+            ManagedConfigDefinition("AXE_MINIWORKER_MAX_LLM_TOKENS", "AXE Miniworker Max Tokens", "Approximate token ceiling for one miniworker run", "sensitive", "integer", validation={"min": 128, "max": 200000}),
+            ManagedConfigDefinition("AXE_MINIWORKER_MAX_COST_CREDITS", "AXE Miniworker Max Cost Credits", "Approximate credit ceiling for one miniworker run", "sensitive", "integer", validation={"min": 1, "max": 100000}),
+            ManagedConfigDefinition("AXE_MINIWORKER_ALLOW_BOUNDED_APPLY", "AXE Miniworker Allow Bounded Apply", "Allow bounded apply mode for miniworker", "sensitive", "boolean"),
             ManagedConfigDefinition("BRAIN_CAPABILITY_ALLOW_INMEMORY_FALLBACK", "In-memory Capability Fallback", "Allow fallback when DB capability records missing", "sensitive", "boolean"),
             ManagedConfigDefinition("SKILL_MARKETPLACE_EXTERNAL_ENABLED", "External Marketplace Enabled", "Allow publishing to external marketplace", "sensitive", "boolean"),
             ManagedConfigDefinition("BRAIN_AUTO_LEARN_ON_SKILLRUN", "Auto Learn on SkillRun", "Enable automatic learning artifact ingestion", "sensitive", "boolean"),
@@ -305,6 +315,26 @@ class ConfigManagementService:
             .where(ConfigEntryModel.environment == environment)
         )
         return result.scalar_one_or_none()
+
+    async def resolve_effective_value(
+        self,
+        db: AsyncSession,
+        key: str,
+        *,
+        environment: str = "default",
+        default: Any = None,
+    ) -> Any:
+        row = await self.get_config(db, key, environment)
+        if row is not None:
+            if row.is_secret:
+                decrypted = self._decrypt_secret_payload(row.value)
+                return decrypted if decrypted is not None else default
+            return row.value
+
+        env_value = os.getenv(key)
+        if env_value is not None:
+            return env_value
+        return default
 
     async def get_configs(
         self,

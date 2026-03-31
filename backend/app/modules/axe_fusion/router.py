@@ -764,8 +764,8 @@ async def _try_skillrun_bridge(
     )
 
 
-WORKER_COMMAND_PATTERN = r"^\s*/(opencode|openclaw)\b"
-WorkerCommandType = Literal["opencode", "openclaw"]
+WORKER_COMMAND_PATTERN = r"^\s*/(opencode|openclaw|miniworker)\b"
+WorkerCommandType = Literal["opencode", "openclaw", "miniworker"]
 
 
 async def _try_worker_bridge(
@@ -807,7 +807,7 @@ async def _try_worker_bridge(
 
     # Extract the prompt from the current message by removing the command prefix
     prompt_text = last_user_message.strip()
-    # Remove the /opencode or /openclaw prefix to get just the prompt
+    # Remove the worker command prefix to get just the prompt
     user_prompt = re.sub(WORKER_COMMAND_PATTERN, "", prompt_text, flags=re.IGNORECASE).strip()
     
     # If no prompt after the command, use a default
@@ -965,6 +965,8 @@ async def _try_worker_bridge(
         prompt=user_prompt,
         mode="plan",
         worker_type=worker_type,
+        execution_mode="proposal",
+        expected_output="patch",
     )
 
     try:

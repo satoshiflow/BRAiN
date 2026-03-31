@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import logging
-from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any, Protocol
+from typing import Protocol
 from uuid import UUID, uuid4
 
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth_deps import Principal
+from app.modules.axe_miniworker.service import AXEMiniworkerService
 from app.modules.axe_sessions.models import AXEChatMessageORM, AXEChatSessionORM
 from app.modules.opencode_repair.schemas import (
     OpenCodeJobConstraints,
@@ -44,6 +44,7 @@ class WorkerAdapter(Protocol):
     async def dispatch(
         self,
         *,
+        db: AsyncSession,
         principal: Principal,
         payload: AXEWorkerRunCreateRequest,
         worker_run_id: str,
@@ -76,10 +77,12 @@ class OpenCodeWorkerAdapter:
     async def dispatch(
         self,
         *,
+        db: AsyncSession,
         principal: Principal,
         payload: AXEWorkerRunCreateRequest,
         worker_run_id: str,
     ) -> AXEWorkerRunResponse:
+        _ = db
         scope = OpenCodeJobScope(
             module=payload.module or "workspace",
             entity_id=payload.entity_id or str(payload.message_id),
@@ -115,9 +118,31 @@ class OpenCodeWorkerAdapter:
         )
 
 
+class MiniworkerAdapter:
+    def __init__(self) -> None:
+        self._service = AXEMiniworkerService()
+
+    async def dispatch(
+        self,
+        *,
+        db: AsyncSession,
+        principal: Principal,
+        payload: AXEWorkerRunCreateRequest,
+        worker_run_id: str,
+    ) -> AXEWorkerRunResponse:
+        result = await self._service.dispatch(
+            db=db,
+            principal=principal,
+            payload=payload,
+            worker_run_id=worker_run_id,
+        )
+        return AXEWorkerRunResponse(**result)
+
+
 def _init_adapter_registry() -> None:
     if not WorkerAdapterRegistry._initialized:
         WorkerAdapterRegistry.register("opencode", OpenCodeWorkerAdapter())
+        WorkerAdapterRegistry.register("miniworker", MiniworkerAdapter())
         WorkerAdapterRegistry._initialized = True
         logger.info("Worker adapter registry initialized")
 
@@ -176,11 +201,16 @@ class AXEWorkerRunService:
             raise ValueError(f"Unsupported worker type: {payload.worker_type}")
 
         worker_response = await adapter.dispatch(
+            db=self.db,
             principal=principal,
             payload=payload,
             worker_run_id=worker_run_id,
         )
         row.backend_run_id = worker_response.detail.split(": ")[-1] if ": " in worker_response.detail else worker_response.worker_run_id
+        row.status = worker_response.status
+        row.label = worker_response.label
+        row.detail = worker_response.detail
+        row.artifacts_json = [artifact.model_dump(mode="json") for artifact in worker_response.artifacts]
 
         await self.db.commit()
         await self.db.refresh(row)

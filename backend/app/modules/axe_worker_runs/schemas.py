@@ -11,13 +11,17 @@ from pydantic import BaseModel, Field
 
 AXEWorkerStatus = Literal["queued", "running", "waiting_input", "completed", "failed"]
 OpenCodeMode = Literal["plan", "build", "heal", "evolve"]
-WorkerType = Literal["opencode"]
+WorkerType = Literal["opencode", "miniworker"]
+MiniworkerExecutionMode = Literal["proposal", "bounded_apply"]
+MiniworkerExpectedOutput = Literal["patch", "analysis", "tests", "mixed"]
 
 
 class AXEWorkerArtifact(BaseModel):
     type: str = Field(..., min_length=1, max_length=64)
     label: str = Field(..., min_length=1, max_length=160)
     url: str = Field(..., min_length=1, max_length=512)
+    content: str | None = None
+    metadata: dict[str, object] = Field(default_factory=dict)
 
 
 class AXEWorkerRunCreateRequest(BaseModel):
@@ -26,8 +30,12 @@ class AXEWorkerRunCreateRequest(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=20000)
     mode: OpenCodeMode = "plan"
     worker_type: WorkerType = "opencode"
+    execution_mode: MiniworkerExecutionMode = "proposal"
+    expected_output: MiniworkerExpectedOutput = "patch"
     module: str | None = Field(default=None, min_length=1, max_length=128)
     entity_id: str | None = Field(default=None, min_length=1, max_length=256)
+    file_scope: list[str] = Field(default_factory=list, max_length=20)
+    max_files: int = Field(default=3, ge=1, le=20)
 
 
 class AXEWorkerRunResponse(BaseModel):

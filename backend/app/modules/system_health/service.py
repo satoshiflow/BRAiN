@@ -57,6 +57,12 @@ except ImportError:
     RuntimeMetrics = None
     _log_optional("RuntimeAuditor")
 
+try:
+    from app.modules.axe_miniworker.service import get_miniworker_health_snapshot
+except ImportError:
+    get_miniworker_health_snapshot = None
+    _log_optional("AXEMiniworker")
+
 
 class SystemHealthService:
     """
@@ -150,6 +156,12 @@ class SystemHealthService:
                 "environment": "development",  # TODO: from config
             }
         )
+
+        if get_miniworker_health_snapshot is not None:
+            try:
+                health.metadata["axe_miniworker"] = get_miniworker_health_snapshot()
+            except Exception as exc:
+                logger.warning("[SystemHealth] Failed to collect axe miniworker health: %s", exc)
 
         logger.info(
             f"[SystemHealth] Overall status: {overall_status.value} | "
@@ -520,7 +532,7 @@ class SystemHealthService:
         messages = {
             HealthStatus.HEALTHY: "All systems operational",
             HealthStatus.DEGRADED: f"System degraded - {critical_count} issues detected",
-            HealthStatus.CRITICAL: f"Critical issues detected - immediate attention required",
+            HealthStatus.CRITICAL: "Critical issues detected - immediate attention required",
             HealthStatus.UNKNOWN: "System health unknown - insufficient data",
         }
         return messages.get(status, "Status unknown")

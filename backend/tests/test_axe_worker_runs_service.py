@@ -54,7 +54,8 @@ async def test_create_worker_run_dispatches_opencode_and_persists_backend_job_id
         return SimpleNamespace(id=uuid4())
 
     class _OpenCodeStub:
-        async def dispatch(self, *, principal, payload, worker_run_id):  # noqa: ANN001
+        async def dispatch(self, *, db, principal, payload, worker_run_id):  # noqa: ANN001
+            _ = db
             _ = principal
             _ = payload
             return SimpleNamespace(
@@ -139,3 +140,51 @@ async def test_create_worker_run_rejects_openclaw_parallel_path():
         await service.create_worker_run(principal=_principal(), payload=payload)
 
     assert db.commit_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_create_worker_run_persists_miniworker_completed_payload(monkeypatch):
+    db = _FakeDB()
+    service = AXEWorkerRunService(db=db)  # type: ignore[arg-type]
+
+    async def _owned_session(**kwargs):
+        _ = kwargs
+        return SimpleNamespace(tenant_id="tenant-a")
+
+    async def _owned_message(**kwargs):
+        _ = kwargs
+        return SimpleNamespace(id=uuid4())
+
+    class _MiniworkerStub:
+        async def dispatch(self, *, db, principal, payload, worker_run_id):  # noqa: ANN001
+            _ = db
+            _ = principal
+            return SimpleNamespace(
+                worker_run_id=worker_run_id,
+                session_id=payload.session_id,
+                message_id=payload.message_id,
+                status="completed",
+                label="AXE miniworker completed",
+                detail="Patch proposal ready",
+                updated_at=None,
+                artifacts=[],
+            )
+
+    monkeypatch.setattr(service, "_get_owned_session", _owned_session)
+    monkeypatch.setattr(service, "_get_owned_message", _owned_message)
+    WorkerAdapterRegistry._adapters = {"miniworker": _MiniworkerStub()}  # type: ignore[assignment]
+    WorkerAdapterRegistry._initialized = True
+
+    payload = AXEWorkerRunCreateRequest(
+        session_id=uuid4(),
+        message_id=uuid4(),
+        prompt="Replace line 3 with a guarded return",
+        worker_type="miniworker",
+    )
+
+    response = await service.create_worker_run(principal=_principal(), payload=payload)
+
+    assert response.status == "completed"
+    assert db.added is not None
+    assert db.added.label == "AXE miniworker completed"
+    assert db.added.detail == "Patch proposal ready"
