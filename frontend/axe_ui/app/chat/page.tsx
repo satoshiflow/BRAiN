@@ -49,6 +49,7 @@ interface WorkerRunAnchor {
   pollable: boolean;
   source: "worker_run" | "skillrun_tasklease";
   taskId?: string;
+  workerType?: AxeWorkerUpdate["worker_type"];
 }
 
 interface PendingAttachment {
@@ -79,6 +80,10 @@ function mapTaskStatusToWorkerStatus(
     return "completed";
   }
   return "failed";
+}
+
+function toExternalWorkerLabel(workerType: AxeWorkerUpdate["worker_type"]): string {
+  return workerType === "paperclip" ? "Paperclip" : "OpenClaw";
 }
 
 function formatTime(date: Date): string {
@@ -216,6 +221,7 @@ function ChatPageContent() {
       opencode: 0,
       miniworker: 0,
       openclaw: 0,
+      paperclip: 0,
     };
     const statusStats: Record<WorkerStatusFilter, number> = {
       all: 0,
@@ -416,15 +422,16 @@ function ChatPageContent() {
               if (anchor.source === "skillrun_tasklease" && anchor.taskId) {
                 const task = await getTaskQueueTask(anchor.taskId, { Authorization: `Bearer ${token}` });
                 const current = workerUpdates[anchor.workerRunId];
+                const externalWorkerType = (anchor.workerType ?? current?.worker_type ?? "openclaw") as AxeWorkerUpdate["worker_type"];
                 const mappedUpdate: AxeWorkerUpdate = {
                   worker_run_id: anchor.workerRunId,
                   session_id: current?.session_id ?? anchor.sessionId,
                   message_id: current?.message_id ?? anchor.messageId ?? "",
-                  worker_type: "openclaw",
+                  worker_type: externalWorkerType,
                   activity_source: "skillrun_tasklease",
                   status: mapTaskStatusToWorkerStatus(task.status),
-                  label: `OpenClaw task ${task.status}`,
-                  detail: task.error_message || "OpenClaw TaskLease status update",
+                  label: `${toExternalWorkerLabel(externalWorkerType)} task ${task.status}`,
+                  detail: task.error_message || `${toExternalWorkerLabel(externalWorkerType)} TaskLease status update`,
                   updated_at: task.updated_at,
                   artifacts: current?.artifacts ?? [],
                 };
@@ -652,18 +659,19 @@ function ChatPageContent() {
             source: "worker_run",
           },
         }));
-      } else if (rawWorkerType === "openclaw") {
+      } else if (rawWorkerType === "openclaw" || rawWorkerType === "paperclip") {
         const taskId = typeof data.raw?.task_id === "string" ? data.raw.task_id : undefined;
-        const syntheticWorkerRunId = `openclaw:${String(taskId ?? Date.now())}`;
+        const syntheticWorkerRunId = `${rawWorkerType}:${String(taskId ?? Date.now())}`;
+        const workerLabel = toExternalWorkerLabel(rawWorkerType);
         const initialUpdate: AxeWorkerUpdate = {
           worker_run_id: syntheticWorkerRunId,
           session_id: data.session_id ?? currentSessionId,
           message_id: data.message_id ?? userMessageId,
-          worker_type: "openclaw",
+          worker_type: rawWorkerType,
           activity_source: "skillrun_tasklease",
           status: "queued",
-          label: "OpenClaw task dispatched",
-          detail: "OpenClaw uses the SkillRun/TaskLease runtime path and is tracked as external worker activity.",
+          label: `${workerLabel} task dispatched`,
+          detail: `${workerLabel} uses the SkillRun/TaskLease runtime path and is tracked as external worker activity.`,
           updated_at: new Date().toISOString(),
           artifacts: [
             {
@@ -673,6 +681,7 @@ function ChatPageContent() {
                 source: "skillrun_tasklease",
                 task_id: data.raw?.task_id,
                 skill_run_id: data.raw?.skill_run_id,
+                worker_type: rawWorkerType,
               },
             },
           ],
@@ -688,6 +697,7 @@ function ChatPageContent() {
             pollable: Boolean(taskId),
             source: "skillrun_tasklease",
             taskId,
+            workerType: rawWorkerType,
           },
         }));
       }
@@ -996,7 +1006,7 @@ function ChatPageContent() {
                   Active Thread: <span className="text-cyan-200">{activeSession?.title ?? "New Intent Thread"}</span>
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {(["all", "miniworker", "opencode", "openclaw", "auto"] as WorkerTypeFilter[]).map((filter) => {
+                  {(["all", "miniworker", "opencode", "openclaw", "paperclip", "auto"] as WorkerTypeFilter[]).map((filter) => {
                     const selected = workerTypeFilter === filter;
                     return (
                       <button

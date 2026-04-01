@@ -48,7 +48,7 @@ export interface AxeWorkerUpdate {
   worker_run_id: string;
   session_id: string;
   message_id: string;
-  worker_type: "auto" | "opencode" | "miniworker" | "openclaw";
+  worker_type: "auto" | "opencode" | "miniworker" | "openclaw" | "paperclip";
   activity_source: "worker_run" | "skillrun_tasklease";
   status: AxeWorkerStatus;
   label: string;

@@ -13,6 +13,9 @@ SECURITY:
 
 import logging
 import os
+import hashlib
+import hmac
+import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, List, Optional, Literal
@@ -775,8 +778,39 @@ async def _try_skillrun_bridge(
     )
 
 
-WORKER_COMMAND_PATTERN = r"^\s*/(worker|opencode|openclaw|miniworker)\b"
-WorkerCommandType = Literal["worker", "opencode", "openclaw", "miniworker"]
+WORKER_COMMAND_PATTERN = r"^\s*/(worker|opencode|openclaw|paperclip|miniworker)\b"
+WorkerCommandType = Literal["worker", "opencode", "openclaw", "paperclip", "miniworker"]
+
+
+def _build_execution_permit(
+    *,
+    executor_type: str,
+    skill_run_id: str,
+    task_id: str,
+    correlation_id: str | None,
+    ttl_seconds: int = 900,
+) -> dict[str, Any]:
+    issued_at = datetime.now(timezone.utc)
+    expires_at = issued_at + timedelta(seconds=max(60, ttl_seconds))
+    permit_payload: dict[str, Any] = {
+        "executor_type": executor_type,
+        "skill_run_id": skill_run_id,
+        "allowed_actions": ["worker_bridge_execute"],
+        "allowed_connectors": [executor_type],
+        "issued_at": issued_at.isoformat(),
+        "expires_at": expires_at.isoformat(),
+        "task_id": task_id,
+        "correlation_id": correlation_id,
+    }
+    secret = os.getenv("BRAIN_EXTERNAL_EXECUTOR_PERMIT_SECRET", "").strip()
+    if not secret:
+        raise ValueError("BRAIN_EXTERNAL_EXECUTOR_PERMIT_SECRET missing")
+    message = json.dumps(permit_payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    signature = hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
+    return {
+        **permit_payload,
+        "signature": signature,
+    }
 
 
 async def _try_worker_bridge(
@@ -872,12 +906,55 @@ async def _try_worker_bridge(
         except Exception:
             pass
 
-    if worker_type == "openclaw":
+    if worker_type in {"openclaw", "paperclip"}:
+        runtime_context = RuntimeDecisionContext(
+            tenant_id=principal.tenant_id if principal else None,
+            environment=os.getenv("BRAIN_RUNTIME_MODE", "local"),
+            mission_type=f"connector.{worker_type}",
+            skill_type=f"{worker_type}.worker_bridge",
+            agent_role=(principal.roles[0] if principal and principal.roles else "operator"),
+            risk_score=0.7,
+            budget_state={},
+            system_health={},
+            feature_context={},
+        )
+        runtime_decision = await get_runtime_control_service().resolve_with_persisted_overrides(
+            runtime_context,
+            db=db,
+        )
+        if not get_runtime_control_service().is_executor_allowed(
+            runtime_decision.effective_config,
+            worker_type,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "error": "Executor blocked by policy",
+                    "message": f"{worker_type.title()} executor is currently disabled by runtime policy",
+                    "code": "EXECUTOR_BLOCKED",
+                },
+            )
+        if not get_runtime_control_service().is_connector_allowed(
+            runtime_decision.effective_config,
+            worker_type,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "error": "Connector blocked by policy",
+                    "message": f"{worker_type.title()} connector is currently disabled by runtime policy",
+                    "code": "CONNECTOR_BLOCKED",
+                },
+            )
+
         worker_skill_key = os.getenv("AXE_WORKER_SKILL_KEY", AXE_CHAT_SKILL_KEY)
+        worker_task_type = "openclaw_work" if worker_type == "openclaw" else "paperclip_work"
         skill_payload = SkillRunCreate(
             skill_key=worker_skill_key,
             input_payload={
                 "worker_type": worker_type,
+                "executor_type": worker_type,
+                "intent": "worker_bridge_execute",
                 "prompt": user_prompt,
                 "mode": "plan",
                 "session_id": str(session_id),
@@ -901,7 +978,8 @@ async def _try_worker_bridge(
                 if "No matching definition found" not in str(exc):
                     raise
                 logger.warning(
-                    "AXE openclaw bridge missing skill definition for %s; creating fallback external SkillRun",
+                    "AXE %s bridge missing skill definition for %s; creating fallback external SkillRun",
+                    worker_type,
                     worker_skill_key,
                 )
                 skill_run = await _create_fallback_external_skill_run(
@@ -913,25 +991,45 @@ async def _try_worker_bridge(
                     idempotency_key=skill_payload.idempotency_key,
                     worker_type=worker_type,
                 )
+
+            task_lease_id = f"task-{uuid4().hex[:12]}"
+            execution_permit = _build_execution_permit(
+                executor_type=worker_type,
+                skill_run_id=str(skill_run.id),
+                task_id=task_lease_id,
+                correlation_id=skill_run.correlation_id,
+            )
+
             task = await get_task_queue_service().create_task(
                 db=db,
                 task_data=TaskCreate(
-                    name=f"OpenClaw TaskLease {skill_run.id}",
-                    description="External OpenClaw worker lease for SkillRun execution",
-                    task_type="openclaw_work",
+                    task_id=task_lease_id,
+                    name=f"{worker_type.title()} TaskLease {skill_run.id}",
+                    description=f"External {worker_type.title()} worker lease for SkillRun execution",
+                    task_type=worker_task_type,
                     category="skill_engine",
-                    tags=["tasklease", "skillrun", "openclaw"],
+                    tags=["tasklease", "skillrun", worker_type],
                     priority=TaskPriority.HIGH,
                     payload={
                         "skill_run_id": str(skill_run.id),
                         "skill_key": skill_run.skill_key,
                         "skill_version": skill_run.skill_version,
+                        "executor_type": worker_type,
+                        "intent": "worker_bridge_execute",
                         "worker_type": worker_type,
+                        "correlation_id": skill_run.correlation_id,
+                        "mission_id": skill_run.mission_id,
+                        "execution_permit": execution_permit,
                         "prompt": user_prompt,
                         "mode": "plan",
                         "request_id": request_id,
                     },
-                    config={"lease_only": True, "worker_target": "openclaw"},
+                    config={
+                        "lease_only": True,
+                        "worker_target": worker_type,
+                        "required_worker": worker_type,
+                        "require_execution_permit": True,
+                    },
                     tenant_id=skill_run.tenant_id,
                     mission_id=skill_run.mission_id,
                     skill_run_id=skill_run.id,
@@ -942,7 +1040,7 @@ async def _try_worker_bridge(
                 created_by_type=principal.principal_type.value,
             )
         except Exception as exc:
-            logger.exception("AXE openclaw tasklease dispatch failed")
+            logger.exception("AXE %s tasklease dispatch failed", worker_type)
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail={

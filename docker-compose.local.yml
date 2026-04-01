@@ -81,6 +81,8 @@ services:
       #   condition: service_started
     networks:
       - brain_local
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
@@ -93,8 +95,11 @@ services:
       - AXE_FUSION_ALLOW_LOCAL_REQUESTS=true
       - AXE_FUSION_ALLOW_LOCAL_FALLBACK=true
       - AXE_FUSION_ALLOWED_DEV_IPS=127.0.0.1,::1,localhost,172.18.0.1
+      - BRAIN_EXTERNAL_EXECUTOR_PERMIT_SECRET=${BRAIN_EXTERNAL_EXECUTOR_PERMIT_SECRET:-dev-executor-permit-secret-change-me}
       - OPENCLAW_BASE_URL=${OPENCLAW_BASE_URL:-http://openclaw:8080}
       - OPENCLAW_API_KEY=${OPENCLAW_API_KEY:-}
+      - PAPERCLIP_BASE_URL=${PAPERCLIP_BASE_URL:-http://host.docker.internal:3110}
+      - PAPERCLIP_API_KEY=${PAPERCLIP_API_KEY:-}
     healthcheck:
       test:
         [
@@ -138,12 +143,54 @@ services:
       - OPENCLAW_WORKER_TASK_TYPES=${OPENCLAW_WORKER_TASK_TYPES:-openclaw_work}
       - OPENCLAW_BRAIN_EMAIL=${OPENCLAW_BRAIN_EMAIL:-admin@test.com}
       - OPENCLAW_BRAIN_PASSWORD=${OPENCLAW_BRAIN_PASSWORD:-${BRAIN_ADMIN_PASSWORD}}
+      - OPENCLAW_BRAIN_SERVICE_TOKEN=${OPENCLAW_BRAIN_SERVICE_TOKEN:-}
       - OPENCLAW_AGENT_ID=${OPENCLAW_AGENT_ID:-openclaw-worker}
+      - BRAIN_EXTERNAL_EXECUTOR_PERMIT_SECRET=${BRAIN_EXTERNAL_EXECUTOR_PERMIT_SECRET:-dev-executor-permit-secret-change-me}
     depends_on:
       backend:
         condition: service_healthy
     networks:
       - brain_local
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=5).getcode()==200 else sys.exit(1)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  paperclip_worker:
+    build:
+      context: ./paperclip_worker
+    container_name: brain-paperclip
+    restart: unless-stopped
+    env_file:
+      - .env.local
+    environment:
+      - PAPERCLIP_BIND_HOST=0.0.0.0
+      - PAPERCLIP_BIND_PORT=8080
+      - BRAIN_API_BASE_URL=http://backend:8000
+      - PAPERCLIP_BASE_URL=${PAPERCLIP_BASE_URL:-http://host.docker.internal:3110}
+      - PAPERCLIP_EXECUTION_ENDPOINT=${PAPERCLIP_EXECUTION_ENDPOINT:-/api/executions}
+      - PAPERCLIP_API_KEY=${PAPERCLIP_API_KEY:-}
+      - PAPERCLIP_WORKER_TASK_TYPES=${PAPERCLIP_WORKER_TASK_TYPES:-paperclip_work}
+      - PAPERCLIP_BRAIN_EMAIL=${PAPERCLIP_BRAIN_EMAIL:-admin@test.com}
+      - PAPERCLIP_BRAIN_PASSWORD=${PAPERCLIP_BRAIN_PASSWORD:-${BRAIN_ADMIN_PASSWORD}}
+      - PAPERCLIP_BRAIN_SERVICE_TOKEN=${PAPERCLIP_BRAIN_SERVICE_TOKEN:-}
+      - PAPERCLIP_AGENT_ID=${PAPERCLIP_AGENT_ID:-paperclip-worker}
+      - BRAIN_EXTERNAL_EXECUTOR_PERMIT_SECRET=${BRAIN_EXTERNAL_EXECUTOR_PERMIT_SECRET:-dev-executor-permit-secret-change-me}
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - brain_local
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test:
         [

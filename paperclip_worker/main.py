@@ -17,19 +17,22 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-class OpenClawWorker:
+class PaperclipWorker:
     def __init__(self) -> None:
         self.brain_api_base = os.getenv("BRAIN_API_BASE_URL", "http://backend:8000").rstrip("/")
-        self.agent_id = os.getenv("OPENCLAW_AGENT_ID", "openclaw-worker")
+        self.paperclip_base_url = os.getenv("PAPERCLIP_BASE_URL", "http://paperclip:8000").rstrip("/")
+        self.paperclip_execution_endpoint = os.getenv("PAPERCLIP_EXECUTION_ENDPOINT", "/api/executions")
+        self.paperclip_api_key = os.getenv("PAPERCLIP_API_KEY", "")
+        self.agent_id = os.getenv("PAPERCLIP_AGENT_ID", "paperclip-worker")
         self.task_types = [
-            t.strip() for t in os.getenv("OPENCLAW_WORKER_TASK_TYPES", "openclaw_work").split(",") if t.strip()
+            t.strip() for t in os.getenv("PAPERCLIP_WORKER_TASK_TYPES", "paperclip_work").split(",") if t.strip()
         ]
-        self.poll_interval_seconds = float(os.getenv("OPENCLAW_POLL_INTERVAL_SECONDS", "2.0"))
-        self.request_timeout_seconds = float(os.getenv("OPENCLAW_REQUEST_TIMEOUT_SECONDS", "20"))
-        self.login_email = os.getenv("OPENCLAW_BRAIN_EMAIL", "admin@test.com")
-        self.login_password = os.getenv("OPENCLAW_BRAIN_PASSWORD", os.getenv("BRAIN_ADMIN_PASSWORD", ""))
+        self.poll_interval_seconds = float(os.getenv("PAPERCLIP_POLL_INTERVAL_SECONDS", "2.0"))
+        self.request_timeout_seconds = float(os.getenv("PAPERCLIP_REQUEST_TIMEOUT_SECONDS", "20"))
+        self.login_email = os.getenv("PAPERCLIP_BRAIN_EMAIL", "admin@test.com")
+        self.login_password = os.getenv("PAPERCLIP_BRAIN_PASSWORD", os.getenv("BRAIN_ADMIN_PASSWORD", ""))
         self.service_token = (
-            os.getenv("OPENCLAW_BRAIN_SERVICE_TOKEN")
+            os.getenv("PAPERCLIP_BRAIN_SERVICE_TOKEN")
             or os.getenv("BRAIN_WORKER_SERVICE_TOKEN")
             or ""
         )
@@ -37,7 +40,7 @@ class OpenClawWorker:
         self._access_token: str | None = None
         self._shutdown = asyncio.Event()
         self._task: asyncio.Task | None = None
-        self.logger = logging.getLogger("openclaw_worker")
+        self.logger = logging.getLogger("paperclip_worker")
 
     @property
     def headers(self) -> dict[str, str]:
@@ -51,7 +54,7 @@ class OpenClawWorker:
         payload = task.get("payload") or {}
         permit = payload.get("execution_permit")
         if not isinstance(permit, dict):
-            return
+            raise RuntimeError("execution_permit required for paperclip executor")
 
         required_fields = [
             "executor_type",
@@ -64,7 +67,7 @@ class OpenClawWorker:
             if not permit.get(field):
                 raise RuntimeError(f"execution_permit missing field: {field}")
 
-        if str(permit.get("executor_type")).strip().lower() != "openclaw":
+        if str(permit.get("executor_type")).strip().lower() != "paperclip":
             raise RuntimeError("execution_permit executor_type mismatch")
 
         if str(permit.get("skill_run_id")) != str(payload.get("skill_run_id")):
@@ -93,9 +96,16 @@ class OpenClawWorker:
         if not hmac.compare_digest(expected_sig, str(permit.get("signature"))):
             raise RuntimeError("execution_permit signature invalid")
 
+    @property
+    def paperclip_headers(self) -> dict[str, str]:
+        headers = {"Content-Type": "application/json"}
+        if self.paperclip_api_key:
+            headers["Authorization"] = f"Bearer {self.paperclip_api_key}"
+        return headers
+
     async def _login(self, client: httpx.AsyncClient) -> None:
         if not self.login_password:
-            raise RuntimeError("OPENCLAW_BRAIN_PASSWORD or BRAIN_ADMIN_PASSWORD must be set")
+            raise RuntimeError("PAPERCLIP_BRAIN_PASSWORD or BRAIN_ADMIN_PASSWORD must be set")
         payload = {"email": self.login_email, "password": self.login_password}
         response = await client.post(f"{self.brain_api_base}/api/auth/login", json=payload)
         response.raise_for_status()
@@ -168,21 +178,51 @@ class OpenClawWorker:
             json={"agent_id": self.agent_id, "error_message": message, "retry": False},
         )
 
-    async def _execute_task(self, task: dict[str, Any]) -> dict[str, Any]:
+    async def _execute_task(self, client: httpx.AsyncClient, task: dict[str, Any]) -> dict[str, Any]:
         self._validate_execution_permit(task)
         payload = task.get("payload") or {}
-        prompt = payload.get("prompt", "")
+        request_body = {
+            "task_id": task.get("task_id"),
+            "skill_run_id": payload.get("skill_run_id"),
+            "executor_type": "paperclip",
+            "intent": payload.get("intent", "worker_bridge_execute"),
+            "prompt": payload.get("prompt", ""),
+            "mode": payload.get("mode", "plan"),
+            "input": payload,
+            "correlation_id": task.get("correlation_id"),
+        }
+
+        endpoint = f"{self.paperclip_base_url}{self.paperclip_execution_endpoint}"
+        try:
+            response = await client.post(endpoint, json=request_body, headers=self.paperclip_headers)
+            if response.status_code < 400:
+                external_data = response.json()
+            else:
+                external_data = {
+                    "status": "fallback",
+                    "message": f"Paperclip endpoint returned {response.status_code}",
+                }
+        except Exception:
+            external_data = {
+                "status": "fallback",
+                "message": "Paperclip endpoint unavailable, returning local fallback result",
+            }
+
         return {
-            "worker": "openclaw",
+            "worker": "paperclip",
             "agent_id": self.agent_id,
             "task_id": task.get("task_id"),
             "skill_run_id": payload.get("skill_run_id"),
             "status": "completed",
             "processed_at": utc_now(),
+            "external_refs": {
+                "paperclip_endpoint": endpoint,
+            },
             "output": {
-                "text": f"OpenClaw executed task for prompt: {prompt}",
+                "text": f"Paperclip executed task for prompt: {payload.get('prompt', '')}",
                 "mode": payload.get("mode", "plan"),
-                "worker_type": payload.get("worker_type", "openclaw"),
+                "worker_type": payload.get("worker_type", "paperclip"),
+                "external_result": external_data,
             },
         }
 
@@ -199,13 +239,13 @@ class OpenClawWorker:
                     task_id = task["task_id"]
                     self.logger.info("Claimed task %s", task_id)
                     await self._start_task(client, task_id)
-                    result = await self._execute_task(task)
+                    result = await self._execute_task(client, task)
                     await self._complete_task(client, task_id, result)
                     self.logger.info("Completed task %s", task_id)
                 except Exception as exc:
                     try:
                         if "task" in locals() and task and task.get("task_id"):
-                            await self._fail_task(client, task["task_id"], f"openclaw worker failed: {exc}")
+                            await self._fail_task(client, task["task_id"], f"paperclip worker failed: {exc}")
                             self.logger.exception("Failed task %s", task["task_id"])
                     except Exception:
                         pass
@@ -221,9 +261,9 @@ class OpenClawWorker:
             await self._task
 
 
-worker = OpenClawWorker()
-app = FastAPI(title="OpenClaw Worker Runtime", version="0.1.0")
-logging.basicConfig(level=os.getenv("OPENCLAW_LOG_LEVEL", "INFO"))
+worker = PaperclipWorker()
+app = FastAPI(title="Paperclip Worker Runtime", version="0.1.0")
+logging.basicConfig(level=os.getenv("PAPERCLIP_LOG_LEVEL", "INFO"))
 
 
 @app.on_event("startup")
@@ -240,8 +280,9 @@ async def shutdown_event() -> None:
 async def health() -> dict[str, Any]:
     return {
         "status": "ok",
-        "worker": "openclaw",
+        "worker": "paperclip",
         "agent_id": worker.agent_id,
         "task_types": worker.task_types,
         "brain_api_base": worker.brain_api_base,
+        "paperclip_base_url": worker.paperclip_base_url,
     }

@@ -60,8 +60,12 @@ class RuntimeControlResolverService:
             "workers": {
                 "selection": {
                     "default_executor": "miniworker",
-                    "allowed_executors": ["miniworker", "opencode", "openclaw"],
-                }
+                    "allowed_executors": ["miniworker", "opencode", "openclaw", "paperclip"],
+                },
+                "external": {
+                    "openclaw": {"enabled": True},
+                    "paperclip": {"enabled": False},
+                },
             },
             "budgets": {"skillrun": {"credit_limit": 5000, "soft_stop_threshold": 500}},
             "limits": {"parallel": {"max_worker_tasks": 3}},
@@ -107,6 +111,26 @@ class RuntimeControlResolverService:
         if isinstance(allowed, list) and allowed:
             allowed_set = {str(item).strip().lower() for item in allowed}
             return connector_name.strip().lower() in allowed_set
+        return True
+
+    @staticmethod
+    def is_executor_allowed(effective_config: dict[str, Any], executor_name: str) -> bool:
+        workers_cfg = effective_config.get("workers", {}) if isinstance(effective_config, dict) else {}
+        selection_cfg = workers_cfg.get("selection", {}) if isinstance(workers_cfg, dict) else {}
+        allowed = selection_cfg.get("allowed_executors") if isinstance(selection_cfg, dict) else None
+        normalized = executor_name.strip().lower()
+        if isinstance(allowed, list) and allowed:
+            allowed_set = {str(item).strip().lower() for item in allowed}
+            if normalized not in allowed_set:
+                return False
+
+        external_cfg = workers_cfg.get("external") if isinstance(workers_cfg, dict) else None
+        if isinstance(external_cfg, dict):
+            executor_cfg = external_cfg.get(normalized)
+            if isinstance(executor_cfg, dict):
+                enabled = executor_cfg.get("enabled")
+                if isinstance(enabled, bool):
+                    return enabled
         return True
 
     @staticmethod
@@ -625,7 +649,10 @@ class RuntimeControlResolverService:
 
         worker = str(effective.get("workers", {}).get("selection", {}).get("default_executor", "miniworker"))
         provider = str(effective.get("routing", {}).get("llm", {}).get("default_provider", "ollama"))
-        route = "skillrun.bridge" if worker in {"miniworker", "openclaw"} else "direct.executor"
+        if not self.is_executor_allowed(effective, worker):
+            worker = "miniworker"
+            effective.setdefault("workers", {}).setdefault("selection", {})["default_executor"] = worker
+        route = "skillrun.bridge" if worker in {"miniworker", "openclaw", "paperclip"} else "direct.executor"
         model_map = {
             "ollama": "llama3.2:latest",
             "openai": "gpt-4o-mini",
@@ -784,7 +811,10 @@ class RuntimeControlResolverService:
             issues.append(f"Selected provider '{provider}' is not allowed")
 
         worker = str(effective["workers"]["selection"].get("default_executor", "miniworker"))
-        route = "skillrun.bridge" if worker in {"miniworker", "openclaw"} else "direct.executor"
+        if not self.is_executor_allowed(effective, worker):
+            worker = "miniworker"
+            effective["workers"]["selection"]["default_executor"] = worker
+        route = "skillrun.bridge" if worker in {"miniworker", "openclaw", "paperclip"} else "direct.executor"
         model_map = {
             "ollama": "llama3.2:latest",
             "openai": "gpt-4o-mini",
