@@ -70,6 +70,29 @@ class TaskQueueService:
             tenant_id=task.tenant_id,
         )
 
+    @staticmethod
+    def _runtime_selected_worker_for_run(run: SkillRunModel) -> str:
+        provider_snapshot = getattr(run, "provider_selection_snapshot", {}) or {}
+        runtime_decision = provider_snapshot.get("runtime_decision", {}) if isinstance(provider_snapshot, dict) else {}
+        selected_worker = runtime_decision.get("selected_worker") if isinstance(runtime_decision, dict) else None
+        if isinstance(selected_worker, str) and selected_worker.strip():
+            return selected_worker.strip().lower()
+        return "miniworker"
+
+    @staticmethod
+    def _agent_matches_required_worker(agent_id: str, required_worker: str) -> bool:
+        normalized_agent = (agent_id or "").strip().lower()
+        normalized_required = (required_worker or "").strip().lower()
+        if not normalized_required:
+            return True
+        if normalized_required == "miniworker":
+            return any(token in normalized_agent for token in ("miniworker", "pi", "local"))
+        if normalized_required == "openclaw":
+            return "openclaw" in normalized_agent
+        if normalized_required == "opencode":
+            return any(token in normalized_agent for token in ("opencode", "codex"))
+        return normalized_required in normalized_agent
+
     async def _finalize_linked_skill_run(
         self,
         *,
@@ -299,6 +322,10 @@ class TaskQueueService:
         run: SkillRunModel,
         principal: Principal,
     ) -> TaskModel:
+        required_worker = self._runtime_selected_worker_for_run(run)
+        runtime_decision = (getattr(run, "provider_selection_snapshot", {}) or {}).get("runtime_decision", {})
+        runtime_decision_id = runtime_decision.get("decision_id") if isinstance(runtime_decision, dict) else None
+
         task = await self.create_task(
             db,
             TaskCreate(
@@ -313,7 +340,12 @@ class TaskQueueService:
                     "skill_version": run.skill_version,
                     "skill_run_id": str(run.id),
                 },
-                config={"lease_only": True},
+                config={
+                    "lease_only": True,
+                    "required_worker": required_worker,
+                    "runtime_decision_id": runtime_decision_id,
+                    "enforced_by": "runtime_control",
+                },
                 tenant_id=run.tenant_id,
                 mission_id=run.mission_id,
                 skill_run_id=run.id,
@@ -400,6 +432,19 @@ class TaskQueueService:
             # If any dependency is not completed, skip this task
             if dep_statuses and dep_statuses != {TaskStatus.COMPLETED}:
                 logger.debug(f"Task {task.task_id} has incomplete dependencies, skipping")
+                return None
+
+        required_worker = None
+        if isinstance(task.config, dict):
+            required_worker = task.config.get("required_worker")
+        if isinstance(required_worker, str) and required_worker.strip():
+            if not self._agent_matches_required_worker(agent_id, required_worker):
+                logger.debug(
+                    "Task {} requires worker '{}'; agent '{}' not eligible",
+                    task.task_id,
+                    required_worker,
+                    agent_id,
+                )
                 return None
         
         # Claim the task

@@ -45,6 +45,8 @@ from app.modules.task_queue.schemas import TaskCreate, TaskPriority
 from app.modules.task_queue.service import get_task_queue_service
 from app.modules.axe_worker_runs.service import AXEWorkerRunService
 from app.modules.axe_worker_runs.schemas import AXEWorkerRunCreateRequest
+from app.modules.runtime_control.schemas import RuntimeDecisionContext
+from app.modules.runtime_control.service import get_runtime_control_service
 
 from .service import (
     get_axe_fusion_service,
@@ -54,6 +56,7 @@ from .service import (
 )
 from .provider_selector import LLMProvider, SanitizationLevel
 from .memory_bridge import get_axe_memory_bridge
+from .context_management import build_context_envelope
 
 # Neural Core Integration (Phase 1)
 async def get_neural_context(db: AsyncSession) -> dict:
@@ -171,6 +174,10 @@ AXE_CHAT_ALLOW_DIRECT_EXECUTION = os.getenv("AXE_CHAT_ALLOW_DIRECT_EXECUTION", "
     "true",
     "yes",
 }
+AXE_CONTEXT_MAX_PROMPT_TOKENS = int(os.getenv("AXE_CONTEXT_MAX_PROMPT_TOKENS", "8192"))
+AXE_CONTEXT_SHORT_TERM_TURNS = int(os.getenv("AXE_CONTEXT_SHORT_TERM_TURNS", "10"))
+AXE_CONTEXT_SUMMARY_TRIGGER_MESSAGES = int(os.getenv("AXE_CONTEXT_SUMMARY_TRIGGER_MESSAGES", "24"))
+AXE_CONTEXT_RETRIEVAL_TOP_K = int(os.getenv("AXE_CONTEXT_RETRIEVAL_TOP_K", "4"))
 
 
 # === Security Utilities ===
@@ -643,6 +650,8 @@ async def _try_skillrun_bridge(
     db: AsyncSession,
     principal: Optional[Principal],
     chat_request: ChatRequest,
+    prepared_messages: list[dict[str, Any]],
+    context_telemetry: dict[str, Any],
     request_id: str,
 ) -> ChatResponse | None:
     if AXE_CHAT_EXECUTION_PATH != "skillrun_bridge":
@@ -680,10 +689,11 @@ async def _try_skillrun_bridge(
                 chat_request.messages[-1].content,
             ),
             "model": chat_request.model,
-            "messages": [msg.model_dump() for msg in chat_request.messages],
+            "messages": prepared_messages,
             "temperature": chat_request.temperature or 0.7,
             "request_id": request_id,
             "channel": "axe",
+            "context_telemetry": context_telemetry,
         },
         idempotency_key=f"axe:{principal.tenant_id or 'system'}:{principal.principal_id}:{request_id}",
         trigger_type=TriggerType.API,
@@ -759,6 +769,7 @@ async def _try_skillrun_bridge(
             "skill_run_state": state,
             "evaluation_summary": report.skill_run.evaluation_summary,
             "output_payload": report.skill_run.output_payload,
+            "context": context_telemetry,
         },
         run_id=str(report.skill_run.id),
     )
@@ -1112,6 +1123,15 @@ async def axe_chat(
         messages = inject_neural_system_prompt(messages, neural_context)
         logger.info(f"🧠 Neural Context injected: creativity={neural_context['creativity']}, caution={neural_context['caution']}")
 
+        envelope_messages, context_telemetry_obj = build_context_envelope(
+            messages,
+            max_prompt_tokens=AXE_CONTEXT_MAX_PROMPT_TOKENS,
+            short_term_turns=AXE_CONTEXT_SHORT_TERM_TURNS,
+            summary_trigger_messages=AXE_CONTEXT_SUMMARY_TRIGGER_MESSAGES,
+            retrieval_top_k=AXE_CONTEXT_RETRIEVAL_TOP_K,
+        )
+        context_telemetry = context_telemetry_obj.to_dict()
+
         # Phase 1.5: Odoo Bridge - Check for Odoo commands
         last_user_message = next(
             (msg.content for msg in reversed(chat_request.messages) 
@@ -1125,19 +1145,58 @@ async def axe_chat(
             odoo_bridge = get_odoo_chat_bridge()
             
             if odoo_bridge.is_odoo_command(last_user_message):
+                runtime_context = RuntimeDecisionContext(
+                    tenant_id=principal.tenant_id if principal else None,
+                    environment=os.getenv("BRAIN_RUNTIME_MODE", "local"),
+                    mission_type="connector.odoo",
+                    skill_type="odoo.chat_bridge",
+                    agent_role=(principal.roles[0] if principal and principal.roles else "operator"),
+                    risk_score=0.7,
+                    budget_state={},
+                    system_health={},
+                    feature_context={},
+                )
+                runtime_decision = await get_runtime_control_service().resolve_with_persisted_overrides(
+                    runtime_context,
+                    db=db,
+                )
+                if not get_runtime_control_service().is_connector_allowed(
+                    runtime_decision.effective_config,
+                    "odoo",
+                ):
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail={
+                            "error": "Connector blocked by policy",
+                            "message": "Odoo connector is currently disabled by runtime policy",
+                            "code": "CONNECTOR_BLOCKED",
+                        },
+                    )
+
                 logger.info(f"🎯 Odoo command detected: {last_user_message[:50]}...")
                 odoo_response = await odoo_bridge.handle_message(last_user_message)
                 
                 if odoo_response:
                     logger.info("✅ Odoo command executed successfully")
                     return ChatResponse(
-                        id=f"odoo-{uuid4().hex[:8]}",
-                        created=int(datetime.now(timezone.utc).timestamp()),
-                        model=chat_request.model,
-                        choices=[{"index": 0, "message": {"role": "assistant", "content": odoo_response}, "finish_reason": "stop"}],
-                        usage={"prompt_tokens": 0, "completion_tokens": len(odoo_response), "total_tokens": len(odoo_response)}
+                        text=odoo_response,
+                        raw={
+                            "execution_path": "odoo_bridge",
+                            "provider": "odoo",
+                            "context": context_telemetry,
+                            "runtime_decision_id": runtime_decision.decision_id,
+                            "usage": {
+                                "prompt_tokens": context_telemetry.get("estimated_prompt_tokens", 0),
+                                "completion_tokens": max(1, int(len(odoo_response) / 4)),
+                                "total_tokens": context_telemetry.get("estimated_prompt_tokens", 0)
+                                + max(1, int(len(odoo_response) / 4)),
+                            },
+                        },
+                        run_id=f"odoo-{uuid4().hex[:8]}",
                     )
         except Exception as odoo_error:
+            if isinstance(odoo_error, HTTPException):
+                raise
             logger.warning(f"⚠️ Odoo bridge error (continuing with LLM): {odoo_error}")
 
         worker_bridged = await _try_worker_bridge(
@@ -1154,6 +1213,8 @@ async def axe_chat(
             db=db,
             principal=principal,
             chat_request=chat_request,
+            prepared_messages=envelope_messages,
+            context_telemetry=context_telemetry,
             request_id=request_id,
         )
         if bridged is not None:
@@ -1217,7 +1278,7 @@ async def axe_chat(
             if chat_request.stream:
                 result = await service.stream_chat(
                     model=chat_request.model,
-                    messages=messages,
+                    messages=envelope_messages,
                     temperature=chat_request.temperature or 0.7,
                     request_id=request_id,
                     principal_id=user_id,
@@ -1238,13 +1299,13 @@ async def axe_chat(
                 
                 return ChatResponse(
                     text=result["text"],
-                    raw={**result["raw"], "execution_path": "direct", "streamed": True},
+                    raw={**result["raw"], "execution_path": "direct", "streamed": True, "context": context_telemetry},
                     run_id=str(run_id)
                 )
             else:
                 result = await service.chat(
                     model=chat_request.model,
-                    messages=messages,
+                    messages=envelope_messages,
                     temperature=chat_request.temperature or 0.7,
                     request_id=request_id,
                     principal_id=user_id,
@@ -1272,7 +1333,7 @@ async def axe_chat(
                 
                 return ChatResponse(
                     text=result["text"],
-                    raw={**result["raw"], "execution_path": "direct"},
+                    raw={**result["raw"], "execution_path": "direct", "context": context_telemetry},
                     run_id=str(run_id)
                 )
             

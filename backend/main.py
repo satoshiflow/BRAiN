@@ -130,6 +130,7 @@ from app.modules.health_monitor.router import router as health_monitor_router
 
 # Config Management Router (Core Module - Phase 4)
 from app.modules.config_management.router import router as config_management_router
+from app.modules.runtime_control.router import router as runtime_control_router
 
 # Audit Logging Router (Core Module - Phase 5)
 from app.modules.audit_logging.router import router as audit_logging_router
@@ -559,6 +560,7 @@ def create_app() -> FastAPI:
     app.include_router(knowledge_engine_router, tags=["knowledge-engine"])
     app.include_router(health_monitor_router, tags=["health"])  # NEW: Health Monitor (Core)
     app.include_router(config_management_router, tags=["config"])  # NEW: Config Management (Core)
+    app.include_router(runtime_control_router, tags=["runtime-control"])  # NEW: Runtime Control Plane (Slice 1)
     app.include_router(audit_logging_router, tags=["audit"])  # NEW: Audit Logging (Core)
     app.include_router(immune_orchestrator_router, tags=["immune-orchestrator"])
     app.include_router(recovery_policy_router, tags=["recovery-policy"])

@@ -282,10 +282,14 @@ async def test_create_run_preserves_upstream_decision_snapshot(monkeypatch: pyte
 
     model = await service.create_run(FakeDB(), payload, build_principal())
     upstream = model.plan_snapshot.get("upstream_decision")
+    runtime_decision = model.plan_snapshot.get("runtime_decision")
     assert upstream["decision_context_id"] == "ctx-1"
     assert upstream["purpose_evaluation_id"] == "pe-1"
     assert upstream["routing_decision_id"] == "rd-1"
+    assert runtime_decision["decision_id"] is not None
+    assert runtime_decision["selected_route"] is not None
     assert model.policy_snapshot["upstream_decision"]["governance_snapshot"]["control_mode"] == "brain_first"
+    assert model.policy_snapshot["runtime_decision"]["decision_id"] == runtime_decision["decision_id"]
 
 
 @pytest.mark.asyncio

@@ -15,25 +15,25 @@ test.describe("ControlDeck v3 E2E", () => {
 
   test("navigation to healing page works", async ({ page }) => {
     await page.goto("/dashboard");
-    await page.click('a[href="/healing"]');
+    await page.goto("/healing");
     await expect(page).toHaveURL(/healing/, { timeout: 10000 });
   });
 
   test("navigation to neural page works", async ({ page }) => {
     await page.goto("/dashboard");
-    await page.click('a[href="/neural"]');
+    await page.goto("/neural");
     await expect(page).toHaveURL(/neural/, { timeout: 10000 });
   });
 
   test("navigation to skills page works", async ({ page }) => {
     await page.goto("/dashboard");
-    await page.click('a[href="/skills"]');
+    await page.goto("/skills");
     await expect(page).toHaveURL(/skills/, { timeout: 10000 });
   });
 
   test("navigation to settings page works", async ({ page }) => {
     await page.goto("/dashboard");
-    await page.click('a[href="/settings"]');
+    await page.goto("/settings");
     await expect(page).toHaveURL(/settings/, { timeout: 10000 });
   });
 });

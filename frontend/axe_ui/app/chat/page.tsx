@@ -20,6 +20,7 @@ import {
 import { getControlDeckBase, getDefaultModel } from "@/lib/config";
 import type {
   AxeChatRequest,
+  AxeContextTelemetry,
   AxeSessionMessage,
   AxeSessionMessageRole,
   AxeWorkerUpdate,
@@ -146,6 +147,7 @@ function ChatPageContent() {
   const [routingTrace, setRoutingTrace] = useState<RoutingDecisionRecord[]>([]);
   const [traceLoading, setTraceLoading] = useState(false);
   const [traceError, setTraceError] = useState<string | null>(null);
+  const [latestContextTelemetry, setLatestContextTelemetry] = useState<AxeContextTelemetry | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -380,7 +382,8 @@ function ChatPageContent() {
     sessionId: string,
     role: AxeSessionMessageRole,
     content: string,
-    attachmentIds: string[] = []
+    attachmentIds: string[] = [],
+    metadata?: Record<string, unknown>,
   ): Promise<AxeSessionMessage> => {
     return withAuthRetry((token) =>
       appendAxeSessionMessage(
@@ -389,6 +392,7 @@ function ChatPageContent() {
           role,
           content,
           attachments: attachmentIds,
+          metadata,
         },
         { Authorization: `Bearer ${token}` }
       )
@@ -618,6 +622,9 @@ function ChatPageContent() {
         postAxeChat(requestBody, { Authorization: `Bearer ${token}` })
       );
 
+      const rawContext = data.raw?.context as AxeContextTelemetry | undefined;
+      setLatestContextTelemetry(rawContext ?? null);
+
       const rawWorkerType = (data.raw?.worker_type as AxeWorkerUpdate["worker_type"] | undefined) ?? "auto";
 
       if (data.worker_run_id) {
@@ -697,7 +704,25 @@ function ChatPageContent() {
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
-      await persistMessage(currentSessionId, "assistant", data.text);
+      await persistMessage(
+        currentSessionId,
+        "assistant",
+        data.text,
+        [],
+        rawContext
+          ? {
+              context_mode: rawContext.context_mode,
+              token_class: rawContext.token_class,
+              estimated_prompt_tokens: rawContext.estimated_prompt_tokens,
+              max_allowed_prompt_tokens: rawContext.max_allowed_prompt_tokens,
+              trim_applied: rawContext.trim_applied,
+              trim_reason: rawContext.trim_reason,
+              compression_applied: rawContext.compression_applied,
+              retrieval_applied: rawContext.retrieval_applied,
+              selected_segment_counts: rawContext.selected_segment_counts,
+            }
+          : undefined
+      );
       await selectSession(currentSessionId);
       setAttachments([]);
     } catch (sendError) {
@@ -928,6 +953,35 @@ function ChatPageContent() {
               </div>
             )}
           </div>
+
+          {latestContextTelemetry && (
+            <div className="mb-4 rounded-lg border border-cyan-500/30 bg-slate-900/70 p-3 text-xs text-slate-200">
+              <div className="flex flex-wrap items-center gap-3">
+                <span>
+                  Context mode: <span className="text-cyan-200">{latestContextTelemetry.context_mode}</span>
+                </span>
+                <span>
+                  Token class: <span className="text-cyan-200">{latestContextTelemetry.token_class}</span>
+                </span>
+                <span>
+                  Prompt tokens: <span className="text-cyan-200">{latestContextTelemetry.estimated_prompt_tokens}</span> /
+                  {" "}
+                  {latestContextTelemetry.max_allowed_prompt_tokens}
+                </span>
+                <span>
+                  Compaction: <span className="text-cyan-200">{latestContextTelemetry.compression_applied ? "yes" : "no"}</span>
+                </span>
+                <span>
+                  Retrieval: <span className="text-cyan-200">{latestContextTelemetry.retrieval_applied ? "yes" : "no"}</span>
+                </span>
+                {latestContextTelemetry.trim_applied && (
+                  <span className="text-amber-300">
+                    Trim applied ({latestContextTelemetry.trim_reason ?? "budget"})
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
 
           {headerError && (
             <div className="mb-4 rounded-lg border border-rose-500/50 bg-rose-950/45 p-3 text-sm text-rose-200">

@@ -131,6 +131,29 @@ const navItems: NavItem[] = [
     ),
   },
   {
+    href: "/runtime-control",
+    label: "Runtime Control",
+    icon: (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M12 3v6" />
+        <path d="M12 15v6" />
+        <path d="M3 12h6" />
+        <path d="M15 12h6" />
+        <circle cx="12" cy="12" r="3" />
+      </svg>
+    ),
+  },
+  {
     href: "/settings",
     label: "Einstellungen",
     icon: (
