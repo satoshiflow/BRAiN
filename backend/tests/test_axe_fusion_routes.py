@@ -427,6 +427,33 @@ def test_axe_fusion_upload_rejects_unsupported_mime(client, monkeypatch: pytest.
     assert detail["code"] == "UNSUPPORTED_ATTACHMENT_TYPE"
 
 
+def test_axe_fusion_upload_rejects_oversized_payload(client, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(axe_fusion_router_module, "get_axe_trust_validator", lambda: _AllowDmzValidator())
+    monkeypatch.setattr(axe_fusion_router_module, "UPLOAD_MAX_BYTES", 8)
+
+    response = client.post(
+        "/api/axe/upload",
+        files={"file": ("big.txt", io.BytesIO(b"0123456789"), "text/plain")},
+    )
+
+    assert response.status_code == 413
+    detail = response.json()["detail"]
+    assert detail["code"] == "ATTACHMENT_TOO_LARGE"
+
+
+def test_axe_fusion_upload_rejects_empty_payload(client, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(axe_fusion_router_module, "get_axe_trust_validator", lambda: _AllowDmzValidator())
+
+    response = client.post(
+        "/api/axe/upload",
+        files={"file": ("empty.txt", io.BytesIO(b""), "text/plain")},
+    )
+
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert detail["code"] == "EMPTY_ATTACHMENT"
+
+
 def test_axe_provider_runtime_read(client, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(axe_fusion_router_module, "get_axe_trust_validator", lambda: _AllowDmzValidator())
     monkeypatch.setenv("LOCAL_LLM_MODE", "mock")

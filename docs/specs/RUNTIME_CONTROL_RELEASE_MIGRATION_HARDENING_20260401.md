@@ -45,8 +45,16 @@ Diese Spezifikation haertet den Runtime-Control-Plane Rollout fuer lokale Stagin
   - timeline entries enthalten correlation/request/version IDs
 - Test evidence:
   - runtime-control router tests
+  - runtime-control tenant isolation tests
+  - runtime registry promotion fire-drill test
   - enforcement tests (LLM/SkillRun/TaskLease)
   - RC staging gate output
+
+## Fire-Drill Status (2026-04-01)
+
+- Promotion/supersede drill automated in `backend/tests/test_runtime_control_registry_fire_drill.py`.
+- Tenant-scoped event visibility drill automated in `backend/tests/test_runtime_control_tenant_isolation.py`.
+- Outcome: promotion semantics and tenant isolation checks passing in local verification.
 
 ## Operational Runbook Hooks
 

@@ -3,10 +3,12 @@
 ## Executed Checks
 
 - `python3 scripts/run_context_soak_profiles.py`
-  - output: `docs/roadmap/local_ci/context_soak_report_20260401_143643Z.json`
+  - outputs:
+    - `docs/roadmap/local_ci/context_soak_report_20260401_143643Z.json`
+    - `docs/roadmap/local_ci/context_soak_report_20260401_163343Z.json`
 
 - Backend targeted suites:
-  - `PYTHONPATH=. pytest tests/test_axe_context_management.py tests/test_axe_fusion_routes.py tests/test_runtime_control_router.py tests/test_runtime_control_change_requests.py tests/test_llm_router_runtime_control.py tests/test_task_queue_runtime_enforcement.py -q --disable-warnings`
+  - `PYTHONPATH=. pytest tests/test_axe_context_management.py tests/test_axe_fusion_routes.py tests/test_runtime_control_router.py tests/test_runtime_control_change_requests.py tests/test_runtime_control_tenant_isolation.py tests/test_runtime_control_registry_fire_drill.py tests/test_llm_router_runtime_control.py tests/test_task_queue_runtime_enforcement.py -q --disable-warnings`
 
 - Frontend verification:
   - AXE UI: `npm run lint && npm run test -- app/chat/__tests__/upload-flow.test.tsx`
@@ -23,3 +25,5 @@
 - Relevance retrieval: overlap-based top-k selection enabled
 - AXE transparency indicators: context mode/token class/trim hints visible in chat UI
 - Soak evidence: synthetic profile report generated and archived
+- Tenant isolation deep checks: runtime control tenant-scoped filtering tests added and passing
+- Release fire-drill: registry promotion/supersede flow test added and passing
