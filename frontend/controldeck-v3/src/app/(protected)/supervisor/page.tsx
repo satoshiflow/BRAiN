@@ -33,6 +33,10 @@ function noteValue(item: DomainEscalationItem, key: string): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
+function triageBadge(item: DomainEscalationItem): string {
+  return `${item.triage.recommended_queue} · ${item.triage.recommended_owner}`;
+}
+
 export default function SupervisorInboxPage() {
   const topic = getControlDeckHelpTopic("supervisor.inbox");
   const searchParams = useSearchParams();
@@ -42,6 +46,7 @@ export default function SupervisorInboxPage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | DomainEscalationStatus>("all");
+  const [queueFilter, setQueueFilter] = useState<string>("all");
 
   const loadData = useCallback(async () => {
     try {
@@ -72,10 +77,17 @@ export default function SupervisorInboxPage() {
     }, {});
   }, [scopedItems]);
 
+  const queueOptions = useMemo(() => {
+    return Array.from(new Set(scopedItems.map((item) => item.triage.recommended_queue))).sort();
+  }, [scopedItems]);
+
   const filtered = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
     return scopedItems.filter((item) => {
       if (statusFilter !== "all" && item.status !== statusFilter) {
+        return false;
+      }
+      if (queueFilter !== "all" && item.triage.recommended_queue !== queueFilter) {
         return false;
       }
       if (!normalizedSearch) {
@@ -85,6 +97,9 @@ export default function SupervisorInboxPage() {
         item.escalation_id,
         item.domain_key,
         item.requested_by,
+        item.triage.recommended_queue,
+        item.triage.recommended_owner,
+        item.triage.routing_hint,
         noteValue(item, "action_request_id"),
         noteValue(item, "target_ref"),
         noteValue(item, "task_id"),
@@ -95,7 +110,7 @@ export default function SupervisorInboxPage() {
         .toLowerCase();
       return haystack.includes(normalizedSearch);
     });
-  }, [scopedItems, search, statusFilter]);
+  }, [queueFilter, scopedItems, search, statusFilter]);
 
   if (isLoading) {
     return (
@@ -162,6 +177,36 @@ export default function SupervisorInboxPage() {
             ))}
           </div>
         </div>
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setQueueFilter("all")}
+            className={cn(
+              "rounded-full px-3 py-1.5 text-xs font-medium",
+              queueFilter === "all"
+                ? "bg-cyan-600 text-white"
+                : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+            )}
+          >
+            all queues
+          </button>
+          {queueOptions.map((queue) => (
+            <button
+              key={queue}
+              type="button"
+              onClick={() => setQueueFilter(queue)}
+              className={cn(
+                "rounded-full px-3 py-1.5 text-xs font-medium",
+                queueFilter === queue
+                  ? "bg-cyan-600 text-white"
+                  : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+              )}
+            >
+              {queue}
+            </button>
+          ))}
+        </div>
       </div>
 
       {error ? (
@@ -203,6 +248,9 @@ export default function SupervisorInboxPage() {
                             target: {noteValue(item, "target_ref")}
                           </span>
                         ) : null}
+                        <span className="rounded-full bg-cyan-100 px-2 py-1 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300">
+                          {triageBadge(item)}
+                        </span>
                       </div>
                     </td>
                     <td className="py-3 pr-4">

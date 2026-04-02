@@ -102,6 +102,7 @@ def test_supervisor_escalation_create_and_list() -> None:
     created = create_response.json()
     assert created["escalation_id"].startswith("esc-")
     assert created["status"] == "queued"
+    assert created["triage"]["recommended_queue"]
 
     assert list_response.status_code == 200
     body = list_response.json()
@@ -143,6 +144,7 @@ def test_supervisor_escalation_decision_flow() -> None:
                 "reviewer_id": "ignored-by-api",
                 "decision_reason": "risk mitigated",
                 "notes": {"checklist": "ok"},
+                "triage_updates": {"recommended_queue": "supervisor.identity", "recommended_owner": "identity-owners"},
             },
         )
         get_response = client.get(f"/api/supervisor/escalations/domain/{escalation_id}")
@@ -153,6 +155,7 @@ def test_supervisor_escalation_decision_flow() -> None:
     assert decide_response.json()["status"] == "approved"
     assert decide_response.json()["decision_reason"] == "risk mitigated"
     assert decide_response.json()["notes"] == {"checklist": "ok"}
+    assert decide_response.json()["triage"]["recommended_queue"] == "supervisor.identity"
     assert get_response.status_code == 200
     assert get_response.json()["status"] == "approved"
     assert get_response.json()["notes"] == {"checklist": "ok"}

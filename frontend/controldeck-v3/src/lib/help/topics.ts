@@ -96,6 +96,7 @@ export const CONTROLDECK_HELP_TOPICS: Record<string, HelpTopic> = {
     examples: [
       "Filtere auf Paperclip-Faelle ueber den scope-Parameter.",
       "Oeffne eine Eskalation und setze sie auf in_review, bevor du final entscheidest.",
+      "Nutze Queue-Filter, um nur Eskalationen fuer eine bestimmte triage route zu sehen.",
     ],
     useCases: ["Supervisor Triage", "Escalation Intake", "Operator Review"],
     docPath: "/help/supervisor.inbox",
@@ -104,11 +105,12 @@ export const CONTROLDECK_HELP_TOPICS: Record<string, HelpTopic> = {
   "supervisor.decisions": {
     key: "supervisor.decisions",
     title: "Supervisor Decisions",
-    summary: "Beschreibt den Entscheidungsfluss fuer einzelne Eskalationen inklusive Statuswechsel und Notizen.",
-    whyItMatters: "Saubere Statusuebergaenge und begruendete Entscheidungen machen Supervisor-Governance auditierbar und spaeter auswertbar.",
+    summary: "Beschreibt den Entscheidungsfluss fuer einzelne Eskalationen inklusive Statuswechsel, Notizen und strukturierter Triage-Felder.",
+    whyItMatters: "Saubere Statusuebergaenge, Routing-Hinweise und begruendete Entscheidungen machen Supervisor-Governance auditierbar und spaeter auswertbar.",
     examples: [
       "Markiere einen Fall zuerst als in_review, wenn noch Kontext fehlt.",
       "Nutze approved oder denied erst, wenn der Grund fuer die Entscheidung dokumentiert ist.",
+      "Passe queue, owner und routing hint an, wenn die automatische Triage nicht zur realen Bearbeitung passt.",
     ],
     useCases: ["Escalation Decisioning", "Supervisor Audit", "Governed Review"],
     docPath: "/help/supervisor.decisions",

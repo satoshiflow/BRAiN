@@ -44,11 +44,21 @@ export default function SupervisorEscalationDetailPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingDecision, setPendingDecision] = useState<DomainEscalationStatus | null>(null);
+  const [triageDraft, setTriageDraft] = useState({
+    recommended_queue: "",
+    recommended_owner: "",
+    routing_hint: "",
+  });
 
   const loadData = useCallback(async () => {
     try {
       const payload = await supervisorApi.getDomainEscalation(escalationId);
       setItem(payload);
+      setTriageDraft({
+        recommended_queue: payload.triage.recommended_queue,
+        recommended_owner: payload.triage.recommended_owner,
+        routing_hint: payload.triage.routing_hint,
+      });
       setError(null);
     } catch (err) {
       console.error("Failed to load supervisor escalation", err);
@@ -73,6 +83,11 @@ export default function SupervisorEscalationDetailPage() {
         status,
         decision_reason: reason,
         notes: { source: "controldeck_v3_supervisor" },
+        triage_updates: {
+          recommended_queue: triageDraft.recommended_queue,
+          recommended_owner: triageDraft.recommended_owner,
+          routing_hint: triageDraft.routing_hint,
+        },
       });
       setPendingDecision(null);
       await loadData();
@@ -86,7 +101,7 @@ export default function SupervisorEscalationDetailPage() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [escalationId, loadData]);
+  }, [escalationId, loadData, triageDraft]);
 
   if (isLoading) {
     return (
@@ -169,6 +184,45 @@ export default function SupervisorEscalationDetailPage() {
                 Back to executor supervisor inbox
               </Link>
             </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-4 space-y-3">
+            <h3 className="font-medium text-slate-900 dark:text-slate-100">Triage routing</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div>
+                <p className="text-slate-500 dark:text-slate-400">Domain area</p>
+                <p className="text-slate-900 dark:text-slate-100">{item.triage.domain_area}</p>
+              </div>
+              <div>
+                <p className="text-slate-500 dark:text-slate-400">Executor</p>
+                <p className="text-slate-900 dark:text-slate-100">{item.triage.executor_slug ?? "-"}</p>
+              </div>
+              <label className="block">
+                <span className="text-slate-500 dark:text-slate-400">Recommended queue</span>
+                <input
+                  value={triageDraft.recommended_queue}
+                  onChange={(event) => setTriageDraft((current) => ({ ...current, recommended_queue: event.target.value }))}
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                />
+              </label>
+              <label className="block">
+                <span className="text-slate-500 dark:text-slate-400">Recommended owner</span>
+                <input
+                  value={triageDraft.recommended_owner}
+                  onChange={(event) => setTriageDraft((current) => ({ ...current, recommended_owner: event.target.value }))}
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                />
+              </label>
+            </div>
+            <label className="block text-sm">
+              <span className="text-slate-500 dark:text-slate-400">Routing hint</span>
+              <textarea
+                value={triageDraft.routing_hint}
+                onChange={(event) => setTriageDraft((current) => ({ ...current, routing_hint: event.target.value }))}
+                rows={3}
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              />
+            </label>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
