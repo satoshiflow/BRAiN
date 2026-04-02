@@ -62,6 +62,58 @@ export const CONTROLDECK_HELP_TOPICS: Record<string, HelpTopic> = {
     docPath: "/help/settings.appearance",
     surface: "controldeck-v3",
   },
+  "external-operations.paperclip-governance": {
+    key: "external-operations.paperclip-governance",
+    title: "External Ops & Executor Governance",
+    summary: "Erklärt Handoffs, bounded Actions, Retry-Requests und die Rolle von ControlDeck fuer Paperclip und OpenClaw.",
+    whyItMatters: "Externe Executor bleiben steuerbar, wenn Operatoren klar zwischen Sichtbarkeit, Request und genehmigter Materialisierung unterscheiden.",
+    examples: [
+      "Oeffne einen Task in Paperclip oder OpenClaw, ohne Governance aus BRAiN herauszuloesen.",
+      "Genehmige einen Retry-Request und prüfe danach die neue SkillRun- und TaskLease-Kette.",
+    ],
+    useCases: ["External Executor Governance", "Paperclip Handoffs", "OpenClaw Handoffs", "Retry Review"],
+    docPath: "/help/external-operations.paperclip-governance",
+    surface: "controldeck-v3",
+  },
+  "external-operations.supervisor-handoffs": {
+    key: "external-operations.supervisor-handoffs",
+    title: "Supervisor Handoffs aus External Ops",
+    summary: "Zeigt, wie genehmigte Eskalationen aus External Ops in echte Supervisor-Faelle uebergehen.",
+    whyItMatters: "So bleibt nachvollziehbar, wann eine External-Ops-Anfrage nur reviewt wurde und wann sie in den Supervisor-Workflow materialisiert wurde.",
+    examples: [
+      "Pruefe in der Timeline die supervisor_escalation_id nach einer genehmigten Eskalation.",
+      "Springe aus External Operations direkt in die Supervisor-Inbox fuer Paperclip- oder OpenClaw-Faelle.",
+    ],
+    useCases: ["Escalation Review", "Supervisor Routing", "Cross-Surface Auditability"],
+    docPath: "/help/external-operations.supervisor-handoffs",
+    surface: "controldeck-v3",
+  },
+  "supervisor.inbox": {
+    key: "supervisor.inbox",
+    title: "Supervisor Inbox",
+    summary: "Listet Domain-Eskalationen zur operativen Pruefung, Filterung und Entscheidung in ControlDeck auf.",
+    whyItMatters: "Die Inbox ist der Ort, an dem aus Requests konkrete supervisor-seitige Bearbeitung wird.",
+    examples: [
+      "Filtere auf Paperclip-Faelle ueber den scope-Parameter.",
+      "Oeffne eine Eskalation und setze sie auf in_review, bevor du final entscheidest.",
+    ],
+    useCases: ["Supervisor Triage", "Escalation Intake", "Operator Review"],
+    docPath: "/help/supervisor.inbox",
+    surface: "controldeck-v3",
+  },
+  "supervisor.decisions": {
+    key: "supervisor.decisions",
+    title: "Supervisor Decisions",
+    summary: "Beschreibt den Entscheidungsfluss fuer einzelne Eskalationen inklusive Statuswechsel und Notizen.",
+    whyItMatters: "Saubere Statusuebergaenge und begruendete Entscheidungen machen Supervisor-Governance auditierbar und spaeter auswertbar.",
+    examples: [
+      "Markiere einen Fall zuerst als in_review, wenn noch Kontext fehlt.",
+      "Nutze approved oder denied erst, wenn der Grund fuer die Entscheidung dokumentiert ist.",
+    ],
+    useCases: ["Escalation Decisioning", "Supervisor Audit", "Governed Review"],
+    docPath: "/help/supervisor.decisions",
+    surface: "controldeck-v3",
+  },
 };
 
 export function getControlDeckHelpTopic(topicKey: string): HelpTopic | null {

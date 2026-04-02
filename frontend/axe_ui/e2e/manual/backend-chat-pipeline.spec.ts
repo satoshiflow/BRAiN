@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+test.skip(!process.env.AXE_E2E_RUN_MANUAL, "Manual backend pipeline test disabled by default");
+
 test("widget chat sends message to real backend", async ({ page }) => {
   const traces: Array<Record<string, unknown>> = [];
 

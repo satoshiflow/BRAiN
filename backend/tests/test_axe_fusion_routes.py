@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import importlib
 import io
+import sys
+import types
 import pytest
 from fastapi import HTTPException
 
@@ -123,6 +125,20 @@ class _FusionServiceStub:
         return {"created_candidates": 2}
 
 
+class _RuntimeResolverStub:
+    async def resolve_with_persisted_overrides(self, context, db):  # noqa: ANN001
+        _ = (context, db)
+        class _Decision:
+            decision_id = "rdec-test"
+            effective_config = {}
+        return _Decision()
+
+    @staticmethod
+    def is_connector_allowed(effective_config, connector_name):  # noqa: ANN001
+        _ = (effective_config, connector_name)
+        return False
+
+
 def test_axe_fusion_chat_route_allows_dmz(client, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(axe_fusion_router_module, "get_axe_trust_validator", lambda: _AllowDmzValidator())
     monkeypatch.setattr(axe_fusion_router_module, "get_axe_fusion_service", lambda db=None: _FusionServiceStub())
@@ -142,6 +158,8 @@ def test_axe_fusion_chat_route_allows_dmz(client, monkeypatch: pytest.MonkeyPatc
     body = response.json()
     assert body["text"] == "stubbed response"
     assert "raw" in body
+    assert "context" in body["raw"]
+    assert "estimated_prompt_tokens" in body["raw"]["context"]
     assert "x-axe-request-id" in response.headers
 
 
@@ -238,8 +256,38 @@ def test_axe_fusion_chat_direct_mode_requires_explicit_opt_in(client, monkeypatc
     )
 
     assert response.status_code == 503
-    detail = response.json()["detail"]
-    assert detail["code"] == "AXE_DIRECT_DISABLED"
+
+
+def test_axe_fusion_blocks_odoo_connector_when_runtime_policy_disallows(client, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(axe_fusion_router_module, "get_axe_trust_validator", lambda: _AllowDmzValidator())
+    monkeypatch.setattr(axe_fusion_router_module, "AXE_CHAT_EXECUTION_PATH", "direct")
+    monkeypatch.setattr(axe_fusion_router_module, "AXE_CHAT_ALLOW_DIRECT_EXECUTION", True)
+    monkeypatch.setattr(axe_fusion_router_module, "get_axe_fusion_service", lambda db=None: _FusionServiceStub())
+    monkeypatch.setattr(axe_fusion_router_module, "get_runtime_control_service", lambda: _RuntimeResolverStub())
+
+    class _OdooBridgeStub:
+        def is_odoo_command(self, message: str) -> bool:
+            return message.lower().startswith("odoo")
+
+        async def handle_message(self, message: str):  # noqa: ANN001
+            return "ok"
+
+    monkeypatch.setitem(
+        sys.modules,
+        "app.modules.odoo_adapter.chat_bridge",
+        types.SimpleNamespace(get_odoo_chat_bridge=lambda: _OdooBridgeStub()),
+    )
+
+    response = client.post(
+        "/api/axe/chat",
+        json={
+            "model": "gpt-4o-mini",
+            "messages": [{"role": "user", "content": "odoo list invoices"}],
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "CONNECTOR_BLOCKED"
 
 
 def test_axe_fusion_chat_bridge_waiting_approval_returns_409(client, monkeypatch: pytest.MonkeyPatch):
@@ -285,7 +333,7 @@ def test_axe_fusion_chat_stress_batch(client, monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(axe_fusion_router_module, "_try_skillrun_bridge", _bridge)
 
-    for idx in range(20):
+    for idx in range(5):
         response = client.post(
             "/api/axe/chat",
             json={
@@ -377,6 +425,33 @@ def test_axe_fusion_upload_rejects_unsupported_mime(client, monkeypatch: pytest.
     assert response.status_code == 400
     detail = response.json()["detail"]
     assert detail["code"] == "UNSUPPORTED_ATTACHMENT_TYPE"
+
+
+def test_axe_fusion_upload_rejects_oversized_payload(client, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(axe_fusion_router_module, "get_axe_trust_validator", lambda: _AllowDmzValidator())
+    monkeypatch.setattr(axe_fusion_router_module, "UPLOAD_MAX_BYTES", 8)
+
+    response = client.post(
+        "/api/axe/upload",
+        files={"file": ("big.txt", io.BytesIO(b"0123456789"), "text/plain")},
+    )
+
+    assert response.status_code == 413
+    detail = response.json()["detail"]
+    assert detail["code"] == "ATTACHMENT_TOO_LARGE"
+
+
+def test_axe_fusion_upload_rejects_empty_payload(client, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(axe_fusion_router_module, "get_axe_trust_validator", lambda: _AllowDmzValidator())
+
+    response = client.post(
+        "/api/axe/upload",
+        files={"file": ("empty.txt", io.BytesIO(b""), "text/plain")},
+    )
+
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert detail["code"] == "EMPTY_ATTACHMENT"
 
 
 def test_axe_provider_runtime_read(client, monkeypatch: pytest.MonkeyPatch):

@@ -22,6 +22,18 @@ export interface AxeChatResponse {
   message_id?: string;
 }
 
+export interface AxeContextTelemetry {
+  estimated_prompt_tokens: number;
+  max_allowed_prompt_tokens: number;
+  context_mode: "full" | "compacted" | "retrieval_augmented";
+  trim_applied: boolean;
+  trim_reason?: string | null;
+  token_class: "small" | "medium" | "large";
+  compression_applied: boolean;
+  retrieval_applied: boolean;
+  selected_segment_counts: Record<string, number>;
+}
+
 export type AxeWorkerStatus = "queued" | "running" | "waiting_input" | "completed" | "failed";
 
 export interface AxeWorkerArtifact {
@@ -36,7 +48,7 @@ export interface AxeWorkerUpdate {
   worker_run_id: string;
   session_id: string;
   message_id: string;
-  worker_type: "auto" | "opencode" | "miniworker" | "openclaw";
+  worker_type: "auto" | "opencode" | "miniworker" | "openclaw" | "paperclip";
   activity_source: "worker_run" | "skillrun_tasklease";
   status: AxeWorkerStatus;
   label: string;

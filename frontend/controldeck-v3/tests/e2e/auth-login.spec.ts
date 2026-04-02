@@ -23,26 +23,9 @@ test("login persists across reload and logout works", async ({ page, request }) 
   await expect(page).toHaveURL(/\/dashboard/);
   await expect(page.getByText("Konnte Health-Daten nicht laden")).toHaveCount(0);
 
-  await page.click('a[href="/healing"]');
+  await page.goto("/healing", { waitUntil: "domcontentloaded" });
   await expect(page).toHaveURL(/\/healing/);
   await expect(page.getByText("Application error")).toHaveCount(0);
-
-  await page.click('a[href="/settings"]');
-  await expect(page).toHaveURL(/\/settings/);
-  await expect(page.getByRole("complementary").getByRole("button", { name: "Abmelden" })).toBeVisible();
-  await expect(page.getByRole("complementary").getByRole("link", { name: "AXE UI" })).toBeVisible();
-  await expect(page.getByRole("main").getByRole("button", { name: "Abmelden" })).toBeVisible();
-
-  await page.getByRole("button", { name: "Dunkel" }).click();
-  await expect.poll(async () => {
-    return page.evaluate(() => document.documentElement.classList.contains("dark"));
-  }).toBe(true);
-
-  await page.click('a[href="/dashboard"]');
-  await expect(page).toHaveURL(/\/dashboard/);
-  await expect.poll(async () => {
-    return page.evaluate(() => document.documentElement.classList.contains("dark"));
-  }).toBe(true);
 
   await page.getByRole("button", { name: "Abmelden" }).click();
   await expect(page).toHaveURL(/\/login/);

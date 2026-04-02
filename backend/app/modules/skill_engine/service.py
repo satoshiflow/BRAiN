@@ -17,6 +17,8 @@ from app.modules.planning.schemas import DecompositionRequest
 from app.modules.planning.service import PlanningService, get_planning_service
 from app.modules.policy.schemas import PolicyEvaluationContext
 from app.modules.policy.service import get_policy_engine
+from app.modules.runtime_control.schemas import RuntimeDecisionContext
+from app.modules.runtime_control.service import get_runtime_control_service
 from app.modules.skills_registry.models import SkillDefinitionModel
 from app.modules.skills_registry.schemas import CapabilityRef, VersionSelector
 from app.modules.skills_registry.service import SkillRegistryService, get_skill_registry_service
@@ -210,6 +212,74 @@ class SkillEngineService:
     @staticmethod
     def requires_approval(risk_tier: str) -> bool:
         return risk_tier in {"high", "critical"}
+
+    @staticmethod
+    def _risk_score_from_tier(risk_tier: str) -> float:
+        normalized = (risk_tier or "").lower()
+        mapping = {
+            "low": 0.2,
+            "medium": 0.5,
+            "high": 0.85,
+            "critical": 0.95,
+        }
+        return mapping.get(normalized, 0.5)
+
+    async def _resolve_runtime_decision(
+        self,
+        db: AsyncSession,
+        payload: SkillRunCreate,
+        principal: Principal,
+        skill_definition: SkillDefinitionModel,
+    ) -> dict[str, Any]:
+        try:
+            resolver = get_runtime_control_service()
+            context = RuntimeDecisionContext(
+                tenant_id=principal.tenant_id,
+                environment=os.getenv("BRAIN_RUNTIME_MODE", "local"),
+                mission_type=(payload.trigger_type.value if payload.trigger_type else "api"),
+                skill_type=skill_definition.skill_key,
+                agent_role=principal.roles[0] if principal.roles else principal.principal_type.value,
+                risk_score=self._risk_score_from_tier(skill_definition.risk_tier),
+                budget_state={},
+                system_health={},
+                feature_context={
+                    "governance_snapshot": payload.governance_snapshot or {},
+                },
+            )
+            decision = await resolver.resolve_with_persisted_overrides(context, db=db)
+            return {
+                "decision_id": decision.decision_id,
+                "selected_model": decision.selected_model,
+                "selected_worker": decision.selected_worker,
+                "selected_route": decision.selected_route,
+                "validation": decision.validation.model_dump(mode="json"),
+                "applied_policies": [item.model_dump(mode="json") for item in decision.applied_policies],
+                "applied_overrides": [item.model_dump(mode="json") for item in decision.applied_overrides],
+            }
+        except Exception as exc:
+            logger.warning("Runtime control decision unavailable for skill {}: {}", skill_definition.skill_key, exc)
+            try:
+                resolver = get_runtime_control_service()
+                fallback_decision = resolver.resolve(context)
+                return {
+                    "decision_id": fallback_decision.decision_id,
+                    "selected_model": fallback_decision.selected_model,
+                    "selected_worker": fallback_decision.selected_worker,
+                    "selected_route": fallback_decision.selected_route,
+                    "validation": fallback_decision.validation.model_dump(mode="json"),
+                    "applied_policies": [item.model_dump(mode="json") for item in fallback_decision.applied_policies],
+                    "applied_overrides": [item.model_dump(mode="json") for item in fallback_decision.applied_overrides],
+                }
+            except Exception:
+                return {
+                    "decision_id": None,
+                    "selected_model": None,
+                    "selected_worker": None,
+                    "selected_route": None,
+                    "validation": {"valid": False, "issues": ["runtime_control_unavailable"]},
+                    "applied_policies": [],
+                    "applied_overrides": [],
+                }
 
     async def _record_transition(
         self,
@@ -483,6 +553,7 @@ class SkillEngineService:
         )
         capability_bindings, cost_estimate = await self._resolve_capability_bindings(db, skill_definition)
         policy_decision = await self._evaluate_policy(db, principal, skill_definition, payload)
+        runtime_decision = await self._resolve_runtime_decision(db, payload, principal, skill_definition)
         plan_snapshot = self.build_plan_snapshot(skill_definition, capability_bindings)
         upstream_decision_snapshot = {
             "decision_context_id": payload.decision_context_id,
@@ -503,10 +574,12 @@ class SkillEngineService:
         plan_snapshot["planning_plan_id"] = plan.plan_id
         plan_snapshot["planning_node_count"] = len(plan.nodes)
         plan_snapshot["upstream_decision"] = upstream_decision_snapshot
+        plan_snapshot["runtime_decision"] = runtime_decision
 
         policy_snapshot = {
             **policy_decision,
             "upstream_decision": upstream_decision_snapshot,
+            "runtime_decision": runtime_decision,
         }
 
         model = SkillRunModel(
@@ -516,7 +589,10 @@ class SkillEngineService:
             state=SkillRunState.QUEUED.value,
             input_payload=payload.input_payload,
             plan_snapshot=plan_snapshot,
-            provider_selection_snapshot={"bindings": capability_bindings},
+            provider_selection_snapshot={
+                "bindings": capability_bindings,
+                "runtime_decision": runtime_decision,
+            },
             requested_by=principal.principal_id,
             requested_by_type=principal.principal_type.value,
             trigger_type=payload.trigger_type.value,
@@ -549,6 +625,7 @@ class SkillEngineService:
                 "skill_version": model.skill_version,
                 "state": model.state,
                 "policy_decision_id": str(model.policy_decision_id) if model.policy_decision_id else None,
+                "runtime_decision_id": runtime_decision.get("decision_id"),
             },
             audit_required=True,
             audit_action="skill_run_create",

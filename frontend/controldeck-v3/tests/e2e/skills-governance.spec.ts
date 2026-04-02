@@ -10,7 +10,9 @@ test("skills governance detail shows value and trend panels", async ({ page, req
 
   const governanceLink = page.getByRole("link", { name: "Governance Details" }).first();
   await expect(governanceLink).toBeVisible();
-  await governanceLink.click();
+  const href = await governanceLink.getAttribute("href");
+  expect(href).toBeTruthy();
+  await page.goto(href!);
 
   await expect(page).toHaveURL(/\/skills\//);
   await expect(page.getByText("Value Breakdown")).toBeVisible();

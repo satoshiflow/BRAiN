@@ -20,6 +20,7 @@ import {
 import { getControlDeckBase, getDefaultModel } from "@/lib/config";
 import type {
   AxeChatRequest,
+  AxeContextTelemetry,
   AxeSessionMessage,
   AxeSessionMessageRole,
   AxeWorkerUpdate,
@@ -48,6 +49,7 @@ interface WorkerRunAnchor {
   pollable: boolean;
   source: "worker_run" | "skillrun_tasklease";
   taskId?: string;
+  workerType?: AxeWorkerUpdate["worker_type"];
 }
 
 interface PendingAttachment {
@@ -78,6 +80,10 @@ function mapTaskStatusToWorkerStatus(
     return "completed";
   }
   return "failed";
+}
+
+function toExternalWorkerLabel(workerType: AxeWorkerUpdate["worker_type"]): string {
+  return workerType === "paperclip" ? "Paperclip" : "OpenClaw";
 }
 
 function formatTime(date: Date): string {
@@ -146,6 +152,7 @@ function ChatPageContent() {
   const [routingTrace, setRoutingTrace] = useState<RoutingDecisionRecord[]>([]);
   const [traceLoading, setTraceLoading] = useState(false);
   const [traceError, setTraceError] = useState<string | null>(null);
+  const [latestContextTelemetry, setLatestContextTelemetry] = useState<AxeContextTelemetry | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -214,6 +221,7 @@ function ChatPageContent() {
       opencode: 0,
       miniworker: 0,
       openclaw: 0,
+      paperclip: 0,
     };
     const statusStats: Record<WorkerStatusFilter, number> = {
       all: 0,
@@ -380,7 +388,8 @@ function ChatPageContent() {
     sessionId: string,
     role: AxeSessionMessageRole,
     content: string,
-    attachmentIds: string[] = []
+    attachmentIds: string[] = [],
+    metadata?: Record<string, unknown>,
   ): Promise<AxeSessionMessage> => {
     return withAuthRetry((token) =>
       appendAxeSessionMessage(
@@ -389,6 +398,7 @@ function ChatPageContent() {
           role,
           content,
           attachments: attachmentIds,
+          metadata,
         },
         { Authorization: `Bearer ${token}` }
       )
@@ -412,15 +422,16 @@ function ChatPageContent() {
               if (anchor.source === "skillrun_tasklease" && anchor.taskId) {
                 const task = await getTaskQueueTask(anchor.taskId, { Authorization: `Bearer ${token}` });
                 const current = workerUpdates[anchor.workerRunId];
+                const externalWorkerType = (anchor.workerType ?? current?.worker_type ?? "openclaw") as AxeWorkerUpdate["worker_type"];
                 const mappedUpdate: AxeWorkerUpdate = {
                   worker_run_id: anchor.workerRunId,
                   session_id: current?.session_id ?? anchor.sessionId,
                   message_id: current?.message_id ?? anchor.messageId ?? "",
-                  worker_type: "openclaw",
+                  worker_type: externalWorkerType,
                   activity_source: "skillrun_tasklease",
                   status: mapTaskStatusToWorkerStatus(task.status),
-                  label: `OpenClaw task ${task.status}`,
-                  detail: task.error_message || "OpenClaw TaskLease status update",
+                  label: `${toExternalWorkerLabel(externalWorkerType)} task ${task.status}`,
+                  detail: task.error_message || `${toExternalWorkerLabel(externalWorkerType)} TaskLease status update`,
                   updated_at: task.updated_at,
                   artifacts: current?.artifacts ?? [],
                 };
@@ -618,6 +629,9 @@ function ChatPageContent() {
         postAxeChat(requestBody, { Authorization: `Bearer ${token}` })
       );
 
+      const rawContext = data.raw?.context as AxeContextTelemetry | undefined;
+      setLatestContextTelemetry(rawContext ?? null);
+
       const rawWorkerType = (data.raw?.worker_type as AxeWorkerUpdate["worker_type"] | undefined) ?? "auto";
 
       if (data.worker_run_id) {
@@ -645,18 +659,19 @@ function ChatPageContent() {
             source: "worker_run",
           },
         }));
-      } else if (rawWorkerType === "openclaw") {
+      } else if (rawWorkerType === "openclaw" || rawWorkerType === "paperclip") {
         const taskId = typeof data.raw?.task_id === "string" ? data.raw.task_id : undefined;
-        const syntheticWorkerRunId = `openclaw:${String(taskId ?? Date.now())}`;
+        const syntheticWorkerRunId = `${rawWorkerType}:${String(taskId ?? Date.now())}`;
+        const workerLabel = toExternalWorkerLabel(rawWorkerType);
         const initialUpdate: AxeWorkerUpdate = {
           worker_run_id: syntheticWorkerRunId,
           session_id: data.session_id ?? currentSessionId,
           message_id: data.message_id ?? userMessageId,
-          worker_type: "openclaw",
+          worker_type: rawWorkerType,
           activity_source: "skillrun_tasklease",
           status: "queued",
-          label: "OpenClaw task dispatched",
-          detail: "OpenClaw uses the SkillRun/TaskLease runtime path and is tracked as external worker activity.",
+          label: `${workerLabel} task dispatched`,
+          detail: `${workerLabel} uses the SkillRun/TaskLease runtime path and is tracked as external worker activity.`,
           updated_at: new Date().toISOString(),
           artifacts: [
             {
@@ -666,6 +681,7 @@ function ChatPageContent() {
                 source: "skillrun_tasklease",
                 task_id: data.raw?.task_id,
                 skill_run_id: data.raw?.skill_run_id,
+                worker_type: rawWorkerType,
               },
             },
           ],
@@ -681,6 +697,7 @@ function ChatPageContent() {
             pollable: Boolean(taskId),
             source: "skillrun_tasklease",
             taskId,
+            workerType: rawWorkerType,
           },
         }));
       }
@@ -697,7 +714,25 @@ function ChatPageContent() {
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
-      await persistMessage(currentSessionId, "assistant", data.text);
+      await persistMessage(
+        currentSessionId,
+        "assistant",
+        data.text,
+        [],
+        rawContext
+          ? {
+              context_mode: rawContext.context_mode,
+              token_class: rawContext.token_class,
+              estimated_prompt_tokens: rawContext.estimated_prompt_tokens,
+              max_allowed_prompt_tokens: rawContext.max_allowed_prompt_tokens,
+              trim_applied: rawContext.trim_applied,
+              trim_reason: rawContext.trim_reason,
+              compression_applied: rawContext.compression_applied,
+              retrieval_applied: rawContext.retrieval_applied,
+              selected_segment_counts: rawContext.selected_segment_counts,
+            }
+          : undefined
+      );
       await selectSession(currentSessionId);
       setAttachments([]);
     } catch (sendError) {
@@ -929,6 +964,35 @@ function ChatPageContent() {
             )}
           </div>
 
+          {latestContextTelemetry && (
+            <div className="mb-4 rounded-lg border border-cyan-500/30 bg-slate-900/70 p-3 text-xs text-slate-200">
+              <div className="flex flex-wrap items-center gap-3">
+                <span>
+                  Context mode: <span className="text-cyan-200">{latestContextTelemetry.context_mode}</span>
+                </span>
+                <span>
+                  Token class: <span className="text-cyan-200">{latestContextTelemetry.token_class}</span>
+                </span>
+                <span>
+                  Prompt tokens: <span className="text-cyan-200">{latestContextTelemetry.estimated_prompt_tokens}</span> /
+                  {" "}
+                  {latestContextTelemetry.max_allowed_prompt_tokens}
+                </span>
+                <span>
+                  Compaction: <span className="text-cyan-200">{latestContextTelemetry.compression_applied ? "yes" : "no"}</span>
+                </span>
+                <span>
+                  Retrieval: <span className="text-cyan-200">{latestContextTelemetry.retrieval_applied ? "yes" : "no"}</span>
+                </span>
+                {latestContextTelemetry.trim_applied && (
+                  <span className="text-amber-300">
+                    Trim applied ({latestContextTelemetry.trim_reason ?? "budget"})
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
           {headerError && (
             <div className="mb-4 rounded-lg border border-rose-500/50 bg-rose-950/45 p-3 text-sm text-rose-200">
               ⚠️ Error: {headerError}
@@ -942,7 +1006,7 @@ function ChatPageContent() {
                   Active Thread: <span className="text-cyan-200">{activeSession?.title ?? "New Intent Thread"}</span>
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {(["all", "miniworker", "opencode", "openclaw", "auto"] as WorkerTypeFilter[]).map((filter) => {
+                  {(["all", "miniworker", "opencode", "openclaw", "paperclip", "auto"] as WorkerTypeFilter[]).map((filter) => {
                     const selected = workerTypeFilter === filter;
                     return (
                       <button

@@ -13,6 +13,9 @@ SECURITY:
 
 import logging
 import os
+import hashlib
+import hmac
+import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, List, Optional, Literal
@@ -45,6 +48,8 @@ from app.modules.task_queue.schemas import TaskCreate, TaskPriority
 from app.modules.task_queue.service import get_task_queue_service
 from app.modules.axe_worker_runs.service import AXEWorkerRunService
 from app.modules.axe_worker_runs.schemas import AXEWorkerRunCreateRequest
+from app.modules.runtime_control.schemas import RuntimeDecisionContext
+from app.modules.runtime_control.service import get_runtime_control_service
 
 from .service import (
     get_axe_fusion_service,
@@ -54,6 +59,7 @@ from .service import (
 )
 from .provider_selector import LLMProvider, SanitizationLevel
 from .memory_bridge import get_axe_memory_bridge
+from .context_management import build_context_envelope
 
 # Neural Core Integration (Phase 1)
 async def get_neural_context(db: AsyncSession) -> dict:
@@ -171,6 +177,10 @@ AXE_CHAT_ALLOW_DIRECT_EXECUTION = os.getenv("AXE_CHAT_ALLOW_DIRECT_EXECUTION", "
     "true",
     "yes",
 }
+AXE_CONTEXT_MAX_PROMPT_TOKENS = int(os.getenv("AXE_CONTEXT_MAX_PROMPT_TOKENS", "8192"))
+AXE_CONTEXT_SHORT_TERM_TURNS = int(os.getenv("AXE_CONTEXT_SHORT_TERM_TURNS", "10"))
+AXE_CONTEXT_SUMMARY_TRIGGER_MESSAGES = int(os.getenv("AXE_CONTEXT_SUMMARY_TRIGGER_MESSAGES", "24"))
+AXE_CONTEXT_RETRIEVAL_TOP_K = int(os.getenv("AXE_CONTEXT_RETRIEVAL_TOP_K", "4"))
 
 
 # === Security Utilities ===
@@ -643,6 +653,8 @@ async def _try_skillrun_bridge(
     db: AsyncSession,
     principal: Optional[Principal],
     chat_request: ChatRequest,
+    prepared_messages: list[dict[str, Any]],
+    context_telemetry: dict[str, Any],
     request_id: str,
 ) -> ChatResponse | None:
     if AXE_CHAT_EXECUTION_PATH != "skillrun_bridge":
@@ -680,10 +692,11 @@ async def _try_skillrun_bridge(
                 chat_request.messages[-1].content,
             ),
             "model": chat_request.model,
-            "messages": [msg.model_dump() for msg in chat_request.messages],
+            "messages": prepared_messages,
             "temperature": chat_request.temperature or 0.7,
             "request_id": request_id,
             "channel": "axe",
+            "context_telemetry": context_telemetry,
         },
         idempotency_key=f"axe:{principal.tenant_id or 'system'}:{principal.principal_id}:{request_id}",
         trigger_type=TriggerType.API,
@@ -759,13 +772,45 @@ async def _try_skillrun_bridge(
             "skill_run_state": state,
             "evaluation_summary": report.skill_run.evaluation_summary,
             "output_payload": report.skill_run.output_payload,
+            "context": context_telemetry,
         },
         run_id=str(report.skill_run.id),
     )
 
 
-WORKER_COMMAND_PATTERN = r"^\s*/(worker|opencode|openclaw|miniworker)\b"
-WorkerCommandType = Literal["worker", "opencode", "openclaw", "miniworker"]
+WORKER_COMMAND_PATTERN = r"^\s*/(worker|opencode|openclaw|paperclip|miniworker)\b"
+WorkerCommandType = Literal["worker", "opencode", "openclaw", "paperclip", "miniworker"]
+
+
+def _build_execution_permit(
+    *,
+    executor_type: str,
+    skill_run_id: str,
+    task_id: str,
+    correlation_id: str | None,
+    ttl_seconds: int = 900,
+) -> dict[str, Any]:
+    issued_at = datetime.now(timezone.utc)
+    expires_at = issued_at + timedelta(seconds=max(60, ttl_seconds))
+    permit_payload: dict[str, Any] = {
+        "executor_type": executor_type,
+        "skill_run_id": skill_run_id,
+        "allowed_actions": ["worker_bridge_execute"],
+        "allowed_connectors": [executor_type],
+        "issued_at": issued_at.isoformat(),
+        "expires_at": expires_at.isoformat(),
+        "task_id": task_id,
+        "correlation_id": correlation_id,
+    }
+    secret = os.getenv("BRAIN_EXTERNAL_EXECUTOR_PERMIT_SECRET", "").strip()
+    if not secret:
+        raise ValueError("BRAIN_EXTERNAL_EXECUTOR_PERMIT_SECRET missing")
+    message = json.dumps(permit_payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    signature = hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
+    return {
+        **permit_payload,
+        "signature": signature,
+    }
 
 
 async def _try_worker_bridge(
@@ -861,12 +906,55 @@ async def _try_worker_bridge(
         except Exception:
             pass
 
-    if worker_type == "openclaw":
+    if worker_type in {"openclaw", "paperclip"}:
+        runtime_context = RuntimeDecisionContext(
+            tenant_id=principal.tenant_id if principal else None,
+            environment=os.getenv("BRAIN_RUNTIME_MODE", "local"),
+            mission_type=f"connector.{worker_type}",
+            skill_type=f"{worker_type}.worker_bridge",
+            agent_role=(principal.roles[0] if principal and principal.roles else "operator"),
+            risk_score=0.7,
+            budget_state={},
+            system_health={},
+            feature_context={},
+        )
+        runtime_decision = await get_runtime_control_service().resolve_with_persisted_overrides(
+            runtime_context,
+            db=db,
+        )
+        if not get_runtime_control_service().is_executor_allowed(
+            runtime_decision.effective_config,
+            worker_type,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "error": "Executor blocked by policy",
+                    "message": f"{worker_type.title()} executor is currently disabled by runtime policy",
+                    "code": "EXECUTOR_BLOCKED",
+                },
+            )
+        if not get_runtime_control_service().is_connector_allowed(
+            runtime_decision.effective_config,
+            worker_type,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "error": "Connector blocked by policy",
+                    "message": f"{worker_type.title()} connector is currently disabled by runtime policy",
+                    "code": "CONNECTOR_BLOCKED",
+                },
+            )
+
         worker_skill_key = os.getenv("AXE_WORKER_SKILL_KEY", AXE_CHAT_SKILL_KEY)
+        worker_task_type = "openclaw_work" if worker_type == "openclaw" else "paperclip_work"
         skill_payload = SkillRunCreate(
             skill_key=worker_skill_key,
             input_payload={
                 "worker_type": worker_type,
+                "executor_type": worker_type,
+                "intent": "worker_bridge_execute",
                 "prompt": user_prompt,
                 "mode": "plan",
                 "session_id": str(session_id),
@@ -890,7 +978,8 @@ async def _try_worker_bridge(
                 if "No matching definition found" not in str(exc):
                     raise
                 logger.warning(
-                    "AXE openclaw bridge missing skill definition for %s; creating fallback external SkillRun",
+                    "AXE %s bridge missing skill definition for %s; creating fallback external SkillRun",
+                    worker_type,
                     worker_skill_key,
                 )
                 skill_run = await _create_fallback_external_skill_run(
@@ -902,25 +991,45 @@ async def _try_worker_bridge(
                     idempotency_key=skill_payload.idempotency_key,
                     worker_type=worker_type,
                 )
+
+            task_lease_id = f"task-{uuid4().hex[:12]}"
+            execution_permit = _build_execution_permit(
+                executor_type=worker_type,
+                skill_run_id=str(skill_run.id),
+                task_id=task_lease_id,
+                correlation_id=skill_run.correlation_id,
+            )
+
             task = await get_task_queue_service().create_task(
                 db=db,
                 task_data=TaskCreate(
-                    name=f"OpenClaw TaskLease {skill_run.id}",
-                    description="External OpenClaw worker lease for SkillRun execution",
-                    task_type="openclaw_work",
+                    task_id=task_lease_id,
+                    name=f"{worker_type.title()} TaskLease {skill_run.id}",
+                    description=f"External {worker_type.title()} worker lease for SkillRun execution",
+                    task_type=worker_task_type,
                     category="skill_engine",
-                    tags=["tasklease", "skillrun", "openclaw"],
+                    tags=["tasklease", "skillrun", worker_type],
                     priority=TaskPriority.HIGH,
                     payload={
                         "skill_run_id": str(skill_run.id),
                         "skill_key": skill_run.skill_key,
                         "skill_version": skill_run.skill_version,
+                        "executor_type": worker_type,
+                        "intent": "worker_bridge_execute",
                         "worker_type": worker_type,
+                        "correlation_id": skill_run.correlation_id,
+                        "mission_id": skill_run.mission_id,
+                        "execution_permit": execution_permit,
                         "prompt": user_prompt,
                         "mode": "plan",
                         "request_id": request_id,
                     },
-                    config={"lease_only": True, "worker_target": "openclaw"},
+                    config={
+                        "lease_only": True,
+                        "worker_target": worker_type,
+                        "required_worker": worker_type,
+                        "require_execution_permit": True,
+                    },
                     tenant_id=skill_run.tenant_id,
                     mission_id=skill_run.mission_id,
                     skill_run_id=skill_run.id,
@@ -931,7 +1040,7 @@ async def _try_worker_bridge(
                 created_by_type=principal.principal_type.value,
             )
         except Exception as exc:
-            logger.exception("AXE openclaw tasklease dispatch failed")
+            logger.exception("AXE %s tasklease dispatch failed", worker_type)
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail={
@@ -1112,6 +1221,15 @@ async def axe_chat(
         messages = inject_neural_system_prompt(messages, neural_context)
         logger.info(f"🧠 Neural Context injected: creativity={neural_context['creativity']}, caution={neural_context['caution']}")
 
+        envelope_messages, context_telemetry_obj = build_context_envelope(
+            messages,
+            max_prompt_tokens=AXE_CONTEXT_MAX_PROMPT_TOKENS,
+            short_term_turns=AXE_CONTEXT_SHORT_TERM_TURNS,
+            summary_trigger_messages=AXE_CONTEXT_SUMMARY_TRIGGER_MESSAGES,
+            retrieval_top_k=AXE_CONTEXT_RETRIEVAL_TOP_K,
+        )
+        context_telemetry = context_telemetry_obj.to_dict()
+
         # Phase 1.5: Odoo Bridge - Check for Odoo commands
         last_user_message = next(
             (msg.content for msg in reversed(chat_request.messages) 
@@ -1125,19 +1243,58 @@ async def axe_chat(
             odoo_bridge = get_odoo_chat_bridge()
             
             if odoo_bridge.is_odoo_command(last_user_message):
+                runtime_context = RuntimeDecisionContext(
+                    tenant_id=principal.tenant_id if principal else None,
+                    environment=os.getenv("BRAIN_RUNTIME_MODE", "local"),
+                    mission_type="connector.odoo",
+                    skill_type="odoo.chat_bridge",
+                    agent_role=(principal.roles[0] if principal and principal.roles else "operator"),
+                    risk_score=0.7,
+                    budget_state={},
+                    system_health={},
+                    feature_context={},
+                )
+                runtime_decision = await get_runtime_control_service().resolve_with_persisted_overrides(
+                    runtime_context,
+                    db=db,
+                )
+                if not get_runtime_control_service().is_connector_allowed(
+                    runtime_decision.effective_config,
+                    "odoo",
+                ):
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail={
+                            "error": "Connector blocked by policy",
+                            "message": "Odoo connector is currently disabled by runtime policy",
+                            "code": "CONNECTOR_BLOCKED",
+                        },
+                    )
+
                 logger.info(f"🎯 Odoo command detected: {last_user_message[:50]}...")
                 odoo_response = await odoo_bridge.handle_message(last_user_message)
                 
                 if odoo_response:
                     logger.info("✅ Odoo command executed successfully")
                     return ChatResponse(
-                        id=f"odoo-{uuid4().hex[:8]}",
-                        created=int(datetime.now(timezone.utc).timestamp()),
-                        model=chat_request.model,
-                        choices=[{"index": 0, "message": {"role": "assistant", "content": odoo_response}, "finish_reason": "stop"}],
-                        usage={"prompt_tokens": 0, "completion_tokens": len(odoo_response), "total_tokens": len(odoo_response)}
+                        text=odoo_response,
+                        raw={
+                            "execution_path": "odoo_bridge",
+                            "provider": "odoo",
+                            "context": context_telemetry,
+                            "runtime_decision_id": runtime_decision.decision_id,
+                            "usage": {
+                                "prompt_tokens": context_telemetry.get("estimated_prompt_tokens", 0),
+                                "completion_tokens": max(1, int(len(odoo_response) / 4)),
+                                "total_tokens": context_telemetry.get("estimated_prompt_tokens", 0)
+                                + max(1, int(len(odoo_response) / 4)),
+                            },
+                        },
+                        run_id=f"odoo-{uuid4().hex[:8]}",
                     )
         except Exception as odoo_error:
+            if isinstance(odoo_error, HTTPException):
+                raise
             logger.warning(f"⚠️ Odoo bridge error (continuing with LLM): {odoo_error}")
 
         worker_bridged = await _try_worker_bridge(
@@ -1154,6 +1311,8 @@ async def axe_chat(
             db=db,
             principal=principal,
             chat_request=chat_request,
+            prepared_messages=envelope_messages,
+            context_telemetry=context_telemetry,
             request_id=request_id,
         )
         if bridged is not None:
@@ -1217,7 +1376,7 @@ async def axe_chat(
             if chat_request.stream:
                 result = await service.stream_chat(
                     model=chat_request.model,
-                    messages=messages,
+                    messages=envelope_messages,
                     temperature=chat_request.temperature or 0.7,
                     request_id=request_id,
                     principal_id=user_id,
@@ -1238,13 +1397,13 @@ async def axe_chat(
                 
                 return ChatResponse(
                     text=result["text"],
-                    raw={**result["raw"], "execution_path": "direct", "streamed": True},
+                    raw={**result["raw"], "execution_path": "direct", "streamed": True, "context": context_telemetry},
                     run_id=str(run_id)
                 )
             else:
                 result = await service.chat(
                     model=chat_request.model,
-                    messages=messages,
+                    messages=envelope_messages,
                     temperature=chat_request.temperature or 0.7,
                     request_id=request_id,
                     principal_id=user_id,
@@ -1272,7 +1431,7 @@ async def axe_chat(
                 
                 return ChatResponse(
                     text=result["text"],
-                    raw={**result["raw"], "execution_path": "direct"},
+                    raw={**result["raw"], "execution_path": "direct", "context": context_telemetry},
                     run_id=str(run_id)
                 )
             

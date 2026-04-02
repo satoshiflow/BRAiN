@@ -2,7 +2,9 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { healthApi, type HealthStatus, type ModuleHealth } from "@/lib/api/health";
+import { runtimeControlApi, type ExternalOpsObservabilityResponse } from "@/lib/api/runtime-control";
 import { cn, formatRelativeTime } from "@/lib/utils";
+import Link from "next/link";
 
 function StatusBadge({ status }: { status: ModuleHealth["status"] }) {
   const styles = {
@@ -75,6 +77,7 @@ function ModuleCard({ module }: { module: ModuleHealth }) {
 
 export default function DashboardPage() {
   const [health, setHealth] = useState<HealthStatus | null>(null);
+  const [externalOpsObservability, setExternalOpsObservability] = useState<ExternalOpsObservabilityResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -82,8 +85,12 @@ export default function DashboardPage() {
 
   const fetchHealth = useCallback(async () => {
     try {
-      const data = await healthApi.getStatus();
+      const [data, observability] = await Promise.all([
+        healthApi.getStatus(),
+        runtimeControlApi.getExternalOpsObservability(),
+      ]);
       setHealth(data);
+      setExternalOpsObservability(observability);
       setLastUpdate(new Date());
       setError(null);
     } catch (err) {
@@ -187,6 +194,8 @@ export default function DashboardPage() {
     critical: "text-red-600 dark:text-red-400",
   };
 
+  const topExternalAlert = externalOpsObservability?.alerts[0] ?? null;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -237,6 +246,60 @@ export default function DashboardPage() {
           </p>
         </div>
       </div>
+
+      {externalOpsObservability ? (
+        <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-4 space-y-3">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">External Ops Notifications</h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Pending requests, stale escalations and handoff failures routed into the operator dashboard.
+              </p>
+            </div>
+            <Link href="/external-operations" className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700">
+              Open External Ops
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-sm">
+            <div className="rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 p-3">
+              <p className="text-slate-500 dark:text-slate-400">Open requests</p>
+              <p className="mt-2 font-semibold text-slate-900 dark:text-slate-100">{externalOpsObservability.metrics.pending_action_requests}</p>
+            </div>
+            <div className="rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 p-3">
+              <p className="text-slate-500 dark:text-slate-400">Stale escalations</p>
+              <p className="mt-2 font-semibold text-slate-900 dark:text-slate-100">{externalOpsObservability.metrics.stale_supervisor_escalations}</p>
+            </div>
+            <div className="rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 p-3">
+              <p className="text-slate-500 dark:text-slate-400">Handoff failures 24h</p>
+              <p className="mt-2 font-semibold text-slate-900 dark:text-slate-100">{externalOpsObservability.metrics.handoff_failures_24h}</p>
+            </div>
+            <div className="rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 p-3">
+              <p className="text-slate-500 dark:text-slate-400">Retry approvals 24h</p>
+              <p className="mt-2 font-semibold text-slate-900 dark:text-slate-100">{externalOpsObservability.metrics.retry_approvals_24h}</p>
+            </div>
+          </div>
+
+          {topExternalAlert ? (
+            <div className={cn(
+              "rounded-lg border p-3",
+              topExternalAlert.severity === "critical"
+                ? "border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-950/20"
+                : "border-amber-200 bg-amber-50 dark:border-amber-900/40 dark:bg-amber-950/20"
+            )}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-medium text-slate-900 dark:text-slate-100">{topExternalAlert.title}</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-300">{topExternalAlert.summary}</p>
+                </div>
+                <span className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">{topExternalAlert.severity}</span>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500 dark:text-slate-400">No external-ops alerts currently routed to the dashboard.</p>
+          )}
+        </div>
+      ) : null}
 
       <div>
         <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">

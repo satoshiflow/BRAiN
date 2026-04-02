@@ -4,4 +4,5 @@ export * as auth from "./auth";
 export * as healthApi from "./api/health";
 export * as immuneApi from "./api/immune";
 export * as neuralApi from "./api/neural";
+export * as runtimeControlApi from "./api/runtime-control";
 export * as skillsApi from "./api/skills";

@@ -1,0 +1,71 @@
+{
+  "generated_at": "2026-04-01T16:33:43.328130+00:00",
+  "profiles": [
+    {
+      "name": "long_session_120_turns",
+      "input_messages": 121,
+      "selected_messages": 17,
+      "telemetry": {
+        "estimated_prompt_tokens": 678,
+        "max_allowed_prompt_tokens": 8192,
+        "context_mode": "compacted",
+        "trim_applied": false,
+        "trim_reason": null,
+        "token_class": "small",
+        "compression_applied": true,
+        "retrieval_applied": true,
+        "selected_segment_counts": {
+          "governance": 1,
+          "active_turn": 1,
+          "short_term": 10,
+          "retrieval": 4,
+          "summary": 1
+        }
+      }
+    },
+    {
+      "name": "attachment_heavy_40_turns",
+      "input_messages": 41,
+      "selected_messages": 17,
+      "telemetry": {
+        "estimated_prompt_tokens": 448,
+        "max_allowed_prompt_tokens": 4096,
+        "context_mode": "compacted",
+        "trim_applied": false,
+        "trim_reason": null,
+        "token_class": "small",
+        "compression_applied": true,
+        "retrieval_applied": true,
+        "selected_segment_counts": {
+          "governance": 1,
+          "active_turn": 1,
+          "short_term": 10,
+          "retrieval": 4,
+          "summary": 1
+        }
+      }
+    },
+    {
+      "name": "mixed_workers_60_turns",
+      "input_messages": 61,
+      "selected_messages": 17,
+      "telemetry": {
+        "estimated_prompt_tokens": 624,
+        "max_allowed_prompt_tokens": 6144,
+        "context_mode": "compacted",
+        "trim_applied": false,
+        "trim_reason": null,
+        "token_class": "small",
+        "compression_applied": true,
+        "retrieval_applied": true,
+        "selected_segment_counts": {
+          "governance": 1,
+          "active_turn": 1,
+          "short_term": 10,
+          "retrieval": 4,
+          "summary": 1
+        }
+      }
+    }
+  ]
+}

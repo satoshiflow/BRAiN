@@ -25,7 +25,7 @@ from .schemas import (
     TaskResponse, TaskListResponse, TaskStats, QueueStats, TaskStatus,
     TaskClaimResponse, TaskLeaseCreateResponse
 )
-from .service import get_task_queue_service, TaskQueueService
+from .service import get_task_queue_service
 from .models import TaskModel, TaskStatus as TaskModelStatus
 
 
@@ -46,6 +46,14 @@ def _to_model_status(status: Optional[TaskStatus]) -> Optional[TaskModelStatus]:
 def _has_cross_tenant_task_read(principal: Principal) -> bool:
     roles = {str(role).strip().lower() for role in (principal.roles or [])}
     return bool(roles.intersection({"admin", "service"}))
+
+
+def _task_visible_to_principal(task: TaskModel, principal: Principal) -> bool:
+    if _has_cross_tenant_task_read(principal):
+        return True
+    if principal.tenant_id is None:
+        return task.tenant_id is None
+    return task.tenant_id in {principal.tenant_id, None}
 
 
 async def _ensure_task_queue_writable(db: AsyncSession) -> None:
@@ -139,6 +147,7 @@ async def list_tasks(
         limit=limit,
         offset=offset,
     )
+    tasks = [task for task in tasks if _task_visible_to_principal(task, principal)]
     
     # Count by status
     by_status = {}
@@ -169,12 +178,11 @@ async def get_task(
             detail=f"Task {task_id} not found"
         )
 
-    if not _has_cross_tenant_task_read(principal):
-        if principal.tenant_id and task.tenant_id and principal.tenant_id != task.tenant_id:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Task {task_id} not found"
-            )
+    if not _task_visible_to_principal(task, principal):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Task {task_id} not found"
+        )
 
     return task_to_response(task)
 

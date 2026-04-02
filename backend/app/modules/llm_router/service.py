@@ -31,6 +31,8 @@ from .schemas import (
     OpenWebUIConfig,
     OpenRouterConfig,
 )
+from app.modules.runtime_control.schemas import RuntimeDecisionContext
+from app.modules.runtime_control.service import get_runtime_control_service
 
 
 class LLMRouterService:
@@ -232,8 +234,9 @@ class LLMRouterService:
         if not self.initialized:
             raise RuntimeError("LLM Router not initialized")
 
-        # Determine provider
-        provider = self._select_provider(request.provider, agent_id)
+        # Determine provider (runtime-control aware)
+        runtime_provider, runtime_decision_id = self._resolve_runtime_provider(request, agent_id)
+        provider = self._select_provider(request.provider, agent_id, runtime_provider=runtime_provider)
 
         # Get model string
         model_string = self._get_model_string(provider, request.model)
@@ -289,6 +292,7 @@ class LLMRouterService:
                 metadata={
                     "latency_ms": latency,
                     "agent_id": agent_id,
+                    "runtime_decision_id": runtime_decision_id,
                 },
             )
 
@@ -299,14 +303,58 @@ class LLMRouterService:
             if self.config.enable_fallback and provider != LLMProvider.OLLAMA:
                 logger.warning(f"Falling back to Ollama...")
                 request.provider = LLMProvider.OLLAMA
+                request.metadata = {**(request.metadata or {}), "runtime_control_disable": True}
                 return await self.chat(request, agent_id)
 
             raise
+
+    @staticmethod
+    def _provider_from_value(raw: str | None) -> LLMProvider | None:
+        if not raw:
+            return None
+        try:
+            return LLMProvider(raw)
+        except ValueError:
+            return None
+
+    def _resolve_runtime_provider(self, request: LLMRequest, agent_id: Optional[str]) -> tuple[LLMProvider | None, str | None]:
+        metadata = request.metadata or {}
+        if metadata.get("runtime_control_disable"):
+            return None, None
+
+        try:
+            service = get_runtime_control_service()
+            feature_context = metadata.get("feature_context") if isinstance(metadata.get("feature_context"), dict) else {}
+            budget_state = metadata.get("budget_state") if isinstance(metadata.get("budget_state"), dict) else {}
+            system_health = metadata.get("system_health") if isinstance(metadata.get("system_health"), dict) else {}
+
+            context = RuntimeDecisionContext(
+                tenant_id=metadata.get("tenant_id"),
+                environment=str(metadata.get("environment") or os.getenv("BRAIN_RUNTIME_MODE", "local")),
+                mission_type=str(metadata.get("mission_type") or "llm_call"),
+                skill_type=metadata.get("skill_type"),
+                agent_role=str(metadata.get("agent_role") or ("axe" if agent_id and "axe" in agent_id.lower() else "system")),
+                risk_score=float(metadata.get("risk_score") or 0.0),
+                budget_state=budget_state,
+                system_health=system_health,
+                feature_context=feature_context,
+            )
+            decision = service.resolve(context)
+            selected_provider = self._provider_from_value(
+                decision.effective_config.get("routing", {})
+                .get("llm", {})
+                .get("default_provider")
+            )
+            return selected_provider, decision.decision_id
+        except Exception as exc:
+            logger.warning("Runtime control provider resolution failed: {}", exc)
+            return None, None
 
     def _select_provider(
         self,
         requested_provider: LLMProvider,
         agent_id: Optional[str] = None,
+        runtime_provider: LLMProvider | None = None,
     ) -> LLMProvider:
         """
         Select LLM provider based on request and agent context
@@ -316,6 +364,11 @@ class LLMRouterService:
         2. If provider explicitly requested, use it
         3. Otherwise use default provider
         """
+
+        # Rule 0: Runtime control resolver override (enforced)
+        if runtime_provider is not None:
+            logger.debug(f"Runtime control selected provider: {runtime_provider}")
+            return runtime_provider
 
         # Rule 1: AXE Agent - allow explicit provider selection
         if agent_id and "axe" in agent_id.lower():

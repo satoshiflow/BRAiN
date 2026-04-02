@@ -2,7 +2,10 @@ import { expect, test } from "@playwright/test";
 import { loginAxe, mockBackend } from "./helpers";
 
 test.describe("AXE chat session smoke", () => {
-  test("create, auto-title, rename and delete session", async ({ page }) => {
+  test("create, auto-title, rename and delete session", async ({ page, browserName }) => {
+    test.skip(browserName !== "chromium", "AXE chat session smoke is chromium-only");
+    test.skip(/mobile/i.test(test.info().project.name), "Mobile projects use different chat controls");
+
     await mockBackend(page);
     await loginAxe(page);
 

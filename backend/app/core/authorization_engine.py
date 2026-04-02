@@ -19,7 +19,7 @@ SECURITY CRITICAL:
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional, Callable
 from dataclasses import dataclass, field
@@ -310,7 +310,7 @@ class AuthorizationEngine:
         # =================================================================
         # Step e: Policy Engine Evaluation
         # =================================================================
-        policy_result = self._evaluate_policy(req)
+        policy_result = await self._evaluate_policy(req)
         
         # Extract risk from POLICY only (Security Critical)
         risk_tier = self._extract_risk_from_policy(policy_result)
@@ -564,7 +564,7 @@ class AuthorizationEngine:
         
         return True, None
     
-    def _evaluate_policy(
+    async def _evaluate_policy(
         self,
         req: AuthorizationRequest,
     ) -> PolicyEvaluationResult:
@@ -581,7 +581,7 @@ class AuthorizationEngine:
             action=req.action,
             resource=req.resource_id,
             environment={
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "ip_address": req.ip_address,
                 "trust_tier": req.axe_context.trust_tier.value if req.axe_context else None,
             },
@@ -590,11 +590,10 @@ class AuthorizationEngine:
         
         # Evaluate against policy engine
         try:
-            result = self.policy_engine.evaluate_action(
-                agent_id=req.principal.principal_id,
-                action=req.action,
-                resource=req.resource_id,
-                context=policy_context.environment,
+            result = await self.policy_engine.evaluate(
+                context=policy_context,
+                ip_address=req.ip_address,
+                request_id=req.request_id,
             )
             return result
         except Exception as e:

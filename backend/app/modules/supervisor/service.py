@@ -31,6 +31,7 @@ except ImportError:
 # Module-level EventStream (Sprint 5: EventStream Integration)
 _event_stream: Any = None
 _domain_escalations: list[DomainEscalationResponse] = []
+_domain_escalation_table_ready = False
 
 _ALLOWED_ESCALATION_TRANSITIONS: dict[str, set[str]] = {
     # queued -> in_review is a manual reviewer action via POST /escalations/domain/{id}/decision.
@@ -85,6 +86,22 @@ async def _emit_event_safe(event_type: str, payload: dict) -> None:
         await _event_stream.publish(event)
     except Exception as e:
         logger.error(f"[SupervisorService] Event publishing failed: {e}", exc_info=True)
+
+
+async def _ensure_domain_escalation_table(db: AsyncSession | None) -> None:
+    global _domain_escalation_table_ready
+    if db is None or _domain_escalation_table_ready:
+        return
+
+    bind = getattr(db, "bind", None)
+    if bind is None:
+        return
+
+    from app.modules.supervisor.models import Base
+
+    async with bind.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    _domain_escalation_table_ready = True
 
 
 async def get_health() -> SupervisorHealth:
@@ -278,6 +295,7 @@ async def create_domain_escalation_handoff(
 ) -> DomainEscalationResponse:
     """Create a supervisor handoff record for a domain escalation."""
     if db is not None:
+        await _ensure_domain_escalation_table(db)
         from app.modules.supervisor.models import DomainEscalationModel
 
         model = DomainEscalationModel(
@@ -344,6 +362,7 @@ async def list_domain_escalation_handoffs(
     """List recent supervisor escalation handoff records."""
     limit = max(1, min(limit, 200))
     if db is not None:
+        await _ensure_domain_escalation_table(db)
         from app.modules.supervisor.models import DomainEscalationModel
 
         query = select(DomainEscalationModel).order_by(DomainEscalationModel.created_at.desc())
@@ -377,6 +396,7 @@ async def get_domain_escalation_handoff(
 ) -> DomainEscalationResponse | None:
     normalized_id = _from_external_escalation_id(escalation_id)
     if db is not None:
+        await _ensure_domain_escalation_table(db)
         from app.modules.supervisor.models import DomainEscalationModel
 
         try:
@@ -418,6 +438,7 @@ async def decide_domain_escalation_handoff(
 ) -> DomainEscalationResponse | None:
     normalized_id = _from_external_escalation_id(escalation_id)
     if db is not None:
+        await _ensure_domain_escalation_table(db)
         from app.modules.supervisor.models import DomainEscalationModel
 
         try:
