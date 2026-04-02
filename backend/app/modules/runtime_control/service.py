@@ -396,6 +396,8 @@ class RuntimeControlResolverService:
             .where(ControlPlaneEventModel.entity_type.in_([
                 "runtime_override_request",
                 "runtime_registry_version",
+                "external_handoff",
+                "external_action_request",
             ]))
             .order_by(desc(ControlPlaneEventModel.created_at))
             .limit(limit)

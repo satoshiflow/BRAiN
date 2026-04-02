@@ -99,6 +99,7 @@ services:
       - OPENCLAW_BASE_URL=${OPENCLAW_BASE_URL:-http://openclaw:8080}
       - OPENCLAW_API_KEY=${OPENCLAW_API_KEY:-}
       - PAPERCLIP_BASE_URL=${PAPERCLIP_BASE_URL:-http://host.docker.internal:3110}
+      - PAPERCLIP_APP_BASE_URL=${PAPERCLIP_APP_BASE_URL:-http://localhost:3111}
       - PAPERCLIP_API_KEY=${PAPERCLIP_API_KEY:-}
     healthcheck:
       test:
@@ -169,6 +170,8 @@ services:
       context: ./paperclip_worker
     container_name: brain-paperclip
     restart: unless-stopped
+    ports:
+      - "3111:8080"
     env_file:
       - .env.local
     environment:
@@ -184,6 +187,7 @@ services:
       - PAPERCLIP_BRAIN_SERVICE_TOKEN=${PAPERCLIP_BRAIN_SERVICE_TOKEN:-}
       - PAPERCLIP_AGENT_ID=${PAPERCLIP_AGENT_ID:-paperclip-worker}
       - BRAIN_EXTERNAL_EXECUTOR_PERMIT_SECRET=${BRAIN_EXTERNAL_EXECUTOR_PERMIT_SECRET:-dev-executor-permit-secret-change-me}
+      - CONTROLDECK_BASE_URL=${CONTROLDECK_BASE_URL:-http://localhost:3003}
     depends_on:
       backend:
         condition: service_healthy

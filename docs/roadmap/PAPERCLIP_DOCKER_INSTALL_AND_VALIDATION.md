@@ -21,11 +21,16 @@ Expected endpoint:
 
 - `http://localhost:3110`
 
+Operational handoff surface exposed by `paperclip_worker`:
+
+- `http://localhost:3111`
+
 ## 2. Configure BRAiN to reach Paperclip
 
 In `.env.local` set:
 
 - `PAPERCLIP_BASE_URL=http://host.docker.internal:3110`
+- `PAPERCLIP_APP_BASE_URL=http://localhost:3111`
 - `PAPERCLIP_EXECUTION_ENDPOINT=/api/executions`
 - `BRAIN_EXTERNAL_EXECUTOR_PERMIT_SECRET=<strong-random-secret>`
 
@@ -73,7 +78,8 @@ Implementation note for local admin accounts without tenant binding:
 ## 6. Operational notes
 
 - If upstream Paperclip build is slow, keep it running persistently and only restart BRAiN containers.
-- `paperclip_worker` includes fallback behavior if Paperclip endpoint fails; this is useful for contract testing but should be tightened in production policy.
+- `paperclip_worker` now serves the bounded MissionCenter handoff UI on `3111` while upstream Paperclip execution can stay on `3110`.
+- `paperclip_worker` includes fallback behavior if Paperclip endpoint fails; disable it with `PAPERCLIP_EXECUTION_FALLBACK_ENABLED=false` for fail-closed production posture.
 - On stale local databases, missing tables may block runtime-control/audit paths. Minimum required tables for this flow include `control_plane_events` and `audit_events`.
 
 ## 7. Standard recovery + smoke flow

@@ -190,3 +190,34 @@ async def test_registry_versions_are_tenant_scoped() -> None:
     versions = await service.list_registry_versions(_FakeDB(events), tenant_id="tenant-a")
     assert versions.total == 1
     assert versions.items[0].version_id == "rcv_a"
+
+
+@pytest.mark.asyncio
+async def test_timeline_includes_external_handoffs_for_same_tenant() -> None:
+    service = RuntimeControlResolverService()
+    events = [
+        _event(
+            entity_type="external_handoff",
+            event_type="external.handoff.paperclip.created.v1",
+            payload={
+                "jti": "handoff_a",
+                "tenant_id": "tenant-a",
+            },
+            tenant_id="tenant-a",
+        ),
+        _event(
+            entity_type="external_handoff",
+            event_type="external.handoff.paperclip.created.v1",
+            payload={
+                "jti": "handoff_b",
+                "tenant_id": "tenant-b",
+            },
+            tenant_id="tenant-b",
+        ),
+    ]
+
+    timeline = await service.list_timeline(_FakeDB(events), tenant_id="tenant-a")
+
+    assert timeline.total == 1
+    assert timeline.items[0].entity_type == "external_handoff"
+    assert timeline.items[0].tenant_id == "tenant-a"

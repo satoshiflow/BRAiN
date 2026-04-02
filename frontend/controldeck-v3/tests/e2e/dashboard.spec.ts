@@ -1,11 +1,10 @@
 import { test, expect } from "@playwright/test";
 
+import { mockAuthenticatedSession } from "./helpers/mock-session";
+
 test.describe("ControlDeck v3 E2E", () => {
   test.beforeEach(async ({ page }) => {
-    await page.addInitScript(() => {
-      localStorage.setItem("access_token", "test-token");
-      localStorage.setItem("refresh_token", "test-refresh");
-    });
+    await mockAuthenticatedSession(page);
   });
 
   test("dashboard loads and displays health status", async ({ page }) => {
