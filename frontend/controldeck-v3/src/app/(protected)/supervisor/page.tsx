@@ -25,6 +25,11 @@ function paperclipScoped(items: DomainEscalationItem[], scope: string | null): D
   return items.filter((item) => item.domain_key.startsWith("external_apps.paperclip"));
 }
 
+function noteValue(item: DomainEscalationItem, key: string): string | null {
+  const value = item.notes?.[key];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
 export default function SupervisorInboxPage() {
   const topic = getControlDeckHelpTopic("supervisor.inbox");
   const searchParams = useSearchParams();
@@ -32,6 +37,8 @@ export default function SupervisorInboxPage() {
   const [items, setItems] = useState<DomainEscalationItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | DomainEscalationStatus>("all");
 
   const loadData = useCallback(async () => {
     try {
@@ -54,7 +61,38 @@ export default function SupervisorInboxPage() {
     loadData();
   }, [loadData]);
 
-  const filtered = useMemo(() => paperclipScoped(items, scope), [items, scope]);
+  const scopedItems = useMemo(() => paperclipScoped(items, scope), [items, scope]);
+  const statusCounts = useMemo(() => {
+    return scopedItems.reduce<Record<string, number>>((acc, item) => {
+      acc[item.status] = (acc[item.status] ?? 0) + 1;
+      return acc;
+    }, {});
+  }, [scopedItems]);
+
+  const filtered = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase();
+    return scopedItems.filter((item) => {
+      if (statusFilter !== "all" && item.status !== statusFilter) {
+        return false;
+      }
+      if (!normalizedSearch) {
+        return true;
+      }
+      const haystack = [
+        item.escalation_id,
+        item.domain_key,
+        item.requested_by,
+        noteValue(item, "action_request_id"),
+        noteValue(item, "target_ref"),
+        noteValue(item, "task_id"),
+        noteValue(item, "skill_run_id"),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(normalizedSearch);
+    });
+  }, [scopedItems, search, statusFilter]);
 
   if (isLoading) {
     return (
@@ -83,6 +121,42 @@ export default function SupervisorInboxPage() {
             >
               Refresh
             </button>
+          </div>
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+          <label className="block">
+            <span className="sr-only">Search escalations</span>
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search by escalation, domain, task, action request or skill run"
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+            />
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {([
+              "all",
+              "queued",
+              "in_review",
+              "approved",
+              "denied",
+              "cancelled",
+            ] as const).map((status) => (
+              <button
+                key={status}
+                type="button"
+                onClick={() => setStatusFilter(status)}
+                className={cn(
+                  "rounded-full px-3 py-1.5 text-xs font-medium",
+                  statusFilter === status
+                    ? "bg-blue-600 text-white"
+                    : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+                )}
+              >
+                {status === "all" ? `all (${scopedItems.length})` : `${status} (${statusCounts[status] ?? 0})`}
+              </button>
+            ))}
           </div>
         </div>
       </div>
@@ -115,6 +189,18 @@ export default function SupervisorInboxPage() {
                     <td className="py-3 pr-4">
                       <p className="font-medium text-slate-900 dark:text-slate-100">{item.escalation_id}</p>
                       <p className="text-xs text-slate-500 dark:text-slate-400">requested by {item.requested_by}</p>
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                        {noteValue(item, "action_request_id") ? (
+                          <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+                            action request: {noteValue(item, "action_request_id")}
+                          </span>
+                        ) : null}
+                        {noteValue(item, "target_ref") ? (
+                          <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+                            target: {noteValue(item, "target_ref")}
+                          </span>
+                        ) : null}
+                      </div>
                     </td>
                     <td className="py-3 pr-4">
                       <span className={cn("inline-flex rounded-full px-2.5 py-1 text-xs font-medium", statusTone[item.status])}>
@@ -125,12 +211,22 @@ export default function SupervisorInboxPage() {
                     <td className="py-3 pr-4 text-slate-600 dark:text-slate-300">{item.risk_tier}</td>
                     <td className="py-3 pr-4 text-slate-600 dark:text-slate-300">{formatRelativeTime(item.received_at)}</td>
                     <td className="py-3">
-                      <Link
-                        href={`/supervisor/${encodeURIComponent(item.escalation_id)}`}
-                        className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
-                      >
-                        Open
-                      </Link>
+                      <div className="flex flex-col items-start gap-2">
+                        <Link
+                          href={`/supervisor/${encodeURIComponent(item.escalation_id)}`}
+                          className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+                        >
+                          Open
+                        </Link>
+                        {noteValue(item, "target_ref") ? (
+                          <Link
+                            href="/external-operations"
+                            className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                          >
+                            Open External Ops
+                          </Link>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 ))}

@@ -16,6 +16,11 @@ const nextDecisions: Array<{ status: DomainEscalationStatus; label: string }> = 
   { status: "denied", label: "Deny" },
 ];
 
+function noteValue(item: DomainEscalationItem | null, key: string): string | null {
+  const value = item?.notes?.[key];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
 export default function SupervisorEscalationDetailPage() {
   const topic = getControlDeckHelpTopic("supervisor.decisions");
   const params = useParams<{ escalationId: string }>();
@@ -117,6 +122,42 @@ export default function SupervisorEscalationDetailPage() {
         </div>
       ) : (
         <>
+          <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-4 space-y-3">
+            <h3 className="font-medium text-slate-900 dark:text-slate-100">Related runtime context</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 text-sm">
+              <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-3">
+                <p className="text-slate-500 dark:text-slate-400">Action request</p>
+                <p className="mt-1 font-mono text-xs text-slate-900 dark:text-slate-100">{noteValue(item, "action_request_id") ?? "-"}</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-3">
+                <p className="text-slate-500 dark:text-slate-400">Target ref</p>
+                <p className="mt-1 font-mono text-xs text-slate-900 dark:text-slate-100">{noteValue(item, "target_ref") ?? noteValue(item, "task_id") ?? "-"}</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-3">
+                <p className="text-slate-500 dark:text-slate-400">SkillRun</p>
+                <p className="mt-1 font-mono text-xs text-slate-900 dark:text-slate-100">{noteValue(item, "skill_run_id") ?? "-"}</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-3">
+                <p className="text-slate-500 dark:text-slate-400">Mission</p>
+                <p className="mt-1 font-mono text-xs text-slate-900 dark:text-slate-100">{noteValue(item, "mission_id") ?? "-"}</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Link
+                href="/external-operations"
+                className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+              >
+                Open External Ops
+              </Link>
+              <Link
+                href="/supervisor?scope=paperclip"
+                className="rounded-md bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+              >
+                Back to Paperclip supervisor inbox
+              </Link>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
             <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-4">
               <p className="text-xs text-slate-500 dark:text-slate-400">Status</p>

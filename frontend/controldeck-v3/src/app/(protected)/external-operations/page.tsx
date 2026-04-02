@@ -317,6 +317,11 @@ function ActionRequestInbox({
 }
 
 function SupervisorEscalationPanel({ items }: { items: DomainEscalationItem[] }) {
+  const noteValue = (item: DomainEscalationItem, key: string): string | null => {
+    const value = item.notes?.[key];
+    return typeof value === "string" && value.length > 0 ? value : null;
+  };
+
   return (
     <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-4 space-y-3">
       <div className="flex items-start justify-between gap-3">
@@ -342,6 +347,18 @@ function SupervisorEscalationPanel({ items }: { items: DomainEscalationItem[] })
                 <div>
                   <p className="font-medium text-slate-900 dark:text-slate-100">{item.escalation_id}</p>
                   <p className="text-xs font-mono text-slate-500 dark:text-slate-400">{item.domain_key}</p>
+                  <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                    {noteValue(item, "action_request_id") ? (
+                      <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+                        action request: {noteValue(item, "action_request_id")}
+                      </span>
+                    ) : null}
+                    {noteValue(item, "target_ref") ? (
+                      <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+                        target: {noteValue(item, "target_ref")}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
                 <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 dark:bg-slate-700 dark:text-slate-200">
                   {item.status}
