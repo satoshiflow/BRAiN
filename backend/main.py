@@ -150,6 +150,7 @@ from app.modules.learning.router import router as learning_router
 from app.modules.webgenesis.router import router as webgenesis_router
 from app.modules.knowledge_layer.router import router as knowledge_layer_router
 from app.modules.experience_layer.router import router as experience_layer_router
+from app.modules.experience_composer.router import router as experience_composer_router
 from app.modules.observer_core.router import router as observer_core_router
 from app.modules.insight_layer.router import router as insight_layer_router
 from app.modules.consolidation_layer.router import router as consolidation_layer_router
@@ -550,6 +551,7 @@ def create_app() -> FastAPI:
     app.include_router(webgenesis_router, tags=["webgenesis"])
     app.include_router(knowledge_layer_router, tags=["knowledge-layer"])
     app.include_router(experience_layer_router, tags=["experience-layer"])
+    app.include_router(experience_composer_router, tags=["experience-composer"])
     app.include_router(observer_core_router, tags=["observer-core"])
     app.include_router(insight_layer_router, tags=["insight-layer"])
     app.include_router(consolidation_layer_router, tags=["consolidation-layer"])
