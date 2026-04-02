@@ -2,6 +2,16 @@ import { fetchJson, postJson } from "./client";
 
 export type DomainEscalationStatus = "queued" | "in_review" | "approved" | "denied" | "cancelled";
 
+export interface DomainEscalationTriage {
+  domain_area: string;
+  executor_slug?: string | null;
+  target_type?: string | null;
+  target_ref?: string | null;
+  recommended_queue: string;
+  recommended_owner: string;
+  routing_hint: string;
+}
+
 export interface DomainEscalationItem {
   escalation_id: string;
   status: DomainEscalationStatus;
@@ -14,6 +24,7 @@ export interface DomainEscalationItem {
   reviewed_at?: string | null;
   decision_reason?: string | null;
   notes: Record<string, unknown>;
+  triage: DomainEscalationTriage;
 }
 
 export interface DomainEscalationListResponse {
@@ -25,6 +36,7 @@ export interface DomainEscalationDecisionPayload {
   status: DomainEscalationStatus;
   decision_reason: string;
   notes?: Record<string, unknown>;
+  triage_updates?: Record<string, string>;
 }
 
 export const supervisorApi = {

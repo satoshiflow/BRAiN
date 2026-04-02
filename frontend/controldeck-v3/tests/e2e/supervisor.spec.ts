@@ -28,6 +28,15 @@ test("supervisor inbox and detail decision flow work for paperclip escalations",
             reviewed_at: reviewedAt,
             decision_reason: decisionReason,
             notes: { action_request_id: "actreq_1" },
+            triage: {
+              domain_area: "execution",
+              executor_slug: "paperclip",
+              target_type: "execution",
+              target_ref: "task-paperclip-1",
+              recommended_queue: "supervisor.paperclip",
+              recommended_owner: "paperclip-ops",
+              routing_hint: "Review paperclip execution",
+            },
           },
         ],
         total: 1,
@@ -51,6 +60,15 @@ test("supervisor inbox and detail decision flow work for paperclip escalations",
         reviewed_at: reviewedAt,
         decision_reason: decisionReason,
         notes: { action_request_id: "actreq_1", target_ref: "task-paperclip-1" },
+        triage: {
+          domain_area: "execution",
+          executor_slug: "paperclip",
+          target_type: "execution",
+          target_ref: "task-paperclip-1",
+          recommended_queue: "supervisor.paperclip",
+          recommended_owner: "paperclip-ops",
+          routing_hint: "Review paperclip execution",
+        },
       }),
     });
   });
@@ -75,6 +93,15 @@ test("supervisor inbox and detail decision flow work for paperclip escalations",
         reviewed_at: reviewedAt,
         decision_reason: decisionReason,
         notes: { source: "controldeck_v3_supervisor" },
+        triage: {
+          domain_area: "execution",
+          executor_slug: "paperclip",
+          target_type: "execution",
+          target_ref: "task-paperclip-1",
+          recommended_queue: "supervisor.paperclip",
+          recommended_owner: "paperclip-ops",
+          routing_hint: "Review paperclip execution",
+        },
       }),
     });
   });
@@ -87,6 +114,7 @@ test("supervisor inbox and detail decision flow work for paperclip escalations",
   await page.goto("/supervisor/esc_123");
   await expect(page).toHaveURL(/\/supervisor\/esc_123/);
   await expect(page.getByText("Escalation details")).toBeVisible();
+  await expect(page.getByText("Triage routing")).toBeVisible();
 
   await page.getByRole("button", { name: "Approve" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();

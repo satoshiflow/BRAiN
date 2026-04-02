@@ -33,6 +33,10 @@ function noteValue(item: DomainEscalationItem, key: string): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
+function triageBadge(item: DomainEscalationItem): string {
+  return `${item.triage.recommended_queue} · ${item.triage.recommended_owner}`;
+}
+
 export default function SupervisorInboxPage() {
   const topic = getControlDeckHelpTopic("supervisor.inbox");
   const searchParams = useSearchParams();
@@ -203,6 +207,9 @@ export default function SupervisorInboxPage() {
                             target: {noteValue(item, "target_ref")}
                           </span>
                         ) : null}
+                        <span className="rounded-full bg-cyan-100 px-2 py-1 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300">
+                          {triageBadge(item)}
+                        </span>
                       </div>
                     </td>
                     <td className="py-3 pr-4">

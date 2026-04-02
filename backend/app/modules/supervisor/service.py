@@ -15,6 +15,7 @@ from .schemas import (
     DomainEscalationDecisionRequest,
     DomainEscalationRequest,
     DomainEscalationResponse,
+    DomainEscalationTriage,
     SupervisorHealth,
     SupervisorStatus,
 )
@@ -102,6 +103,61 @@ async def _ensure_domain_escalation_table(db: AsyncSession | None) -> None:
     async with bind.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     _domain_escalation_table_ready = True
+
+
+def _derive_triage(domain_key: str, context: dict[str, Any]) -> DomainEscalationTriage:
+    parts = [part for part in domain_key.split(".") if part]
+    domain_area = parts[2] if len(parts) >= 3 else (parts[-1] if parts else "general")
+    executor_slug = parts[1] if len(parts) >= 2 and parts[0] == "external_apps" else None
+    target_type = context.get("target_type") if isinstance(context.get("target_type"), str) else None
+    target_ref = context.get("target_ref") if isinstance(context.get("target_ref"), str) else None
+
+    default_queue = "supervisor.general"
+    default_owner = "supervisor-ops"
+    routing_hint = f"Review {domain_key} escalation"
+    if executor_slug:
+        default_queue = f"supervisor.{executor_slug}"
+        default_owner = f"{executor_slug}-ops"
+        routing_hint = f"Review {executor_slug} escalation for {domain_area}"
+    if target_type in {"issue", "project", "company", "agent"}:
+        default_queue = f"supervisor.{target_type}"
+        default_owner = f"{target_type}-owners"
+        routing_hint = f"Route to {target_type} supervisor review"
+
+    triage_payload = context.get("triage") if isinstance(context.get("triage"), dict) else {}
+    return DomainEscalationTriage(
+        domain_area=str(triage_payload.get("domain_area") or domain_area),
+        executor_slug=str(triage_payload.get("executor_slug") or executor_slug) if (triage_payload.get("executor_slug") or executor_slug) else None,
+        target_type=str(triage_payload.get("target_type") or target_type) if (triage_payload.get("target_type") or target_type) else None,
+        target_ref=str(triage_payload.get("target_ref") or target_ref) if (triage_payload.get("target_ref") or target_ref) else None,
+        recommended_queue=str(triage_payload.get("recommended_queue") or default_queue),
+        recommended_owner=str(triage_payload.get("recommended_owner") or default_owner),
+        routing_hint=str(triage_payload.get("routing_hint") or routing_hint),
+    )
+
+
+def _with_triage_context(domain_key: str, context: dict[str, Any]) -> dict[str, Any]:
+    next_context = dict(context or {})
+    next_context["triage"] = _derive_triage(domain_key, next_context).model_dump()
+    return next_context
+
+
+def _to_response(*, escalation_id: str, status: str, received_at: datetime, domain_key: str, requested_by: str, risk_tier: str, correlation_id: str | None, reviewed_by: str | None = None, reviewed_at: datetime | None = None, decision_reason: str | None = None, context: dict[str, Any] | None = None) -> DomainEscalationResponse:
+    payload = dict(context or {})
+    return DomainEscalationResponse(
+        escalation_id=escalation_id,
+        status=status,
+        received_at=received_at,
+        domain_key=domain_key,
+        requested_by=requested_by,
+        risk_tier=risk_tier,
+        correlation_id=correlation_id,
+        reviewed_by=reviewed_by,
+        reviewed_at=reviewed_at,
+        decision_reason=decision_reason,
+        notes=dict(payload.get("decision_notes", {})) if isinstance(payload.get("decision_notes"), dict) else {},
+        triage=_derive_triage(domain_key, payload),
+    )
 
 
 async def get_health() -> SupervisorHealth:
@@ -298,6 +354,8 @@ async def create_domain_escalation_handoff(
         await _ensure_domain_escalation_table(db)
         from app.modules.supervisor.models import DomainEscalationModel
 
+        context = _with_triage_context(payload.domain_key, payload.context)
+
         model = DomainEscalationModel(
             tenant_id=payload.tenant_id,
             domain_key=payload.domain_key,
@@ -309,13 +367,13 @@ async def create_domain_escalation_handoff(
             recommended_next_actions=payload.recommended_next_actions,
             risk_tier=payload.risk_tier,
             correlation_id=payload.correlation_id,
-            context=payload.context,
+            context=context,
         )
         db.add(model)
         await db.commit()
         await db.refresh(model)
 
-        item = DomainEscalationResponse(
+        item = _to_response(
             escalation_id=_to_external_escalation_id(str(model.id)),
             status=model.status,
             received_at=model.created_at,
@@ -326,10 +384,10 @@ async def create_domain_escalation_handoff(
             reviewed_by=model.reviewed_by,
             reviewed_at=model.reviewed_at,
             decision_reason=model.decision_reason,
-            notes=dict(model.context or {}).get("decision_notes", {}),
+            context=model.context,
         )
     else:
-        item = DomainEscalationResponse(
+        item = _to_response(
             escalation_id=_to_external_escalation_id(str(uuid4())),
             status="queued",
             received_at=datetime.now(timezone.utc),
@@ -337,6 +395,7 @@ async def create_domain_escalation_handoff(
             requested_by=payload.requested_by,
             risk_tier=payload.risk_tier,
             correlation_id=payload.correlation_id,
+            context=_with_triage_context(payload.domain_key, payload.context),
         )
         _domain_escalations.insert(0, item)
 
@@ -371,7 +430,7 @@ async def list_domain_escalation_handoffs(
         result = await db.execute(query.limit(limit))
         items = list(result.scalars().all())
         return [
-            DomainEscalationResponse(
+            _to_response(
                 escalation_id=_to_external_escalation_id(str(item.id)),
                 status=item.status,
                 received_at=item.created_at,
@@ -382,7 +441,7 @@ async def list_domain_escalation_handoffs(
                 reviewed_by=item.reviewed_by,
                 reviewed_at=item.reviewed_at,
                 decision_reason=item.decision_reason,
-                notes=dict(item.context or {}).get("decision_notes", {}),
+                context=item.context,
             )
             for item in items
         ]
@@ -410,7 +469,7 @@ async def get_domain_escalation_handoff(
         item = (await db.execute(query.limit(1))).scalar_one_or_none()
         if item is None:
             return None
-        return DomainEscalationResponse(
+        return _to_response(
             escalation_id=_to_external_escalation_id(str(item.id)),
             status=item.status,
             received_at=item.created_at,
@@ -421,7 +480,7 @@ async def get_domain_escalation_handoff(
             reviewed_by=item.reviewed_by,
             reviewed_at=item.reviewed_at,
             decision_reason=item.decision_reason,
-            notes=dict(item.context or {}).get("decision_notes", {}),
+            context=item.context,
         )
 
     for item in _domain_escalations:
@@ -464,6 +523,11 @@ async def decide_domain_escalation_handoff(
         model.decision_reason = decision.decision_reason
         context = dict(model.context or {})
         context["decision_notes"] = decision.notes
+        triage_context = dict(context.get("triage") or {}) if isinstance(context.get("triage"), dict) else {}
+        for key, value in decision.triage_updates.items():
+            if value:
+                triage_context[key] = value
+        context["triage"] = _derive_triage(model.domain_key, {**context, "triage": triage_context}).model_dump()
         model.context = context
         model.updated_at = datetime.now(timezone.utc)
         await db.commit()
@@ -478,7 +542,7 @@ async def decide_domain_escalation_handoff(
         await _emit_event_safe("supervisor.domain_escalation.decided.v1", decided_payload)
         await _emit_event_safe("supervisor.domain_escalation.decided", decided_payload)
 
-        return DomainEscalationResponse(
+        return _to_response(
             escalation_id=_to_external_escalation_id(str(model.id)),
             status=model.status,
             received_at=model.created_at,
@@ -489,7 +553,7 @@ async def decide_domain_escalation_handoff(
             reviewed_by=model.reviewed_by,
             reviewed_at=model.reviewed_at,
             decision_reason=model.decision_reason,
-            notes=dict(model.context or {}).get("decision_notes", {}),
+            context=model.context,
         )
 
     for idx, item in enumerate(_domain_escalations):
@@ -499,7 +563,12 @@ async def decide_domain_escalation_handoff(
             if next_status != current_status and next_status not in _ALLOWED_ESCALATION_TRANSITIONS.get(current_status, set()):
                 raise ValueError(f"Invalid escalation transition: {current_status} -> {next_status}")
 
-            updated = DomainEscalationResponse(
+            triage_updates = {key: value for key, value in decision.triage_updates.items() if value}
+            updated_context = {
+                "decision_notes": decision.notes,
+                "triage": _derive_triage(item.domain_key, {"triage": {**item.triage.model_dump(), **triage_updates}}).model_dump(),
+            }
+            updated = _to_response(
                 escalation_id=item.escalation_id,
                 status=next_status,
                 received_at=item.received_at,
@@ -510,7 +579,7 @@ async def decide_domain_escalation_handoff(
                 reviewed_by=decision.reviewer_id,
                 reviewed_at=datetime.now(timezone.utc),
                 decision_reason=decision.decision_reason,
-                notes=decision.notes,
+                context=updated_context,
             )
             _domain_escalations[idx] = updated
 

@@ -125,6 +125,16 @@ class DomainEscalationRequest(BaseModel):
     context: Dict[str, Any] = Field(default_factory=dict)
 
 
+class DomainEscalationTriage(BaseModel):
+    domain_area: str = Field(default="general")
+    executor_slug: Optional[str] = None
+    target_type: Optional[str] = None
+    target_ref: Optional[str] = None
+    recommended_queue: str = Field(default="supervisor.general")
+    recommended_owner: str = Field(default="supervisor-ops")
+    routing_hint: str = Field(default="General supervisor review")
+
+
 class DomainEscalationResponse(BaseModel):
     """Supervisor handoff record returned after escalation submission."""
 
@@ -139,6 +149,7 @@ class DomainEscalationResponse(BaseModel):
     reviewed_at: Optional[datetime] = None
     decision_reason: Optional[str] = None
     notes: Dict[str, Any] = Field(default_factory=dict)
+    triage: DomainEscalationTriage = Field(default_factory=DomainEscalationTriage)
 
 
 class DomainEscalationStatus(str, Enum):
@@ -160,6 +171,7 @@ class DomainEscalationDecisionRequest(BaseModel):
     reviewer_id: Optional[str] = Field(default=None, max_length=120)
     decision_reason: str = Field(..., min_length=1, max_length=1000)
     notes: Dict[str, Any] = Field(default_factory=dict)
+    triage_updates: Dict[str, str] = Field(default_factory=dict)
 
 
 class DomainEscalationListResponse(BaseModel):
