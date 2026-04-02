@@ -111,7 +111,7 @@ test("supervisor inbox and detail decision flow work for paperclip escalations",
   await expect(page.getByText("external_apps.paperclip.execution.axe_worker_bridge")).toBeVisible();
 
   await expect(page.locator('a[href="/supervisor/esc_123"]')).toBeVisible();
-  await page.goto("/supervisor/esc_123");
+  await page.goto("/supervisor/esc_123", { waitUntil: "domcontentloaded" });
   await expect(page).toHaveURL(/\/supervisor\/esc_123/);
   await expect(page.getByText("Escalation details")).toBeVisible();
   await expect(page.getByText("Triage routing")).toBeVisible();
