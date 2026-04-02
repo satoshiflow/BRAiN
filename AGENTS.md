@@ -18,6 +18,7 @@ Repository guidance for autonomous coding agents working in `BRAiN`.
 - Security/architecture constraints are also documented in `CLAUDE.md` and must be honored.
 - Agent operating model is documented in `docs/core/agent_operating_matrix.md`.
 - Permanent agent setup guidance is documented in `docs/core/agent_cluster_setup_guide.md`.
+- OpenCode specialist engagement guidance is documented in `docs/core/opencode_agent_engagement_model.md`.
 - Mission deliberation and insight evolution architecture is documented in `docs/specs/mission_deliberation_insight_evolution.md`.
 - Local micro setup (resource-efficient): `.opencode/skills/brain-local-micro/SKILL.md`
 - Frontend Landschaft Analyse: `docs/roadmap/FRONTEND_LANDSCHAFT_ANALYSE.md`
@@ -264,6 +265,8 @@ docker compose -f docker-compose.local.yml --env-file .env.local up -d controlde
 ## 11) Agent execution model
 
 - Use role-based orchestration, not generic parallel prompting.
+- When work involves `OpenCode-Agent`, `coding workflow`, `repair workflow`, or `code health`, also apply `docs/core/opencode_agent_engagement_model.md`.
+- Treat that document as an on-demand working model for OpenCode specialist roles, not as a replacement for canonical runtime ownership.
 - Default working roles:
   - `brain-orchestrator`
   - `brain-architect`
@@ -281,6 +284,7 @@ docker compose -f docker-compose.local.yml --env-file .env.local up -d controlde
   - implementation, tests, iterative coding -> primary coding model
   - repo exploration, summaries, inventories -> lower-cost model
 - Many agents may analyze in parallel, but one writer owns a given implementation surface at a time.
+- Preserve `SkillRun` as canonical execution truth and avoid introducing parallel runtime behavior through role conventions alone.
 
 ## 12) GitHub specialist agent (`giti`) guidance
 
