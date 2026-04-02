@@ -16,7 +16,7 @@ from app.modules.external_apps.schemas import (
     PaperclipHandoffExchangeRequest,
     PaperclipHandoffRequest,
 )
-from app.modules.external_apps.service import PaperclipHandoffService
+from app.modules.external_apps.service import OPENCLAW_CONFIG, PaperclipHandoffService
 
 
 class _FakeDb:
@@ -134,6 +134,90 @@ async def test_create_handoff_rejects_disabled_executor(monkeypatch) -> None:
             payload=PaperclipHandoffRequest(target_type="issue", target_ref="issue-123"),
             backend_base_url="http://127.0.0.1:8000",
         )
+
+
+@pytest.mark.asyncio
+async def test_openclaw_create_handoff_uses_openclaw_contract(monkeypatch) -> None:
+    service = PaperclipHandoffService(OPENCLAW_CONFIG)
+
+    class _FakeRuntimeService:
+        async def resolve_with_persisted_overrides(self, context, db):  # noqa: ANN001
+            _ = (context, db)
+            return SimpleNamespace(decision_id="rdec_openclaw", effective_config={})
+
+        @staticmethod
+        def is_executor_allowed(effective_config, executor_name):  # noqa: ANN001
+            _ = effective_config
+            return executor_name == "openclaw"
+
+        @staticmethod
+        def is_connector_allowed(effective_config, connector_name):  # noqa: ANN001
+            _ = effective_config
+            return connector_name == "openclaw"
+
+    async def _record_event_stub(**kwargs):  # noqa: ANN001
+        _ = kwargs
+        return None
+
+    monkeypatch.setenv("BRAIN_EXTERNAL_APP_HANDOFF_SECRET", "handoff-secret")
+    monkeypatch.setenv("OPENCLAW_APP_BASE_URL", "https://openclaw.example")
+    monkeypatch.setattr("app.modules.external_apps.service.get_runtime_control_service", lambda: _FakeRuntimeService())
+    monkeypatch.setattr("app.modules.external_apps.service.record_control_plane_event", _record_event_stub)
+
+    response = await service.create_handoff(
+        _FakeDb(),
+        principal=_principal(),
+        payload=PaperclipHandoffRequest(target_type="issue", target_ref="issue-321", permissions=["view", "request_escalation"]),
+        backend_base_url="http://127.0.0.1:8000",
+    )
+
+    assert response.app_slug == "openclaw"
+    assert "/handoff/openclaw" in response.handoff_url
+    token = parse_qs(urlparse(response.handoff_url).query)["token"][0]
+    claims = jwt.decode(token, "handoff-secret", algorithms=["HS256"], audience="openclaw-ui")
+    assert claims["target_ref"] == "issue-321"
+
+
+@pytest.mark.asyncio
+async def test_request_action_allows_non_execution_escalation(monkeypatch) -> None:
+    service = PaperclipHandoffService()
+    fake_db = _FakeDb(events=[SimpleNamespace()])
+    events = []
+
+    async def _record_event_stub(**kwargs):  # noqa: ANN001
+        events.append(kwargs)
+
+    monkeypatch.setenv("BRAIN_EXTERNAL_APP_HANDOFF_SECRET", "handoff-secret")
+    monkeypatch.setattr("app.modules.external_apps.service.record_control_plane_event", _record_event_stub)
+
+    token = jwt.encode(
+        {
+            "iss": "brain-backend",
+            "aud": "paperclip-ui",
+            "sub": "operator-1",
+            "tenant_id": "tenant-a",
+            "mission_id": "mission-1",
+            "decision_id": "rdec_123",
+            "correlation_id": "corr-1",
+            "target_type": "issue",
+            "target_ref": "issue-123",
+            "permissions": ["view", "request_escalation"],
+            "iat": 1_700_000_000,
+            "exp": 4_700_000_000,
+            "jti": "handoff_123",
+        },
+        "handoff-secret",
+        algorithm="HS256",
+    )
+
+    response = await service.request_action(
+        fake_db,
+        payload=PaperclipActionRequest(token=token, action="request_escalation", reason="Escalate issue context"),
+    )
+
+    assert response.target_type == "issue"
+    assert response.app_slug == "paperclip"
+    assert events[0]["payload"]["target_type"] == "issue"
 
 
 @pytest.mark.asyncio

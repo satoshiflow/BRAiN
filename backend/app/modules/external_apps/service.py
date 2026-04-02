@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import hashlib
 import hmac
 import json
@@ -25,6 +26,7 @@ from app.modules.runtime_control.schemas import RuntimeDecisionContext
 from app.modules.runtime_control.service import get_runtime_control_service
 
 from .schemas import (
+    ExternalAppSlug,
     PaperclipActionRequest,
     PaperclipActionRequestDecision,
     PaperclipActionRequestItem,
@@ -38,9 +40,66 @@ from .schemas import (
 )
 
 
+@dataclass(frozen=True)
+class ExternalAppConfig:
+    app_slug: ExternalAppSlug
+    display_name: str
+    audience: str
+    app_base_env: str
+    app_base_default: str
+    handoff_path_env: str
+    handoff_path_default: str
+    runtime_mission_type: str
+    runtime_skill_type: str
+    executor_name: str
+    connector_name: str
+    handoff_risk_score: float
+
+
+PAPERCLIP_CONFIG = ExternalAppConfig(
+    app_slug="paperclip",
+    display_name="Paperclip",
+    audience="paperclip-ui",
+    app_base_env="PAPERCLIP_APP_BASE_URL",
+    app_base_default="http://localhost:3111",
+    handoff_path_env="PAPERCLIP_HANDOFF_PATH",
+    handoff_path_default="/handoff/paperclip",
+    runtime_mission_type="connector.paperclip",
+    runtime_skill_type="paperclip.handoff",
+    executor_name="paperclip",
+    connector_name="paperclip",
+    handoff_risk_score=0.2,
+)
+
+
+OPENCLAW_CONFIG = ExternalAppConfig(
+    app_slug="openclaw",
+    display_name="OpenClaw",
+    audience="openclaw-ui",
+    app_base_env="OPENCLAW_APP_BASE_URL",
+    app_base_default="http://localhost:3112",
+    handoff_path_env="OPENCLAW_HANDOFF_PATH",
+    handoff_path_default="/handoff/openclaw",
+    runtime_mission_type="connector.openclaw",
+    runtime_skill_type="openclaw.handoff",
+    executor_name="openclaw",
+    connector_name="openclaw",
+    handoff_risk_score=0.3,
+)
+
+
 class PaperclipHandoffService:
     TERMINAL_TASK_STATES = {"failed", "cancelled", "timeout"}
     TERMINAL_SKILL_STATES = {"failed", "cancelled", "timed_out"}
+
+    def __init__(self, config: ExternalAppConfig = PAPERCLIP_CONFIG) -> None:
+        self.config = config
+
+    def _handoff_event_type(self, suffix: str) -> str:
+        return f"external.handoff.{self.config.app_slug}.{suffix}.v1"
+
+    def _action_request_event_type(self, suffix: str) -> str:
+        return f"external.action_request.{self.config.app_slug}.{suffix}.v1"
 
     def _handoff_secret(self) -> str:
         secret = (
@@ -54,14 +113,14 @@ class PaperclipHandoffService:
 
     def _paperclip_app_base_url(self) -> str:
         base_url = (
-            os.getenv("PAPERCLIP_APP_BASE_URL")
-            or os.getenv("PAPERCLIP_BASE_URL")
-            or "http://localhost:3111"
+            os.getenv(self.config.app_base_env)
+            or os.getenv(f"{self.config.executor_name.upper()}_BASE_URL")
+            or self.config.app_base_default
         ).strip()
         return base_url.rstrip("/")
 
     def _paperclip_handoff_path(self) -> str:
-        path = os.getenv("PAPERCLIP_HANDOFF_PATH", "/handoff/paperclip").strip()
+        path = os.getenv(self.config.handoff_path_env, self.config.handoff_path_default).strip()
         if not path.startswith("/"):
             path = f"/{path}"
         return path
@@ -94,7 +153,7 @@ class PaperclipHandoffService:
         return f"/app/executions/{target_ref}"
 
     def _decode_handoff_token(self, token: str) -> dict[str, Any]:
-        return jwt.decode(token, self._handoff_secret(), algorithms=["HS256"], audience="paperclip-ui")
+        return jwt.decode(token, self._handoff_secret(), algorithms=["HS256"], audience=self.config.audience)
 
     @staticmethod
     def _task_state(task: Any) -> str:
@@ -167,15 +226,18 @@ class PaperclipHandoffService:
     def _resolve_supervisor_domain_key(
         self,
         *,
-        task: Any,
+        task: Any | None,
         skill_run: Any | None,
         request: PaperclipActionRequestItem,
     ) -> str:
         task_payload = getattr(task, "payload", {}) or {}
-        target_type = str(task_payload.get("target_type") or request.target_type or "execution")
-        fragments = ["external_apps", "paperclip", self._sanitize_domain_fragment(target_type)]
+        target_type = str(request.target_type or task_payload.get("target_type") or "execution")
+        fragments = ["external_apps", self.config.app_slug, self._sanitize_domain_fragment(target_type)]
 
         if target_type == "execution":
+            nested_target_type = task_payload.get("target_type")
+            if isinstance(nested_target_type, str) and nested_target_type in {"company", "project", "issue", "agent"}:
+                fragments = ["external_apps", self.config.app_slug, self._sanitize_domain_fragment(nested_target_type)]
             skill_key = getattr(skill_run, "skill_key", None) or task_payload.get("skill_key")
             intent = task_payload.get("intent")
             task_type = getattr(task, "task_type", None)
@@ -205,6 +267,8 @@ class PaperclipHandoffService:
 
         by_request_id: dict[str, PaperclipActionRequestItem] = {}
         for event in sorted(events, key=lambda item: item.created_at or datetime.now(timezone.utc)):
+            if f".{self.config.app_slug}." not in event.event_type:
+                continue
             payload = event.payload if isinstance(event.payload, dict) else {}
             request_id = str(payload.get("request_id") or event.entity_id)
             tenant_id = payload.get("tenant_id")
@@ -216,11 +280,13 @@ class PaperclipHandoffService:
             if existing is None:
                 existing = PaperclipActionRequestItem(
                     request_id=request_id,
+                    app_slug=self.config.app_slug,
                     tenant_id=tenant_id,
                     principal_id=str(payload.get("principal_id") or event.actor_id or "unknown"),
                     action=str(payload.get("action") or "request_escalation"),
                     reason=str(payload.get("reason") or ""),
                     status="pending",
+                    target_type=str(payload.get("target_type") or "execution"),
                     target_ref=str(payload.get("target_ref") or ""),
                     skill_run_id=str(payload.get("skill_run_id")) if payload.get("skill_run_id") else None,
                     mission_id=str(payload.get("mission_id")) if payload.get("mission_id") else None,
@@ -294,7 +360,7 @@ class PaperclipHandoffService:
                 causation_id=previous_run.correlation_id,
                 governance_snapshot={
                     **((getattr(previous_run, "policy_snapshot", {}) or {}).get("upstream_decision", {}).get("governance_snapshot", {}) or {}),
-                    "source": "paperclip_action_request_retry",
+                    "source": f"{self.config.app_slug}_action_request_retry",
                     "retry_request_id": request.request_id,
                     "retry_of_skill_run_id": str(previous_run.id),
                     "retry_of_task_id": request.target_ref,
@@ -304,7 +370,7 @@ class PaperclipHandoffService:
         )
 
         original_payload = getattr(task, "payload", {}) or {}
-        executor_type = str(original_payload.get("executor_type") or original_payload.get("worker_type") or "paperclip")
+        executor_type = str(original_payload.get("executor_type") or original_payload.get("worker_type") or self.config.executor_name)
         new_task_id = f"task-{uuid.uuid4().hex[:12]}"
         payload = {
             **original_payload,
@@ -324,7 +390,7 @@ class PaperclipHandoffService:
         }
         payload["request_id"] = f"retry-{request.request_id}"
 
-        config = {**(getattr(task, "config", {}) or {}), "retry_requested_via": "paperclip_action_request"}
+        config = {**(getattr(task, "config", {}) or {}), "retry_requested_via": f"{self.config.app_slug}_action_request"}
         task_tags = list(dict.fromkeys([*list(getattr(task, "tags", []) or []), "retry"]))
         priority_value = int(getattr(task, "priority", TaskPriority.HIGH.value) or TaskPriority.HIGH.value)
         priority = TaskPriority(priority_value) if priority_value in {item.value for item in TaskPriority} else TaskPriority.HIGH
@@ -333,9 +399,9 @@ class PaperclipHandoffService:
             db=db,
             task_data=TaskCreate(
                 task_id=new_task_id,
-                name=f"Retry {getattr(task, 'name', 'Paperclip TaskLease')}",
+                name=f"Retry {getattr(task, 'name', f'{self.config.display_name} TaskLease')}",
                 description=getattr(task, "description", None),
-                task_type=getattr(task, "task_type", "paperclip_work"),
+                task_type=getattr(task, "task_type", f"{self.config.executor_name}_work"),
                 category=getattr(task, "category", None),
                 tags=task_tags,
                 priority=priority,
@@ -358,19 +424,28 @@ class PaperclipHandoffService:
             "retry_of_task_id": request.target_ref,
         }
 
-    async def _escalate_execution_request(
+    async def _escalate_request(
         self,
         db: AsyncSession,
         *,
         principal: Principal,
         request: PaperclipActionRequestItem,
     ) -> dict[str, str]:
-        task, skill_run = await self._load_execution_entities(
-            db,
-            task_id=request.target_ref,
-            principal_tenant_id=principal.tenant_id,
-            cross_tenant=self._principal_has_cross_tenant_read(principal),
-        )
+        task = None
+        skill_run = None
+        context_payload: dict[str, Any] = {}
+        if request.target_type == "execution":
+            task, skill_run = await self._load_execution_entities(
+                db,
+                task_id=request.target_ref,
+                principal_tenant_id=principal.tenant_id,
+                cross_tenant=self._principal_has_cross_tenant_read(principal),
+            )
+            context_payload = {
+                "task_id": getattr(task, "task_id", request.target_ref),
+                "task_payload": getattr(task, "payload", {}) or {},
+                "task_config": getattr(task, "config", {}) or {},
+            }
 
         escalation = await create_domain_escalation_handoff(
             DomainEscalationRequest(
@@ -380,26 +455,24 @@ class PaperclipHandoffService:
                 tenant_id=request.tenant_id,
                 reason=request.reason,
                 reasons=[
-                    f"Paperclip requested supervisor escalation for execution {request.target_ref}",
+                    f"{self.config.display_name} requested supervisor escalation for {request.target_type} {request.target_ref}",
                     f"Governed action request {request.request_id} was approved in ControlDeck",
                 ],
                 recommended_next_actions=[
-                    "Review linked SkillRun and TaskLease context",
+                    "Review linked execution and governance context",
                     "Decide whether supervisory intervention or deeper domain review is required",
                 ],
                 risk_tier=getattr(skill_run, "risk_tier", None) or "high",
                 correlation_id=request.correlation_id,
                 context={
-                    "source": "paperclip_action_request",
+                    "source": f"{self.config.app_slug}_action_request",
                     "action_request_id": request.request_id,
                     "target_type": request.target_type,
                     "target_ref": request.target_ref,
-                    "task_id": getattr(task, "task_id", request.target_ref),
                     "skill_run_id": request.skill_run_id,
                     "decision_id": request.decision_id,
                     "mission_id": request.mission_id,
-                    "task_payload": getattr(task, "payload", {}) or {},
-                    "task_config": getattr(task, "config", {}) or {},
+                    **context_payload,
                 },
             ),
             db=db,
@@ -408,6 +481,15 @@ class PaperclipHandoffService:
             "supervisor_escalation_id": escalation.escalation_id,
             "supervisor_status": escalation.status,
         }
+
+    async def _escalate_execution_request(
+        self,
+        db: AsyncSession,
+        *,
+        principal: Principal,
+        request: PaperclipActionRequestItem,
+    ) -> dict[str, str]:
+        return await self._escalate_request(db, principal=principal, request=request)
 
     async def approve_action_request(
         self,
@@ -432,20 +514,24 @@ class PaperclipHandoffService:
         elif request.action == "request_retry":
             execution_result = await self._retry_execution_request(db, principal=principal, request=request)
         elif request.action == "request_escalation":
-            execution_result = await self._escalate_execution_request(db, principal=principal, request=request)
+            if request.target_type == "execution":
+                execution_result = await self._escalate_execution_request(db, principal=principal, request=request)
+            else:
+                execution_result = await self._escalate_request(db, principal=principal, request=request)
 
         await record_control_plane_event(
             db=db,
             tenant_id=request.tenant_id,
             entity_type="external_action_request",
             entity_id=request.request_id,
-            event_type="external.action_request.paperclip.approved.v1",
+            event_type=self._action_request_event_type("approved"),
             correlation_id=request.correlation_id,
             mission_id=request.mission_id,
             actor_id=principal.principal_id,
             actor_type=principal.principal_type.value,
             payload={
                 "request_id": request.request_id,
+                "app_slug": self.config.app_slug,
                 "action": request.action,
                 "target_type": request.target_type,
                 "target_ref": request.target_ref,
@@ -460,7 +546,7 @@ class PaperclipHandoffService:
             },
             audit_required=True,
             audit_action="external_action_request_approve",
-            audit_message=f"Paperclip action request approved: {request.action}",
+            audit_message=f"{self.config.display_name} action request approved: {request.action}",
         )
         await db.commit()
         return await self._get_action_request_or_raise(db, principal=principal, request_id=request_id)
@@ -482,13 +568,14 @@ class PaperclipHandoffService:
             tenant_id=request.tenant_id,
             entity_type="external_action_request",
             entity_id=request.request_id,
-            event_type="external.action_request.paperclip.rejected.v1",
+            event_type=self._action_request_event_type("rejected"),
             correlation_id=request.correlation_id,
             mission_id=request.mission_id,
             actor_id=principal.principal_id,
             actor_type=principal.principal_type.value,
             payload={
                 "request_id": request.request_id,
+                "app_slug": self.config.app_slug,
                 "action": request.action,
                 "target_type": request.target_type,
                 "target_ref": request.target_ref,
@@ -502,7 +589,7 @@ class PaperclipHandoffService:
             },
             audit_required=True,
             audit_action="external_action_request_reject",
-            audit_message=f"Paperclip action request rejected: {request.action}",
+            audit_message=f"{self.config.display_name} action request rejected: {request.action}",
             severity="warning",
         )
         await db.commit()
@@ -547,7 +634,7 @@ class PaperclipHandoffService:
             select(ControlPlaneEventModel).where(
                 ControlPlaneEventModel.entity_type == "external_handoff",
                 ControlPlaneEventModel.entity_id == jti,
-                ControlPlaneEventModel.event_type == "external.handoff.paperclip.opened.v1",
+                ControlPlaneEventModel.event_type == self._handoff_event_type("opened"),
             )
         )
         return len(list(result.scalars().all()))
@@ -577,7 +664,7 @@ class PaperclipHandoffService:
             tenant_id=claims.get("tenant_id"),
             entity_type="external_handoff",
             entity_id=jti,
-            event_type="external.handoff.paperclip.exchange_failed.v1",
+            event_type=self._handoff_event_type("exchange_failed"),
             correlation_id=correlation_id,
             mission_id=mission_id,
             actor_id=principal_id,
@@ -596,7 +683,7 @@ class PaperclipHandoffService:
             },
             audit_required=True,
             audit_action="external_handoff_exchange_failed",
-            audit_message="Paperclip handoff exchange failed",
+            audit_message=f"{self.config.display_name} handoff exchange failed",
             severity="warning",
         )
         await db.commit()
@@ -617,10 +704,11 @@ class PaperclipHandoffService:
         )
 
         return PaperclipExecutionContextResponse(
+            app_slug=self.config.app_slug,
             target_ref=task.task_id,
             task=TaskResponse.model_validate(task),
             skill_run=SkillRunResponse.model_validate(skill_run) if skill_run is not None else None,
-            governance_banner="Governed by BRAiN. Sensitive actions require BRAiN approval.",
+            governance_banner=f"Governed by BRAiN. Sensitive actions in {self.config.display_name} require BRAiN approval.",
             available_actions=self._available_actions(task, skill_run),
         )
 
@@ -635,13 +723,14 @@ class PaperclipHandoffService:
         runtime_context = RuntimeDecisionContext(
             tenant_id=principal.tenant_id,
             environment=os.getenv("BRAIN_RUNTIME_MODE", "local"),
-            mission_type="connector.paperclip",
-            skill_type="paperclip.handoff",
+            mission_type=self.config.runtime_mission_type,
+            skill_type=self.config.runtime_skill_type,
             agent_role=(principal.roles[0] if principal.roles else "viewer"),
-            risk_score=0.2,
+            risk_score=self.config.handoff_risk_score,
             budget_state={},
             system_health={},
             feature_context={
+                "app_slug": self.config.app_slug,
                 "target_type": payload.target_type,
                 "target_ref": payload.target_ref,
                 "permissions": payload.permissions,
@@ -650,10 +739,10 @@ class PaperclipHandoffService:
 
         runtime_service = get_runtime_control_service()
         runtime_decision = await runtime_service.resolve_with_persisted_overrides(runtime_context, db=db)
-        if not runtime_service.is_executor_allowed(runtime_decision.effective_config, "paperclip"):
-            raise PermissionError("Paperclip executor is currently disabled by runtime policy")
-        if not runtime_service.is_connector_allowed(runtime_decision.effective_config, "paperclip"):
-            raise PermissionError("Paperclip connector is currently disabled by runtime policy")
+        if not runtime_service.is_executor_allowed(runtime_decision.effective_config, self.config.executor_name):
+            raise PermissionError(f"{self.config.display_name} executor is currently disabled by runtime policy")
+        if not runtime_service.is_connector_allowed(runtime_decision.effective_config, self.config.connector_name):
+            raise PermissionError(f"{self.config.display_name} connector is currently disabled by runtime policy")
 
         now = datetime.now(timezone.utc)
         expires_at = now + timedelta(seconds=self._handoff_ttl_seconds())
@@ -661,7 +750,7 @@ class PaperclipHandoffService:
         correlation_id = payload.correlation_id or payload.skill_run_id or jti
         claims: dict[str, Any] = {
             "iss": "brain-backend",
-            "aud": "paperclip-ui",
+            "aud": self.config.audience,
             "sub": principal.principal_id,
             "tenant_id": principal.tenant_id,
             "skill_run_id": payload.skill_run_id,
@@ -676,7 +765,7 @@ class PaperclipHandoffService:
             "jti": jti,
         }
         token = jwt.encode(claims, self._handoff_secret(), algorithm="HS256")
-        exchange_url = f"{backend_base_url.rstrip('/')}/api/external-apps/paperclip/handoff/exchange"
+        exchange_url = f"{backend_base_url.rstrip('/')}/api/external-apps/{self.config.app_slug}/handoff/exchange"
         handoff_url = f"{self._paperclip_app_base_url()}{self._paperclip_handoff_path()}?{urlencode({'token': token, 'exchange_url': exchange_url})}"
 
         await record_control_plane_event(
@@ -684,7 +773,7 @@ class PaperclipHandoffService:
             tenant_id=principal.tenant_id,
             entity_type="external_handoff",
             entity_id=jti,
-            event_type="external.handoff.paperclip.created.v1",
+            event_type=self._handoff_event_type("created"),
             correlation_id=correlation_id,
             mission_id=payload.mission_id,
             actor_id=principal.principal_id,
@@ -695,6 +784,7 @@ class PaperclipHandoffService:
                 "principal_id": principal.principal_id,
                 "target_type": payload.target_type,
                 "target_ref": payload.target_ref,
+                "app_slug": self.config.app_slug,
                 "skill_run_id": payload.skill_run_id,
                 "mission_id": payload.mission_id,
                 "decision_id": claims["decision_id"],
@@ -704,11 +794,12 @@ class PaperclipHandoffService:
             },
             audit_required=True,
             audit_action="external_handoff_create",
-            audit_message="Paperclip handoff token created",
+            audit_message=f"{self.config.display_name} handoff token created",
         )
         await db.commit()
 
         return PaperclipHandoffResponse(
+            app_slug=self.config.app_slug,
             handoff_url=handoff_url,
             expires_at=expires_at.isoformat(),
             jti=jti,
@@ -746,7 +837,7 @@ class PaperclipHandoffService:
             tenant_id=claims.get("tenant_id"),
             entity_type="external_handoff",
             entity_id=jti,
-            event_type="external.handoff.paperclip.opened.v1",
+            event_type=self._handoff_event_type("opened"),
             correlation_id=correlation_id,
             mission_id=mission_id,
             actor_id=str(claims.get("sub") or "unknown"),
@@ -755,6 +846,7 @@ class PaperclipHandoffService:
                 "jti": jti,
                 "principal_id": claims.get("sub"),
                 "tenant_id": claims.get("tenant_id"),
+                "app_slug": self.config.app_slug,
                 "target_type": target_type,
                 "target_ref": target_ref,
                 "skill_run_id": skill_run_id,
@@ -767,11 +859,12 @@ class PaperclipHandoffService:
             },
             audit_required=True,
             audit_action="external_handoff_open",
-            audit_message="Paperclip handoff opened",
+            audit_message=f"{self.config.display_name} handoff opened",
         )
         await db.commit()
 
         return PaperclipHandoffExchangeResponse(
+            app_slug=self.config.app_slug,
             jti=jti,
             principal_id=str(claims.get("sub") or "unknown"),
             tenant_id=claims.get("tenant_id"),
@@ -783,7 +876,7 @@ class PaperclipHandoffService:
             target_ref=target_ref,
             permissions=list(permissions),
             suggested_path=self._suggested_path(target_type, target_ref),
-            governance_banner="Governed by BRAiN. Sensitive actions require BRAiN approval.",
+            governance_banner=f"Governed by BRAiN. Sensitive actions in {self.config.display_name} require BRAiN approval.",
             expires_at=expires_at or datetime.now(timezone.utc).isoformat(),
         )
 
@@ -794,9 +887,7 @@ class PaperclipHandoffService:
         payload: PaperclipActionRequest,
     ) -> PaperclipActionRequestResponse:
         claims = self._decode_handoff_token(payload.token)
-        target_type = str(claims.get("target_type") or "")
-        if target_type != "execution":
-            raise ValueError("Action requests currently require execution target")
+        target_type = str(claims.get("target_type") or "execution")
 
         permissions = list(claims.get("permissions") or ["view"])
         if payload.action not in permissions:
@@ -808,36 +899,43 @@ class PaperclipHandoffService:
         if not target_ref:
             raise ValueError("handoff target_ref missing")
 
-        task, skill_run = await self._load_execution_entities(
-            db,
-            task_id=target_ref,
-            principal_tenant_id=claims.get("tenant_id"),
-            cross_tenant=False,
-        )
-        available_actions = self._available_actions(task, skill_run)
+        mission_id = claims.get("mission_id")
+        skill_run_id = str(claims.get("skill_run_id") or "") or None
+        correlation_id = claims.get("correlation_id")
+        if target_type == "execution":
+            task, skill_run = await self._load_execution_entities(
+                db,
+                task_id=target_ref,
+                principal_tenant_id=claims.get("tenant_id"),
+                cross_tenant=False,
+            )
+            available_actions = self._available_actions(task, skill_run)
+            mission_id = getattr(task, "mission_id", None) or mission_id
+            skill_run_id = str(getattr(task, "skill_run_id", None) or skill_run_id or "") or None
+            correlation_id = getattr(task, "correlation_id", None) or correlation_id
+        else:
+            available_actions = ["request_escalation"]
         if payload.action not in available_actions:
             raise ValueError(f"Action {payload.action} is not available for current execution state")
 
         request_id = f"actreq_{uuid.uuid4().hex[:12]}"
-        mission_id = getattr(task, "mission_id", None) or claims.get("mission_id")
-        skill_run_id = str(getattr(task, "skill_run_id", None) or claims.get("skill_run_id") or "") or None
-        correlation_id = getattr(task, "correlation_id", None) or claims.get("correlation_id")
 
         await record_control_plane_event(
             db=db,
             tenant_id=claims.get("tenant_id"),
             entity_type="external_action_request",
             entity_id=request_id,
-            event_type="external.action_request.paperclip.requested.v1",
+            event_type=self._action_request_event_type("requested"),
             correlation_id=correlation_id,
             mission_id=mission_id,
             actor_id=str(claims.get("sub") or "unknown"),
             actor_type="handoff_token",
             payload={
                 "request_id": request_id,
+                "app_slug": self.config.app_slug,
                 "action": payload.action,
                 "reason": payload.reason,
-                "target_type": "execution",
+                "target_type": target_type,
                 "target_ref": target_ref,
                 "skill_run_id": skill_run_id,
                 "tenant_id": claims.get("tenant_id"),
@@ -848,7 +946,7 @@ class PaperclipHandoffService:
             },
             audit_required=True,
             audit_action="external_action_request",
-            audit_message=f"Paperclip requested {payload.action}",
+            audit_message=f"{self.config.display_name} requested {payload.action}",
             severity="warning" if payload.action != "request_retry" else "info",
         )
         await db.commit()
@@ -860,18 +958,29 @@ class PaperclipHandoffService:
         }
         return PaperclipActionRequestResponse(
             request_id=request_id,
+            app_slug=self.config.app_slug,
             action=payload.action,
+            target_type=target_type,  # type: ignore[arg-type]
             target_ref=target_ref,
             skill_run_id=skill_run_id,
             message=message_by_action[payload.action],
         )
 
 
-_service: PaperclipHandoffService | None = None
+_services: dict[str, PaperclipHandoffService] = {}
 
 
 def get_paperclip_handoff_service() -> PaperclipHandoffService:
-    global _service
-    if _service is None:
-        _service = PaperclipHandoffService()
-    return _service
+    service = _services.get(PAPERCLIP_CONFIG.app_slug)
+    if service is None:
+        service = PaperclipHandoffService(PAPERCLIP_CONFIG)
+        _services[PAPERCLIP_CONFIG.app_slug] = service
+    return service
+
+
+def get_openclaw_handoff_service() -> PaperclipHandoffService:
+    service = _services.get(OPENCLAW_CONFIG.app_slug)
+    if service is None:
+        service = PaperclipHandoffService(OPENCLAW_CONFIG)
+        _services[OPENCLAW_CONFIG.app_slug] = service
+    return service

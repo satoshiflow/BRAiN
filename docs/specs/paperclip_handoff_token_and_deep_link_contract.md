@@ -17,11 +17,13 @@ Current local implementation covers:
 - `POST /api/external-apps/paperclip/action-requests/{request_id}/reject`
 - CD3 `External Operations` drill-down action
 - bounded Paperclip MissionCenter handoff UI served by `paperclip_worker`
+- equivalent OpenClaw handoff + bounded MissionCenter flow served by `openclaw_worker`
 
 Recommended local topology:
 
 - upstream Paperclip execution API: `http://localhost:3110`
 - bounded Paperclip handoff UI: `http://localhost:3111`
+- bounded OpenClaw handoff UI: `http://localhost:3112`
 
 ## 1. Purpose
 
@@ -261,6 +263,7 @@ ControlDeck surfaces:
 - `External Operations` now shows a Supervisor preview panel with deep-links
 - dedicated Supervisor inbox page: `/supervisor`
 - dedicated Supervisor detail page: `/supervisor/{escalationId}`
+- action-request and supervisor previews are now executor-aware for Paperclip and OpenClaw
 
 ## 9. Security Rules
 

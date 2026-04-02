@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.core.auth_deps import Principal, PrincipalType, get_current_principal, require_auth
 from app.core.database import get_db
-from app.modules.external_apps import router as external_apps_router_module
+from app.modules.external_apps import service as external_apps_service_module
 from app.modules.external_apps.router import router as external_apps_router
 
 
@@ -74,6 +74,7 @@ def test_paperclip_handoff_returns_signed_url() -> None:
         async def create_handoff(self, db, *, principal, payload, backend_base_url):  # noqa: ANN001
             _ = (db, principal, payload, backend_base_url)
             return {
+                "app_slug": "paperclip",
                 "handoff_url": "https://paperclip.example/handoff/paperclip?token=test-token",
                 "expires_at": "2026-04-01T20:00:00+00:00",
                 "jti": "handoff_test",
@@ -81,7 +82,7 @@ def test_paperclip_handoff_returns_signed_url() -> None:
                 "target_ref": "issue-123",
             }
 
-    external_apps_router_module.get_paperclip_handoff_service = lambda: _FakeService()
+    external_apps_service_module.get_paperclip_handoff_service = lambda: _FakeService()
     client = TestClient(_build_test_app())
 
     with _override_principal(client, _principal("viewer")):
@@ -103,7 +104,7 @@ def test_paperclip_handoff_blocks_when_policy_denies() -> None:
             _ = (db, principal, payload, backend_base_url)
             raise PermissionError("Paperclip executor is currently disabled by runtime policy")
 
-    external_apps_router_module.get_paperclip_handoff_service = lambda: _FakeService()
+    external_apps_service_module.get_paperclip_handoff_service = lambda: _FakeService()
     client = TestClient(_build_test_app())
 
     with _override_principal(client, _principal("viewer")):
@@ -121,6 +122,7 @@ def test_paperclip_handoff_exchange_returns_validated_context() -> None:
         async def exchange_handoff(self, db, *, payload):  # noqa: ANN001
             _ = (db, payload)
             return {
+                "app_slug": "paperclip",
                 "jti": "handoff_test",
                 "principal_id": "external-apps-user",
                 "tenant_id": "tenant-a",
@@ -136,7 +138,7 @@ def test_paperclip_handoff_exchange_returns_validated_context() -> None:
                 "expires_at": "2026-04-01T20:00:00+00:00",
             }
 
-    external_apps_router_module.get_paperclip_handoff_service = lambda: _FakeService()
+    external_apps_service_module.get_paperclip_handoff_service = lambda: _FakeService()
     client = TestClient(_build_test_app())
 
     with _override_principal(client, _principal("viewer")):
@@ -163,7 +165,7 @@ def test_paperclip_handoff_exchange_replay_returns_conflict() -> None:
             _ = (db, payload)
             calls.append(reason)
 
-    external_apps_router_module.get_paperclip_handoff_service = lambda: _FakeService()
+    external_apps_service_module.get_paperclip_handoff_service = lambda: _FakeService()
     client = TestClient(_build_test_app())
 
     response = client.post(
@@ -181,6 +183,7 @@ def test_paperclip_execution_context_returns_canonical_data() -> None:
         async def get_execution_context(self, db, *, task_id, principal):  # noqa: ANN001
             _ = (db, principal)
             return {
+                "app_slug": "paperclip",
                 "target_type": "execution",
                 "target_ref": task_id,
                 "task": {
@@ -217,9 +220,10 @@ def test_paperclip_execution_context_returns_canonical_data() -> None:
                 },
                 "skill_run": None,
                 "governance_banner": "Governed by BRAiN. Sensitive actions require BRAiN approval.",
+                "available_actions": ["request_retry"],
             }
 
-    external_apps_router_module.get_paperclip_handoff_service = lambda: _FakeService()
+    external_apps_service_module.get_paperclip_handoff_service = lambda: _FakeService()
     client = TestClient(_build_test_app())
 
     with _override_principal(client, _principal("viewer")):
@@ -237,7 +241,7 @@ def test_paperclip_execution_context_returns_not_found() -> None:
             _ = (db, task_id, principal)
             raise ValueError("Task task-404 not found")
 
-    external_apps_router_module.get_paperclip_handoff_service = lambda: _FakeService()
+    external_apps_service_module.get_paperclip_handoff_service = lambda: _FakeService()
     client = TestClient(_build_test_app())
 
     with _override_principal(client, _principal("viewer")):
@@ -253,14 +257,16 @@ def test_paperclip_action_request_returns_requested() -> None:
             _ = (db, payload)
             return {
                 "request_id": "actreq_123",
+                "app_slug": "paperclip",
                 "action": "request_retry",
                 "status": "requested",
+                "target_type": "execution",
                 "target_ref": "task-123",
                 "skill_run_id": "run-123",
                 "message": "Retry request recorded for operator review.",
             }
 
-    external_apps_router_module.get_paperclip_handoff_service = lambda: _FakeService()
+    external_apps_service_module.get_paperclip_handoff_service = lambda: _FakeService()
     client = TestClient(_build_test_app())
 
     response = client.post(
@@ -280,7 +286,7 @@ def test_paperclip_action_request_rejects_forbidden_permission() -> None:
             _ = (db, payload)
             raise PermissionError("Handoff token does not permit request_retry")
 
-    external_apps_router_module.get_paperclip_handoff_service = lambda: _FakeService()
+    external_apps_service_module.get_paperclip_handoff_service = lambda: _FakeService()
     client = TestClient(_build_test_app())
 
     response = client.post(
@@ -300,6 +306,7 @@ def test_list_paperclip_action_requests_returns_items() -> None:
                 "items": [
                     {
                         "request_id": "actreq_1",
+                        "app_slug": "paperclip",
                         "tenant_id": "tenant-a",
                         "principal_id": "operator-1",
                         "action": "request_retry",
@@ -319,7 +326,7 @@ def test_list_paperclip_action_requests_returns_items() -> None:
                 "total": 1,
             }
 
-    external_apps_router_module.get_paperclip_handoff_service = lambda: _FakeService()
+    external_apps_service_module.get_paperclip_handoff_service = lambda: _FakeService()
     client = TestClient(_build_test_app())
 
     with _override_principal(client, _principal("operator")):
@@ -334,8 +341,9 @@ def test_approve_paperclip_action_request_returns_item() -> None:
         async def approve_action_request(self, db, *, principal, request_id, payload):  # noqa: ANN001
             _ = (db, principal, payload)
             return {
-                "request_id": request_id,
-                "tenant_id": "tenant-a",
+                        "request_id": request_id,
+                        "app_slug": "paperclip",
+                        "tenant_id": "tenant-a",
                 "principal_id": "operator-1",
                 "action": "request_retry",
                 "reason": "retry",
@@ -354,7 +362,7 @@ def test_approve_paperclip_action_request_returns_item() -> None:
                 "execution_result": {"new_task_id": "task-2"},
             }
 
-    external_apps_router_module.get_paperclip_handoff_service = lambda: _FakeService()
+    external_apps_service_module.get_paperclip_handoff_service = lambda: _FakeService()
     client = TestClient(_build_test_app())
 
     with _override_principal(client, _principal("operator")):
@@ -373,7 +381,7 @@ def test_reject_paperclip_action_request_returns_conflict() -> None:
             _ = (db, principal, request_id, payload)
             raise ValueError("Action request is not pending")
 
-    external_apps_router_module.get_paperclip_handoff_service = lambda: _FakeService()
+    external_apps_service_module.get_paperclip_handoff_service = lambda: _FakeService()
     client = TestClient(_build_test_app())
 
     with _override_principal(client, _principal("operator")):
@@ -384,3 +392,31 @@ def test_reject_paperclip_action_request_returns_conflict() -> None:
 
     assert response.status_code == 409
     assert response.json()["detail"] == "Action request is not pending"
+
+
+def test_openclaw_handoff_returns_signed_url() -> None:
+    class _FakeService:
+        async def create_handoff(self, db, *, principal, payload, backend_base_url):  # noqa: ANN001
+            _ = (db, principal, payload, backend_base_url)
+            return {
+                "app_slug": "openclaw",
+                "handoff_url": "https://openclaw.example/handoff/openclaw?token=test-token",
+                "expires_at": "2026-04-01T20:00:00+00:00",
+                "jti": "handoff_test",
+                "target_type": "issue",
+                "target_ref": "issue-oc-123",
+            }
+
+    external_apps_service_module.get_openclaw_handoff_service = lambda: _FakeService()
+    client = TestClient(_build_test_app())
+
+    with _override_principal(client, _principal("viewer")):
+        response = client.post(
+            "/api/external-apps/openclaw/handoff",
+            json={"target_type": "issue", "target_ref": "issue-oc-123", "permissions": ["view"]},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["app_slug"] == "openclaw"
+    assert "openclaw" in body["handoff_url"]

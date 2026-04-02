@@ -19,10 +19,13 @@ const statusTone: Record<DomainEscalationStatus, string> = {
 };
 
 function paperclipScoped(items: DomainEscalationItem[], scope: string | null): DomainEscalationItem[] {
-  if (scope !== "paperclip") {
-    return items;
+  if (scope === "paperclip") {
+    return items.filter((item) => item.domain_key.startsWith("external_apps.paperclip"));
   }
-  return items.filter((item) => item.domain_key.startsWith("external_apps.paperclip"));
+  if (scope === "openclaw") {
+    return items.filter((item) => item.domain_key.startsWith("external_apps.openclaw"));
+  }
+  return items;
 }
 
 function noteValue(item: DomainEscalationItem, key: string): string | null {
@@ -109,7 +112,7 @@ export default function SupervisorInboxPage() {
           <div>
             <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Supervisor Inbox</h2>
             <p className="text-sm text-slate-600 dark:text-slate-300">
-              Domain escalation handoffs for governed review. {scope === "paperclip" ? "Filtered to Paperclip external operations." : ""}
+              Domain escalation handoffs for governed review. {scope === "paperclip" ? "Filtered to Paperclip external operations." : scope === "openclaw" ? "Filtered to OpenClaw external operations." : ""}
             </p>
           </div>
           <div className="flex items-center gap-2">

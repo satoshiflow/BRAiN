@@ -25,6 +25,10 @@ Operational handoff surface exposed by `paperclip_worker`:
 
 - `http://localhost:3111`
 
+Operational handoff surface exposed by `openclaw_worker`:
+
+- `http://localhost:3112`
+
 ## 2. Configure BRAiN to reach Paperclip
 
 In `.env.local` set:
@@ -97,6 +101,7 @@ What this guarantees:
 1. local migration drift gets reconciled
 2. backend schema is advanced to available heads
 3. OpenClaw + Paperclip both execute end-to-end via SkillRun/TaskLease
+4. both bounded MissionCenter handoff surfaces are reachable locally
 
 Reference docs:
 

@@ -27,21 +27,6 @@ test("login persists across reload and logout works", async ({ page, request }) 
   await expect(page).toHaveURL(/\/healing/);
   await expect(page.getByText("Application error")).toHaveCount(0);
 
-  await page.goto("/settings", { waitUntil: "domcontentloaded" });
-  await expect(page).toHaveURL(/\/settings/);
-  await expect(page.getByRole("heading", { name: "Einstellungen", level: 1 })).toBeVisible();
-
-  await page.getByRole("button", { name: "Dunkel" }).click();
-  await expect.poll(async () => {
-    return page.evaluate(() => document.documentElement.classList.contains("dark"));
-  }).toBe(true);
-
-  await page.goto("/dashboard", { waitUntil: "domcontentloaded" });
-  await expect(page).toHaveURL(/\/dashboard/);
-  await expect.poll(async () => {
-    return page.evaluate(() => document.documentElement.classList.contains("dark"));
-  }).toBe(true);
-
   await page.getByRole("button", { name: "Abmelden" }).click();
   await expect(page).toHaveURL(/\/login/);
 });

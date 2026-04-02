@@ -97,6 +97,7 @@ services:
       - AXE_FUSION_ALLOWED_DEV_IPS=127.0.0.1,::1,localhost,172.18.0.1
       - BRAIN_EXTERNAL_EXECUTOR_PERMIT_SECRET=${BRAIN_EXTERNAL_EXECUTOR_PERMIT_SECRET:-dev-executor-permit-secret-change-me}
       - OPENCLAW_BASE_URL=${OPENCLAW_BASE_URL:-http://openclaw:8080}
+      - OPENCLAW_APP_BASE_URL=${OPENCLAW_APP_BASE_URL:-http://localhost:3112}
       - OPENCLAW_API_KEY=${OPENCLAW_API_KEY:-}
       - PAPERCLIP_BASE_URL=${PAPERCLIP_BASE_URL:-http://host.docker.internal:3110}
       - PAPERCLIP_APP_BASE_URL=${PAPERCLIP_APP_BASE_URL:-http://localhost:3111}
@@ -134,6 +135,8 @@ services:
       context: ./openclaw_worker
     container_name: brain-openclaw
     restart: unless-stopped
+    ports:
+      - "3112:8080"
     env_file:
       - .env.local
     environment:
@@ -147,6 +150,7 @@ services:
       - OPENCLAW_BRAIN_SERVICE_TOKEN=${OPENCLAW_BRAIN_SERVICE_TOKEN:-}
       - OPENCLAW_AGENT_ID=${OPENCLAW_AGENT_ID:-openclaw-worker}
       - BRAIN_EXTERNAL_EXECUTOR_PERMIT_SECRET=${BRAIN_EXTERNAL_EXECUTOR_PERMIT_SECRET:-dev-executor-permit-secret-change-me}
+      - CONTROLDECK_BASE_URL=${CONTROLDECK_BASE_URL:-http://localhost:3003}
     depends_on:
       backend:
         condition: service_healthy

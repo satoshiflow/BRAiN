@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { HelpHint } from "@/components/help/help-hint";
 import { DecisionDialog } from "@/components/operator/decision-dialog";
 import { ApiError } from "@/lib/api/client";
-import { externalAppsApi, type PaperclipActionRequestItem } from "@/lib/api/external-apps";
+import { externalAppsApi, type ExternalAppActionRequestItem, type ExternalAppSlug } from "@/lib/api/external-apps";
 import { getControlDeckHelpTopic } from "@/lib/help/topics";
 import {
   runtimeControlApi,
@@ -19,6 +19,11 @@ import { taskApi, type TaskRecord, type TaskStatus } from "@/lib/api/tasks";
 import { cn, formatRelativeTime } from "@/lib/utils";
 
 type ExecutorType = "openclaw" | "paperclip";
+
+const executorLabel: Record<ExecutorType, string> = {
+  openclaw: "OpenClaw",
+  paperclip: "Paperclip",
+};
 
 const executorContexts: Record<ExecutorType, RuntimeDecisionContext> = {
   openclaw: {
@@ -175,14 +180,14 @@ function TaskTable({
   executor,
   tasks,
   isLaunching,
-  onOpenInPaperclip,
+  onOpenInExternalApp,
 }: {
   executor: ExecutorType;
   tasks: TaskRecord[];
   isLaunching: string | null;
-  onOpenInPaperclip: (task: TaskRecord) => Promise<void>;
+  onOpenInExternalApp: (executor: ExecutorType, task: TaskRecord) => Promise<void>;
 }) {
-  const label = executor === "paperclip" ? "Paperclip" : "OpenClaw";
+  const label = executorLabel[executor];
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-4 space-y-3">
@@ -209,7 +214,7 @@ function TaskTable({
             </thead>
             <tbody>
               {tasks.map((task) => {
-                const actionDisabled = executor !== "paperclip" || !task.skill_run_id;
+                const actionDisabled = !task.skill_run_id;
                 return (
                   <tr key={task.task_id} className="border-b border-slate-100 dark:border-slate-800 align-top">
                     <td className="py-3 pr-4">
@@ -227,18 +232,14 @@ function TaskTable({
                     <td className="py-3 pr-4 font-mono text-xs text-slate-600 dark:text-slate-300">{task.skill_run_id ?? "-"}</td>
                     <td className="py-3 pr-4 text-slate-600 dark:text-slate-300">{formatRelativeTime(task.updated_at)}</td>
                     <td className="py-3">
-                      {executor === "paperclip" ? (
-                        <button
-                          type="button"
-                          disabled={actionDisabled || isLaunching === task.task_id}
-                          onClick={() => onOpenInPaperclip(task)}
-                          className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {isLaunching === task.task_id ? "Opening..." : "Open in Paperclip"}
-                        </button>
-                      ) : (
-                        <span className="text-xs text-slate-500 dark:text-slate-400">Managed via AXE/CD3</span>
-                      )}
+                      <button
+                        type="button"
+                        disabled={actionDisabled || isLaunching === task.task_id}
+                        onClick={() => onOpenInExternalApp(executor, task)}
+                        className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {isLaunching === task.task_id ? "Opening..." : `Open in ${label}`}
+                      </button>
                     </td>
                   </tr>
                 );
@@ -257,28 +258,49 @@ function ActionRequestInbox({
   onApprove,
   onReject,
 }: {
-  items: PaperclipActionRequestItem[];
+  items: ExternalAppActionRequestItem[];
   actingRequestId: string | null;
-  onApprove: (item: PaperclipActionRequestItem) => Promise<void>;
-  onReject: (item: PaperclipActionRequestItem) => Promise<void>;
+  onApprove: (item: ExternalAppActionRequestItem) => Promise<void>;
+  onReject: (item: ExternalAppActionRequestItem) => Promise<void>;
 }) {
+  const [appFilter, setAppFilter] = useState<"all" | ExternalAppSlug>("all");
+  const filteredItems = items.filter((item) => appFilter === "all" || item.app_slug === appFilter);
+
   return (
     <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-4 space-y-3">
       <div>
         <h3 className="font-medium text-slate-900 dark:text-slate-100">Action Request Inbox</h3>
-        <p className="text-xs text-slate-500 dark:text-slate-400">Governed requests coming back from the Paperclip MissionCenter.</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">Governed requests coming back from bounded external executor surfaces.</p>
       </div>
 
-      {items.length === 0 ? (
+      <div className="flex flex-wrap gap-2">
+        {(["all", "paperclip", "openclaw"] as const).map((value) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setAppFilter(value)}
+            className={cn(
+              "rounded-full px-3 py-1.5 text-xs font-medium",
+              appFilter === value
+                ? "bg-blue-600 text-white"
+                : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+            )}
+          >
+            {value === "all" ? `all (${items.length})` : `${executorLabel[value]} (${items.filter((item) => item.app_slug === value).length})`}
+          </button>
+        ))}
+      </div>
+
+      {filteredItems.length === 0 ? (
         <p className="text-sm text-slate-500 dark:text-slate-400">Keine offenen Requests.</p>
       ) : (
         <div className="space-y-3">
-          {items.map((item) => (
+          {filteredItems.map((item) => (
             <div key={item.request_id} className="rounded-md border border-slate-200 dark:border-slate-700 p-3 space-y-2">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="font-medium text-slate-900 dark:text-slate-100">{item.action}</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">{item.request_id} · {item.target_ref}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">{item.request_id} · {item.app_slug} · {item.target_ref}</p>
                 </div>
                 <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
                   {item.status}
@@ -317,10 +339,12 @@ function ActionRequestInbox({
 }
 
 function SupervisorEscalationPanel({ items }: { items: DomainEscalationItem[] }) {
+  const [scope, setScope] = useState<"all" | ExternalAppSlug>("all");
   const noteValue = (item: DomainEscalationItem, key: string): string | null => {
     const value = item.notes?.[key];
     return typeof value === "string" && value.length > 0 ? value : null;
   };
+  const filteredItems = items.filter((item) => scope === "all" || item.domain_key.startsWith(`external_apps.${scope}`));
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-4 space-y-3">
@@ -330,18 +354,36 @@ function SupervisorEscalationPanel({ items }: { items: DomainEscalationItem[] })
           <p className="text-xs text-slate-500 dark:text-slate-400">Escalations already materialized into the supervisor workflow.</p>
         </div>
         <Link
-          href="/supervisor?scope=paperclip"
+          href={scope === "all" ? "/supervisor" : `/supervisor?scope=${scope}`}
           className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
         >
           Open inbox
         </Link>
       </div>
 
-      {items.length === 0 ? (
+      <div className="flex flex-wrap gap-2">
+        {(["all", "paperclip", "openclaw"] as const).map((value) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setScope(value)}
+            className={cn(
+              "rounded-full px-3 py-1.5 text-xs font-medium",
+              scope === value
+                ? "bg-blue-600 text-white"
+                : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+            )}
+          >
+            {value === "all" ? `all (${items.length})` : `${executorLabel[value]} (${items.filter((item) => item.domain_key.startsWith(`external_apps.${value}`)).length})`}
+          </button>
+        ))}
+      </div>
+
+      {filteredItems.length === 0 ? (
         <p className="text-sm text-slate-500 dark:text-slate-400">Noch keine Supervisor-Eskalationen aus Paperclip.</p>
       ) : (
         <div className="space-y-2">
-          {items.map((item) => (
+          {filteredItems.map((item) => (
             <div key={item.escalation_id} className="rounded-md border border-slate-200 dark:border-slate-700 p-3">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -386,7 +428,7 @@ export default function ExternalOperationsPage() {
   const [paperclipTasks, setPaperclipTasks] = useState<TaskRecord[]>([]);
   const [openclawTasks, setOpenclawTasks] = useState<TaskRecord[]>([]);
   const [timeline, setTimeline] = useState<RuntimeControlTimelineEvent[]>([]);
-  const [actionRequests, setActionRequests] = useState<PaperclipActionRequestItem[]>([]);
+  const [actionRequests, setActionRequests] = useState<ExternalAppActionRequestItem[]>([]);
   const [supervisorEscalations, setSupervisorEscalations] = useState<DomainEscalationItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -394,18 +436,19 @@ export default function ExternalOperationsPage() {
   const [actingRequestId, setActingRequestId] = useState<string | null>(null);
   const [pendingDecision, setPendingDecision] = useState<{
     mode: "approve" | "reject";
-    item: PaperclipActionRequestItem;
+    item: ExternalAppActionRequestItem;
   } | null>(null);
 
   const loadData = useCallback(async () => {
     try {
-      const [paperclipResolve, openclawResolve, paperclipTaskPayload, openclawTaskPayload, timelinePayload, actionRequestPayload, supervisorPayload] = await Promise.all([
+      const [paperclipResolve, openclawResolve, paperclipTaskPayload, openclawTaskPayload, timelinePayload, paperclipActionRequests, openclawActionRequests, supervisorPayload] = await Promise.all([
         runtimeControlApi.resolve(executorContexts.paperclip),
         runtimeControlApi.resolve(executorContexts.openclaw),
         taskApi.list("paperclip_work", 20),
         taskApi.list("openclaw_work", 20),
         runtimeControlApi.listTimeline(120),
-        externalAppsApi.listPaperclipActionRequests(),
+        externalAppsApi.listActionRequests("paperclip"),
+        externalAppsApi.listActionRequests("openclaw"),
         supervisorApi.listDomainEscalations(20),
       ]);
 
@@ -413,9 +456,13 @@ export default function ExternalOperationsPage() {
       setOpenclawDecision(openclawResolve);
       setPaperclipTasks(paperclipTaskPayload.items);
       setOpenclawTasks(openclawTaskPayload.items);
-      setActionRequests(actionRequestPayload.items.filter((item) => item.status === "pending"));
+      setActionRequests(
+        [...paperclipActionRequests.items, ...openclawActionRequests.items]
+          .filter((item) => item.status === "pending")
+          .sort((left, right) => right.updated_at.localeCompare(left.updated_at))
+      );
       setSupervisorEscalations(
-        supervisorPayload.items.filter((item) => item.domain_key.startsWith("external_apps.paperclip"))
+        supervisorPayload.items.filter((item) => item.domain_key.startsWith("external_apps."))
       );
       setTimeline(
         timelinePayload.items.filter((item) =>
@@ -452,14 +499,14 @@ export default function ExternalOperationsPage() {
     [openclawTasks]
   );
 
-  const handleOpenInPaperclip = useCallback(async (task: TaskRecord) => {
+  const handleOpenInExternalApp = useCallback(async (executor: ExecutorType, task: TaskRecord) => {
     if (!task.skill_run_id) {
       setError("Kein SkillRun fuer diesen Task vorhanden.");
       return;
     }
     setLaunchingTaskId(task.task_id);
     try {
-      const response = await externalAppsApi.createPaperclipHandoff({
+      const response = await externalAppsApi.createHandoff(executor as ExternalAppSlug, {
         target_type: "execution",
         target_ref: task.task_id,
         skill_run_id: task.skill_run_id,
@@ -471,21 +518,21 @@ export default function ExternalOperationsPage() {
       setError(null);
       await loadData();
     } catch (err) {
-      console.error("Failed to create Paperclip handoff", err);
+      console.error(`Failed to create ${executor} handoff`, err);
       if (err instanceof ApiError) {
-        setError(`Paperclip handoff fehlgeschlagen (${err.status}).`);
+        setError(`${executorLabel[executor]} handoff fehlgeschlagen (${err.status}).`);
       } else {
-        setError("Paperclip handoff fehlgeschlagen.");
+        setError(`${executorLabel[executor]} handoff fehlgeschlagen.`);
       }
     } finally {
       setLaunchingTaskId(null);
     }
   }, [loadData]);
 
-  const handleApproveRequest = useCallback(async (item: PaperclipActionRequestItem, reason: string) => {
+  const handleApproveRequest = useCallback(async (item: ExternalAppActionRequestItem, reason: string) => {
     setActingRequestId(item.request_id);
     try {
-      await externalAppsApi.approvePaperclipActionRequest(item.request_id, reason);
+      await externalAppsApi.approveActionRequest(item.app_slug, item.request_id, reason);
       setError(null);
       setPendingDecision(null);
       await loadData();
@@ -501,10 +548,10 @@ export default function ExternalOperationsPage() {
     }
   }, [loadData]);
 
-  const handleRejectRequest = useCallback(async (item: PaperclipActionRequestItem, reason: string) => {
+  const handleRejectRequest = useCallback(async (item: ExternalAppActionRequestItem, reason: string) => {
     setActingRequestId(item.request_id);
     try {
-      await externalAppsApi.rejectPaperclipActionRequest(item.request_id, reason);
+      await externalAppsApi.rejectActionRequest(item.app_slug, item.request_id, reason);
       setError(null);
       setPendingDecision(null);
       await loadData();
@@ -564,8 +611,8 @@ export default function ExternalOperationsPage() {
           onReject={async (item) => setPendingDecision({ mode: "reject", item })}
         />
         <SupervisorEscalationPanel items={supervisorEscalations} />
-        <TaskTable executor="paperclip" tasks={paperclipTasks} isLaunching={launchingTaskId} onOpenInPaperclip={handleOpenInPaperclip} />
-        <TaskTable executor="openclaw" tasks={openclawTasks} isLaunching={launchingTaskId} onOpenInPaperclip={handleOpenInPaperclip} />
+        <TaskTable executor="paperclip" tasks={paperclipTasks} isLaunching={launchingTaskId} onOpenInExternalApp={handleOpenInExternalApp} />
+        <TaskTable executor="openclaw" tasks={openclawTasks} isLaunching={launchingTaskId} onOpenInExternalApp={handleOpenInExternalApp} />
       </div>
 
       <DecisionDialog

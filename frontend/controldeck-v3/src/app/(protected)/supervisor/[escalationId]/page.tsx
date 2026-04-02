@@ -21,6 +21,19 @@ function noteValue(item: DomainEscalationItem | null, key: string): string | nul
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
+function scopeForDomain(domainKey: string | undefined): string {
+  if (!domainKey) {
+    return "paperclip";
+  }
+  if (domainKey.startsWith("external_apps.openclaw")) {
+    return "openclaw";
+  }
+  if (domainKey.startsWith("external_apps.paperclip")) {
+    return "paperclip";
+  }
+  return "paperclip";
+}
+
 export default function SupervisorEscalationDetailPage() {
   const topic = getControlDeckHelpTopic("supervisor.decisions");
   const params = useParams<{ escalationId: string }>();
@@ -95,7 +108,7 @@ export default function SupervisorEscalationDetailPage() {
         </div>
         <div className="flex gap-2">
           <Link
-            href="/supervisor?scope=paperclip"
+            href={`/supervisor?scope=${scopeForDomain(item?.domain_key)}`}
             className="rounded-md bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
           >
             Back to inbox
@@ -150,10 +163,10 @@ export default function SupervisorEscalationDetailPage() {
                 Open External Ops
               </Link>
               <Link
-                href="/supervisor?scope=paperclip"
+                href={`/supervisor?scope=${scopeForDomain(item.domain_key)}`}
                 className="rounded-md bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
               >
-                Back to Paperclip supervisor inbox
+                Back to executor supervisor inbox
               </Link>
             </div>
           </div>

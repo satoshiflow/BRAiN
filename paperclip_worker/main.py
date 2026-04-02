@@ -361,12 +361,18 @@ class PaperclipWorker:
         <section class=\"card\"><h2>Execution payload</h2><pre class=\"mono\">{payload_pretty}</pre></section>
         """
 
-    def _render_entity_section(self, entity_type: str, entity_ref: str) -> str:
+    def _render_entity_section(self, entity_type: str, entity_ref: str, handoff_token: str | None = None, permissions: list[str] | None = None) -> str:
         safe_entity_type = html.escape(entity_type)
         safe_entity_ref = html.escape(entity_ref)
+        action_section = ""
+        if handoff_token and permissions and "request_escalation" in permissions:
+            action_section = f"""
+            <section class=\"card\"><h2>Governed actions</h2><div class=\"list\"><form method=\"post\" action=\"/handoff/paperclip/action\" class=\"item\"><strong>Request escalation</strong><input type=\"hidden\" name=\"token\" value=\"{html.escape(handoff_token)}\" /><input type=\"hidden\" name=\"action\" value=\"request_escalation\" /><input type=\"text\" name=\"reason\" required minlength=\"3\" maxlength=\"1000\" placeholder=\"Why should BRAiN review this request?\" style=\"margin-top:10px;width:100%;padding:10px 12px;border-radius:12px;border:1px solid rgba(120,166,255,0.2);background:rgba(13,27,47,0.85);color:#e6eefc;\" /><button type=\"submit\" class=\"button\" style=\"margin-top:10px;cursor:pointer;\">Request escalation</button></form></div></section>
+            """
         return f"""
         <section class=\"banner\"><strong>Bounded operational context.</strong><p>This {safe_entity_type} surface is a Paperclip-side operational view. Runtime truth and approvals remain in BRAiN.</p></section>
         <section class=\"card\"><h2>{safe_entity_type.title()} context</h2><p>Resolved ref: <span class=\"mono\">{safe_entity_ref}</span></p><div class=\"pill-row\"><span class=\"pill\">entity: {safe_entity_type}</span><span class=\"pill\">ref: {safe_entity_ref}</span></div></section>
+        {action_section}
         """
 
     def _render_canonical_execution_section(self, context: dict[str, Any], handoff_token: str | None = None) -> str:
@@ -456,11 +462,11 @@ class PaperclipWorker:
             ),
         )
 
-    def render_entity_page(self, entity_type: str, entity_ref: str) -> str:
+    def render_entity_page(self, entity_type: str, entity_ref: str, handoff_token: str | None = None, permissions: list[str] | None = None) -> str:
         return self._render_page(
             title=f"{entity_type.title()} {entity_ref}",
             intro="Operational drill-down reached through a governed BRAiN handoff.",
-            body_html=self._render_entity_section(entity_type, entity_ref),
+            body_html=self._render_entity_section(entity_type, entity_ref, handoff_token=handoff_token, permissions=permissions),
         )
 
     def render_handoff_page(self, context: dict[str, Any]) -> str:
@@ -497,7 +503,12 @@ class PaperclipWorker:
             else:
                 operational_block = self._render_execution_section(target_ref)
         else:
-            operational_block = self._render_entity_section(target_type, target_ref)
+            operational_block = self._render_entity_section(
+                target_type,
+                target_ref,
+                handoff_token=str(context.get("handoff_token") or "") or None,
+                permissions=[str(permission) for permission in permissions],
+            )
         body = f"""
         <section class=\"banner\"><strong>{governance_banner}</strong><p>Context handoff succeeded. This surface carries context, not authority.</p></section>
         <section class=\"grid\">

@@ -15,6 +15,8 @@ Implemented locally in this repo:
 - approved retry requests now materialize a fresh governed SkillRun + TaskLease dispatch
 - approved escalation requests now materialize a supervisor domain escalation handoff
 - dedicated ControlDeck Supervisor inbox and escalation detail pages with deep-links from External Operations
+- OpenClaw now follows the same governed handoff, action-request and bounded MissionCenter pattern as Paperclip
+- External Operations triage is now executor-aware across Paperclip and OpenClaw
 - audit/control-plane events for create/open/failure
 - replay protection for handoff exchange
 - CD3 `External Operations` surface with `Open in Paperclip`

@@ -6,6 +6,7 @@ test("external operations supports action approval and supervisor deep-links", a
   let pendingRequests = [
     {
       request_id: "actreq_1",
+      app_slug: "paperclip",
       tenant_id: "tenant-a",
       principal_id: "operator-1",
       action: "request_escalation",
@@ -21,9 +22,36 @@ test("external operations supports action approval and supervisor deep-links", a
       updated_at: "2026-04-02T00:00:00Z",
       execution_result: {},
     },
+    {
+      request_id: "actreq_oc_1",
+      app_slug: "openclaw",
+      tenant_id: "tenant-a",
+      principal_id: "operator-1",
+      action: "request_retry",
+      reason: "Needs retry after upstream fix",
+      status: "pending",
+      target_type: "execution",
+      target_ref: "task-openclaw-1",
+      skill_run_id: "run-oc-1",
+      mission_id: "mission-oc-1",
+      decision_id: "rdec-oc-1",
+      correlation_id: "corr-oc-1",
+      created_at: "2026-04-02T00:00:00Z",
+      updated_at: "2026-04-02T00:00:00Z",
+      execution_result: {},
+    },
   ];
 
   await mockAuthenticatedSession(page);
+  await page.addInitScript(() => {
+    const opened: string[] = [];
+    // @ts-expect-error test helper
+    window.__openedUrls = opened;
+    window.open = ((url?: string | URL) => {
+      opened.push(String(url ?? ""));
+      return null;
+    }) as typeof window.open;
+  });
 
   await page.route("**/api/runtime-control/resolve", async (route) => {
     const body = JSON.stringify({
@@ -85,7 +113,37 @@ test("external operations supports action approval and supervisor deep-links", a
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ items: [], total: 0, by_status: {} }),
+      body: JSON.stringify({
+        items: [
+          {
+            id: "00000000-0000-0000-0000-000000000010",
+            task_id: "task-openclaw-1",
+            name: "OpenClaw TaskLease",
+            description: "OpenClaw execution",
+            task_type: "openclaw_work",
+            category: "skill_engine",
+            tags: ["openclaw"],
+            status: "failed",
+            priority: 75,
+            payload: {},
+            config: {},
+            tenant_id: "tenant-a",
+            mission_id: "mission-oc-1",
+            skill_run_id: "run-oc-1",
+            correlation_id: "corr-oc-1",
+            claimed_by: null,
+            claimed_at: null,
+            started_at: null,
+            completed_at: null,
+            result: null,
+            error_message: "OpenClaw endpoint unavailable",
+            created_at: "2026-04-02T00:00:00Z",
+            updated_at: "2026-04-02T00:00:00Z",
+          },
+        ],
+        total: 1,
+        by_status: { failed: 1 },
+      }),
     });
   });
 
@@ -123,12 +181,35 @@ test("external operations supports action approval and supervisor deep-links", a
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ items: pendingRequests, total: pendingRequests.length }),
+      body: JSON.stringify({ items: pendingRequests.filter((item) => item.app_slug === "paperclip"), total: pendingRequests.filter((item) => item.app_slug === "paperclip").length }),
+    });
+  });
+
+  await page.route("**/api/external-apps/openclaw/action-requests", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ items: pendingRequests.filter((item) => item.app_slug === "openclaw"), total: 1 }),
+    });
+  });
+
+  await page.route("**/api/external-apps/openclaw/handoff", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        app_slug: "openclaw",
+        handoff_url: "http://127.0.0.1:3112/handoff/openclaw?token=test-token",
+        expires_at: "2026-04-02T00:05:00Z",
+        jti: "handoff_oc_1",
+        target_type: "execution",
+        target_ref: "task-openclaw-1",
+      }),
     });
   });
 
   await page.route("**/api/external-apps/paperclip/action-requests/actreq_1/approve", async (route) => {
-    pendingRequests = [];
+    pendingRequests = pendingRequests.filter((item) => item.request_id !== "actreq_1");
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -186,12 +267,26 @@ test("external operations supports action approval and supervisor deep-links", a
   await expect(page.getByText("Action Request Inbox")).toBeVisible();
   await expect(page.getByText("Supervisor Inbox")).toBeVisible();
   await expect(page.getByRole("link", { name: "Open detail" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open in OpenClaw" })).toBeVisible();
+
+  await page.getByRole("button", { name: /Open in OpenClaw/ }).click();
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      // @ts-expect-error test helper
+      return window.__openedUrls?.[0] ?? "";
+    });
+  }).toContain("/handoff/openclaw?token=test-token");
+
+  await page.getByRole("button", { name: /OpenClaw \(1\)/ }).click();
+  await expect(page.getByText("actreq_oc_1 · openclaw · task-openclaw-1")).toBeVisible();
+  await page.getByRole("button", { name: /Paperclip \(1\)/ }).first().click();
 
   await page.getByRole("button", { name: "Approve" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByRole("textbox", { name: "Reason" }).fill("Approved for supervisor escalation");
   await page.getByRole("button", { name: "Approve request" }).click();
 
+  await page.getByRole("button", { name: /Paperclip \(0\)/ }).click();
   await expect(page.getByText("Keine offenen Requests.")).toBeVisible();
   await expect(page.getByRole("link", { name: "Open inbox" })).toBeVisible();
 });

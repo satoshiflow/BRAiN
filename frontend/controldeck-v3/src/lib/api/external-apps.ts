@@ -1,35 +1,38 @@
 import { fetchJson, postJson } from "./client";
 
-export type PaperclipTargetType = "company" | "project" | "issue" | "agent" | "execution";
-export type PaperclipPermission = "view" | "request_escalation" | "request_approval" | "request_retry";
-export type PaperclipAction = "request_escalation" | "request_approval" | "request_retry";
+export type ExternalAppSlug = "paperclip" | "openclaw";
+export type ExternalAppTargetType = "company" | "project" | "issue" | "agent" | "execution";
+export type ExternalAppPermission = "view" | "request_escalation" | "request_approval" | "request_retry";
+export type ExternalAppAction = "request_escalation" | "request_approval" | "request_retry";
 
-export interface PaperclipHandoffRequest {
-  target_type: PaperclipTargetType;
+export interface ExternalAppHandoffRequest {
+  target_type: ExternalAppTargetType;
   target_ref: string;
   skill_run_id?: string;
   mission_id?: string;
   decision_id?: string;
   correlation_id?: string;
-  permissions: PaperclipPermission[];
+  permissions: ExternalAppPermission[];
 }
 
-export interface PaperclipHandoffResponse {
+export interface ExternalAppHandoffResponse {
+  app_slug: ExternalAppSlug;
   handoff_url: string;
   expires_at: string;
   jti: string;
-  target_type: PaperclipTargetType;
+  target_type: ExternalAppTargetType;
   target_ref: string;
 }
 
-export interface PaperclipActionRequestItem {
+export interface ExternalAppActionRequestItem {
   request_id: string;
+  app_slug: ExternalAppSlug;
   tenant_id?: string | null;
   principal_id: string;
-  action: PaperclipAction;
+  action: ExternalAppAction;
   reason: string;
   status: "pending" | "approved" | "rejected";
-  target_type: "execution";
+  target_type: ExternalAppTargetType;
   target_ref: string;
   skill_run_id?: string | null;
   mission_id?: string | null;
@@ -45,24 +48,22 @@ export interface PaperclipActionRequestItem {
   execution_result: Record<string, string>;
 }
 
-export interface PaperclipActionRequestListResponse {
-  items: PaperclipActionRequestItem[];
+export interface ExternalAppActionRequestListResponse {
+  items: ExternalAppActionRequestItem[];
   total: number;
 }
 
+function basePath(appSlug: ExternalAppSlug): string {
+  return `/api/external-apps/${appSlug}`;
+}
+
 export const externalAppsApi = {
-  createPaperclipHandoff: (payload: PaperclipHandoffRequest) =>
-    postJson<PaperclipHandoffResponse, PaperclipHandoffRequest>("/api/external-apps/paperclip/handoff", payload),
-  listPaperclipActionRequests: () =>
-    fetchJson<PaperclipActionRequestListResponse>("/api/external-apps/paperclip/action-requests"),
-  approvePaperclipActionRequest: (requestId: string, reason: string) =>
-    postJson<PaperclipActionRequestItem, { reason: string }>(
-      `/api/external-apps/paperclip/action-requests/${requestId}/approve`,
-      { reason }
-    ),
-  rejectPaperclipActionRequest: (requestId: string, reason: string) =>
-    postJson<PaperclipActionRequestItem, { reason: string }>(
-      `/api/external-apps/paperclip/action-requests/${requestId}/reject`,
-      { reason }
-    ),
+  createHandoff: (appSlug: ExternalAppSlug, payload: ExternalAppHandoffRequest) =>
+    postJson<ExternalAppHandoffResponse, ExternalAppHandoffRequest>(`${basePath(appSlug)}/handoff`, payload),
+  listActionRequests: (appSlug: ExternalAppSlug) =>
+    fetchJson<ExternalAppActionRequestListResponse>(`${basePath(appSlug)}/action-requests`),
+  approveActionRequest: (appSlug: ExternalAppSlug, requestId: string, reason: string) =>
+    postJson<ExternalAppActionRequestItem, { reason: string }>(`${basePath(appSlug)}/action-requests/${requestId}/approve`, { reason }),
+  rejectActionRequest: (appSlug: ExternalAppSlug, requestId: string, reason: string) =>
+    postJson<ExternalAppActionRequestItem, { reason: string }>(`${basePath(appSlug)}/action-requests/${requestId}/reject`, { reason }),
 };
