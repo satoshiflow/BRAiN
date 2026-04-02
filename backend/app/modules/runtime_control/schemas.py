@@ -183,3 +183,33 @@ class RuntimeControlTimelineEvent(BaseModel):
 class RuntimeControlTimelineResponse(BaseModel):
     items: list[RuntimeControlTimelineEvent] = Field(default_factory=list)
     total: int
+
+
+class ExternalOpsAlertItem(BaseModel):
+    alert_id: str
+    severity: str
+    category: str
+    title: str
+    summary: str
+    app_slug: str | None = None
+    request_id: str | None = None
+    escalation_id: str | None = None
+    target_ref: str | None = None
+    skill_run_id: str | None = None
+    task_id: str | None = None
+    age_seconds: int
+
+
+class ExternalOpsSloMetrics(BaseModel):
+    pending_action_requests: int = 0
+    stale_action_requests: int = 0
+    stale_supervisor_escalations: int = 0
+    handoff_failures_24h: int = 0
+    retry_approvals_24h: int = 0
+    avg_action_request_age_seconds: int = 0
+
+
+class ExternalOpsObservabilityResponse(BaseModel):
+    generated_at: str
+    metrics: ExternalOpsSloMetrics
+    alerts: list[ExternalOpsAlertItem] = Field(default_factory=list)

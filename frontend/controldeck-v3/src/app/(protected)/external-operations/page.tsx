@@ -9,6 +9,8 @@ import { ApiError } from "@/lib/api/client";
 import { externalAppsApi, type ExternalAppActionRequestItem, type ExternalAppSlug } from "@/lib/api/external-apps";
 import { getControlDeckHelpTopic } from "@/lib/help/topics";
 import {
+  type ExternalOpsAlertItem,
+  type ExternalOpsObservabilityResponse,
   runtimeControlApi,
   type ResolverResponse,
   type RuntimeControlTimelineEvent,
@@ -420,6 +422,70 @@ function SupervisorEscalationPanel({ items }: { items: DomainEscalationItem[] })
   );
 }
 
+function ObservabilityPanel({ observability }: { observability: ExternalOpsObservabilityResponse | null }) {
+  if (!observability) {
+    return null;
+  }
+
+  const metrics = observability.metrics;
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-4 space-y-4">
+      <div>
+        <h3 className="font-medium text-slate-900 dark:text-slate-100">External Ops Alerts & SLOs</h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400">Aggregated alert signals for pending requests, supervisor backlog, retries and handoff failures.</p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-3 text-sm">
+        {[
+          ["Pending requests", metrics.pending_action_requests],
+          ["Stale requests", metrics.stale_action_requests],
+          ["Stale escalations", metrics.stale_supervisor_escalations],
+          ["Handoff failures 24h", metrics.handoff_failures_24h],
+          ["Retry approvals 24h", metrics.retry_approvals_24h],
+          ["Avg request age (s)", metrics.avg_action_request_age_seconds],
+        ].map(([label, value]) => (
+          <div key={String(label)} className="rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 p-3">
+            <p className="text-slate-500 dark:text-slate-400">{label}</p>
+            <p className="mt-2 font-semibold text-slate-900 dark:text-slate-100">{value}</p>
+          </div>
+        ))}
+      </div>
+
+      {observability.alerts.length === 0 ? (
+        <p className="text-sm text-slate-500 dark:text-slate-400">Keine aktiven Alerts.</p>
+      ) : (
+        <div className="space-y-2">
+          {observability.alerts.map((alert) => (
+            <div key={alert.alert_id} className="rounded-md border border-slate-200 dark:border-slate-700 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-medium text-slate-900 dark:text-slate-100">{alert.title}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">{alert.category} · {alert.app_slug ?? "all executors"}</p>
+                </div>
+                <span className={cn(
+                  "inline-flex rounded-full px-2.5 py-1 text-xs font-medium",
+                  alert.severity === "critical"
+                    ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+                    : alert.severity === "warning"
+                      ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                      : "bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200"
+                )}>
+                  {alert.severity}
+                </span>
+              </div>
+              <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{alert.summary}</p>
+              <div className="mt-2 flex flex-wrap gap-2 text-xs text-blue-600 dark:text-blue-400">
+                {alert.request_id ? <Link href="/external-operations">Open requests</Link> : null}
+                {alert.escalation_id ? <Link href={`/supervisor/${encodeURIComponent(alert.escalation_id)}`}>Open escalation</Link> : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ExternalOperationsPage() {
   const externalOpsTopic = getControlDeckHelpTopic("external-operations.paperclip-governance");
   const supervisorHandoffsTopic = getControlDeckHelpTopic("external-operations.supervisor-handoffs");
@@ -428,6 +494,7 @@ export default function ExternalOperationsPage() {
   const [paperclipTasks, setPaperclipTasks] = useState<TaskRecord[]>([]);
   const [openclawTasks, setOpenclawTasks] = useState<TaskRecord[]>([]);
   const [timeline, setTimeline] = useState<RuntimeControlTimelineEvent[]>([]);
+  const [observability, setObservability] = useState<ExternalOpsObservabilityResponse | null>(null);
   const [actionRequests, setActionRequests] = useState<ExternalAppActionRequestItem[]>([]);
   const [supervisorEscalations, setSupervisorEscalations] = useState<DomainEscalationItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -441,12 +508,13 @@ export default function ExternalOperationsPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [paperclipResolve, openclawResolve, paperclipTaskPayload, openclawTaskPayload, timelinePayload, paperclipActionRequests, openclawActionRequests, supervisorPayload] = await Promise.all([
+      const [paperclipResolve, openclawResolve, paperclipTaskPayload, openclawTaskPayload, timelinePayload, observabilityPayload, paperclipActionRequests, openclawActionRequests, supervisorPayload] = await Promise.all([
         runtimeControlApi.resolve(executorContexts.paperclip),
         runtimeControlApi.resolve(executorContexts.openclaw),
         taskApi.list("paperclip_work", 20),
         taskApi.list("openclaw_work", 20),
         runtimeControlApi.listTimeline(120),
+        runtimeControlApi.getExternalOpsObservability(),
         externalAppsApi.listActionRequests("paperclip"),
         externalAppsApi.listActionRequests("openclaw"),
         supervisorApi.listDomainEscalations(20),
@@ -454,6 +522,7 @@ export default function ExternalOperationsPage() {
 
       setPaperclipDecision(paperclipResolve);
       setOpenclawDecision(openclawResolve);
+      setObservability(observabilityPayload);
       setPaperclipTasks(paperclipTaskPayload.items);
       setOpenclawTasks(openclawTaskPayload.items);
       setActionRequests(
@@ -602,6 +671,8 @@ export default function ExternalOperationsPage() {
         <ExecutorStateCard executor="openclaw" decision={openclawDecision} taskSummary={openclawSummary} />
         <ExecutorStateCard executor="paperclip" decision={paperclipDecision} taskSummary={paperclipSummary} />
       </div>
+
+      <ObservabilityPanel observability={observability} />
 
       <div className="grid grid-cols-1 gap-6">
         <ActionRequestInbox

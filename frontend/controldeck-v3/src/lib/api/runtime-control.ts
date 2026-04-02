@@ -142,6 +142,36 @@ export interface RuntimeControlTimelineResponse {
   total: number;
 }
 
+export interface ExternalOpsAlertItem {
+  alert_id: string;
+  severity: string;
+  category: string;
+  title: string;
+  summary: string;
+  app_slug?: string | null;
+  request_id?: string | null;
+  escalation_id?: string | null;
+  target_ref?: string | null;
+  skill_run_id?: string | null;
+  task_id?: string | null;
+  age_seconds: number;
+}
+
+export interface ExternalOpsSloMetrics {
+  pending_action_requests: number;
+  stale_action_requests: number;
+  stale_supervisor_escalations: number;
+  handoff_failures_24h: number;
+  retry_approvals_24h: number;
+  avg_action_request_age_seconds: number;
+}
+
+export interface ExternalOpsObservabilityResponse {
+  generated_at: string;
+  metrics: ExternalOpsSloMetrics;
+  alerts: ExternalOpsAlertItem[];
+}
+
 export interface RuntimeOverrideRequestCreate {
   key: string;
   value: unknown;
@@ -181,4 +211,6 @@ export const runtimeControlApi = {
     ),
   listTimeline: (limit = 100) =>
     fetchJson<RuntimeControlTimelineResponse>(`/api/runtime-control/timeline?limit=${limit}`),
+  getExternalOpsObservability: () =>
+    fetchJson<ExternalOpsObservabilityResponse>("/api/runtime-control/external-ops/observability"),
 };

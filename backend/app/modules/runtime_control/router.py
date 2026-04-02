@@ -8,6 +8,7 @@ from app.core.auth_deps import Principal, SystemRole, get_current_principal, req
 from app.core.database import get_db
 
 from .schemas import (
+    ExternalOpsObservabilityResponse,
     ResolverRequest,
     ResolverResponse,
     RuntimeActiveOverrideListResponse,
@@ -198,3 +199,15 @@ async def list_runtime_control_timeline(
 ) -> RuntimeControlTimelineResponse:
     service = get_runtime_control_service()
     return await service.list_timeline(db, tenant_id=principal.tenant_id, limit=min(max(limit, 1), 500))
+
+
+@router.get(
+    "/external-ops/observability",
+    response_model=ExternalOpsObservabilityResponse,
+)
+async def get_external_ops_observability(
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> ExternalOpsObservabilityResponse:
+    service = get_runtime_control_service()
+    return await service.get_external_ops_observability(db, tenant_id=principal.tenant_id)

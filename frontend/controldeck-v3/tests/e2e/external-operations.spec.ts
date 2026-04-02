@@ -177,6 +177,47 @@ test("external operations supports action approval and supervisor deep-links", a
     });
   });
 
+  await page.route("**/api/runtime-control/external-ops/observability", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        generated_at: "2026-04-02T00:00:00Z",
+        metrics: {
+          pending_action_requests: 2,
+          stale_action_requests: 1,
+          stale_supervisor_escalations: 1,
+          handoff_failures_24h: 1,
+          retry_approvals_24h: 1,
+          avg_action_request_age_seconds: 1800,
+        },
+        alerts: [
+          {
+            alert_id: "pending-request-actreq_1",
+            severity: "warning",
+            category: "pending_action_request",
+            title: "External action request pending",
+            summary: "paperclip request actreq_1 is waiting for operator review.",
+            app_slug: "paperclip",
+            request_id: "actreq_1",
+            target_ref: "task-paperclip-1",
+            skill_run_id: "run-1",
+            task_id: "task-paperclip-1",
+            age_seconds: 3600,
+          },
+          {
+            alert_id: "handoff-failures-24h",
+            severity: "warning",
+            category: "handoff_failures",
+            title: "Recent handoff failures detected",
+            summary: "1 handoff exchange failures were recorded in the last 24 hours.",
+            age_seconds: 0,
+          },
+        ],
+      }),
+    });
+  });
+
   await page.route("**/api/external-apps/paperclip/action-requests", async (route) => {
     await route.fulfill({
       status: 200,
@@ -264,6 +305,9 @@ test("external operations supports action approval and supervisor deep-links", a
   await page.goto("/external-operations");
 
   await expect(page.getByText("External Operations")).toBeVisible();
+  await expect(page.getByText("External Ops Alerts & SLOs")).toBeVisible();
+  await expect(page.getByText("Pending requests", { exact: true })).toBeVisible();
+  await expect(page.getByText("Recent handoff failures detected")).toBeVisible();
   await expect(page.getByText("Action Request Inbox")).toBeVisible();
   await expect(page.getByText("Supervisor Inbox")).toBeVisible();
   await expect(page.getByRole("link", { name: "Open detail" })).toBeVisible();

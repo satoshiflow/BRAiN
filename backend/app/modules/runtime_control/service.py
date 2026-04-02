@@ -15,6 +15,9 @@ from app.core.control_plane_events import ControlPlaneEventModel, record_control
 from .schemas import (
     AppliedOverride,
     AppliedPolicy,
+    ExternalOpsAlertItem,
+    ExternalOpsObservabilityResponse,
+    ExternalOpsSloMetrics,
     ExplainTraceStep,
     OverrideRequestStatus,
     ResolverResponse,
@@ -86,6 +89,18 @@ class RuntimeControlResolverService:
                 }
             },
         }
+
+    @staticmethod
+    def _event_age_seconds(event: ControlPlaneEventModel, now: datetime) -> int:
+        created_at = event.created_at or now
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        return max(0, int((now - created_at).total_seconds()))
+
+    @staticmethod
+    def _payload_value(payload: dict[str, Any], key: str) -> str | None:
+        value = payload.get(key)
+        return str(value) if value is not None else None
 
     @staticmethod
     def _set_path(target: dict[str, Any], key_path: str, value: Any) -> None:
@@ -422,6 +437,125 @@ class RuntimeControlResolverService:
                 )
             )
         return RuntimeControlTimelineResponse(items=items, total=len(items))
+
+    async def get_external_ops_observability(
+        self,
+        db: AsyncSession,
+        *,
+        tenant_id: str | None,
+    ) -> ExternalOpsObservabilityResponse:
+        result = await db.execute(
+            select(ControlPlaneEventModel)
+            .where(ControlPlaneEventModel.entity_type.in_(["external_action_request", "external_handoff"]))
+            .order_by(desc(ControlPlaneEventModel.created_at))
+            .limit(2000)
+        )
+        events = list(result.scalars().all())
+        now = datetime.now(timezone.utc)
+        since_24h = now.timestamp() - 86400
+
+        pending_requests: dict[str, dict[str, Any]] = {}
+        alerts: list[ExternalOpsAlertItem] = []
+        handoff_failures_24h = 0
+        retry_approvals_24h = 0
+        stale_supervisor_escalations = 0
+
+        for event in sorted(events, key=lambda item: item.created_at or now):
+            if tenant_id and event.tenant_id not in {tenant_id, None}:
+                continue
+            payload = event.payload if isinstance(event.payload, dict) else {}
+            app_slug = self._payload_value(payload, "app_slug")
+            age_seconds = self._event_age_seconds(event, now)
+
+            if event.event_type.endswith("requested.v1"):
+                request_id = self._payload_value(payload, "request_id") or event.entity_id
+                pending_requests[request_id] = {
+                    "request_id": request_id,
+                    "app_slug": app_slug,
+                    "target_ref": self._payload_value(payload, "target_ref"),
+                    "skill_run_id": self._payload_value(payload, "skill_run_id"),
+                    "age_seconds": age_seconds,
+                }
+                continue
+
+            if event.event_type.endswith("approved.v1") or event.event_type.endswith("rejected.v1"):
+                request_id = self._payload_value(payload, "request_id") or event.entity_id
+                pending_requests.pop(request_id, None)
+                if event.event_type.endswith("approved.v1") and payload.get("action") == "request_retry" and (event.created_at or now).timestamp() >= since_24h:
+                    retry_approvals_24h += 1
+
+                execution_result = payload.get("execution_result") if isinstance(payload.get("execution_result"), dict) else {}
+                escalation_id = self._payload_value(execution_result, "supervisor_escalation_id")
+                if escalation_id and age_seconds >= 1800:
+                    stale_supervisor_escalations += 1
+                    alerts.append(
+                        ExternalOpsAlertItem(
+                            alert_id=f"stale-supervisor-{escalation_id}",
+                            severity="warning",
+                            category="stale_supervisor_escalation",
+                            title="Supervisor escalation awaiting review",
+                            summary=f"Supervisor escalation {escalation_id} has been open for {age_seconds // 60} minutes.",
+                            app_slug=app_slug,
+                            request_id=self._payload_value(payload, "request_id"),
+                            escalation_id=escalation_id,
+                            target_ref=self._payload_value(payload, "target_ref"),
+                            skill_run_id=self._payload_value(payload, "skill_run_id"),
+                            task_id=self._payload_value(payload, "target_ref"),
+                            age_seconds=age_seconds,
+                        )
+                    )
+
+            if event.event_type.endswith("exchange_failed.v1") and (event.created_at or now).timestamp() >= since_24h:
+                handoff_failures_24h += 1
+
+        request_ages = [int(item["age_seconds"]) for item in pending_requests.values()]
+        stale_action_requests = 0
+        for item in pending_requests.values():
+            severity = "warning" if int(item["age_seconds"]) >= 1800 else "info"
+            if severity == "warning":
+                stale_action_requests += 1
+            alerts.append(
+                ExternalOpsAlertItem(
+                    alert_id=f"pending-request-{item['request_id']}",
+                    severity=severity,
+                    category="pending_action_request",
+                    title="External action request pending",
+                    summary=f"{item['app_slug'] or 'external'} request {item['request_id']} is waiting for operator review.",
+                    app_slug=item["app_slug"],
+                    request_id=item["request_id"],
+                    target_ref=item["target_ref"],
+                    skill_run_id=item["skill_run_id"],
+                    task_id=item["target_ref"],
+                    age_seconds=int(item["age_seconds"]),
+                )
+            )
+
+        if handoff_failures_24h > 0:
+            alerts.append(
+                ExternalOpsAlertItem(
+                    alert_id="handoff-failures-24h",
+                    severity="critical" if handoff_failures_24h >= 3 else "warning",
+                    category="handoff_failures",
+                    title="Recent handoff failures detected",
+                    summary=f"{handoff_failures_24h} handoff exchange failures were recorded in the last 24 hours.",
+                    age_seconds=0,
+                )
+            )
+
+        alerts.sort(key=lambda item: (item.severity != "critical", item.severity != "warning", -item.age_seconds))
+
+        return ExternalOpsObservabilityResponse(
+            generated_at=now.isoformat(),
+            metrics=ExternalOpsSloMetrics(
+                pending_action_requests=len(pending_requests),
+                stale_action_requests=stale_action_requests,
+                stale_supervisor_escalations=stale_supervisor_escalations,
+                handoff_failures_24h=handoff_failures_24h,
+                retry_approvals_24h=retry_approvals_24h,
+                avg_action_request_age_seconds=int(sum(request_ages) / len(request_ages)) if request_ages else 0,
+            ),
+            alerts=alerts[:25],
+        )
 
     async def _active_registry_patch(self, db: AsyncSession, tenant_id: str | None) -> dict[str, Any]:
         versions = await self.list_registry_versions(db, tenant_id=tenant_id)
